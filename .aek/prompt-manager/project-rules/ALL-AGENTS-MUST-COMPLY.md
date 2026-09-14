@@ -1,7 +1,5 @@
 # 本项目必须遵守的规则
 
-## 若环境是WSL，若要执行win命令。则& "/mnt/c/Program Files/PowerShell/7/pwsh.exe" -c "win命令"这样就能执行，禁止带上-NoProfile参数。没有pwsh7就用powershell5
-
 ## 不准在packages各个包的文件夹中写README
 
 ## CWD的skills文件夹有具体的使用方法说明，务必查看
@@ -33,8 +31,7 @@
 - 禁止用 `git push --tags`（远端已有旧 tag 会整批 reject 且误报失败），应单独 push 本次新增 tag：`git push github <tag1> <tag2>`。
 - 发布后创建 GitHub Release（复用 scripts/for-maintainers/release.py 的 create_github_release）。
 
-
-## 本aek系统预制的skill必须用packages\\aek-skill-manager使它们存在，预制的全局提示词patch必须用packages\\aek-prompt-manager去patch，这两个不做，不算安装完成。
+## 本aek系统预制的skill必须用packages/aek-skill-manager使它们存在，预制的全局提示词patch必须用packages/aek-prompt-manager去patch，这两个不做，不算安装完成。
 
 ## aek-skill-manager 系统 skill 更新铁律（违规会出事故）
 
