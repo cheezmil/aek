@@ -8,6 +8,16 @@ export const SCRIPTS_DIR = 'scripts';
 export const BACKUP_DIR = 'backup';
 export const ALL_AGENT_FILE = 'ALL-AGENTS-MUST-COMPLY.md';
 
+// 检查 projectRoot 自身是否在有 .git 的目录（不向上查找）
+async function checkInGitRepo(projectRoot) {
+  try {
+    await access(join(projectRoot, '.git'));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function subBlockHead(agentId) {
   return `<!-- head-${agentId} -->`;
 }
@@ -227,6 +237,11 @@ execFileSync('aekpm', ['pr', 'gen', '${agentId}'], { stdio: 'inherit' });
 }
 
 export async function initProjectRules(projectRoot) {
+  projectRoot = resolve(projectRoot || process.cwd());
+  const inGit = await checkInGitRepo(projectRoot);
+  if (!inGit) {
+    throw new Error(`不在 git 仓库内：${projectRoot}。请将命令运行在有 .git 的目录下。`);
+  }
   const root = prRoot(projectRoot);
   await mkdir(root, { recursive: true });
   await mkdir(prAgentsDir(projectRoot), { recursive: true });
