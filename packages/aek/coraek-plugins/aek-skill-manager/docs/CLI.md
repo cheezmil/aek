@@ -1,0 +1,324 @@
+# Skills Manager CLI
+
+**English** | [简体中文](CLI.zh-CN.md)
+
+`skills-manager-cli` provides the `skills-manager` executable for a local-first skill home.
+
+## Skill home resolution
+
+Priority:
+
+1. `--home <path>`
+2. `SKILL_HOME`
+3. the current working directory when it already contains `skills/`, `views/`, `collections/`, and `registry.yaml`
+4. `~/.aek/skill-manager`, created by bootstrap only (ADR-0014) — every other command reports the missing hub instead of creating it
+
+Initialization creates `skills/`, `views/`, `collections/`, `registry.yaml`, and the parent directory for `.skills/activity.jsonl`.
+
+## bootstrap (the front door)
+
+```sh
+aeksm                 # no subcommand = bootstrap
+aeksm bootstrap --agent claude-code --agent cursor   # scripted
+aeksm bootstrap --force       # replace an unmanaged skills-manager at a runtime path
+```
+
+Bootstrap (ADR-0014) does four things and nothing else: ensures the hub, seeds the **manager skill** into it from the copy bundled in the npm package (stamped with the release tag as its update source), mounts it (symlink) into the chosen agents — an interactive multi-select of detected agents in a TTY, defaulting to all of them; `--agent` skips the prompt; non-TTY applies to every detected agent — and prints the starter prompt. After the starter prompt it also prints two pasteable CLI demos (`cost --share`, `doctor`) so the resident-cost card and the health/security rollup are one copy away — useful right after the next npm cut. It imports nothing, ever: importing existing runtime skills stays a conversational act you perform later through the manager skill. It is idempotent, and every CLI run self-checks the hub copy against the bundled copy, refreshing it unless you have edited the hub copy yourself (a hand-edited copy is foreign and untouched).
+
+## Commands
+
+```sh
+aeksm web --home ./my-skill-home
+aeksm doctor --home ./my-skill-home
+aeksm doctor --share
+aeksm catalog info --home ./my-skill-home
+aeksm catalog refresh --home ./my-skill-home
+aeksm list --home ./my-skill-home
+aeksm get my-skill
+aeksm get my-skill --path
+aeksm add <source> --all --yes
+aeksm update --plan
+aeksm update --check
+aeksm update --check --fail-on-stale
+aeksm update --skill my-skill
+aeksm update --source '<source-key>'
+aeksm distribute --to user --skill my-skill --agent claude-code --agent zed
+aeksm distribute --to project --project ./repo --skill my-skill --agent cursor --mode copy
+aeksm undistribute --to user --skill my-skill --agent claude-code
+aeksm redistribute --outdated
+aeksm redistribute --refresh --to project --project ./repo
+aeksm status
+aeksm cost --json
+aeksm cost --top 10
+aeksm audit security
+aeksm audit security my-skill
+aeksm audit security --strict
+aeksm audit security --strict --format github
+aeksm audit overlap [skills...] [--threshold <0-1>] [--strict] [--fix [--write]] [--json]
+aeksm audit descriptions [skills...] [--strict] [--fix [--write]] [--json]
+aeksm audit overlap [skills...] [--threshold <0-1>] [--strict] [--json]
+aeksm audit descriptions [skills...] [--strict] [--json]
+aeksm trigger test "<request>" [--expect <skill>] [--top <n>] [--json]
+aeksm trigger test --fixtures <file> [--json]
+aeksm init --dry-run
+aeksm init --agent claude-code --agent cursor
+aeksm init --prefer claude-code ~/.agents/skills hub
+aeksm init --resolve my-skill=cursor --resolve other-skill=hub
+aeksm backup list
+aeksm backup restore my-skill
+aeksm edit my-skill --source-url https://github.com/owner/repo
+aeksm edit my-skill --source-git owner/repo --subpath skills/my-skill
+aeksm edit my-skill --source-git owner/repo --subpath skills/my-skill --source-ref v1.2.3
+aeksm provenance list
+aeksm provenance list --fail-on-imported
+aeksm check [--budget <tokens>] [--freshness] [--overlap] [--descriptions] [--json]
+aeksm provenance adopt
+aeksm provenance adopt --dry-run --skill my-skill
+aeksm categories set my-skill frontend backend
+aeksm categories add my-skill finance
+aeksm categories remove my-skill finance
+aeksm categories list
+aeksm categories apply frontend finance --agent claude-code
+aeksm categories apply --all
+aeksm categories status
+aeksm preset set web frontend ui
+aeksm preset list
+aeksm preset remove web
+aeksm preset apply web --agent claude-code
+aeksm preset apply web --json
+aeksm sync init --remote <url>
+aeksm sync status [--json]
+aeksm sync status --share
+aeksm sync push
+aeksm sync pull
+aeksm archive old-skill
+aeksm rebuild-collections
+```
+
+Distribute targets any catalog agent id (`--agent`, repeatable). Omitting `--agent` applies to the detected set on this machine. User scope defaults to `--mode symlink`, project scope to `--mode copy`; one mode per apply.
+
+### categories (domain categories and category sets, ADR-0015)
+
+Skills carry a free-form multi-valued `categories: []` axis (frontend / finance / backend — the user's own vocabulary, no controlled list; normalization trims, dedupes, drops empties). It is orthogonal to the frozen legacy scalar `category` (which keeps feeding `collections/` and `list --category`). `categories set` and `edit --categories` are replace-semantics; `add` / `remove` are incremental; `list` reports every tag in the hub with per-tag counts.
+
+`categories apply <cat...>` is a distribute-level operation: it resolves the selected agents (`--agent` repeatable, default = detected set) to physical runtime paths (deduped), then rewrites each path to hold **exactly** the managed skills whose categories intersect the applied set — distributing what's missing and removing managed entries outside the set, **including untagged ones**. Removal is path-strict (an out-of-set entry goes even if an unselected same-path family agent references it; in-set entries fold in the union of referencing agents). The manager skill is unconditionally exempt; foreign entries are never touched. Apply is idempotent and takes a pre-apply snapshot; `apply --all` dissolves the filter (restores every managed skill, clears the record) and is mutually exclusive with a category list. The applied set is persisted per physical runtime path as an extension of the distribution index; `distribute rollback --to user` restores runtime content and the category-set record together.
+
+Apply is an explicit snapshot — later tag edits or updates never auto-push. `categories status` reports each path's applied set plus drift ("N skills now match the set but are undistributed"); re-running `apply` converges. See [ADR-0015](adr/0015-domain-categories-category-set-loading.md).
+
+### preset (named presets, ADR-0019)
+
+A **preset** is a named list of domain categories — a re-appliable loading set (预设 / 档位), not an install group — stored as a top-level `presets:` map in `registry.yaml`. `preset set <name> <cat...>` is replace semantics (overwrite-in-place when the name exists; preset names are safe-name validated, and categories need not exist in the hub yet — build the preset first, tag skills later). `preset list` shows each preset's member categories plus its mount footprint (how many physical runtime paths currently carry it, omitted when zero, drift reported as-is — never implied healthy). `preset remove` deletes the entry and cascade-clears the `preset` field off every category-set record referencing the name (categories kept, runtime untouched), reporting how many paths the name was detached from.
+
+`preset apply <name>` resolves the preset's categories at apply time through the unchanged ADR-0015 path-level strict rewrite — `--agent` repeatable (default = detected set), shared physical paths written once, manager skill exempt, foreign untouched, uncategorized removed, user scope only — and stamps the applied category-set record with the preset name, which `categories status` shows beside the applied set. A bare `categories apply` on a stamped path clears the field (manual overrides are never misreported as a named preset); `categories apply --all` dissolves it; `distribute rollback --to user` restores the runtime content and the stamped record together. Two hard errors protect the named object: a preset that resolves to zero managed skills, and one referencing a category absent from the hub vocabulary, both refuse at apply time naming the preset and its categories. Success output ends with the preset's resident-cost line (char-approx, `≈`-prefixed; `--json` carries the structured `cost` field). See [ADR-0019](adr/0019-named-presets-category-subsets.md).
+
+### sync (multi-machine hub sync, ADR-0020)
+
+```sh
+aeksm sync init --remote <url>   # git init (or adopt), canonical .gitignore, baseline commit, attach origin
+aeksm sync status [--json]       # read-only, zero-network posture probe
+aeksm sync status --share        # privacy-safe paste card (no hub path / remote URL)
+aeksm sync push                  # add -A + one skill-level summary commit + push
+aeksm sync pull                  # fetch + merge (clean tree required)
+```
+
+The hub itself becomes a git repository; push/pull over any user-chosen remote (a local bare repo works) is the whole sync mechanism. `sync init` is idempotent and adopts an existing `.git/` (history kept; the user being a step ahead is not an error), appends only missing canonical `.gitignore` lines — `.backups/` and `.skills/` are machine-local (rollback snapshots, distribution index, activity log) and never sync; distribution is per machine — makes one baseline commit when the tree has anything to commit, and optionally attaches origin. Its output is a zero-omission report of exactly what was done, ending with a reminder to confirm the hub holds no secrets before pushing. Repointing an existing origin is refused with the manual command — never done silently.
+
+`sync push` stages everything and makes one summary commit (skill-level counts: added / updated / removed, a registry flag; same-skill renames count as updates) before pushing. A clean tree with an up-to-date remote reports "already in sync" and exits 0 — no empty commit is ever created. `sync pull` requires a clean working tree (dirty → nonzero exit pointing at `sync push` or manual handling; never stashes), then fetches and merges (merge commits allowed; no rebase, no ff-only). The merge target resolves in priority order: this machine's upstream when push has configured one, otherwise the remote branch of the same name (pull merges where `push -u origin HEAD` pushes — `sync init` pins every fresh hub to `main`, so a self-built bare remote whose HEAD symref dangles still resolves), otherwise the remote's declared HEAD branch, otherwise the sole remote branch; when none of these can pick, pull exits nonzero naming the remote's actual branches instead of guessing — and "nothing has been pushed yet" only appears when the remote really has no branches. When the merge brings changes, pull ends with skill-level stats, and the plain-text reminder that newly pulled skills are not yet distributed prints only when skills actually arrived; an up-to-date pull says so in one line. One conflict is settled by the tool itself: when `registry.yaml` is the only conflicted path, the local content is the byte-exact empty placeholder `skills: {}`, and local history is nothing but the init baseline commit, the remote's real registry supersedes it and pull says so — in that state no local user data exists (nothing pushed, nothing hand-committed), and without this every real hub's first pull on a new machine would die in a conflict (ticket 07).
+
+Exit-code semantics: `push` / `pull` exit nonzero with guidance on every hard gate — an un-gitified hub (run `sync init`), no remote origin (`sync init --remote <url>` or the manual `git remote add`), no git identity (the tool never configures it for you), an unborn HEAD, or a merge conflict (the conflicted state is left exactly as git left it; resolution is yours via `git -C <hub>` — the placeholder-registry case above is the only auto-settled exception). `sync status` is the exception: an un-gitified hub is a friendly hint naming `sync init --remote <url>` plus exit 0. `status` reports git-ification, remote, dirty-file count, ahead/behind against the remote-tracking ref annotated as last-fetch (it never fetches), and the last sync commit; `--json` is the machine-readable form; `--share` prints a privacy-safe paste card (gitified?/remote yes|no/dirty/ahead-behind/last subject — never the hub path or remote URL) with a Try/Reproduce CTA. Bootstrap never git-initializes the hub — sync is the user's explicit opt-in. See [ADR-0020](adr/0020-hub-git-sync-mvp.md).
+
+### Stale copy targets and auto-refresh (ADR-0008)
+
+`copy`-mode targets drift from the hub when skill content changes; symlink targets always proxy the live hub tree and never go stale. Staleness is fingerprint-only, and refreshing replaces the whole managed subtree (files local to a managed copy target are not preserved — the hub is the single authority).
+
+- `add` / `update` **cascade**: after the hub write succeeds, every stale copy target of the touched skills is refreshed automatically; per-entry failures are recorded on the index entry and never block siblings.
+- `aeksm status` prints `outdated: N, errored: M`, lists refresh errors with their runtime paths, and points at the fix command.
+- `aeksm redistribute --refresh` (alias of `--outdated`) refreshes every stale copy target, optionally filtered by `--to` / `--project`; it prints `Refreshed N, errored M.`
+- `add` / `update` print a one-line trailing reminder when other stale targets remain.
+- The dashboard shows a stale badge with a count and a one-click refresh button per skill row.
+
+### update --check (honest freshness)
+
+```sh
+aeksm update --check
+```
+
+JSON buckets: `stale` / `upToDate` / `failed` / `skipped` (and `checked`). For **git / marketplace** sources the update signal is the **skill subdirectory tree SHA** — upstream commits outside that skill never light an update (the README differentiator). URL / well-known / local sources keep their own anchors (content digest / fingerprint). `--check` also prints that tree-SHA tip on **stderr** so stdout JSON stays script-stable.
+
+### cost (the resident-cost ledger, ADR-0018)
+
+```sh
+aeksm cost              # human view: path groups → per-skill lines → total + unmanaged line → suggestions
+aeksm cost --json       # the full ledger as JSON (the machine form)
+aeksm cost --top 10     # widen the expensive-descriptions list (default 5)
+aeksm cost --share     # privacy-safe paste card (no absolute paths) for X / HN / chat
+aeksm cost --budget 2000  # exit 1 when total resident tokens exceed 2000 (CI / pre-commit gate; verdict on stderr, stdout unchanged)
+aeksm update --check --fail-on-stale  # exit 1 when any skill is stale (tree-SHA freshness CI gate; failed checks already exit 1; stdout JSON unchanged)
+```
+
+Flag mistakes on `cost` (`--top`/`--budget` not a non-negative integer, `--json` with `--share`) and `update` (`--fail-on-stale` without `--check`) are reported before the hub is resolved, so a typo in a fresh CI runner says what is wrong with the flag instead of "No skill home".
+
+`cost` is the read-only resident-cost account: the per-message token cost every distributed skill charges via its frontmatter `name + description`, grouped by **physical runtime path** (user and project both; a shared path counted once with its agent family noted; foreign entries appear only as an uncounted-count line). Counting is **char-approx** (CJK characters ×1, all others ÷4, zero dependencies) — a magnitude reference, never an exact count: every displayed number is `≈`-prefixed (`≈1.2k` style) and the JSON carries `method: "char-approx"`. The JSON is three-layer: `paths[]` (each with `runtimeDir`, `kind`, `agents`, per-skill lines), the top-level `totalTokens`, and a `suggestions` object. Unreadable entries (broken symlinks included) count 0 and surface in `errors`; entries missing a description are flagged `incomplete`.
+
+`cost --share` renders the same ledger as a short paste card: totals, path kinds with agent families (never absolute paths), the three heaviest skills, then a `Try:` / `Reproduce:` footer and the repo link — so people can share their skill tax without leaking home directories (and without a circular "Share: cost --share" CTA).
+
+`doctor --share` is the parallel privacy-safe paste card for hub health: skill / managed / outdated / foreign counts, resident-cost magnitude, security high count + scanner id, warning count — never `skillHome`, broken-link paths, skill names, or warning text. Footer is `Try:` / `Reproduce:` + the repo URL.
+
+Suggestions are **report-only** — nothing is ever executed. Three layers: archived-but-distributed skills (zero-controversy recalls) head the list, then the top-N most expensive descriptions, then scattered distributions (one skill across several paths — consolidate to one). Every suggestion carries a verbatim runnable `undistribute` command including the required `--to` (and `--project` for project paths). `doctor` consumes the same core as a structured `residentCost` field and warns only on scattered duplicates; the dashboard consumes it via `GET /api/cost`. See [ADR-0018](adr/0018-resident-cost-ledger.md). The same doctor report also carries a structured `security` rollup (`scanner`, `scanned`, `high`, `skillsWithHigh`) and warns only when `high > 0`, pointing at `audit security --strict` and the copy-paste Action example.
+
+
+### audit overlap (skills competing for the same request)
+
+```sh
+aeksm audit overlap                 # compare every non-archived hub skill
+aeksm audit overlap a b c           # only these skills
+aeksm audit overlap --threshold 0.5 # report fewer, closer pairs (default 0.3)
+aeksm audit overlap --strict        # CI gate: exit 1 when any pair is reported
+aeksm audit overlap --json
+```
+
+Agents choose a skill by matching your message against every skill's `name + description`. When two descriptions claim the same trigger words (say `jest-unit-tests` and `testing-conventions`), the agent may load the wrong one, or neither. `audit overlap` finds those pairs offline and deterministically, with no model and no network. It scores each pair with IDF-weighted Jaccard over description terms (ASCII words, light plural folding, CJK bigrams, common filler words dropped), so words every skill uses barely count and distinctive shared words dominate. Each pair lists its most distinctive shared terms and a suggested fix: write a boundary into each description ("For X, use the other skill instead"), or merge the two. It is report-only and never edits a description. `--json` gives `{ method: "idf-jaccard", threshold, scanned, pairs[] }`. With `--strict`, the verdict goes to stderr and stdout stays unchanged.
+
+### audit descriptions (will this skill ever trigger?)
+
+```sh
+aeksm audit descriptions            # lint every non-archived hub skill, worst first
+aeksm audit descriptions a b        # only these skills
+aeksm audit descriptions --strict   # CI gate: exit 1 on error-level findings (warnings never fail)
+aeksm audit descriptions --json
+```
+
+The description is all an agent sees before it decides to load a skill, so a weak one means the skill never triggers. This lint checks each description against the Agent Skills spec and Anthropic's authoring guidance, offline and deterministically:
+
+| Rule | Level | Fires when |
+| --- | --- | --- |
+| `missing` | error | the description is empty (the skill can only be called by name) |
+| `too-long` | error | it is over 1024 chars |
+| `xml-tag` | error | it contains an XML/HTML tag |
+| `name-format` | error | the name is not ≤ 64 lowercase letters, digits and hyphens, or contains `anthropic`/`claude` |
+| `no-trigger` | warn | it never says *when* to use the skill ("Use when …", "when the user …", 当/用于/只要…使用) |
+| `point-of-view` | warn | it is written in first or second person ("I can …", "You can use …") |
+| `vague` | warn | it is under 40 chars or has fewer than 4 concrete terms ("Helps with documents") |
+
+Each skill gets a 0–100 score (−40 per error, −15 per warning) and every finding comes with a fix. The lint is report-only and never edits a description. `--json` gives `{ scanned, errors, warnings, skills[] }`. With `--strict`, the verdict goes to stderr.
+
+### audit … --fix (proposed rewrites, written only with --write)
+
+```sh
+aeksm audit descriptions --fix          # diff of template rewrites; writes nothing
+aeksm audit overlap --fix               # diff of boundary lines for every competing pair
+aeksm audit descriptions --fix --write  # apply after you have read the diff
+```
+
+`--fix` turns both audits into proposals, printed as a `-` / `+` diff per skill. It is a dry run and never writes. `--write` is the only way to apply them; on its own, without `--fix`, it is refused. The rewrites come from fixed templates, offline, with no model, so the same hub always gets the same proposals:
+
+- `no-trigger` → appends "Use when the user mentions <the description's rarest terms in this hub>, or asks for <name words>."
+- `point-of-view` → drops a leading "I can …" / "You can use this to …" and capitalises the verb.
+- `xml-tag` → strips the tags and keeps the text. `too-long` → cuts at the last sentence boundary under 1024 chars and keeps a trailing "Use when …".
+- overlap → each side of a pair gets "For <the other skill's distinctive terms>, use the <other> skill instead." If the other side has no extra terms, it becomes "For the same job without <my terms>, …". Re-running doesn't add a second line.
+
+`missing`, `vague` and `name-format` have no safe template. They are listed as `needs you` and never touched. The templates are a starting point, so read and edit them. `--write` replaces only the frontmatter `description` key in the hub SKILL.md (other keys and the body stay byte-for-byte) and updates the registry copy. Runtime copies follow through distribution as usual. An edited hub skill is a local change like any other edit. `--json` gives `{ written, proposals[{ skill, before, after, applied, manual }] }`.
+
+### audit security (install/update security scan MVP)
+
+```sh
+aeksm audit security              # scan every non-archived hub skill
+aeksm audit security my-skill     # one (or more) skill name(s)
+aeksm audit security --strict     # CI gate: exit 1 on high-severity findings
+aeksm audit security --format github   # Actions ::error/::warning/::notice (PR Files UI)
+aeksm audit security --strict --format github  # CI gate + annotations
+```
+
+Report-only scan of a skill tree for high-signal risks: shell exec patterns (`bash -c`, `child_process`, `subprocess`, `eval`, …), network calls (`curl`/`wget`/`fetch`/…), credential path mentions (`~/.ssh`, `.aws/credentials`, `.env`, …), and obvious secret-looking strings (AWS key ids, private-key headers, `sk-…`, `api_key="…"`). Install/update stay report-only (stderr summary only).
+
+Default stdout is JSON (one report object, or an array when scanning several). Each report carries `scanner` (today `builtin-v1`), `findings[]` (`kind`, `severity`, relative `path`, 1-based `line`, `excerpt`, `rule`), and a `summary` count per kind. `add` / `update` also print one stderr summary line per installed/updated skill so the existing JSON stdout stays parseable.
+
+`--format github` switches stdout to GitHub Actions workflow commands (`::error` / `::warning` / `::notice`) with hub-relative `file=skills/<name>/…` paths so findings light up on the PR Files tab. Combine with `--strict` for a CI gate that both fails the job and annotates the diff. `%` / newlines / carriage returns in paths and excerpts are percent-encoded per Actions rules. Unknown `--format` values error with `invalid_format_flag`.
+
+`--strict` is the optional CI gate: exit `1` when any finding has severity `high` (works with either format). `warn` / `info` never fail under `--strict` (a lone `curl` mention must not break pipelines). Default without the flag stays exit `0` even when highs are present.
+
+Copy-paste GitHub Actions workflow: [`examples/github-actions/audit-security.yml`](../examples/github-actions/audit-security.yml) — runs `audit security --strict --format github` from an existing hub root (`skills/` + `registry.yaml`); do not pass `--home` in CI (an explicit home auto-creates a missing hub and would exit 0 on an empty scan).
+
+`doctor` always attaches the same hub rollup as `security` and warns only when `high > 0` (warn/info alone stay silent), so a one-glance health check surfaces the CI gate without running `audit` separately.
+
+The scanner is a `SecurityScannerPort` — a future SkillSpector / third-party adapter can replace `builtin-v1` without changing callers.
+
+### trigger test (would this request pick the right skill?)
+
+```sh
+aeksm trigger test "fill PDF form fields"                 # rank every non-archived hub skill
+aeksm trigger test "write jest unit tests" --top 5        # only show the top 5
+aeksm trigger test "draft release notes" --expect release-notes   # CI: exit 1 unless that skill is #1
+aeksm trigger test "write unit tests with Jest" --expect testing-conventions --top 2  # allow a top-N window
+aeksm trigger test --fixtures examples/trigger-fixtures.yml       # many phrases, one command (CI-friendly)
+aeksm trigger test "…" --json
+```
+
+Agents choose a skill by matching the user's message against every skill's `name + description`. `trigger test` does that match offline and deterministically: the same IDF-weighted Jaccard over `descriptionTerms` that `audit overlap` uses, scoring the request against each hub skill. Output is a ranked list (`#1`, `#2`, …) with the shared distinctive terms.
+
+`--expect <skill>` is the CI assertion. Without `--top`, that skill must rank first. With `--top N`, it must appear somewhere in the top N (and the listing is truncated to N). Unknown `--expect` names are refused up front. `--json` emits `{ method, request, scanned, hits[{ skill, score, shared, rank }], expect? }`. No network, no model — safe for pre-commit and Actions.
+
+`--fixtures <file>` is the multi-assertion form: a YAML (`.yaml`/`.yml`) or JSON file that is either a list of `{ request, expect, top? }` objects or `{ name?, fixtures: [...] }`. One invocation runs every case and exits 1 if any fails — so CI does not need a long workflow of repeated `trigger test` lines. Sample file: [`examples/trigger-fixtures.yml`](../examples/trigger-fixtures.yml); copy-paste workflow: [`examples/github-actions/trigger-fixtures.yml`](../examples/github-actions/trigger-fixtures.yml). Do not combine `--fixtures` with a positional `<request>` or with CLI-level `--expect`/`--top` (put those on each fixtures entry). `--json` emits `{ method, file, name?, scanned, total, passed, failed, results[] }`.
+
+### check (all hub gates, one exit code)
+
+`aeksm check` runs the hub CI gates together and exits 1 if any fails: **security** (any high finding, same as `audit security --strict`) and **provenance** (imported-without-source, same as `provenance list --fail-on-imported`) always run offline; `--budget <tokens>` adds the resident-cost gate (`cost --budget`), `--freshness` adds the networked tree-SHA check (fails on stale or failed, like `update --check --fail-on-stale`). Two offline skill-quality gates are opt-in too: `--overlap` fails when any two descriptions compete (same as `audit overlap --strict` at the default 0.3 threshold), and `--descriptions` fails on error-level description lint findings (same as `audit descriptions --strict`; warnings never fail). They are opt-in because many existing hubs carry harmless warnings and near-duplicates, and turning them on by default would break CI that passes today. One `PASS`/`FAIL` line per gate plus a verdict; `--json` gives `{ ok, gates[] }`. Copy-paste workflow: [`examples/github-actions/hub-check.yml`](../examples/github-actions/hub-check.yml). Pin sample user phrasings to a skill with [`examples/github-actions/trigger-test.yml`](../examples/github-actions/trigger-test.yml) (`trigger test "<request>" --expect <skill>`; edit the assertions for your hub).
+
+### get (the reference layer, ADR-0017)
+
+```sh
+aeksm get <skill>            # full SKILL.md (frontmatter + body) on stdout
+aeksm get <skill> --path     # canonical hub directory (absolute), for read-only borrowing
+```
+
+`get` is the zero-retention read channel: a hub skill can be read without being distributed. It prints the skill's SKILL.md verbatim to stdout — raw text, not JSON (the `status` human-readable precedent), so agents can pipe the body directly; the frontmatter carries the provenance mirror (below), so the read doubles as a trust check. No distribution state is required or consulted. `--path` prints the hub directory's absolute path instead — the canonical `skills/<name>/` directory, or `.skills/archive/…` for an archived skill — as the first stdout line, followed by a read-only notice. It exists for reading sibling files (scripts, references): read-only borrowing — the hub is canonical, and changes go through skills-manager commands, never by writing into that directory. Archived skills remain readable (archive exits the management plane — updates, distribution — not readability): the body prints unchanged, with an archived notice on stderr so stdout stays byte-exact. An unknown name fails with near-name suggestions (reusing the edit-distance logic).
+
+### Frontmatter provenance mirror (ADR-0017)
+
+The registry stays the single source of truth; the SKILL.md frontmatter `metadata:` block is a **one-way portable projection** of the source evidence, so evidence travels with the file — into project copies, to teammates, and into other tools. The mirror is refreshed at every registry source write point: `add` (install), `update`, `edit --source-*`, `provenance adopt`, and update-detection calibration (which backfills legacy skills idempotently along the way — no migration command). A hand-edited or stale mirror is silently overwritten at the next write point; the front door for changing a source is `edit --source-*`. All other frontmatter keys — including keys written by other tools — are preserved through reprojection.
+
+Keys by source kind:
+
+- **git / github / marketplace** mirror gh skill's four keys verbatim — `github-repo` (full HTTPS URL), `github-ref`, `github-tree-sha`, `github-path`. This is deliberate key alignment: `gh skill update` recognizes a skills-manager install through those keys and can update it directly, and project copies carrying the mirror are equally recognizable. The reverse direction works too: skills installed by `gh skill` carry the same keys, and `init` / `provenance adopt` read them back as evidence (frontmatter first, lockfile second), with `github-tree-sha` written straight to the update anchor — evidence is calibration.
+- **wellknown** sources mirror `skills-manager-source-url` (the index URL) + `skills-manager-digest`; **url** (direct download) sources mirror `skills-manager-source-url` + `skills-manager-content-sha` — own-namespace keys, never invented `github-*` names.
+- Every mirror carries the tool signature: `skills-manager-written-by` (+ `skills-manager-version`).
+- **archive / local** sources write no mirror (no update eligibility, no fake evidence); the seeded manager skill is likewise exempt.
+
+Mirror writes count toward the content fingerprint like any edit — stale copy targets converge through the existing auto-refresh (ADR-0008). skills-manager never writes `~/.agents/.skill-lock.json` (ADR-0011). See [ADR-0017](adr/0017-frontmatter-portable-provenance-mirror.md).
+
+### provenance (source backfill)
+
+`provenance list` shows every skill still missing a usable source, split into **imported-without-source** (entered via init, no evidence or supplied source) and **locally authored** (never imported, no upstream recorded); archived skills are excluded. `--fail-on-imported` is the CI / hub-hygiene gate: exit 1 when the imported-without-source bucket is non-empty (those skills cannot get tree-SHA updates); locally authored never fails; verdict on stderr, stdout listing/JSON unchanged. `provenance adopt` re-runs the import-time evidence adoption over that legacy imported queue — the same gate init applies, minus the "fresh import this run" condition. Two evidence channels, frontmatter first (ADR-0017): the skill's own SKILL.md `metadata:` mirror covers gh skill installs as well as skills-manager's own writes; the `npx skills` lockfile (ADR-0011) covers the rest. It never guesses: skills carrying neither are skipped (`no_evidence`). `--dry-run` previews; `--skill` limits. Guessed sources are not this command's job — candidates found by searching belong to an agent session and land through `edit` only after the user approves each one (ADR-0012). See [ADR-0012](adr/0012-provenance-backfill-agent-assisted.md).
+
+### init (reverse import)
+
+`init` is the reverse of distribute: it scans the **global runtime directories of detected catalog agents** (`~/.claude/skills`, `~/.cursor/skills`, …), imports discovered skills into the hub, and turns each origin into a managed symlink back to `skills/<name>/` (the original is moved to `<home>/.backups/` first; backups expire after 30 days). Imported entries are stamped `imported: true`; provenance is never guessed, but lockfile **evidence is adopted** when present ([ADR-0011](adr/0011-init-adopts-lockfile-evidence.md)) — and `provenance adopt` backfills that evidence onto skills imported before ADR-0011. The CLI is non-interactive: clashing skills are skipped unless this run declares a **conflict priority** (`--prefer <runtime-dir|agent-id|hub...>`) or a per-skill `--resolve`. The first `--prefer` source that actually holds a copy wins; `--resolve` overrides it for that skill. Identical full trees are one entity, not a clash. Prefer items must be `hub` or a directory scanned this run. The dashboard import sheet is the same list. See [ADR-0006](adr/0006-init-reverse-import-symlinks.md) and [ADR-0009](adr/0009-init-conflict-priority.md).
+
+## Agent catalog snapshot
+
+The agent table (ids, runtime paths, detection rules) ships as a bundled snapshot extracted from [vercel-labs/skills](https://github.com/vercel-labs/skills) (MIT; attribution inside the file). `aeksm catalog info` shows the snapshot stamp (upstream commit, date, age) and the detected agent set — the same determination `npx skills` makes with no `-a`. `aeksm catalog refresh` re-downloads upstream, re-extracts, and stores the newer snapshot as a hub-local override at `<home>/.skills/agent-catalog.json`; doctor warns when the effective snapshot is older than 90 days.
+
+To regenerate the checked-in snapshot during development: `pnpm run catalog:extract` (downloads `src/agents.ts` + `src/detect-agent.ts`, extracts, writes `src/core/catalog/agent-catalog.json`).
+
+`<source>` can be a GitHub shorthand (`owner/repo`), Git URL, GitHub tree URL, or local path.
+
+## Dashboard
+
+```sh
+aeksm web --home ~/.aek/skill-manager
+aeksm web --no-open
+```
+
+`--port` (default `4777`) must be an integer from 0 to 65535; anything else exits 1 with a flag error before the hub is checked or a server starts.
+
+The dashboard serves a local Vue/Vite UI backed by Fastify routes. Mutating dashboard operations write activity records to `.skills/activity.jsonl` and leave disk changes visible for `git diff`.
+
+## Development
+
+```sh
+pnpm install
+pnpm run build
+pnpm test
+```
+
+The test suite includes compiled-artifact coverage: `tests/cli/cli-bin.test.ts` boots `dist/cli.js` as a real subprocess (home resolution, help, migrate-views), and `tests/package/package-smoke.test.ts` packs the tarball, installs it into a temp dir, and drives the installed bin plus the dashboard API.

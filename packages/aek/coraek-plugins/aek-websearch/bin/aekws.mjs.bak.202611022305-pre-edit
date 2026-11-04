@@ -1,0 +1,48 @@
+#!/usr/bin/env node
+/**
+ * aekws — AEK web search CLI (oclif).
+ *
+ * Dev mode: runs via tsx (TypeScript native).
+ * NPM mode: delegates to globally installed CLI.
+ */
+
+import { resolve, dirname, join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { readFileSync, existsSync } from 'node:fs'
+import { homedir } from 'node:os'
+
+// Resolve REAL script path (follows symlinks)
+const SCRIPT_PATH = resolve(process.argv[1])
+const SCRIPT_DIR = dirname(SCRIPT_PATH)
+// Workspace root: go up from packages/aek/aek-websearch/bin/
+const REPO_ROOT = resolve(SCRIPT_DIR, '../../../..')
+const AEK_HOME = process.env.AEK_HOME ?? join(homedir(), '.aek')
+const MODE_FILE = join(AEK_HOME, 'aekws-mode')
+const NPM_BIN = process.env.NPM_PREFIX
+  ? join(process.env.NPM_PREFIX, 'bin', 'aekws.mjs')
+  : join(homedir(), '.npm-global', 'bin', 'aekws.mjs')
+const TSX_BIN = join(REPO_ROOT, 'node_modules', '.bin', 'tsx')
+const CLI_ENTRY = join(REPO_ROOT, 'packages', 'aek', 'aek-websearch', 'src', 'cli.ts')
+
+function getMode() {
+  try { return readFileSync(MODE_FILE, 'utf-8').trim() || 'dev' }
+  catch { return 'dev' }
+}
+
+const args = process.argv.slice(2)
+
+// NPM mode: delegate
+if (getMode() === 'npm') {
+  if (!existsSync(NPM_BIN)) {
+    console.error('Error: npm global CLI not found at', NPM_BIN)
+    process.exit(1)
+  }
+  execFileSync(process.execPath, [NPM_BIN, ...args], { stdio: 'inherit' })
+  process.exit(0)
+}
+
+// Dev mode: use tsx to run TypeScript directly
+execFileSync(TSX_BIN, [CLI_ENTRY, ...args], {
+  stdio: 'inherit',
+  cwd: REPO_ROOT,
+})

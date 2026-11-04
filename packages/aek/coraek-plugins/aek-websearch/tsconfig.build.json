@@ -1,0 +1,17 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "lib/types"
+  },
+  "include": [
+    "."
+  ],
+  "exclude": [
+    "lib",
+    "node_modules",
+    "client"
+  ]
+}

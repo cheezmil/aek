@@ -1,0 +1,77 @@
+{
+  "name": "@cheezmil/aek-websearch",
+  "description": "Multi-provider web search with key rotation and fallback (tavily, exa). oclif-based CLI + Cordis plugin.",
+  "version": "1.1.14",
+  "type": "module",
+  "main": "lib/index.mjs",
+  "types": "lib/index.d.mts",
+  "bin": {
+    "aekws": "bin/aekws.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.mts",
+      "default": "./lib/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.mjs",
+    "lib/cli.mjs",
+    "lib/commands/*.mjs",
+    "lib/index.d.mts",
+    "lib/cli.d.mts",
+    "scripts/install-guard.mjs",
+    "bin/",
+    "skills/"
+  ],
+  "license": "Apache-2.0",
+  "aek": {
+    "type": "dual",
+    "cli": {
+      "name": "aekws",
+      "bin": "bin/aekws.mjs"
+    },
+    "cordis": true,
+    "dsh": false,
+    "systemSkills": [
+      "aek-websearch"
+    ],
+    "description": "Standalone CLI for web search + optional Cordis plugin for dsh web profile"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0"
+  },
+  "dependencies": {
+    "@cheezmil/coraek": "^1.0.1",
+    "@cheezmil/prevent-agent-directly-seeing-key": "^0.1.3",
+    "@deepseek-ai/cosmokit": "workspace:~",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@oclif/core": "^5.1.11",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/dsh-web": "^0.2.1-rc.2",
+    "@types/node": "^24.0.0",
+    "tsdown": "^0.23",
+    "tsx": "^4.23"
+  },
+  "scripts": {
+    "preinstall": "node scripts/install-guard.mjs",
+    "build": "tsdown",
+    "postbuild": "npx oclif readme",
+    "prepack": "tsdown",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "oclif": {
+    "bin": "aekws",
+    "dirname": "aekws",
+    "commands": "lib/commands",
+    "plugins": [],
+    "topicSeparator": " ",
+    "macos": {
+      "sign": "developer id"
+    }
+  }
+}

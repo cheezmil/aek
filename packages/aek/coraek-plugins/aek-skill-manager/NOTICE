@@ -1,0 +1,49 @@
+# aek-skill-manager — third-party source attribution
+
+This package's engine and CLI are ported module-by-module (not vendored
+whole-project) from the MIT-licensed projects below. Each ported module is
+pinned to the source git SHA and date so the provenance stays auditable.
+
+## Ported modules
+
+- **Engine + CLI (the core of `src/core`, `src/cli`, `src/infra`, `src/shared`,
+  plus the bundled manager skill under `skills/` and `docs/CLI*`)**
+  from `shenysun/skills-manager` (MIT).
+  Pinned at: `fae0bb864a8b96c1d0ca6278a6b7062e62992a36` (2026-10-27).
+  License text: `licenses/LICENSE-shenysun-skills-manager-MIT.txt`.
+  Copyright (c) 2026 Sun Yongshen.
+  Ported with the `~/.skills-manager` hub default re-rooted to
+  `~/.aek/skill-manager` (override: `AEK_SKILL_MANAGER_HOME` / `SKILL_HOME` /
+  `--home`), the fastify/vue dashboard + its `web` command dropped (AEK serves
+  its webui through the coraek plugin instead), and CLI branding renamed to
+  `aeksm` / `aek-skill-manager`.
+
+- **Windows directory-junction symlink abstraction** (T3, ported into
+  `src/infra/link-policy.ts` — `createDirLink`)
+  from `luongnv89/asm` (MIT).
+  Pinned at: `65fbfb16db2df92eeabe0d8aa36a3ca9c97f81cc` (2026-11-01).
+  License text: `licenses/LICENSE-asm-MIT.txt`.
+  Copyright (c) 2025 luongnv89.
+
+- **Relative-symlink link lifecycle: stale detection / rebuild / prune**
+  (T3, ported into `src/infra/link-policy.ts` + the refresh paths in
+  `src/core/services/distribute-service.ts`)
+  from `tc9011/skills-manager` (MIT).
+  Pinned at: `e6ee058127ce1b44543445b7565b31b8b822817b` (2026-09-13).
+  License text: `licenses/LICENSE-tc9011-skills-manager-MIT.txt` — note the
+  upstream repo ships no LICENSE file at the pinned SHA; its MIT license is
+  evidenced by the `"license": "MIT"` field in its package.json (line 6).
+
+## License chain
+
+All sources above are MIT. The MIT license grants broad rights and requires
+retention of the copyright notice and license text, which is preserved under
+`licenses/` and summarized here. This package is otherwise distributed under
+the Apache License 2.0 (see `LICENSE`); the MIT and Apache-2.0 terms are
+compatible for this redistribution. No AGPL/GPL code is included.
+
+## Telemetry
+
+None. The ported engine is local-first and ships no telemetry. The only
+outbound calls are explicit user-initiated ones (git clone/push, the GitHub
+API for `catalog refresh` / update checks, and the skills.sh search channel).

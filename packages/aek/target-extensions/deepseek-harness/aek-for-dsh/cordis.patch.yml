@@ -1,0 +1,47 @@
+# AEK plugins for dsh — aggregate bundle
+#
+# This bundle inserts the dsh-facing AEK plugins into the profile at once.
+# Install it alongside dsh-base to get the full AEK experience:
+#   dsh --profile aek "your task"
+#
+# UI surfaces (e.g. @cheezmil/aek-home, the React root that replaces the dsh
+# shell) are host-specific and are NOT part of this bundle — wire them in the
+# host that owns them (web-app / aek-desktop profiles) instead.
+#
+# To use only specific AEK plugins, install them individually.
+
+- insert:
+    # ── AEK identity ──────────────────────────────────────────────────────────
+
+    # aek-base: prints the `aek web:` readiness line; the host-side identity layer.
+    # This row replaces the dsh bundle's own `dsh web:` readiness announcement.
+    - id: aek-base
+      name: '@cheezmil/coraek'
+
+    # ── AEK web-search aggregation ────────────────────────────────────────────
+
+    # aek-websearch: multi-provider web search with key rotation and fallback.
+    # Replaces dsh's single-provider web-search-deepseek with a priority queue
+    # of upstream providers (tavily, exa, serper, brave, …).
+    - id: web-search-aggregation
+      name: '@cheezmil/aek-websearch'
+      config:
+        providers:
+          - kind: tavily
+            enabled: true
+          - kind: exa
+            enabled: true
+          - kind: serper
+            enabled: false
+          - kind: brave
+            enabled: false
+        attemptTimeoutMs: 15000
+
+    # ── AEK prompt management ─────────────────────────────────────────────────
+
+    # aek-prompt-manager: manages the global prompt files of the AI agent tools
+    # (aekpm patch/map/apply/remove/status + project rules). Registers the
+    # in-process `ctx.promptManager` host service (auxiliary face; the aekpm
+    # CLI stays the primary interface). No config in v1.
+    - id: prompt-manager
+      name: '@cheezmil/aek-prompt-manager'

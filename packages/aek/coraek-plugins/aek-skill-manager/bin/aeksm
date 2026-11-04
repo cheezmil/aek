@@ -1,0 +1,4 @@
+#!/bin/sh
+# aeksm shell wrapper — delegates to bin/aeksm.mjs
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+exec node "$SCRIPT_DIR/aeksm.mjs" "$@"

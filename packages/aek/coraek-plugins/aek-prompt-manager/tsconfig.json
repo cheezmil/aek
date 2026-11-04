@@ -1,0 +1,25 @@
+{
+  // Standalone NodeNext config — intentionally NOT extending the repo
+  // tsconfig.base.json: the package ships a plain-JS engine (src/*.js, run
+  // directly by the aekpm bin) plus a small TS Coraek host half (src/index.ts,
+  // src/config.ts, src/plugin/). The host half type-checks against hand-written
+  // sidecar declarations for the JS engine (src/core.d.ts etc.), so no
+  // allowJs and no repo-base compiler options are involved.
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2022"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": false,
+    "outDir": "lib",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "lib"]
+}

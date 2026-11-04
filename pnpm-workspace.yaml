@@ -1,5 +1,56 @@
 packages:
-  - 'packages/*'
-  - '!packages/aek-mcp/frontend'
+  - vendor/*
+  - packages/*/*
+  # The Landlock launcher is developed with the harness consumers but keeps
+  # its native build and publication scripts under native/system.
+  - native/system
+  - native/system/packages/*
+  # Product assemblies over the package tier; apps/cli owns the `dsh` bin.
+  - apps/*
+  # aek-desktop is versioned under apps/aek-desktop/{v0,v1}: v0 is the
+  # vendored nexlet shell; v1 is the ZTools→React launcher migration.
+  # apps/* matches only direct children, so the version subpackages need
+  # their own glob to be installed by the root workspace.
+  - apps/aek-desktop/*
+  # Private package owning repository-level benchmark dependencies.
+  # Deploy root of the single-exe build: a pure dependency manifest whose
+  # closure is what the exe bundles and what the Python runtime distributes.
+  - python/sdk-runtime
+  # AEK (cheezmil) package family. ** covers any nesting depth, so bucket
+  # reorganization under packages/aek/ needs no workspace changes.
+  - packages/aek/**
 allowBuilds:
-  esbuild: true
+  # @google/genai (via @earendil-works/pi-ai, vendor/timer): the published
+  # tarball ships no `scripts/prepare.js` (its `prepare` entry is publish-only),
+  # so approving the build would crash installs — explicit `false`.
+  '@google/genai': false
+  '@postman/node-keytar': false
+  electron: false
+  # electron-winstaller (via electron-builder, Windows packaging only): its
+  # install script just copies vendor/7z-<arch>.exe → 7z.exe for NSIS builds;
+  # never executed on this workspace — explicit `false`.
+  electron-winstaller: false
+  esbuild: false
+  koffi: false
+  lefthook: false
+  node-pty: false
+  # protobufjs: postinstall only warns about a `versionScheme` scheme no
+  # dependent sets; skipping it loses nothing — explicit `false`.
+  protobufjs: false
+  sharp: false
+minimumReleaseAgeExclude:
+  - '@cheezmil/encrypted-key-store@0.1.1 || 0.1.2'
+  - '@cheezmil/prevent-agent-directly-seeing-key@0.1.3'
+  - '@cheezmil/aek-base@1.0.0 || 1.0.4'
+  - '@cheezmil/aek-home@0.0.1'
+  - '@cheezmil/aek-websearch@1.0.4 || 1.1.7 || 1.1.8 || 1.1.9 || 1.1.10 || 1.1.11 || 1.1.12 || 1.1.13'
+  - '@cheezmil/aek-for-dsh@0.1.3'
+  - '@cheezmil/coraek@1.0.0 || 1.0.1'
+permissions:
+  # 2026-11-05: chrome-devtools-mcp (via packages/experimental/browser-use-chrome-devtools-mcp)
+  # bundles 7 agent skills (a11y-debugging, chrome-devtools, …) that pnpm 12
+  # refuses to install without approval. Denied here: the user's agent skills
+  # are managed by aeksm's hub, not pnpm. Flip to `true` (pnpm approve chrome-devtools-mcp)
+  # if the bundled skills should be installed into the agent's skill dir.
+  chrome-devtools-mcp:
+    skills: false

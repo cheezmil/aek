@@ -1,0 +1,36 @@
+{
+  "name": "@cheezmil/aek-for-dsh",
+  "description": "DSh bundle: installing @cheezmil/aek-for-dsh into a dsh profile gives the profile the dsh-facing AEK plugins (coraek, aek-websearch, aek-prompt-manager). Host-specific UI surfaces like aek-home are intentionally not included — wire them in the host that owns them.",
+  "version": "0.1.4",
+  "type": "module",
+  "main": "cordis.patch.yml",
+  "exports": {
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "cordis.patch.yml"
+  ],
+  "license": "Apache-2.0",
+  "aek": {
+    "type": "dsh-bundle",
+    "description": "DSh bundle: install once to give the profile access to all AEK plugins"
+  },
+  "dependencies": {
+    "@cheezmil/coraek": "^1.0.1",
+    "@cheezmil/aek-websearch": "^1.1.7",
+    "@cheezmil/aek-prompt-manager": "workspace:^"
+  },
+  "peerDependencies": {
+    "@cheezmil/coraek": "^1.0.1",
+    "@cheezmil/aek-websearch": "^1.1.7",
+    "@cheezmil/aek-prompt-manager": "workspace:^",
+    "@deepseek-ai/cordis": ">=4.0.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5"
+  },
+  "scripts": {
+    "check": "cat cordis.patch.yml"
+  }
+}

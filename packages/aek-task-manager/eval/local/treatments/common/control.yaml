@@ -1,4 +1,0 @@
-# Control treatment: no skills injected (baseline)
-CONTROL:
-  description: "No skills baseline - Claude has no comet workflow guidance"
-  skills: []

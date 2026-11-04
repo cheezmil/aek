@@ -1,0 +1,13 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib",
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["src/commands", "src/cli.ts"],
+  "exclude": ["src/adapters", "src/config.ts", "src/index.ts", "src/keys.ts", "src/provider.ts", "src/types.ts"]
+}

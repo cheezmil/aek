@@ -1,0 +1,1402 @@
+#!/usr/bin/env node
+import { createRequire } from 'node:module'
+import { Command } from 'commander'
+import { createRuntimeServices, projectRootFromImportMeta } from '../infra/runtime.js'
+import { isInsecureHttpSource, normalizeGitSourceUrl } from '../core/services/source-service.js'
+import { isUpdatableSourceType } from '../core/services/update-service.js'
+import { parseFormatFlag } from '../core/services/url-payload.js'
+import { findDescriptionOverlaps, renderOverlapReport } from '../core/services/description-overlap.js'
+import { lintDescriptions, renderDescriptionLint } from '../core/services/description-lint.js'
+import { boundaryProposals, fixDescriptions, renderProposals, replaceFrontmatterDescription, type DescriptionProposal } from '../core/services/description-fix.js'
+import { rankTriggers, takeTop, expectSatisfied, renderTriggerRank } from '../core/services/trigger-rank.js'
+import { loadTriggerFixturesText, runTriggerFixtures, renderTriggerFixtures } from '../core/services/trigger-fixtures.js'
+import { readFileSync } from 'node:fs'
+import { confirmInsecureHttp } from './insecure-http-confirm.js'
+import { SkillsManagerError } from '../shared/errors.js'
+import { redactCheckout, redactDiscovered } from '../shared/redact.js'
+import { NodeFileSystem } from '../infra/fs-skill-home.js'
+import { GitHubApiClient } from '../infra/github-api-client.js'
+import { HttpDownloadClient } from '../infra/http-download-client.js'
+import { DetectionService, detectionLogPath } from '../core/services/detection-service.js'
+import path from 'node:path'
+import { runBootstrap, managerSkillBundle } from './bootstrap.js'
+import type { AppliedCategorySet } from '../core/model/index.js'
+import { renderCostLedger, renderCostShare, renderPresetCostLine } from './cost-output.js'
+import { renderDoctorShare } from './doctor-output.js'
+import { renderSyncShare } from './sync-output.js'
+import { formatGithubAnnotations } from '../core/services/security-scan.js'
+import { parseSkillFrontmatter } from '../core/services/frontmatter-mirror.js'
+import YAML from 'yaml'
+import { defaultDistributeAgents, sharedPoolDirs } from './shared-pool.js'
+
+const pkg = createRequire(import.meta.url)('../../package.json') as { version: string }
+const projectRoot = projectRootFromImportMeta(import.meta.url)
+
+function services(cmd: Command, options: { bootstrap?: boolean } = {}) {
+  const opts = (cmd.optsWithGlobals() as { home?: string })
+  const runtime = createRuntimeServices({ home: opts.home, ensureDefaultHub: Boolean(options.bootstrap) }, projectRoot)
+  if (!options.bootstrap && !runtime.resolution.exists) {
+    throw new SkillsManagerError(
+      'no_skill_home',
+      `No skill home at ${runtime.resolution.root} yet. Run \`aeksm bootstrap\` first — it creates the hub and installs the manager skill. (Or point --home at an existing hub.)`,
+    )
+  }
+  selfCheckManagerSkill(runtime)
+  return runtime
+}
+
+/**
+ * Every CLI run keeps the hub's manager skill in step with the bundled copy
+ * (ADR-0014) — refresh silently when we still own it, never touch a
+ * user-modified copy, and never let this break the actual command. Notices go
+ * to stderr so stdout stays parseable JSON.
+ */
+function selfCheckManagerSkill(s: ReturnType<typeof createRuntimeServices>) {
+  try {
+    const result = s.managerSkill.selfCheck(managerSkillBundle())
+    if (result?.status === 'refreshed') console.error(`Refreshed the manager skill to v${pkg.version} to match this CLI version.`)
+  } catch {
+    /* the manager skill must never break an unrelated command */
+  }
+}
+
+function print(value: unknown) {
+  if (typeof value === 'string') console.log(value)
+  else console.log(JSON.stringify(value, null, 2))
+}
+
+const program = new Command()
+program
+  .name('aeksm')
+  .description('Local-first CLI for managing agent skills (AEK aek-skill-manager)')
+  .version(pkg.version)
+  .option('--home <path>', 'skill home path; overrides SKILL_HOME and cwd detection')
+  .showHelpAfterError()
+
+// Bootstrap is the product's front door (ADR-0014): the no-arg run and the
+// named command share one handler. `--agent`/`--force` live on the named
+// command only — the no-arg path is the interactive/default experience.
+program.command('bootstrap')
+  .description('One-time setup: create the hub, install the manager skill, mount it to your agents (the default when no subcommand is given)')
+  .option('-a, --agent <id...>', 'catalog agent ids to mount to; skips the interactive picker')
+  .option('--force', 'replace an unmanaged aek-skill-manager directory at a runtime path')
+  .action(runBootstrap)
+program.argument('[stray...]')
+program.action((stray: string[] | undefined, opts, cmd) => {
+  // A typo'd subcommand must not silently run bootstrap: with a program-level
+  // action, commander hands it over as an operand instead of erroring.
+  if (stray && stray.length > 0) throw new Error(`unknown command '${stray[0]}'. Run 'aeksm --help' for the command list.`)
+  return runBootstrap(opts, cmd)
+})
+
+// Pure output with /bin/echo semantics — an install sanity check. Touches no
+// hub state, so it deliberately skips services() (and the hub check therein).
+program.command('echo')
+  .description('Print the given text to stdout and exit 0 (install sanity check)')
+  .argument('[text...]')
+  .action((text: string[]) => print(text.join(' ')))
+
+// NOTE: the upstream `web` / `dashboard` commands (fastify + vue) are
+// intentionally NOT ported — AEK serves its webui through the coraek plugin
+// (aek-base) instead of a standalone dashboard server.
+
+program.command('doctor')
+  .description('Run health checks')
+  .option('--share', 'privacy-safe paste card (counts only — no paths / skill names) for X / HN / chat')
+  .option('--migrate-views', 'distribute leftover hub views to user runtimes')
+  .option('--delete-views', 'with --migrate-views, remove generated view symlinks')
+  .option('--force', 'with --migrate-views, overwrite unmanaged runtime paths')
+  .action((opts, cmd) => {
+    const s = services(cmd)
+    if (opts.share && opts.migrateViews) throw new Error('use either --share or --migrate-views, not both')
+    if (opts.migrateViews) {
+      const migrated = s.distribute.migrateViews({ deleteViews: Boolean(opts.deleteViews), force: Boolean(opts.force) })
+      s.activity.record({ action: 'cli-migrate-views', summary: 'Migrated leftover hub views', details: migrated })
+      return print({ migrated, doctor: s.doctor.check() })
+    }
+    const report = s.doctor.check()
+    if (opts.share) {
+      process.stdout.write(renderDoctorShare(report))
+      return
+    }
+    print(report)
+  })
+
+program.command('status')
+  .description('Summarize managed distribution health (managed/foreign/outdated/stale)')
+  .option('--json', 'machine form: full status object on stdout')
+  .action((opts, cmd) => {
+    const s = services(cmd)
+    const health = s.distribute.status()
+    const records = s.distribute.listIndex()
+    const errored = records.flatMap(r => r.entries.filter(e => e.error))
+    if (opts.json) {
+      const payload = {
+        status: health,
+        errored: errored.map(e => ({ skill: e.skill, runtimePath: e.runtimePath, error: e.error?.message })),
+      }
+      console.log(JSON.stringify(payload, null, 2))
+      return
+    }
+    console.log(`managed: ${health.managedEntries}, agents: ${health.agentCoverage}, foreign: ${health.foreign}`)
+    console.log(`outdated: ${health.outdated}, errored: ${errored.length}`)
+    if (health.outdated > 0) {
+      console.log(`Stale copy targets: ${health.outdated}. Run \`aeksm redistribute --refresh\` to sync.`)
+    }
+    if (errored.length > 0) {
+      console.log('Refresh errors:')
+      for (const entry of errored) {
+        console.log(`  ${entry.runtimePath}: ${entry.error?.message}`)
+      }
+    }
+  })
+
+/**
+ * Stale-or-errored target count, same predicate as the dashboard stale
+ * badge (`entry.error || entryOutdated`), so the two never disagree.
+ */
+function staleOrErroredCount(s: ReturnType<typeof services>): number {
+  return Object.values(s.distribute.staleSummary()).reduce((total, count) => total + count, 0)
+}
+
+
+/** Report-only security scan after install/update: one stderr line per skill so stdout JSON stays parseable. */
+function remindSecurityScan(s: ReturnType<typeof services>, skills: readonly string[]) {
+  if (skills.length === 0) return
+  for (const skill of skills) {
+    try {
+      console.error(s.security.formatSummaryLine(s.security.scanSkill(skill)))
+    } catch {
+      /* scan must never break the install/update that already succeeded */
+    }
+  }
+}
+
+function remindStaleTargets(s: ReturnType<typeof services>) {
+  const stale = staleOrErroredCount(s)
+  if (stale > 0) {
+    console.log(`Stale or errored copy targets: ${stale}. Run \`aeksm redistribute --refresh\` to sync.`)
+  }
+}
+
+program.command('init')
+  .description('Import skills already living in agent runtime dirs into the hub (reverse of distribute); origins become managed symlinks')
+  .option('-a, --agent <id...>', 'catalog agent ids to scan; defaults to the detected set')
+  .option('-r, --resolve <skill=choice...>', 'conflict decisions: <skill>=<runtime-dir|agent-id|hub>')
+  .option('--prefer <item...>', 'conflict priority this run: ordered runtime-dir, agent-id, or hub')
+  .option('--dry-run', 'print the full plan without touching disk')
+  .action((opts, cmd) => {
+    const s = services(cmd)
+    const result = s.init.run({
+      agents: opts.agent,
+      resolve: parseResolve(opts.resolve),
+      prefer: opts.prefer,
+      dryRun: Boolean(opts.dryRun),
+    })
+    if (!opts.dryRun) s.activity.record({ action: 'cli-init', summary: `Imported ${result.imported.join(', ') || 'nothing'} from runtime dirs`, details: { imported: result.imported, conflicts: result.conflicts, failed: result.failed } })
+    print(result)
+  })
+
+function parseResolve(values: string[] = []): Record<string, string> {
+  const resolve: Record<string, string> = {}
+  for (const value of values) {
+    const eq = value.indexOf('=')
+    if (eq <= 0) throw new Error(`--resolve expects <skill>=<runtime-dir|agent-id|hub>, got "${value}"`)
+    resolve[value.slice(0, eq)] = value.slice(eq + 1)
+  }
+  return resolve
+}
+
+program.command('edit')
+  .description('Edit safe registry fields for a skill (e.g. supply the upstream source of an imported skill)')
+  .argument('<skill>')
+  .option('--source-git <owner/repo|url>', 'upstream git source (owner/repo or repo URL); normalized to the canonical repo URL')
+  .option('--source-url <url>', 'upstream repository URL; enables update management for imported skills')
+  .option('--source-ref <ref>', 'branch or tag to track')
+  .option('--subpath <path>', 'skill path inside the source repository (requires --source-git or --source-url); enables updates')
+  .option('--title <title>', 'display title')
+  .option('--description <description>', 'short description')
+  .option('--category <category>', 'category')
+  .option('--categories <categories...>', 'domain categories (replace semantics; same as `categories set`)')
+  .option('--tags <tags...>', 'tags')
+  .action((skill, opts, cmd) => {
+    const s = services(cmd)
+    if (opts.sourceGit !== undefined && opts.sourceUrl !== undefined) throw new Error('Pass either --source-git or --source-url, not both.')
+    if (opts.subpath !== undefined && opts.sourceGit === undefined && opts.sourceUrl === undefined) throw new Error('--subpath requires --source-git or --source-url (a source to attach the path to).')
+    const patch: Record<string, unknown> = {}
+    if (opts.title !== undefined) patch.title = opts.title
+    if (opts.description !== undefined) patch.description = opts.description
+    if (opts.category !== undefined) patch.category = opts.category
+    if (opts.categories !== undefined) patch.categories = opts.categories
+    if (opts.tags !== undefined) patch.tags = opts.tags
+    if (opts.sourceGit !== undefined) {
+      patch.source = { type: 'git', url: normalizeGitSourceUrl(opts.sourceGit), ...(opts.subpath !== undefined ? { subpath: opts.subpath } : {}), ...(opts.sourceRef !== undefined ? { ref: opts.sourceRef } : {}) }
+    } else if (opts.sourceUrl !== undefined || opts.sourceRef !== undefined || opts.subpath !== undefined) {
+      patch.source = { ...(opts.sourceUrl !== undefined ? { type: 'git', url: opts.sourceUrl } : {}), ...(opts.subpath !== undefined ? { subpath: opts.subpath } : {}), ...(opts.sourceRef !== undefined ? { ref: opts.sourceRef } : {}) }
+    }
+    const result = s.registry.editSafeFields(skill, patch)
+    s.activity.record({ action: 'cli-edit', summary: `Edited ${skill}`, details: patch })
+    print(result)
+  })
+
+// Domain categories: a free-form multi-valued registry axis, orthogonal to the
+// frozen legacy `category` (ADR-0015). Tag edits never touch runtime dirs.
+
+/**
+ * The applied-set column for `categories status`; a preset stamp rides
+ * beside the categories (US22), an unstamped path reads exactly as before.
+ */
+function formatAppliedSet(applied: AppliedCategorySet | null): string {
+  if (applied === null) return 'no filter (no category set applied)'
+  if ('all' in applied) return 'no filter (--all applied)'
+  return `categories: ${applied.categories.join(', ')}${applied.preset ? ` (preset: ${applied.preset})` : ''}`
+}
+
+/** Shared drift phrasing so `categories status` and `preset list` never diverge — honest, never implied healthy (US6). */
+function driftNote(drift: readonly string[]): string {
+  return `${drift.length} skill(s) match the set but are undistributed: ${drift.join(', ')}`
+}
+
+const categories = program.command('categories').description('Tag skills with domain categories and inspect the hub vocabulary')
+categories.command('set')
+  .description('Replace the whole category list for a skill (no categories given = clear)')
+  .argument('<skill>')
+  .argument('[category...]')
+  .action((skill, values, _opts, cmd) => {
+    const s = services(cmd)
+    const result = s.registry.setCategories(skill, values)
+    s.activity.record({ action: 'cli-categories-set', summary: `set categories on ${skill}`, details: { skill, categories: values } })
+    print(result)
+  })
+categories.command('add')
+  .description('Add categories to a skill without restating the full list')
+  .argument('<skill>')
+  .argument('<category...>')
+  .action((skill, values, _opts, cmd) => {
+    const s = services(cmd)
+    const result = s.registry.addCategories(skill, values)
+    s.activity.record({ action: 'cli-categories-add', summary: `add categories on ${skill}`, details: { skill, categories: values } })
+    print(result)
+  })
+categories.command('remove')
+  .description('Remove categories from a skill')
+  .argument('<skill>')
+  .argument('<category...>')
+  .action((skill, values, _opts, cmd) => {
+    const s = services(cmd)
+    const result = s.registry.removeCategories(skill, values)
+    s.activity.record({ action: 'cli-categories-remove', summary: `remove categories on ${skill}`, details: { skill, categories: values } })
+    print(result)
+  })
+categories.command('list')
+  .description('List every category in the hub with a per-category skill count')
+  .action((_opts, cmd) => {
+    const counts = services(cmd).registry.listCategoryCounts()
+    for (const { category, count } of counts) console.log(`${category} (${count})`)
+    if (counts.length === 0) console.log('No categories yet — tag a skill with `categories set <skill> <category...>`.')
+  })
+categories.command('apply')
+  .description("Rewrite the selected agents' runtime dirs to exactly the skills in the given categories (--all dissolves the filter and restores every managed skill; manager skill exempt; foreign entries untouched)")
+  .argument('[category...]')
+  .option('-a, --agent <id...>', 'catalog agent ids (repeatable); defaults to the detected set')
+  .option('--all', 'dissolve the category filter: restore the full managed skill set on the selected paths')
+  .action((values, opts, cmd) => {
+    if (opts.all && values.length > 0) throw new Error('Pass either --all or a category list, not both.')
+    if (!opts.all && values.length === 0) throw new Error('Pass a category list (e.g. `categories apply 前端`) or --all to restore the full managed set.')
+    const s = services(cmd)
+    const result = opts.all ? s.distribute.applyAllCategories(opts.agent) : s.distribute.applyCategorySet(values, opts.agent)
+    const summary = result.all
+      ? `Applied all managed skills to ${result.paths.length} runtime path(s)`
+      : `Applied categories [${result.categories.join(', ')}] to ${result.paths.length} runtime path(s)`
+    s.activity.record({ action: 'cli-categories-apply', summary, details: { all: result.all, categories: result.categories, agents: result.agents } })
+    print(result)
+  })
+categories.command('status')
+  .description("Show each runtime path's applied category set and drift (skills now matching the set but undistributed); never writes")
+  .action((_opts, cmd) => {
+    const { paths } = services(cmd).distribute.categorySetStatus()
+    if (paths.length === 0) {
+      console.log('No runtime paths recorded yet — distribute skills or apply a category set first.')
+      return
+    }
+    for (const item of paths) {
+      const agents = item.agents.length > 0 ? item.agents.join(', ') : 'none'
+      console.log(`${item.runtimeDir} (agents: ${agents}) — ${formatAppliedSet(item.applied)}`)
+      if (item.drift.length > 0) {
+        console.log(`  drift: ${driftNote(item.drift)}`)
+        const rerun = item.applied !== null && 'all' in item.applied
+          ? 'aeksm categories apply --all'
+          : `aeksm categories apply ${item.applied?.categories.join(' ')}`
+        console.log(`  re-run \`${rerun}\` to converge`)
+      }
+    }
+  })
+
+// Named presets: a saved category list — the re-appliable loading-set档位
+// (ADR-0019). Storage only; switching runtime dirs is `preset apply`'s job.
+const preset = program.command('preset').description('Manage named lists of domain categories (re-appliable agent loading sets, ADR-0019)')
+preset.command('set')
+  .description('Replace the whole member list of a preset (overwrite-in-place when the name exists; categories need not exist in the hub yet)')
+  .argument('<name>')
+  .argument('<category...>')
+  .action((name, values, _opts, cmd) => {
+    const s = services(cmd)
+    const result = s.registry.setPreset(name, values)
+    s.activity.record({ action: 'cli-preset-set', summary: `set preset ${name}`, details: { preset: name, categories: values } })
+    print(result)
+  })
+preset.command('list')
+  .description('List every preset with its member categories and mount footprint (drift on mounted paths reported as-is)')
+  .action((_opts, cmd) => {
+    const s = services(cmd)
+    const presets = s.registry.listPresets()
+    if (presets.length === 0) {
+      console.log('No presets yet — save one with `preset set <name> <category...>`.')
+      return
+    }
+    // Mount footprint (US5/US6): which physical runtime paths currently carry
+    // each preset — zero mounts stay silent, and a drifted mount is reported,
+    // never implied healthy. Paths, not resolved-skill counts.
+    const statusPaths = s.distribute.categorySetStatus().paths
+    for (const { name, categories } of presets) {
+      console.log(`${name}: ${categories.join(', ')}`)
+      const mounts = statusPaths.filter(item => item.applied !== null && 'categories' in item.applied && item.applied.preset === name)
+      if (mounts.length === 0) continue
+      console.log(`  mounted on ${mounts.length} runtime path(s): ${mounts.map(item => item.runtimeDir).join(', ')}`)
+      for (const item of mounts) {
+        if (item.drift.length === 0) continue
+        console.log(`  drift on ${item.runtimeDir}: ${driftNote(item.drift)}`)
+      }
+    }
+  })
+preset.command('remove')
+  .description('Delete a preset and cascade-clear its name off every category-set record referencing it (applied categories kept, runtime untouched); reports how many paths the name was detached from')
+  .argument('<name>')
+  .action((name, _opts, cmd) => {
+    const s = services(cmd)
+    const { preset, detached } = s.distribute.removePresetCascade(name)
+    s.activity.record({ action: 'cli-preset-remove', summary: `removed preset ${name}, detached from ${detached} runtime path(s)`, details: { preset: name, detached } })
+    console.log(`Removed preset ${name} [${preset.categories.join(', ')}] — detached the name from ${detached} runtime path(s)`)
+  })
+preset.command('apply')
+  .description("Rewrite the selected agents' runtime dirs to exactly the skills in the preset's categories (same strict semantics as `categories apply`: manager skill exempt, foreign untouched, uncategorized removed) and stamp the record with the preset name; success ends with the preset's resident-cost line")
+  .argument('<name>')
+  .option('-a, --agent <id...>', 'catalog agent ids (repeatable); defaults to the detected set')
+  .option('--json', 'machine-readable output for agents')
+  .action((name, opts, cmd) => {
+    const s = services(cmd)
+    const result = s.distribute.applyPreset(name, opts.agent)
+    const cost = s.cost.pathCost(result.paths.map(item => item.runtimeDir))
+    const summary = `Applied preset ${name} [${result.categories.join(', ')}] to ${result.paths.length} runtime path(s)`
+    s.activity.record({ action: 'cli-preset-apply', summary, details: { preset: name, categories: result.categories, agents: result.agents, costTokens: cost.tokens } })
+    if (opts.json) return print({ ...result, cost })
+    console.log(summary)
+    console.log(renderPresetCostLine(cost))
+  })
+
+const provenance = program.command('provenance').description('Backfill provenance for source-less skills (frontmatter & lockfile evidence adoption, ADR-0011/0012/0017)')
+provenance.command('adopt')
+  .description('Adopt frontmatter/lockfile evidence onto legacy imported skills that have no source yet')
+  .option('--dry-run', 'print what would be adopted without touching the registry')
+  .option('-s, --skill <skill...>', 'limit adoption to specific skills')
+  .action((opts, cmd) => {
+    const s = services(cmd)
+    const result = s.provenance.adopt({ dryRun: Boolean(opts.dryRun), skills: opts.skill })
+    if (!opts.dryRun) s.activity.record({ action: 'cli-provenance-adopt', summary: `Adopted provenance evidence for ${result.adopted.map(item => item.skill).join(', ') || 'nothing'}`, details: { adopted: result.adopted.map(item => item.skill), skipped: result.skipped } })
+    print(result)
+  })
+provenance.command('list')
+  .description('List skills still missing a source: imported-without-source vs locally authored')
+  .option('--json', 'machine-readable output for agents')
+  .option('--fail-on-imported', 'exit 1 when any imported-without-source skill remains (CI / hub-hygiene gate; locally authored never fails)')
+  .action((opts, cmd) => {
+    const pending = services(cmd).provenance.pending()
+    if (opts.json) print(pending)
+    else {
+      console.log(`Imported without source (${pending.importedWithoutSource.length}):`)
+      for (const item of pending.importedWithoutSource) console.log(`  ${item.skill}${item.importedAt ? ` (imported ${item.importedAt})` : ''}`)
+      console.log(`Locally authored, no upstream recorded (${pending.locallyAuthored.length}):`)
+      for (const skill of pending.locallyAuthored) console.log(`  ${skill}`)
+    }
+    // Hygiene gate: imported skills without a source cannot get tree-SHA updates.
+    // Locally authored skills are intentional and never trip this flag.
+    if (opts.failOnImported) {
+      const n = pending.importedWithoutSource.length
+      if (n > 0) {
+        process.stderr.write(`Provenance: ${n} imported skill(s) still missing a source — FAIL (--fail-on-imported); run \`aeksm provenance adopt\` or \`edit --source-*\`\n`)
+        process.exitCode = 1
+      } else {
+        process.stderr.write('Provenance: no imported-without-source skills — within hygiene gate\n')
+      }
+    }
+  })
+
+// Hub git-ification for multi-machine sync (ADR-0020): each command thin, git
+// stays the merge tool, and the operator keeps every git decision.
+
+const sync = program.command('sync').description('Multi-machine sync via a git-ified hub (init/push/pull/status, ADR-0020)')
+sync.command('init')
+  .description('Turn the hub into a git repository (or adopt an existing one) with the canonical .gitignore and a baseline commit; optionally attach a remote')
+  .option('--remote <url>', 'git remote URL to attach as origin (a local bare repo works too)')
+  .action((opts, cmd) => {
+    const s = services(cmd)
+    const result = s.sync.init({ remote: opts.remote })
+    s.activity.record({ action: 'cli-sync-init', summary: `${result.mode} hub git-ification`, details: result })
+    // Zero-omission report (US-4): every dimension states what happened, including "nothing".
+    console.log(result.mode === 'adopted' ? 'adopted: existing git repository kept (history preserved)' : 'initialized: fresh git repository created')
+    console.log(result.ignoreLinesAdded.length > 0
+      ? `.gitignore: appended ${result.ignoreLinesAdded.length} line(s): ${result.ignoreLinesAdded.join(', ')}`
+      : '.gitignore: nothing to append (canonical lines already present)')
+    console.log(result.baselineCommit ? `baseline commit: ${result.baselineCommit}` : 'baseline commit: none (tree already clean)')
+    if (result.remote === null) console.log('remote origin: not set (pass --remote <url> to attach one)')
+    else console.log(result.remote.attached ? `remote origin: attached ${result.remote.url}` : `remote origin: already ${result.remote.url}`)
+    console.log('Reminder: the hub will be pushed to this remote — confirm it contains no secrets (tokens, keys, .env files).')
+  })
+
+sync.command('status')
+  .description('Read-only sync status: git-ification, remote, dirty files, ahead/behind (last fetch), last sync commit — zero network')
+  .option('--json', 'machine-readable output for agents')
+  .option('--share', 'privacy-safe paste card (no hub path / remote URL) for X / HN / chat')
+  .action((opts, cmd) => {
+    const result = services(cmd).sync.status()
+    if (opts.json && opts.share) throw new Error('use either --json or --share, not both')
+    if (opts.json) return print(result)
+    if (opts.share) {
+      process.stdout.write(renderSyncShare(result))
+      return
+    }
+    // Read-only probe: no activity record — status itself must not dirty the hub.
+    console.log(`hub: ${result.home}`)
+    if (!result.gitified) {
+      console.log(`git: no — ${result.hint}`)
+      return
+    }
+    console.log('git: yes')
+    console.log(result.remote === null
+      ? 'remote origin: not configured (attach one with `sync init --remote <url>`)'
+      : `remote origin: ${result.remote}`)
+    console.log(result.dirtyFiles === 0 ? 'dirty files: 0 (clean tree)' : `dirty files: ${result.dirtyFiles}`)
+    console.log(result.aheadBehind === null
+      ? 'ahead/behind: unknown (no upstream tracking ref yet — set by your first push)'
+      : `ahead/behind: ahead ${result.aheadBehind.ahead}, behind ${result.aheadBehind.behind} (based on last fetch — run \`git -C ${result.home} fetch\` to refresh)`)
+    console.log(result.lastCommit === null
+      ? 'last sync commit: none yet (the hub repo has no commits)'
+      : `last sync commit: ${result.lastCommit.sha} ${result.lastCommit.message}`)
+  })
+
+sync.command('push')
+  .description('Stage all changes, make one summary commit, and push to the remote (no empty commits)')
+  .action((_opts, cmd) => {
+    const s = services(cmd)
+    const result = s.sync.push()
+    // Honest summary: an in-sync push sent nothing, and the log must not claim one did.
+    s.activity.record({
+      action: 'cli-sync-push',
+      summary: result.upToDate ? 'Sync push: already in sync, nothing sent' : `Pushed hub to ${result.remote}`,
+      details: { commit: result.commit?.sha ?? null, upToDate: result.upToDate },
+    })
+    if (result.upToDate) {
+      console.log('already in sync: no changes to commit, remote is up to date')
+      return
+    }
+    console.log(result.commit === null
+      ? 'commit: none (working tree clean — pushed existing local commits)'
+      : `commit: ${result.commit.sha} ${result.commit.message}`)
+    console.log(`pushed to origin: ${result.remote}`)
+  })
+
+sync.command('pull')
+  .description('Fetch and merge the remote hub (merge commits allowed; a dirty tree is refused, never stashed; user-data conflicts are yours to resolve — only the tool-generated empty registry placeholder is reconciled)')
+  .action((_opts, cmd) => {
+    const s = services(cmd)
+    const result = s.sync.pull()
+    s.activity.record({
+      action: 'cli-sync-pull',
+      summary: result.upToDate ? 'Sync pull: already up to date' : `Pulled hub from ${result.remote}`,
+      details: { upToDate: result.upToDate, registryPlaceholderSuperseded: result.registryPlaceholderSuperseded, ...result.stats },
+    })
+    if (result.upToDate) {
+      console.log('already up to date: nothing to merge from the remote')
+      return
+    }
+    console.log(`pulled from origin: ${result.remote}`)
+    const { added, updated, removed } = result.stats
+    const segments = [
+      ...(added.length > 0 ? [`${added.length} added (${added.join(', ')})`] : []),
+      ...(updated.length > 0 ? [`${updated.length} updated (${updated.join(', ')})`] : []),
+      ...(removed.length > 0 ? [`${removed.length} removed (${removed.join(', ')})`] : []),
+    ]
+    console.log(segments.length > 0 ? `merged skills: ${segments.join(', ')}` : 'merged skills: none changed')
+    console.log(result.stats.registryChanged ? 'registry: changed' : 'registry: unchanged')
+    if (result.registryPlaceholderSuperseded !== null) {
+      // Zero-omission (ticket 07): the merge clashed on registry.yaml and the
+      // tool settled it because the local side was provably its own init
+      // placeholder — say so plainly.
+      console.log('registry conflict: resolved by keeping the remote registry (the local side was the empty init placeholder, not user data)')
+    }
+    // Plain text, on purpose (US-14): the follow-up stays the operator's call —
+    // nothing is detected, distributed, or marked.
+    if (added.length > 0) {
+      console.log('Newly pulled skills are not distributed yet — run `distribute --skill <name>` when you want them available to your agents.')
+    }
+  })
+
+const backup = program.command('backup').description('Inspect and restore init backups (hub .backups/, 30-day retention)');backup.command('list')
+  .description('List saved backups')
+  .action((_opts, cmd) => print(services(cmd).backups.list()))
+backup.command('restore')
+  .description('Roll one skill fully back to its pre-init state')
+  .argument('<skill>')
+  .action((skill, _opts, cmd) => {
+    const s = services(cmd)
+    const result = s.backups.restore(skill)
+    s.activity.record({ action: 'cli-backup-restore', summary: `Restored ${skill} from backup`, details: result })
+    print(result)
+  })
+
+const catalog = program.command('catalog').description('Manage the bundled agent catalog snapshot')
+catalog.command('refresh')
+  .description('Pull the upstream agent table and overwrite the local catalog snapshot')
+  .action(async (_opts, cmd) => {
+    const s = services(cmd)
+    const result = await s.catalog.refresh()
+    s.activity.record({ action: 'cli-catalog-refresh', summary: `Refreshed agent catalog to ${result.commit.slice(0, 10)} (${result.agentCount} agents)`, details: result })
+    print(result)
+  })
+catalog.command('info')
+  .description('Show the current catalog snapshot stamp and detected agents')
+  .action((_opts, cmd) => {
+    const s = services(cmd)
+    // Detected agents carry their runtime dir: a bare id list gives a
+    // conversation nothing to choose by (ticket manager-skill-first/04).
+    const detected = s.catalog.detected().map(id => ({ id, runtimeDir: s.catalog.resolveGlobalDir(id) }))
+    print({ snapshot: s.catalog.snapshotInfo(), detected })
+  })
+
+program.command('list')
+  .description('List installed skills')
+  .option('--category <category>', 'filter category')
+  .option('--include-archived', 'include archived entries')
+  .option('--brief', 'compact rows (name, title, category, updatable) — for conversation-sized output')
+  .action((opts, cmd) => {
+    const rows = services(cmd).registry.listSkills({ category: opts.category, includeArchived: opts.includeArchived })
+    if (!opts.brief) return print(rows)
+    // Full rows carry complete descriptions and consumer lists — tens of KB on
+    // a real hub. The brief form answers "what do I have" without them.
+    return print(rows.map(row => ({
+      name: row.name,
+      title: row.title,
+      category: row.category,
+      updatable: Boolean(row.source?.url && row.source?.subpath && isUpdatableSourceType(row.source.type)),
+      archived: Boolean(row.archived),
+    })))
+  })
+
+// The reference layer (ADR-0017): a zero-retention read channel. Raw stdout
+// under the `status` human-readable precedent — never JSON `print` — so agents
+// can pipe the skill body; the archived notice rides stderr to keep stdout
+// byte-exact. No borrow/cleanup lifecycle.
+program.command('get')
+  .description("Print a hub skill's full SKILL.md to stdout (zero-retention read; provenance evidence rides the frontmatter)")
+  .argument('<skill>')
+  .option('--path', 'print the canonical hub directory (absolute) for read-only borrowing of sibling files, instead of the file body')
+  .action((skill, opts, cmd) => {
+    const s = services(cmd)
+    const target = s.get.resolve(skill)
+    const archivedNotice = `Note: ${skill} is archived — still readable; it only left the management plane (updates, distribution).`
+    if (opts.path) {
+      console.log(target.dir)
+      console.log('Read-only borrow: do not write into this directory — the hub is canonical; changes go through aeksm commands.')
+      if (target.archived) console.log(archivedNotice)
+      return
+    }
+    if (target.archived) console.error(archivedNotice)
+    process.stdout.write(s.get.read(target))
+  })
+
+// The resident-cost ledger (ADR-0018): a read-only account grouped by physical
+// runtime path. Suggestions are report-only — each names the verbatim
+// undistribute command and never runs it. No filter flags in v1: consumers
+// filter the `--json` structure themselves.
+program.command('cost')
+  .description('Show the resident context-cost ledger: per-runtime-path token cost of distributed skill frontmatter, with report-only recall suggestions')
+  .option('--json', 'machine-readable output for agents')
+  .option('--share', 'privacy-safe paste card (no absolute paths) for X / HN / chat')
+  .option('--top <n>', 'how many of the most expensive descriptions to list', '5')
+  .option('--budget <tokens>', 'exit 1 when total resident tokens exceed this budget (CI / pre-commit gate)')
+  .action((opts, cmd) => {
+    const top = Number.parseInt(opts.top, 10)
+    if (!Number.isInteger(top) || top < 0) throw new Error(`--top expects a non-negative integer, got "${opts.top}"`)
+    if (opts.json && opts.share) throw new Error('use either --json or --share, not both')
+    const budget = opts.budget === undefined ? null : Number(opts.budget)
+    if (budget !== null && (!Number.isInteger(budget) || budget < 0)) throw new Error(`--budget expects a non-negative integer token count, got "${opts.budget}"`)
+    const s = services(cmd)
+    const ledger = s.cost.ledger(top)
+    if (opts.json) print(ledger)
+    else process.stdout.write(opts.share ? renderCostShare(ledger) : renderCostLedger(ledger))
+    // Budget gate on stderr so stdout (JSON / card) stays script-stable.
+    if (budget !== null) {
+      const over = ledger.totalTokens > budget
+      process.stderr.write(`Resident budget: ${ledger.totalTokens} / ${budget} tokens — ${over ? 'OVER (exit 1); see Suggestions or run `aeksm cost` for recalls' : 'within budget'}\n`)
+      if (over) process.exitCode = 1
+    }
+  })
+
+program.command('add')
+  .description('Discover from a source, then install selected skills')
+  .argument('<source>', 'Git URL, GitHub owner/repo, GitHub tree URL, local path, local .zip archive, or http(s) URL of a single SKILL.md / zip / tar archive')
+  .option('--list', 'only list discovered skills')
+  .option('--all', 'install all discovered skills')
+  .option('-s, --skill <skill...>', 'skill name or source subpath to install')
+  .option('-f, --format <format>', 'how to interpret a url payload: md, zip, or tar (tar covers tar/tar.gz/tgz) — the escape hatch when extension and Content-Type identify nothing')
+  .option('-y, --yes', 'overwrite existing skills without prompting; also confirms plain-http URL downloads')
+  .action(async (source, opts, cmd) => {
+    const s = services(cmd)
+    const format = parseFormatFlag(opts.format)
+    // A plain-http url source downloads only with explicit confirmation
+    // (US-12): --yes on the command line or an interactive y/N — https and
+    // every other source kind needs none.
+    const allowInsecureHttp = isInsecureHttpSource(s.source.normalize(source))
+      ? Boolean(opts.yes) || await confirmInsecureHttp(source)
+      : false
+    if (opts.list) {
+      return s.source.withCheckout(source, undefined, (checkout) => {
+        const discovered = s.source.discover(checkout)
+        // Marketplace sources present the two-level plugin → skills structure
+        // (US-15/17): every manifest plugin shows either its skills or why it
+        // cannot be consumed. Ordinary sources have no second level.
+        const view = s.source.marketplaceView(checkout, discovered)
+        return print({
+          source: redactCheckout(checkout),
+          ...(view ? { plugins: view.plugins } : {}),
+          discovered: discovered.map(redactDiscovered),
+        })
+      }, { allowInsecureHttp, format })
+    }
+    if (!opts.all && (opts.skill || []).length === 0) throw new Error('Use --all or --skill <name-or-subpath> to choose skills in this non-interactive CLI.')
+    // Empty selectors mean "everything discovered" — the --all semantics.
+    const selectors = opts.all ? [] : (opts.skill || [])
+    const result = s.install.installFromSourceSelection({ source, selectors, overwrite: Boolean(opts.yes), allowInsecureHttp, format })
+    s.activity.record({ action: 'cli-add', summary: `Installed ${result.installed.join(', ')}`, details: { source, installed: result.installed } })
+    print({
+      ...result,
+      plan: { ...result.plan, source: redactCheckout(result.plan.source), selected: result.plan.selected.map(redactDiscovered) },
+    })
+    remindSecurityScan(s, result.installed)
+    remindStaleTargets(s)
+  })
+
+program.command('update')
+  .description('Update skills from registry sources')
+  .option('-s, --skill <skill...>', 'skill(s) to update')
+  .option('--source <key>', 'source group key from updates plan')
+  .option('--plan', 'print update plan (candidates only)')
+  .option('--check', 'run upstream freshness detection: stale / upToDate / failed / skipped per skill (git/marketplace: skill subdirectory tree SHA, not whole-repo HEAD; uncalibrated entries adopt their observed anchor, ADR-0013)')
+  .option('--fail-on-stale', 'with --check: also exit 1 when any skill is stale (failed checks already exit 1; CI / hub-freshness gate)')
+  .action(async (opts, cmd) => {
+    if (opts.failOnStale && !opts.check) throw new Error('--fail-on-stale requires --check')
+    const s = services(cmd)
+    if (opts.check) {
+      const detection = new DetectionService({ githubApi: new GitHubApiClient(), http: new HttpDownloadClient(), fs: new NodeFileSystem() })
+      const listed = s.registry.listSkills({ includeArchived: false })
+      const outcomes = await detection.detect(s, listed)
+      const detectionLog = detectionLogPath(s.resolution.root)
+      const stale: Array<{ skill: string; url: string }> = []
+      const failed: Array<{ skill: string; log: string }> = []
+      const upToDate: string[] = []
+      const skipped: string[] = []
+      for (const skill of listed) {
+        const outcome = outcomes.get(skill.name)
+        // No outcome = not part of this round (source-less rows and friends):
+        // counted as skipped, same wording the dashboard uses — never dropped
+        // silently (adversary M4).
+        if (!outcome || outcome.detection === 'skipped') { skipped.push(skill.name); continue }
+        if (outcome.detection === 'failed') failed.push({ skill: skill.name, log: detectionLog })
+        else if (outcome.hasUpdate) stale.push({ skill: skill.name, url: skill.source.url ?? '' })
+        else upToDate.push(skill.name)
+      }
+      print({ checked: stale.length + failed.length + upToDate.length + skipped.length, stale, upToDate, failed, skipped })
+      // Growth tip (stderr): JSON stdout stays script-stable; the differentiator is the git/marketplace tree-SHA anchor.
+      console.error('Update signal (git/marketplace): skill subdirectory tree SHA — upstream noise outside the skill never lights an update.')
+      // A failed check is a failed check — scripts read the exit code (adversary M6).
+      if (failed.length > 0) process.exitCode = 1
+      // Optional CI gate: stale skills are informational by default; --fail-on-stale
+      // turns the tree-SHA freshness signal into a nonzero exit (stdout JSON unchanged).
+      if (opts.failOnStale) {
+        if (stale.length > 0) {
+          process.stderr.write(`Update check: ${stale.length} stale skill(s) — FAIL (--fail-on-stale); run \`aeksm update --plan\` then update\n`)
+          process.exitCode = 1
+        } else if (failed.length === 0) {
+          process.stderr.write('Update check: no stale skills — within freshness gate\n')
+        }
+      }
+      return
+    }
+    if (opts.plan || (!opts.skill && !opts.source)) return print(s.update.plan())
+    const result = opts.source ? s.update.updateSource(opts.source) : s.update.updateSkills(opts.skill)
+    s.activity.record({ action: 'cli-update', summary: `Updated ${result.updated.join(', ')}`, details: result })
+    print(result)
+    remindSecurityScan(s, result.updated)
+    remindStaleTargets(s)
+  })
+
+
+// Per-rule "what risk" notes (report-only, human-readable). Keyed by the
+// scanner's `rule` id; a skill's high findings are explained with these so
+// `check` says *what the skill does* and *what the flagged pattern means*,
+// not just "there is a risk". Unknown rules fall back to the 需人工复核 note.
+const RULE_RISK: Record<string, string> = {
+  bash_c: '直接跑 shell（sh -c），可在宿主机执行任意命令',
+  child_process: 'Node child_process（exec/spawnSync…），可在宿主机执行外部命令',
+  subprocess: 'Python subprocess，可在宿主机执行外部命令/脚本',
+  ssh_keys: '引用 SSH/AWS/npm 等凭据文件路径：若脚本可读/外传，密钥有泄露面',
+  aws_key: '疑似硬编码 AWS AccessKey —— 真实凭据泄露风险',
+  private_key: '疑似硬编码私钥内容 —— 真实凭据泄露风险',
+  openai_sk: '疑似硬编码 OpenAI/secret key —— 真实凭据泄露风险',
+  api_key_assign: '硬编码 API key/secret 赋值 —— 疑似真实凭据',
+  eval: '动态执行代码（eval / new Function）',
+  os_system: 'os.system 跑 shell',
+  curl_wget: '外发网络 / 下载（curl / wget）',
+  fetch: '外发网络请求（fetch）',
+  http_client: '外发 HTTP（axios / requests / urllib）',
+  dotenv: '引用 .env 环境变量文件',
+}
+
+// Rules that indicate a *real* hardcoded credential/secret (vs. "runs commands").
+const REAL_SECRET_RULES = new Set(['aws_key', 'private_key', 'openai_sk', 'api_key_assign'])
+
+// Security-gate whitelist — a hub-local, user-editable config file
+// (<hubRoot>/security.yml) rather than hard-coded. Skills / name-prefixes listed
+// there are excluded from the `aeksm check` security gate (they intentionally
+// run commands). A missing/invalid file falls back to the default (aek-* AEK
+// framework skills). `aeksm audit security-whitelist` shows / writes the file.
+export type SecurityWhitelist = { names: string[]; prefixes: string[]; source: 'file' | 'default'; file: string | null }
+
+const DEFAULT_SECURITY_WHITELIST: { names: string[]; prefixes: string[] } = { names: [], prefixes: ['aek-'] }
+
+function loadSecurityWhitelist(hubRoot: string): SecurityWhitelist {
+  const file = path.join(hubRoot, 'security.yml')
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    return { ...DEFAULT_SECURITY_WHITELIST, source: 'default', file: null }
+  }
+  let doc: unknown
+  try {
+    doc = YAML.parse(text)
+  } catch {
+    return { ...DEFAULT_SECURITY_WHITELIST, source: 'file', file }
+  }
+  const root = (doc && typeof doc === 'object' ? (doc as Record<string, unknown>) : {})
+  const wl = (root.whitelist && typeof root.whitelist === 'object' ? (root.whitelist as Record<string, unknown>) : {})
+  const names = Array.isArray(wl.names) ? (wl.names.filter(x => typeof x === 'string') as string[]) : []
+  const prefixes = Array.isArray(wl.prefixes) ? (wl.prefixes.filter(x => typeof x === 'string') as string[]) : []
+  return { names, prefixes, source: 'file', file }
+}
+
+function isWhitelisted(wl: SecurityWhitelist, name: string): boolean {
+  return wl.names.includes(name) || wl.prefixes.some(p => name.startsWith(p))
+}
+
+/** Render the editable <hubRoot>/security.yml template. */
+function renderSecurityWhitelistYml(wl: SecurityWhitelist): string {
+  const lines: string[] = [
+    '# aeksm security-gate whitelist (hub-local, user-editable).',
+    '# Listed skills / name-prefixes are excluded from the `aeksm check` security gate.',
+    '# Use it for skills that intentionally run commands (framework / automation).',
+    '# A missing/invalid file falls back to the defaults shown by `aeksm audit security-whitelist`.',
+    'whitelist:',
+    '  # exact skill names (full match)',
+  ]
+  if (wl.names.length === 0) lines.push('  names: []')
+  else { lines.push('  names:'); for (const n of wl.names) lines.push(`    - ${n}`) }
+  lines.push('  # skill-name prefixes (startsWith)')
+  if (wl.prefixes.length === 0) lines.push('  prefixes: []')
+  else { lines.push('  prefixes:'); for (const p of wl.prefixes) lines.push(`    - ${p}`) }
+  return lines.join('\n') + '\n'
+}
+
+/** One line: what this skill does, from its SKILL.md frontmatter `description`. */
+function skillWhatItDoes(fs: NodeFileSystem, s: ReturnType<typeof services>, name: string): string {
+  try {
+    const { data } = parseSkillFrontmatter(fs.readText(s.registry.skillMdPath(name)))
+    const d = String(data.description ?? '').trim()
+    if (!d) return '（SKILL.md 无 description，仅有 skill 名）'
+    return d.length > 120 ? `${d.slice(0, 120)}…` : d
+  } catch {
+    return '（无法读取 SKILL.md description）'
+  }
+}
+
+// One exit code for CI: the offline hub gates always run; the resident budget
+// and the networked freshness check are opt-in. The security gate is WARN-only
+// (high findings never fail the run) and aek-* framework skills are whitelisted
+// from it; provenance (and the opt-in gates) are error-level and drive exit 1.
+program.command('check')
+  .description('Run the hub CI gates in one go: security (high, WARN-only, aek-* whitelisted) + provenance (imported-without-source, fails), plus optional --budget, --freshness, --overlap and --descriptions; exit 1 if any error-level gate fails')
+  .option('--budget <tokens>', 'also fail when total resident tokens exceed this budget (same as cost --budget)')
+  .option('--freshness', 'also run update --check (network) and fail on stale or failed detection')
+  .option('--overlap', 'also fail when any two skill descriptions compete (same as audit overlap --strict, threshold 0.3)')
+  .option('--descriptions', 'also fail on error-level description lint findings (same as audit descriptions --strict; warnings never fail)')
+  .option('--json', 'machine-readable gate results')
+  .action(async (opts, cmd) => {
+    const budget = opts.budget === undefined ? null : Number(opts.budget)
+    if (budget !== null && (!Number.isInteger(budget) || budget < 0)) throw new Error(`--budget expects a non-negative integer token count, got "${opts.budget}"`)
+    const s = services(cmd)
+    const gates: Array<{ gate: string; ok: boolean; level?: 'error' | 'warn'; detail: string; details?: string[] }> = []
+    const allNames = s.registry.listSkills().map(skill => skill.name)
+    const wl = loadSecurityWhitelist(s.resolution.root)
+    const whitelisted = allNames.filter(n => isWhitelisted(wl, n))
+    const names = allNames.filter(n => !isWhitelisted(wl, n))
+    const reports = s.security.scanSkills(names)
+    const high = s.security.countHighFindings(reports)
+    const skillsWithHigh = reports.filter(rep => rep.findings.some(f => f.severity === 'high'))
+    const securityDetails: string[] = []
+    const fs = new NodeFileSystem()
+    for (const rep of skillsWithHigh) {
+      const highs = rep.findings.filter(f => f.severity === 'high')
+      securityDetails.push(`${rep.skill} (${highs.length} high)`)
+      securityDetails.push(`  干什么: ${skillWhatItDoes(fs, s, rep.skill)}`)
+      for (const f of highs) {
+        const excerpt = f.excerpt.replace(/\s+/g, ' ').trim()
+        securityDetails.push(`  命中 [${f.rule}] ${f.path}:${f.line}  ${excerpt.length > 70 ? excerpt.slice(0, 70) + '…' : excerpt}`)
+      }
+      const ruleCounts = new Map<string, number>()
+      for (const f of highs) ruleCounts.set(f.rule, (ruleCounts.get(f.rule) ?? 0) + 1)
+      securityDetails.push(`  风险: ${[...ruleCounts.entries()].map(([r, n]) => `${r} ×${n} — ${RULE_RISK[r] ?? '需人工复核'}`).join('；')}`)
+      securityDetails.push([...ruleCounts.keys()].some(r => REAL_SECRET_RULES.has(r))
+        ? '  结论: 命中含「硬编码密钥/secret」类，需重点核查是否真实凭据。'
+        : '  结论: 命中均为「命令执行/凭据路径引用」类（该 skill 的设计用途），未发现硬编码密钥/secret；风险面 = 脚本若被篡改可执行任意命令，而非数据外泄。')
+      securityDetails.push('')
+    }
+    const wlNote = whitelisted.length > 0 ? ` (${whitelisted.length} whitelisted${wl.source === 'default' ? ', default' : ''}: ${whitelisted.join(', ')})` : ''
+    gates.push({ gate: 'security', ok: high === 0, level: 'warn', detail: `${high} high finding(s) in ${skillsWithHigh.length} of ${names.length} scanned skill(s)${wlNote}`, details: securityDetails })
+    const imported = s.provenance.pending().importedWithoutSource.length
+    gates.push({ gate: 'provenance', ok: imported === 0, detail: `${imported} imported skill(s) missing a source${imported ? ' — run `aeksm provenance adopt`' : ''}` })
+    if (budget !== null) {
+      const total = s.cost.ledger(0).totalTokens
+      gates.push({ gate: 'budget', ok: total <= budget, detail: `${total} / ${budget} resident tokens${total > budget ? ' — run `aeksm cost` for recalls' : ''}` })
+    }
+    if (opts.overlap || opts.descriptions) {
+      const inputs = s.registry.listSkills().map(skill => ({ name: skill.name, description: skill.description }))
+      if (opts.overlap) {
+        const pairs = findDescriptionOverlaps(inputs, 0.3).pairs.length
+        gates.push({ gate: 'overlap', ok: pairs === 0, detail: `${pairs} competing description pair(s)${pairs ? ' — run `aeksm audit overlap`' : ''}` })
+      }
+      if (opts.descriptions) {
+        const lint = lintDescriptions(inputs)
+        gates.push({ gate: 'descriptions', ok: lint.errors === 0, detail: `${lint.errors} error(s), ${lint.warnings} warning(s) in skill descriptions${lint.errors ? ' — run `aeksm audit descriptions`' : ''}` })
+      }
+    }
+    if (opts.freshness) {
+      const detection = new DetectionService({ githubApi: new GitHubApiClient(), http: new HttpDownloadClient(), fs: new NodeFileSystem() })
+      const listed = s.registry.listSkills({ includeArchived: false })
+      const outcomes = await detection.detect(s, listed)
+      let stale = 0
+      let failed = 0
+      for (const outcome of outcomes.values()) {
+        if (outcome.detection === 'failed') failed += 1
+        else if (outcome.detection !== 'skipped' && outcome.hasUpdate) stale += 1
+      }
+      gates.push({ gate: 'freshness', ok: stale === 0 && failed === 0, detail: `${stale} stale, ${failed} failed (tree-SHA)${stale || failed ? ' — run `aeksm update --check`' : ''}` })
+    }
+    // Only error-level gates decide the exit code; `warn`-level gates (security)
+    // surface as warnings but never fail the run.
+    const errorGates = gates.filter(g => (g.level ?? 'error') === 'error')
+    const warnGates = gates.filter(g => g.level === 'warn')
+    const ok = errorGates.every(g => g.ok)
+    const warned = warnGates.filter(g => !g.ok).length
+    if (opts.json) print({ ok, gates })
+    else {
+      for (const g of gates) {
+        const label = g.ok ? 'PASS' : g.level === 'warn' ? 'WARN' : 'FAIL'
+        console.log(`${label} ${g.gate}: ${g.detail}`)
+        if (!g.ok && g.details && g.details.length > 0) for (const line of g.details) console.log(line)
+      }
+      const passErr = errorGates.filter(g => g.ok).length
+      console.log(`check: ${ok ? 'PASS' : 'FAIL'} (${passErr}/${errorGates.length} gates)${warned > 0 ? `, ${warned} warning(s)` : ''}`)
+    }
+    if (!ok) process.exitCode = 1
+  })
+
+const audit = program.command('audit').description('Report-only audits over hub skills (security, description overlap, description lint)')
+audit.command('security')
+  .description('Scan skill tree(s) for high-signal risks: shell exec, network calls, credential paths, secret-like strings (report-only by default)')
+  .argument('[skills...]', 'canonical skill names; omit to scan every non-archived hub skill')
+  .option('--strict', 'exit 1 when any high-severity finding is present (warn/info never fail; default stays report-only)')
+  .option('--format <format>', 'json (default) or github (Actions ::error/::warning/::notice annotations for the PR file UI)', 'json')
+  .action((skills: string[], opts: { strict?: boolean; format?: string }, cmd) => {
+    const format = opts.format ?? 'json'
+    if (format !== 'json' && format !== 'github') {
+      throw new SkillsManagerError('invalid_format_flag', `--format must be json or github (got ${JSON.stringify(format)})`)
+    }
+    const s = services(cmd)
+    const names = skills.length > 0 ? skills : s.registry.listSkills().map(skill => skill.name)
+    const reports = s.security.scanSkills(names)
+    if (format === 'github') {
+      const annotations = formatGithubAnnotations(reports)
+      if (annotations) console.log(annotations)
+    } else {
+      print(reports.length === 1 ? reports[0] : reports)
+    }
+    if (opts.strict && s.security.failsStrict(reports)) process.exitCode = 1
+  })
+
+audit.command('security-whitelist')
+  .description('Show the security-gate whitelist (<hub>/security.yml); --write writes an editable template (create if missing)')
+  .option('--json', 'machine-readable (effective whitelist + source)')
+  .option('--write', 'write <hub>/security.yml from the current effective whitelist so it can be edited')
+  .action((opts: { json?: boolean; write?: boolean }, cmd) => {
+    const s = services(cmd)
+    const file = path.join(s.resolution.root, 'security.yml')
+    if (opts.write) new NodeFileSystem().writeText(file, renderSecurityWhitelistYml(loadSecurityWhitelist(s.resolution.root)))
+    const wl = loadSecurityWhitelist(s.resolution.root)
+    if (opts.json) {
+      print({ file, source: wl.source, whitelist: { names: wl.names, prefixes: wl.prefixes } })
+      return
+    }
+    console.log(`Security-gate whitelist — ${wl.source === 'file' ? file : `default (no ${file} yet)`}`)
+    console.log(`  names:    ${wl.names.length > 0 ? wl.names.join(', ') : '(none)'}`)
+    console.log(`  prefixes: ${wl.prefixes.length > 0 ? wl.prefixes.join(', ') : '(none)'}`)
+    if (wl.source === 'default' && !opts.write) console.log('  create & edit with: aeksm audit security-whitelist --write')
+  })
+
+/** `--fix` / `--write` for the description audits: print proposals, and write only when asked. */
+function applyDescriptionProposals(
+  s: ReturnType<typeof services>,
+  title: string,
+  proposals: DescriptionProposal[],
+  opts: { write?: boolean; json?: boolean },
+) {
+  const changed = proposals.filter(p => p.after !== p.before)
+  if (opts.write) {
+    const fs = new NodeFileSystem()
+    for (const p of changed) {
+      const file = s.registry.skillMdPath(p.skill)
+      fs.writeText(file, replaceFrontmatterDescription(fs.readText(file), p.after))
+      s.registry.ensureEntry(p.skill, { description: p.after })
+    }
+    if (changed.length > 0) s.activity.record({ action: 'cli-audit-fix', summary: `${title}: rewrote ${changed.length} description(s)`, details: { skills: changed.map(p => p.skill) } })
+  }
+  if (opts.json) print({ written: Boolean(opts.write), proposals })
+  else process.stdout.write(renderProposals(title, proposals, Boolean(opts.write)))
+}
+
+audit.command('overlap')
+  .description('Find skills whose descriptions compete for the same trigger words (the agent may pick the wrong one); offline, report-only')
+  .argument('[skills...]', 'canonical skill names; omit to compare every non-archived hub skill')
+  .option('--threshold <score>', 'minimum overlap score from 0 to 1 to report', '0.3')
+  .option('--strict', 'exit 1 when any pair is reported (CI gate)')
+  .option('--fix', 'propose a boundary line for each side of every pair, as a diff (writes nothing)')
+  .option('--write', 'with --fix: write the proposed descriptions into the hub SKILL.md files')
+  .option('--json', 'machine-readable report')
+  .action((skills: string[], opts: { threshold: string; strict?: boolean; fix?: boolean; write?: boolean; json?: boolean }, cmd) => {
+    if (opts.write && !opts.fix) throw new Error('--write needs --fix (review the proposed diff first)')
+    const threshold = Number(opts.threshold)
+    if (!/^(0(\.\d+)?|1(\.0+)?|\.\d+)$/.test(opts.threshold) || !(threshold >= 0 && threshold <= 1)) {
+      throw new Error(`--threshold expects a number from 0 to 1, got "${opts.threshold}"`)
+    }
+    const s = services(cmd)
+    const all = s.registry.listSkills()
+    const missing = skills.filter(name => !all.some(skill => skill.name === name))
+    if (missing.length > 0) throw new Error(`Skill not found: ${missing.join(', ')}. Run \`aeksm list\` to see hub skills.`)
+    const picked = skills.length > 0 ? all.filter(skill => skills.includes(skill.name)) : all
+    if (opts.fix) {
+      applyDescriptionProposals(s, 'Overlap boundaries', boundaryProposals(picked.map(skill => ({ name: skill.name, description: skill.description })), threshold), opts)
+      return
+    }
+    const report = findDescriptionOverlaps(picked.map(skill => ({ name: skill.name, description: skill.description })), threshold)
+    if (opts.json) print(report)
+    else process.stdout.write(renderOverlapReport(report))
+    if (opts.strict && report.pairs.length > 0) {
+      process.stderr.write(`Overlap: ${report.pairs.length} competing pair(s) — FAIL (--strict); sharpen the descriptions above\n`)
+      process.exitCode = 1
+    }
+  })
+audit.command('descriptions')
+  .description('Lint skill descriptions for what makes them fail to trigger: missing, too long, no "use when", wrong point of view, vague; offline, report-only')
+  .argument('[skills...]', 'canonical skill names; omit to lint every non-archived hub skill')
+  .option('--strict', 'exit 1 when any error-level finding is present (warnings never fail)')
+  .option('--fix', 'propose template rewrites (trigger clause, third person, tag strip, trim to 1024) as a diff (writes nothing)')
+  .option('--write', 'with --fix: write the proposed descriptions into the hub SKILL.md files')
+  .option('--json', 'machine-readable report')
+  .action((skills: string[], opts: { strict?: boolean; fix?: boolean; write?: boolean; json?: boolean }, cmd) => {
+    if (opts.write && !opts.fix) throw new Error('--write needs --fix (review the proposed diff first)')
+    const s = services(cmd)
+    const all = s.registry.listSkills()
+    const missing = skills.filter(name => !all.some(skill => skill.name === name))
+    if (missing.length > 0) throw new Error(`Skill not found: ${missing.join(', ')}. Run \`aeksm list\` to see hub skills.`)
+    const picked = skills.length > 0 ? all.filter(skill => skills.includes(skill.name)) : all
+    if (opts.fix) {
+      applyDescriptionProposals(s, 'Description fixes', fixDescriptions(picked.map(skill => ({ name: skill.name, description: skill.description }))), opts)
+      return
+    }
+    const report = lintDescriptions(picked.map(skill => ({ name: skill.name, description: skill.description })))
+    if (opts.json) print(report)
+    else process.stdout.write(renderDescriptionLint(report))
+    if (opts.strict && report.errors > 0) {
+      process.stderr.write(`Description lint: ${report.errors} error(s) — FAIL (--strict)\n`)
+      process.exitCode = 1
+    }
+  })
+
+
+const trigger = program.command('trigger').description('Offline checks for which hub skills a sample user request would match (reuse description-term IDF scoring)')
+trigger.command('test')
+  .description('Rank hub skills against a sample request, or run many assertions from a YAML/JSON fixtures file')
+  .argument('[request]', 'sample user request / message (omit when using --fixtures)')
+  .option('--fixtures <file>', 'YAML/JSON list of { request, expect, top? } — one command for many CI phrases')
+  .option('--expect <skill>', 'canonical skill name that must rank first (or within --top when set); CI assertion (single-request mode)')
+  .option('--top <n>', 'only show / assert within the top N hits (integer ≥ 1; single-request mode)')
+  .option('--json', 'machine-readable report')
+  .action((request: string | undefined, opts: { fixtures?: string; expect?: string; top?: string; json?: boolean }, cmd) => {
+    const s = services(cmd)
+    const skills = s.registry.listSkills().map(skill => ({ name: skill.name, description: skill.description }))
+
+    if (opts.fixtures) {
+      if (request) throw new Error('Pass either a <request> or --fixtures, not both')
+      if (opts.expect !== undefined || opts.top !== undefined) {
+        throw new Error('--expect / --top belong on each fixtures entry (or use single-request mode without --fixtures)')
+      }
+      const filePath = path.resolve(opts.fixtures)
+      let text: string
+      try {
+        text = readFileSync(filePath, 'utf8')
+      } catch (err) {
+        throw new Error(`Cannot read --fixtures ${filePath}: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      const file = loadTriggerFixturesText(text, filePath)
+      const report = runTriggerFixtures(file, skills, { filePath })
+      if (opts.json) print(report)
+      else process.stdout.write(renderTriggerFixtures(report))
+      if (report.failed > 0) {
+        process.stderr.write(`Trigger fixtures: FAIL — ${report.failed}/${report.total} assertion(s)\n`)
+        process.exitCode = 1
+      }
+      return
+    }
+
+    if (!request || !request.trim()) {
+      throw new Error('Provide a <request> or --fixtures <file>')
+    }
+    let top: number | undefined
+    if (opts.top !== undefined) {
+      top = Number.parseInt(opts.top, 10)
+      if (!Number.isInteger(top) || top < 1) throw new Error(`--top expects an integer ≥ 1, got "${opts.top}"`)
+    }
+    if (opts.expect && !skills.some(skill => skill.name === opts.expect)) {
+      throw new Error(`Skill not found: ${opts.expect}. Run \`aeksm list\` to see hub skills.`)
+    }
+    const report = rankTriggers(request, skills)
+    const shown = takeTop(report, top)
+    const verdict = opts.expect ? expectSatisfied(report, opts.expect, top) : undefined
+    if (opts.json) {
+      print({
+        ...shown,
+        expect: verdict
+          ? {
+            skill: opts.expect,
+            ok: verdict.ok,
+            detail: verdict.detail,
+            rank: verdict.hit?.rank ?? null,
+            score: verdict.hit?.score ?? null,
+          }
+          : undefined,
+      })
+    } else {
+      process.stdout.write(renderTriggerRank(report, { expect: opts.expect, top }))
+    }
+    if (verdict && !verdict.ok) {
+      process.stderr.write(`Trigger test: FAIL — ${verdict.detail}\n`)
+      process.exitCode = 1
+    }
+  })
+
+const distribute = program.command('distribute')
+  .description('Distribute hub skills to user or project runtime directories (user default target set excludes the shared agents pool — `aeksm pool reconcile` owns it)')
+  .option('--to <kind>', 'user or project')
+  .option('--project <path>', 'project root (required when --to project)')
+  .option('-s, --skill <skill...>', 'canonical skill names')
+  .option('-a, --agent <id...>', 'catalog agent ids (repeatable); default: detected set minus shared-pool agents (user target only)')
+  .option('--mode <mode>', 'symlink or copy')
+  .option('--force', 'overwrite unmanaged runtime paths')
+  .option('--shared-pool', 'include the shared agents pool in the default target set (default: excluded)')
+  .enablePositionalOptions()
+  .action((opts, cmd) => {
+    if (!opts.to) throw new Error('--to is required (user or project)')
+    const s = services(cmd)
+    // Shared-pool policy (AEK deviation, user decision 2026-11-04): default user
+    // targets = detected agents minus pool agents. Explicit -a always wins.
+    const agents = opts.agent ?? (opts.to === 'user' && !opts.sharedPool ? defaultDistributeAgents(s.catalog) : undefined)
+    const result = s.distribute.apply({
+      to: opts.to,
+      projectRoot: opts.project,
+      skills: opts.skill || [],
+      agents,
+      mode: opts.mode,
+      force: Boolean(opts.force),
+    })
+    s.activity.record({ action: 'cli-distribute', summary: `Distributed ${(opts.skill || []).join(', ')} to ${opts.to} for ${result.agents.join(', ')}`, details: opts })
+    print(result)
+  })
+
+function runDistributeRollback(opts: { to?: string; project?: string }, cmd: Command) {
+  const s = services(cmd)
+  // The `distribute` group owns `--to`/`--project`; commander parses them onto
+  // the parent, so the rollback subcommand's same-named options never receive
+  // values — fall back to the command chain. The subcommand keeps its own
+  // declarations so `--help` still documents the interface.
+  const globals = cmd.optsWithGlobals() as { to?: string; project?: string }
+  const to = opts.to ?? globals.to
+  const project = opts.project ?? globals.project
+  if (to !== 'user' && to !== 'project') throw new Error('--to must be user or project')
+  const result = s.distribute.rollback(to, project)
+  s.activity.record({ action: 'cli-distribute-rollback', summary: `Rolled back ${to} distribution`, details: { to, project } })
+  print(result)
+}
+
+distribute.command('rollback')
+  .description('Restore the last distribute snapshot for a target')
+  .option('--to <kind>', 'user or project (required)')
+  .option('--project <path>', 'project root (required when --to project)')
+  .action((opts, cmd) => runDistributeRollback(opts, cmd))
+
+// ---- shared agents pool (AEK policy: reconcile, never link) ----------------
+// A "pool" is a global skills dir that 2+ catalog agents share under the
+// agents convention (`.../agents/skills` or `.../.agents/skills`), e.g.
+// ~/.agents/skills. Policy (user decision 2026-11-04): default distribution
+// excludes the pool (see shared-pool.ts); instead `pool reconcile` moves stray
+// physical pool skills into the hub and resolves same-name conflicts by newer
+// mtime. Foreign (non-hub) links in the pool are never touched.
+
+type PoolAction = 'move-new' | 'ingest-link' | 'overwrite-hub' | 'drop-stale' | 'drop-link' | 'keep-foreign' | 'skip'
+type PoolPlanEntry = { pool: string; name: string; action: PoolAction; detail: string; poolMtime?: number; hubMtime?: number }
+
+/** Real directory backing a hub skill entry; shelf links (aek-system-skill) resolve to their target. */
+function hubSkillRealDir(fs: NodeFileSystem, hubSkillDir: string): string {
+  return fs.kind(hubSkillDir) === 'symlink' ? path.resolve(path.dirname(hubSkillDir), fs.readlink(hubSkillDir)) : hubSkillDir
+}
+
+function maxFileMtime(fs: NodeFileSystem, dir: string): number {
+  if (fs.kind(dir) !== 'directory') return 0
+  let max = 0
+  const walk = (d: string) => {
+    for (const e of fs.readDirectory(d)) {
+      const p = path.join(d, e.name)
+      if (e.kind === 'directory') {
+        max = Math.max(max, fs.modifiedAt(p))
+        walk(p)
+      } else {
+        max = Math.max(max, fs.modifiedAt(p))
+      }
+    }
+  }
+  walk(dir)
+  return max
+}
+
+function moveDirWithExdevFallback(fs: NodeFileSystem, src: string, dst: string): void {
+  try {
+    fs.move(src, dst)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'EXDEV') {
+      fs.copyDirectoryContents(src, dst)
+      fs.removeTree(src)
+      return
+    }
+    throw error
+  }
+}
+
+function runPoolReconcile(opts: { dryRun?: boolean; json?: boolean }, cmd: Command): void {
+  const s = services(cmd)
+  const fs = new NodeFileSystem()
+  const hubRoot = s.resolution.root
+  const hubSkillsDir = s.skillHome.home.skillsDir
+  const poolDirs = sharedPoolDirs(s.catalog).filter(dir => fs.kind(dir) === 'directory')
+  const plan: PoolPlanEntry[] = []
+  for (const dir of poolDirs) {
+    for (const entry of fs.readDirectory(dir)) {
+      const p = path.join(dir, entry.name)
+      if (entry.kind === 'symlink') {
+        const target = fs.readlink(p)
+        const abs = path.resolve(path.dirname(p), target)
+        const toHub = abs === hubRoot || abs.startsWith(hubRoot + path.sep)
+        const isSkillLink = fs.kind(abs) === 'directory' && fs.kind(path.join(abs, 'SKILL.md')) === 'file'
+        if (!isSkillLink) {
+          plan.push({ pool: dir, name: entry.name, action: 'keep-foreign', detail: `non-skill link (${target}); left alone` })
+          continue
+        }
+        if (toHub) {
+          plan.push({ pool: dir, name: entry.name, action: 'drop-link', detail: `managed link into hub (${target}); pool is not linked` })
+          continue
+        }
+        // Foreign skill link: the hub is the source of truth, so the target's
+        // contents are copied in (foreign origin stays intact), then the pool
+        // link is dropped. Same-name conflicts still resolve by newer mtime.
+        const hubSkillDir = path.join(hubSkillsDir, entry.name)
+        const inHub = fs.kind(hubSkillDir) === 'directory' || s.registry.getEntry(entry.name) !== undefined
+        if (!inHub) {
+          plan.push({ pool: dir, name: entry.name, action: 'ingest-link', detail: `foreign skill link (${target}); copy target into hub + register, drop pool link` })
+          continue
+        }
+        const linkMtime = maxFileMtime(fs, abs)
+        const hubMtime = maxFileMtime(fs, hubSkillRealDir(fs, hubSkillDir))
+        if (linkMtime > hubMtime) {
+          plan.push({ pool: dir, name: entry.name, action: 'overwrite-hub', poolMtime: linkMtime, hubMtime, detail: `foreign link target newer (${fmtMtime(linkMtime)} > ${fmtMtime(hubMtime)}) → overwrite hub, drop pool link` })
+        } else {
+          plan.push({ pool: dir, name: entry.name, action: 'drop-link', poolMtime: linkMtime, hubMtime, detail: 'hub newer or equal → drop stale foreign link' })
+        }
+        continue
+      }
+      if (entry.kind !== 'directory' || fs.kind(path.join(p, 'SKILL.md')) !== 'file') {
+        plan.push({ pool: dir, name: entry.name, action: 'skip', detail: 'not a physical skill (no SKILL.md), left alone' })
+        continue
+      }
+      const hubSkillDir = path.join(hubSkillsDir, entry.name)
+      const inHub = fs.kind(hubSkillDir) === 'directory' || s.registry.getEntry(entry.name) !== undefined
+      if (!inHub) {
+        plan.push({ pool: dir, name: entry.name, action: 'move-new', detail: 'not in hub → move into hub + register (local source)' })
+        continue
+      }
+      const poolMtime = maxFileMtime(fs, p)
+      const hubMtime = maxFileMtime(fs, hubSkillRealDir(fs, hubSkillDir))
+      if (poolMtime > hubMtime) {
+        plan.push({ pool: dir, name: entry.name, action: 'overwrite-hub', poolMtime, hubMtime, detail: `pool newer (${fmtMtime(poolMtime)} > ${fmtMtime(hubMtime)}) → overwrite hub copy, move into hub` })
+      } else {
+        plan.push({ pool: dir, name: entry.name, action: 'drop-stale', poolMtime, hubMtime, detail: `hub newer or equal (${fmtMtime(poolMtime)} ≤ ${fmtMtime(hubMtime)}) → drop pool copy` })
+      }
+    }
+  }
+  const mutating = plan.filter(item => item.action !== 'keep-foreign' && item.action !== 'skip')
+  if (opts.json) print({ poolDirs, plan, applied: !opts.dryRun })
+  else {
+    for (const item of plan) console.log(`${item.action.padEnd(15)} ${item.name.padEnd(32)} ${item.detail}`)
+    console.log(`pool reconcile: ${mutating.length} change(s) across ${poolDirs.length} pool dir(s)${opts.dryRun ? ' — DRY RUN, no changes made' : ''}`)
+  }
+  if (opts.dryRun || mutating.length === 0) {
+    if (!opts.json) console.log(opts.dryRun ? 'apply: re-run without --dry-run' : 'pool already reconciled with the hub')
+    return
+  }
+  // Safety net: back up everything about to move/drop/overwrite into .backups.
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const backupDir = path.join(hubRoot, '.backups', `pool-reconcile-${stamp}`)
+  fs.makeDirectory(backupDir)
+  fs.writeText(path.join(backupDir, 'plan.json'), JSON.stringify({ ts: new Date().toISOString(), poolDirs, plan }, null, 2))
+  for (const item of mutating) {
+    const p = path.join(item.pool, item.name)
+    const hubSkillDir = path.join(hubSkillsDir, item.name)
+    const viaLink = fs.kind(p) === 'symlink'
+    const source = viaLink ? path.resolve(path.dirname(p), fs.readlink(p)) : p
+    if (item.action === 'move-new') {
+      fs.copyDirectoryContents(p, path.join(backupDir, 'pool', item.name))
+      moveDirWithExdevFallback(fs, p, hubSkillDir)
+    } else if (item.action === 'overwrite-hub') {
+      // Operate on the real backing dir: a shelf link (aek-system-skill) must
+      // keep pointing at its target, which is rebuilt in place.
+      const hubReal = hubSkillRealDir(fs, hubSkillDir)
+      if (fs.kind(hubReal) === 'directory') fs.copyDirectoryContents(hubReal, path.join(backupDir, 'hub', item.name))
+      fs.removeTree(hubReal)
+      if (viaLink) fs.copyDirectoryContents(source, hubReal)
+      else moveDirWithExdevFallback(fs, p, hubReal)
+      if (viaLink) fs.removeFileOrSymlink(p)
+    } else if (item.action === 'ingest-link') {
+      // Copy (never move): the foreign tool's own dir stays intact.
+      fs.copyDirectoryContents(source, hubSkillDir)
+      fs.removeFileOrSymlink(p)
+    } else if (item.action === 'drop-stale') {
+      fs.copyDirectoryContents(p, path.join(backupDir, 'pool', item.name))
+      fs.removeTree(p)
+    } else if (item.action === 'drop-link') {
+      fs.removeFileOrSymlink(p)
+    }
+  }
+  const register = mutating.filter(item => item.action === 'move-new' || item.action === 'ingest-link')
+  if (register.length > 0) s.registry.ensureEntries(register.map(item => ({ skill: item.name, patch: {} })))
+  s.activity.record({ action: 'cli-pool-reconcile', summary: `Pool reconcile: ${mutating.map(item => `${item.name}(${item.action})`).join(', ')}`, details: { poolDirs, plan, backupDir } })
+  if (!opts.json) console.log(`done: ${mutating.length} change(s). Restore point: ${backupDir}`)
+}
+
+function fmtMtime(epochMs: number): string {
+  return epochMs > 0 ? new Date(epochMs).toISOString() : 'n/a'
+}
+
+program.command('pool')
+  .description('Shared agents pool (dirs multiple catalog agents share, e.g. ~/.agents/skills) — reconciled, never linked by default')
+  .command('reconcile')
+  .description('Move stray pool skills into the hub (physical: move; foreign skill links: copy target in, origin intact); same-name conflicts: newer mtime wins; drop pool skill links back to the hub; non-skill foreign links stay')
+  .option('--dry-run', 'plan only, make no changes')
+  .option('--json', 'machine-readable plan/report')
+  .action((opts, cmd) => runPoolReconcile(opts, cmd))
+
+program.command('undistribute')
+  .description('Remove managed runtime entries without deleting hub skills')
+  .requiredOption('--to <kind>', 'user or project')
+  .option('--project <path>', 'project root (required when --to project)')
+  .option('-s, --skill <skill...>', 'canonical skill names')
+  .option('-a, --agent <id...>', 'catalog agent ids (repeatable); defaults to the detected set')
+  .action((opts, cmd) => {
+    const s = services(cmd)
+    const result = s.distribute.undistribute({ to: opts.to, projectRoot: opts.project, skills: opts.skill || [], agents: opts.agent })
+    s.activity.record({ action: 'cli-undistribute', summary: `Undistributed ${(opts.skill || []).join(', ')} from ${opts.to}`, details: opts })
+    print(result)
+  })
+
+program.command('redistribute')
+  .description('Re-apply managed distributions')
+  .option('--outdated', 'only outdated fingerprints (alias: --refresh)')
+  .option('--refresh', 'alias of --outdated: refresh every stale copy target')
+  .option('--to <kind>', 'user or project')
+  .option('--project <path>', 'project root filter')
+  .option('--force', 'overwrite unmanaged runtime paths')
+  .action((opts, cmd) => {
+    if (!opts.outdated && !opts.refresh) throw new Error('Pass --outdated or --refresh to refresh managed targets')
+    const s = services(cmd)
+    const result = s.distribute.redistributeOutdated({ to: opts.to, projectRoot: opts.project, force: Boolean(opts.force) })
+    s.activity.record({ action: 'cli-redistribute', summary: 'Redistributed outdated targets', details: opts })
+    if (opts.refresh) console.log(`Refreshed ${result.refreshed.length}, errored ${result.errored.length}.`)
+    print(result)
+  })
+
+program.command('distribute-rollback', { hidden: true })
+  .description('Deprecated alias for distribute rollback')
+  .requiredOption('--to <kind>', 'user or project')
+  .option('--project <path>', 'project root (required when --to project)')
+  .action((opts, cmd) => runDistributeRollback(opts, cmd))
+
+program.command('migrate-views')
+  .description('Distribute leftover hub views to user runtimes')
+  .option('--delete-views', 'remove generated view symlinks after migrate')
+  .option('--force', 'overwrite unmanaged runtime paths')
+  .action((opts, cmd) => {
+    const s = services(cmd)
+    const result = s.distribute.migrateViews({ deleteViews: Boolean(opts.deleteViews), force: Boolean(opts.force) })
+    s.activity.record({ action: 'cli-migrate-views', summary: 'Migrated leftover hub views', details: result })
+    print(result)
+  })
+
+program.command('migrate-consumers')
+  .description('One-shot migration of legacy agents/claude tags to catalog agent ids (registry, hub index)')
+  .option('--dry-run', 'print the migration plan without touching disk')
+  .option('--rollback', 'restore the files backed up by the last migration')
+  .action((opts, cmd) => {
+    const s = services(cmd)
+    if (opts.rollback) {
+      s.migration.rollback()
+      s.activity.record({ action: 'cli-migrate-consumers-rollback', summary: 'Rolled back migrate-consumers' })
+      return print({ rolledBack: true })
+    }
+    if (opts.dryRun) return print(s.migration.plan())
+    const result = s.migration.apply()
+    s.activity.record({ action: 'cli-migrate-consumers', summary: `Migrated legacy consumer tags (${result.migrated.indexEntries} index entries)`, details: result })
+    print(result)
+  })
+
+program.command('rebuild-collections').description('Regenerate category collections').action((_opts, cmd) => { services(cmd).views.rebuildCollections(); print('collections rebuilt') })
+program.command('archive').description('Archive canonical skills without permanent deletion').argument('<skills...>').action((skills, _opts, cmd) => print(services(cmd).archive.archiveSkills(skills)))
+program.command('adopt').description('Adopt a real directory from a generated view into canonical skills').argument('<view>').argument('<skill>').argument('[alsoConsumers...]').action((view, skill, alsoConsumers, _opts, cmd) => print(services(cmd).adopt.adopt(view, skill, alsoConsumers || [])))
+program.parseAsync(process.argv).catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error))
+  process.exitCode = 1
+})

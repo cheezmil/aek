@@ -1,0 +1,170 @@
+import { createSkillHome, SkillHomeService } from './skill-home-service.js'
+import { RegistryService } from './registry-service.js'
+import { SourceService } from './source-service.js'
+import { archiveLimitsFromEnv } from './archive-safety.js'
+import { downloadRequestFromEnv, unconfiguredHttpDownload, type HttpDownloadPort } from '../ports/http-download.js'
+import { ViewService } from './view-service.js'
+import { DistributeService } from './distribute-service.js'
+import { InstallService } from './install-service.js'
+import { UpdateService } from './update-service.js'
+import { DoctorService } from './doctor-service.js'
+import { ActivityService } from './activity-service.js'
+import { PackageService } from './package-service.js'
+import { ArchiveService } from './archive-service.js'
+import { SkillHomeResolver } from './skill-home-resolver.js'
+import { AdoptService } from './adopt-service.js'
+import { CatalogService } from './catalog-service.js'
+import { MigrationService } from './migration-service.js'
+import { InitService } from './init-service.js'
+import { BackupService } from './backup-service.js'
+import { SkillLockService } from './skill-lock-service.js'
+import { ProvenanceService } from './provenance-service.js'
+import { FrontmatterMirrorService } from './frontmatter-mirror.js'
+import { FrontmatterEvidenceService } from './frontmatter-evidence.js'
+import { GetService } from './get-service.js'
+import { CostLedgerService } from './cost-ledger-service.js'
+import { SyncService } from './sync-service.js'
+import { ManagerSkillService } from './manager-skill-service.js'
+import { SecurityScanService } from './security-scan.js'
+import { SystemSkillService } from './system-skill-service.js'
+import type { CatalogSnapshot } from '../model/catalog.js'
+import type { FileSystemPort } from '../ports/filesystem.js'
+import type { GitPort } from '../ports/git.js'
+import type { ProcessRunnerPort } from '../ports/process-runner.js'
+
+export type CoreServicesOptions = {
+  skillHomeRoot: string
+  projectRoot: string
+  fs: FileSystemPort
+  git: GitPort
+  processRunner: ProcessRunnerPort
+  tempRoot?: string
+  userHome?: string
+  /** Environment override for detection evaluation and path variables; defaults to process.env. */
+  env?: Record<string, string | undefined>
+  /** Fixture catalog snapshot for tests; defaults to bundled + hub override. */
+  catalogSnapshot?: CatalogSnapshot
+  /** Direct-download transport for url/wellknown sources; production wiring always injects the real adapter. */
+  http?: HttpDownloadPort
+  /** CLI version stamped into the frontmatter mirror's identity keys — null
+   *  when the composition root could not read it (version key omitted). */
+  cliVersion: string | null
+}
+
+export function createCoreServices(options: CoreServicesOptions) {
+  const home = createSkillHome(options.skillHomeRoot)
+  const skillHome = new SkillHomeService(options.fs, home)
+  // The mirror hangs off the registry: every registry write reprojects the
+  // persisted source evidence into SKILL.md frontmatter (ADR-0017).
+  const mirror = new FrontmatterMirrorService(options.fs, options.cliVersion)
+  const registry = new RegistryService(options.fs, home, mirror)
+  const source = new SourceService(
+    options.fs,
+    options.git,
+    options.tempRoot,
+    archiveLimitsFromEnv(options.env ?? process.env),
+    options.http ?? unconfiguredHttpDownload(),
+    downloadRequestFromEnv(options.env ?? process.env),
+  )
+  const views = new ViewService(options.fs, home, registry)
+  const catalog = new CatalogService(options.fs, home, {
+    snapshot: options.catalogSnapshot,
+    env: options.env,
+    userHomeDir: options.userHome,
+  })
+  const distribute = new DistributeService(options.fs, home, registry, catalog, options.userHome)
+  const install = new InstallService(options.fs, home, registry, source, views, distribute)
+  const update = new UpdateService(registry, source, install)
+  const cost = new CostLedgerService(options.fs, home, registry, distribute)
+  const security = new SecurityScanService(options.fs, home)
+  const doctor = new DoctorService(options.fs, options.git, home, registry, distribute, catalog, cost, security)
+  const activity = new ActivityService(options.fs, options.git, home)
+  const archive = new ArchiveService(options.fs, home, registry, views)
+  const adopt = new AdoptService()
+  const migration = new MigrationService(options.fs, home, distribute, catalog)
+  const backups = new BackupService(options.fs, home, registry, distribute)
+  const skillLock = new SkillLockService(options.fs, { env: options.env, userHomeDir: options.userHome })
+  // The mirror's reverse half (ADR-0017): a SKILL.md's own metadata is import/
+  // adopt evidence, prioritized over the lockfile.
+  const frontmatterEvidence = new FrontmatterEvidenceService(options.fs)
+  const init = new InitService(options.fs, home, skillHome, registry, distribute, catalog, backups, skillLock, frontmatterEvidence)
+  const provenance = new ProvenanceService(registry, skillLock, frontmatterEvidence)
+  const managerSkill = new ManagerSkillService(options.fs, registry, distribute, views)
+  const systemSkill = new SystemSkillService(options.fs, registry, distribute, views)
+  const get = new GetService(options.fs, home, registry)
+  const sync = new SyncService(options.fs, options.git, home)
+  const packageService = new PackageService(options.fs, options.processRunner, options.projectRoot)
+  return {
+    home,
+    skillHome,
+    registry,
+    source,
+    views,
+    catalog,
+    distribute,
+    install,
+    update,
+    doctor,
+    activity,
+    archive,
+    adopt,
+    migration,
+    init,
+    backups,
+    skillLock,
+    provenance,
+    managerSkill,
+    systemSkill,
+    get,
+    cost,
+    sync,
+    security,
+    package: packageService,
+  }
+}
+
+export { createSkillHome, SkillHomeService } from './skill-home-service.js'
+export { RegistryService } from './registry-service.js'
+export { SourceService } from './source-service.js'
+export { ViewService } from './view-service.js'
+export { DistributeService } from './distribute-service.js'
+export { InstallService } from './install-service.js'
+export { UpdateService } from './update-service.js'
+export { DoctorService } from './doctor-service.js'
+export { ActivityService } from './activity-service.js'
+export { PackageService } from './package-service.js'
+export { ArchiveService } from './archive-service.js'
+export { SkillHomeResolver } from './skill-home-resolver.js'
+export { AdoptService } from './adopt-service.js'
+export { CatalogService } from './catalog-service.js'
+export { MigrationService } from './migration-service.js'
+export { InitService } from './init-service.js'
+export type { InitRunRequest, InitRunResult, InitDiscoveredSkill, InitConflict, InitSkillLocation } from './init-service.js'
+export { SkillLockService, lockEntryToSource } from './skill-lock-service.js'
+export type { SkillLockEntry, SkillLockOptions } from './skill-lock-service.js'
+export { ProvenanceService } from './provenance-service.js'
+export { FrontmatterEvidenceService, frontmatterToSource } from './frontmatter-evidence.js'
+export { ManagerSkillService, MANAGER_SKILL_NAME, compareDateVersions } from './manager-skill-service.js'
+export type { ManagerSkillBundle, ManagerSkillSeedStatus, ManagerSkillSeedResult } from './manager-skill-service.js'
+export { SystemSkillService } from './system-skill-service.js'
+export type { SystemSkillBundle, SystemSkillSeedStatus, SystemSkillSeedResult } from './system-skill-service.js'
+export { BackupService } from './backup-service.js'
+export { GetService } from './get-service.js'
+export { SyncService, CANONICAL_IGNORE_LINES } from './sync-service.js'
+export type { SyncInitResult, SyncStatusResult } from './sync-service.js'
+export type { GetTarget } from './get-service.js'
+export { CostLedgerService, charApproxTokens } from './cost-ledger-service.js'
+export type { CostLedger, CostPathGroup, CostSkillLine, CostLedgerError } from './cost-ledger-service.js'
+export type { BackupInfo } from './backup-service.js'
+export { SecurityScanService, BuiltinSecurityScanner, scanText, summarizeFindings, formatGithubAnnotations, BUILTIN_SCANNER_ID } from './security-scan.js'
+export type { SecurityScannerPort } from '../ports/security-scanner.js'
+export { findDescriptionOverlaps, renderOverlapReport, descriptionTerms } from './description-overlap.js'
+export type { OverlapReport, OverlapPair, OverlapInput } from './description-overlap.js'
+export { lintDescription, lintDescriptions, renderDescriptionLint, DESCRIPTION_MAX_CHARS } from './description-lint.js'
+export type { DescriptionLint, DescriptionLintReport, LintFinding } from './description-lint.js'
+export { fixDescription, fixDescriptions, boundaryProposals, renderProposals, replaceFrontmatterDescription } from './description-fix.js'
+export type { DescriptionProposal } from './description-fix.js'
+export { rankTriggers, takeTop, expectSatisfied, renderTriggerRank } from './trigger-rank.js'
+export type { TriggerSkill, TriggerHit, TriggerRankReport } from './trigger-rank.js'
+export { parseTriggerFixtures, loadTriggerFixturesText, runTriggerFixtures, renderTriggerFixtures } from './trigger-fixtures.js'
+export type { TriggerFixtureCase, TriggerFixtureFile, TriggerFixtureResult, TriggerFixturesReport } from './trigger-fixtures.js'

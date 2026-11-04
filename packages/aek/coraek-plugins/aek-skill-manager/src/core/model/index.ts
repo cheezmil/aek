@@ -1,0 +1,408 @@
+import type { DownloadHeaders } from '../ports/http-download.js'
+
+export type SkillName = string
+
+/**
+ * Legacy consumer words (pre-catalog). Kept as a local constant only where
+ * the one-shot migration bridge and leftover-view cleanup need to recognize
+ * them; they are no longer a model-level closed set.
+ */
+export const LEGACY_CONSUMERS = ['agents', 'claude'] as const
+
+export type SkillSourceType = 'local' | 'git' | 'github' | string
+
+/**
+ * What `normalize` dispatched a source input to — the determinant of the
+ * registry `type` install persists and of the per-kind update-anchor policy
+ * (ADR-0016): git-like kinds (git/marketplace) anchor on `upstream_tree`,
+ * url/wellknown leave it empty, archive carries no anchor, local none either.
+ * Orthogonal to `SourceSpec.isLocal`, which is transport shape (the repoUrl is
+ * the working tree, nothing to clone or unpack), not source kind.
+ */
+export type SourceKind = 'local' | 'git' | 'url' | 'archive' | 'marketplace' | 'wellknown'
+
+export type SkillSource = {
+  type?: SkillSourceType
+  url?: string | null
+  subpath?: string | null
+  ref?: string | null
+  upstream_commit?: string | null
+  /**
+   * Tree SHA of the skill's own sub-directory in the upstream repo — the source
+   * anchor "has update" keys on; root-anchored skills record the commit SHA
+   * instead (ADR-0013). Missing/null = local source or not yet calibrated.
+   */
+  upstream_tree?: string | null
+  /**
+   * sha256 digest the well-known index declared for the artifact at install
+   * (ADR-0016) — the update anchor for wellknown sources, parallel to
+   * `upstream_tree`. Absent/null for every other kind.
+   */
+  upstream_digest?: string | null
+  /**
+   * Content sha of the url source's extracted tree at install (ADR-0016's
+   * content-hash verdict made an explicit anchor) — the third parallel to
+   * `upstream_tree`/`upstream_digest`. The hub tree legitimately differs from
+   * the upstream tree by the frontmatter mirror bytes (ADR-0017), so the
+   * hub-side fingerprint can no longer serve as the comparison side; url
+   * detection compares against this anchor instead, and legacy rows adopt it
+   * on their first no-update re-check. Absent/null for every other kind.
+   */
+  upstream_content_sha?: string | null
+  /**
+   * ETag / Last-Modified the server sent with the last full download of a url
+   * source (spec US-24, ADR-0016) — the cheap pre-check's comparison side.
+   * Deliberately NOT an update anchor: the content hash decides, these only
+   * gate whether the download happens at all. Absent/null for every other kind.
+   */
+  upstream_etag?: string | null
+  upstream_last_modified?: string | null
+  /** Upstream Git tree SHA captured at install/import — the baseline update compares against (ADR-0011). */
+  baseline_hash?: string | null
+  imported_from?: string[]
+}
+
+export type RegistryEntry = {
+  path?: string
+  title?: string
+  category?: string
+  tags?: string[]
+  /** Domain categories — free-form multi-valued axis, orthogonal to the frozen legacy `category` (ADR-0015). */
+  categories?: string[]
+  /** Desired/default agent ids from the catalog (metadata only; see ADR-0004). */
+  consumers?: string[]
+  source?: SkillSource
+  update_policy?: string
+  description?: string
+  archived?: boolean
+  /**
+   * True when init folded this skill in from a runtime dir — how the skill
+   * entered, orthogonal to source/update eligibility (ADR-0006, ADR-0011).
+   */
+  imported?: boolean
+  /** ISO timestamp of the init import (present only on imported entries). */
+  imported_at?: string
+  [key: string]: unknown
+}
+
+/** A named list of domain categories — the re-appliable loading-set档位 (ADR-0019).
+ *  Object-shaped to leave room for future fields; no reserved words. */
+export type PresetEntry = {
+  categories: string[]
+}
+
+export type Registry = {
+  skills: Record<SkillName, RegistryEntry>
+  /** Named presets, hub-level declarative data beside the skills entries (ADR-0019). */
+  presets?: Record<string, PresetEntry>
+}
+
+export type Skill = {
+  name: SkillName
+  path: string
+  title: string
+  category: string
+  tags: string[]
+  /** Domain categories — free-form multi-valued axis (ADR-0015). */
+  categories: string[]
+  consumers: string[]
+  description: string
+  source: SkillSource
+  archived: boolean
+}
+
+export type SkillHome = {
+  root: string
+  skillsDir: string
+  viewsDir: string
+  collectionsDir: string
+  registryFile: string
+  activityFile: string
+}
+
+export type SourceSpec = {
+  input: string
+  repoUrl: string
+  baseSubpath?: string
+  ref?: string
+  isLocal: boolean
+  kind: SourceKind
+  treeRest?: string
+}
+
+export type SourceCheckout = SourceSpec & {
+  repoDir: string
+  commit: string | null
+  /** url sources only: the response headers the full download observed (US-24)
+   *  — the validators install and update re-download runs record for the
+   *  cheap ETag/Last-Modified pre-check. Every other kind omits it. */
+  httpHeaders?: DownloadHeaders
+  /** wellknown sources only (ticket 07): the digest each index entry declared,
+   *  keyed by entry name — install persists it as registry `upstream_digest`,
+   *  the well-known update anchor (ADR-0016). Every other kind omits it. */
+  wellknownDigests?: Record<string, string>
+}
+
+export type DiscoveredSkill = {
+  name: SkillName
+  title: string
+  description: string
+  subpath: string
+  absoluteDir: string
+  /** Marketplace sources only (source-formats ticket 06): the plugin whose
+   *  manifest entry declared this skill. Undefined for every other kind. */
+  plugin?: string
+}
+
+export type InstallPlan = {
+  source: SourceCheckout
+  selected: DiscoveredSkill[]
+  existing: SkillName[]
+  consumers: string[]
+  overwrite: boolean
+}
+
+export type InstallResult = {
+  installed: SkillName[]
+  plan: InstallPlan
+}
+
+export type UpdateCandidate = {
+  skill: SkillName
+  url: string
+  subpath: string
+  ref?: string
+  title: string
+  description: string
+  consumers: string[]
+}
+
+export type SourceUpdateGroup = {
+  key: string
+  url: string
+  ref?: string
+  skills: UpdateCandidate[]
+}
+
+export type UpdatePlan = {
+  /** Grouped only — a flat candidate list duplicated every entry beside its
+   *  group and doubled the output a conversation has to read (ticket
+   *  manager-skill-first/04). Flatten with groups.flatMap(g => g.skills). */
+  groups: SourceUpdateGroup[]
+}
+
+export type DistributeMode = 'symlink' | 'copy'
+export type DistributionTargetKind = 'user' | 'project'
+
+export type DistributionHealth = {
+  managedEntries: number
+  agentCoverage: number
+  outdated: number
+  foreign: number
+  leftoverViews: boolean
+}
+
+/** One managed skill's resident cost on one physical runtime path (ADR-0018). */
+export type CostSkillLine = {
+  skill: string
+  tokens: number
+  nameTokens: number
+  descriptionTokens: number
+  /** True when the SKILL.md carries no description — counted name-only (US15). */
+  incomplete?: boolean
+  /** True when the hub entry is archived but still distributed (US11). */
+  archived?: boolean
+}
+
+/** One physical runtime path's resident account (a shared path appears once). */
+export type CostPathGroup = {
+  runtimeDir: string
+  kind: DistributionTargetKind
+  /** The agent family this path serves — noted, so shared paths never double-count (US4). */
+  agents: string[]
+  tokens: number
+  skills: CostSkillLine[]
+}
+
+/** An entry the ledger counted as 0: unreadable SKILL.md or broken symlink (US14/US26). */
+export type CostLedgerError = {
+  skill: string
+  runtimePath: string
+  reason: string
+}
+
+/** A recall suggestion: verbatim runnable, never executed (US9/US10). `tokens`
+ *  is the cost the layer ranks by — total residency for the archived layer,
+ *  description-only for the top-N layer. */
+export type CostSuggestion = {
+  skill: string
+  runtimeDir: string
+  tokens: number
+  command: string
+}
+
+/** One scattered skill (distributed across several physical paths) with a
+ *  recall command per path — the operator consolidates by running all but
+ *  the one path they keep (US12). */
+export type CostScatteredSuggestion = {
+  skill: string
+  runtimeDirs: string[]
+  commands: string[]
+}
+
+/** The three suggestion layers (ADR-0018): zero-controversy recalls head the
+ *  list, then the top-N expensive descriptions, then scattered consolidation. */
+export type CostSuggestions = {
+  archived: CostSuggestion[]
+  topDescriptions: CostSuggestion[]
+  scattered: CostScatteredSuggestion[]
+}
+
+/** The full three-layer account (US18): per-path → per-skill → suggestions. */
+export type CostLedger = {
+  method: 'char-approx'
+  totalTokens: number
+  /** Unmanaged (foreign) entries in known runtime roots: counted as present, never itemized (US6). */
+  unmanaged: number
+  paths: CostPathGroup[]
+  suggestions: CostSuggestions
+  errors: CostLedgerError[]
+}
+
+/** Hub security rollup for doctor (always present; illness only when high > 0). */
+export type DoctorSecurity = {
+  scanner: string
+  /** Non-archived hub skills scanned this check. */
+  scanned: number
+  /** Count of severity=high findings across those skills. */
+  high: number
+  /** Skills that have at least one high finding (sorted). */
+  skillsWithHigh: string[]
+}
+
+export type DoctorReport = {
+  skillHome: string
+  skillCount: number
+  distribution: DistributionHealth
+  brokenLinks: string[]
+  warnings: string[]
+  gitStatus: string
+  catalog: { source: 'injected' | 'hub' | 'bundled'; commit: string; date: string; ageDays: number }
+  /** The resident-cost account (ADR-0018), always present and sourced from the
+   *  ledger core — doctor reports illnesses, the ledger reports accounts. */
+  residentCost: CostLedger
+  /** Hub security rollup — always present; doctor warns only when high > 0. */
+  security: DoctorSecurity
+  /** Imported entries with no evidence-adopted or supplied source: true snapshots whose upstream is unknown (ADR-0006, ADR-0011). */
+  importedWithoutSource: Array<{ skill: string; importedAt: string | null }>
+}
+
+/** Skills still missing a usable source, split by how they entered the hub (provenance backfill queue). */
+export type SecurityFindingKind = 'shell_exec' | 'network' | 'credential_path' | 'secret_like'
+
+export type SecuritySeverity = 'info' | 'warn' | 'high'
+
+/** One high-signal hit inside a skill tree (report-only; never blocks install). */
+export type SecurityFinding = {
+  kind: SecurityFindingKind
+  severity: SecuritySeverity
+  /** Path relative to the skill root. */
+  path: string
+  /** 1-based line number in the file. */
+  line: number
+  excerpt: string
+  rule: string
+}
+
+export type SecurityScanSummary = {
+  shell_exec: number
+  network: number
+  credential_path: number
+  secret_like: number
+  total: number
+}
+
+/** Report from a SecurityScannerPort implementation (builtin-v1 or a plug-in). */
+export type SecurityScanReport = {
+  skill: string
+  root: string
+  scanner: string
+  findings: SecurityFinding[]
+  summary: SecurityScanSummary
+}
+
+export type ProvenancePending = {
+  importedWithoutSource: Array<{ skill: SkillName; importedAt: string | null }>
+  locallyAuthored: SkillName[]
+}
+
+/** One `provenance adopt` run: which skills got evidence adopted (frontmatter first, ADR-0017), which stayed source-less and why. */
+export type ProvenanceAdoptResult = {
+  dryRun: boolean
+  adopted: Array<{ skill: SkillName; source: SkillSource }>
+  skipped: Array<{ skill: SkillName; reason: 'no_evidence' | 'not_pending' }>
+}
+
+/**
+ * Dual-layer distribution entry (ADR-0004): the physical layer (runtimePath,
+ * mode, fingerprint, managed) is what undistribute/outdated/foreign-refusal
+ * operate on; the logical layer (agents) records which catalog agent ids
+ * motivated the write and drives reference counting on shared paths.
+ */
+export type DistributionIndexError = {
+  code: string
+  message: string
+  /** ISO timestamp of when the refresh attempt failed. */
+  at: string
+}
+
+export type DistributionIndexEntry = {
+  skill: SkillName
+  runtimePath: string
+  mode: DistributeMode
+  fingerprint: string
+  managed: boolean
+  agents: string[]
+  appliedAt: string
+  /** Set when the most recent refresh attempt failed; cleared on next successful refresh. */
+  error?: DistributionIndexError
+}
+
+/** The category set applied to one physical runtime dir (ADR-0015): a concrete tag list, or the `--all` restore marker.
+ *  The categories variant may carry the preset name that produced it (ADR-0019) — a 档位 stamp
+ *  only; the content truth is always the categories list. */
+export type AppliedCategorySet = { categories: string[]; preset?: string } | { all: true }
+
+export type DistributionIndexRecord = {
+  id: string
+  kind: DistributionTargetKind
+  targetRoot: string
+  updatedAt: string
+  entries: DistributionIndexEntry[]
+  /** Applied category sets keyed by physical runtime dir — one per shared path, not per agent (ADR-0015). */
+  categorySets?: Record<string, AppliedCategorySet>
+}
+
+export type ActivityRecord = {
+  id: string
+  timestamp: string
+  action: string
+  summary: string
+  actor?: string
+  details?: Record<string, unknown>
+}
+
+export type PackageInfo = {
+  name?: string
+  version?: string
+  bin?: Record<string, string> | string
+  private?: boolean
+  files?: string[]
+}
+
+export type PackageCheck = {
+  ok: boolean
+  packageJsonPath: string
+  info: PackageInfo
+  warnings: string[]
+}

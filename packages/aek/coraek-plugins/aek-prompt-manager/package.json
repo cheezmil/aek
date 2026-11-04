@@ -1,0 +1,75 @@
+{
+  "name": "@cheezmil/aek-prompt-manager",
+  "version": "0.2.0",
+  "description": "Manage the global prompt files of AI agent tools: injectable, patchable prompt blocks. The aekpm CLI is the primary face; an in-process ctx.promptManager Cordis host service is the auxiliary face (both run the same plain-JS engine).",
+  "keywords": [
+    "agent-prompt",
+    "global-prompt",
+    "patch",
+    "codex",
+    "claude",
+    "opencode",
+    "hermes"
+  ],
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cli": {
+      "default": "./src/cli.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "aekpm": "bin/aekpm.js",
+    "aek-prompt-manager": "bin/aek-prompt-manager.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@cheezmil/coraek": "^1.0.1",
+    "@deepseek-ai/schemastery": "workspace:~"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.23"
+  },
+  "aek": {
+    "type": "dual",
+    "cli": {
+      "name": "aekpm",
+      "bin": "bin/aekpm.js"
+    },
+    "cordis": true,
+    "dsh": false,
+    "systemSkills": ["aek-prompt-manager"],
+    "description": "Standalone prompt-manager CLI (aekpm, primary interface) + optional Cordis plugin registering the ctx.promptManager host service for the dsh web profile (auxiliary face). The CLI and the host service run the SAME plain-JS engine."
+  },
+  "files": [
+    "lib/",
+    "bin/",
+    "src/",
+    "templates/",
+    "skills/",
+    "scripts/install-guard.mjs",
+    "package.json"
+  ],
+  "scripts": {
+    "preinstall": "node scripts/install-guard.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "clean": "rm -rf lib",
+    "prepack": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test"
+  }
+}

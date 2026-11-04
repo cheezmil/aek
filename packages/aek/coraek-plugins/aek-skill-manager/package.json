@@ -1,0 +1,64 @@
+{
+  "name": "@cheezmil/aek-skill-manager",
+  "description": "Local-first agent skill hub: the aeksm CLI (primary interface — every operation is a command) + optional Cordis plugin for the aek web profile (auxiliary face). Engine ported from shenysun/skills-manager (MIT).",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "bin": {
+    "aeksm": "bin/aeksm.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cli": {
+      "types": "./lib/cli.d.ts",
+      "default": "./lib/cli.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/",
+    "bin/",
+    "skills/",
+    "docs/CLI.md",
+    "docs/CLI.zh-CN.md",
+    "scripts/install-guard.mjs",
+    "NOTICE",
+    "licenses/"
+  ],
+  "license": "Apache-2.0",
+  "aek": {
+    "type": "dual",
+    "cli": {
+      "name": "aeksm",
+      "bin": "bin/aeksm.mjs"
+    },
+    "cordis": true,
+    "dsh": false,
+    "description": "Standalone skill-hub CLI (aeksm) + optional Cordis plugin for the aek web profile. CLI is the primary interface; the webui is the auxiliary face."
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0"
+  },
+  "dependencies": {
+    "@cheezmil/coraek": "^1.0.1",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "commander": "^15.0.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.23"
+  },
+  "scripts": {
+    "preinstall": "node scripts/install-guard.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "clean": "rm -rf lib",
+    "prepack": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

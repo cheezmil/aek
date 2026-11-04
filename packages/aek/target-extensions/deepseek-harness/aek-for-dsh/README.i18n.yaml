@@ -1,0 +1,6 @@
+- title:
+    en: AEK Plugin Bundle for dsh
+    zh: AEK dsh 插件聚合包
+  description:
+    en: Aggregates all dsh-compatible AEK plugins into a single installable layer
+    zh: 将全部 dsh 兼容的 AEK 插件打包为一个可安装层

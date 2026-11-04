@@ -1,0 +1,36 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "jsx": "react-jsx",
+    "paths": {}
+  },
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "lib",
+    "node_modules",
+    "bin",
+    "src/commands",
+    "src/cli.ts"
+  ],
+  "references": [
+    {
+      "path": "../../base/coraek"
+    },
+    {
+      "path": "../../../../vendor/cosmokit"
+    },
+    {
+      "path": "../../../../vendor/cordis"
+    },
+    {
+      "path": "../../../../vendor/schemastery"
+    },
+    {
+      "path": "../../../web/web"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "aek-desktop",
+  "version": "0.1.0",
+  "description": "AEK Desktop - Electron shell for AEK web app",
+  "author": "AEK Team",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "lib/main/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "package": "electron-builder build --mac --config electron-builder.config.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "electron": "44.7.0",
+    "electron-builder": "26.17.0",
+    "typescript": "6.0.3"
+  }
+}
