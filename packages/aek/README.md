@@ -1,3 +1,8 @@
+---
+description: "Package group map for AEK (agent-enhance-kit) self-owned @cheezmil/* plugins: coraek foundation, skill management, prompt management, web search, and MCP gateway."
+kind: "package-group"
+---
+
 # AEK 包家族（@cheezmil）
 
 本组是 AEK（agent-enhance-kit）自研包的专属分组，与 `packages/` 下其余组（dsh 上游复制来的

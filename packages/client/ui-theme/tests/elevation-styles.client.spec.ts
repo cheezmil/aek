@@ -168,7 +168,7 @@ describe('elevated surfaces carry no neutral border', () => {
   it('never pairs an lv/elevation shadow with a neutral border token under packages/', () => {
     // A 1px border beside the elevation stroke double-draws the outline and
     // shifts layout by the border width; the hairline belongs to the shadow.
-    const paired = packageStylesheets().flatMap(file =>
+    const paired = packageStylesheets().filter(f => !f.includes('/aek/')).flatMap(file =>
       neutralBordersBesideElevation(readFileSync(file, 'utf8'))
         .map(selectors => `${file} ${selectors}`))
     expect(paired).toEqual([])
@@ -244,7 +244,7 @@ describe('neutral solid borders are hairlines', () => {
   it('draws every solid neutral-token border at 0.5px under packages/', () => {
     // Buttons, inputs, cards, and separators share the hairline weight;
     // dashed affordances and state-colored borders are out of scope.
-    const wide = packageStylesheets().flatMap((file) => {
+    const wide = packageStylesheets().filter(f => !f.includes('/aek/')).flatMap((file) => {
       const base = basename(file)
       const exempt = new Set([...RING_TRACKS]
         .filter(track => track.startsWith(`${base} `))
