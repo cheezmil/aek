@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const root = join(here, '..')
+const root = join(here, '..', '..')
 process.env.DSH_HOME ??= join(process.env.HOME ?? '/tmp', '.aek')
 process.env.DSH_BUILD_FACE ??= 'host' // match dsh's build face default for runtime
 

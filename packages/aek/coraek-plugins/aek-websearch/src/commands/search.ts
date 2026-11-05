@@ -1,6 +1,6 @@
 import { Command, Flags, Args } from '@oclif/core'
 import { KeyStore } from '@cheezmil/prevent-agent-directly-seeing-key'
-import { join } from 'node:path'
+import { DEFAULT_ATTEMPT_TIMEOUT_MS, MAX_ATTEMPT_TIMEOUT_MS } from '../defaults.ts'
 
 // ── Inline KeyPool (avoids shared chunk) ─────────────────────────────────────
 const PERMANENT_STATUS = new Set([401, 403, 402, 432])
@@ -78,7 +78,6 @@ class KeyPool {
 }
 
 function classifyStatus(s: number) { return PERMANENT_STATUS.has(s) }
-const AEK_DIR = join(process.env.HOME ?? '', '.aek', 'websearch')
 
 async function postJSON(url: string, body: any, headers: Record<string, string>, signal: AbortSignal): Promise<any> {
   const res = await fetch(url, { method: 'POST', redirect: 'error', signal,
@@ -130,11 +129,21 @@ async function searchWithPool(pool: KeyPool, searchFn: any, query: string, maxRe
     const key = pool.next()
     if (!key || tried.has(key)) break
     tried.add(key)
+    // Fresh controller per attempt so a prior timeout doesn't poison the next key.
+    const attemptCtrl = new AbortController()
+    // Kill the whole command if the outer signal fires (e.g. user interrupt).
+    const disposeOuter = () => { attemptCtrl.abort(); signal.removeEventListener('abort', disposeOuter) }
+    signal.addEventListener('abort', disposeOuter)
+    // Hard per-attempt budget: DEFAULT_ATTEMPT_TIMEOUT_MS (10 s). Enough for a
+    // slow TLS ramp, but bounded so a hung network never stalls the CLI.
+    const attemptTimer = setTimeout(() => attemptCtrl.abort(), DEFAULT_ATTEMPT_TIMEOUT_MS)
     try {
-      const result = await searchFn(key, query, maxResults, signal)
+      const result = await searchFn(key, query, maxResults, attemptCtrl.signal)
+      clearTimeout(attemptTimer)
       pool.reportSuccess(key)
       return result
     } catch (err: any) {
+      clearTimeout(attemptTimer)
       lastErr = err
       const status = err?.status
       if (status && classifyStatus(status)) { pool.reportFailure(key, true); break }
@@ -166,7 +175,13 @@ export default class SearchCommand extends Command {
   override async run() {
     const { flags, args } = await this.parse(SearchCommand)
     const maxResults = flags.num
-    const signal = new AbortController().signal
+    // Tool-level total budget: 3 × DEFAULT_ATTEMPT_TIMEOUT_MS (30 s) gives room
+    // for ~3 key fallback attempts before the whole command exits, so a network
+    // that never responds can't hang the CLI. We hold the controller so we can
+    // call .abort() on the signal.
+    const totalCtrl = new AbortController()
+    setTimeout(() => totalCtrl.abort(), DEFAULT_ATTEMPT_TIMEOUT_MS * 3)
+    const signal = totalCtrl.signal
     const provider = flags.exa ? 'exa' : 'tavily'
     const pool = new KeyPool(provider)
     if (pool.count() === 0) this.error('Error: no API keys available')
