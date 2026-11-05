@@ -1,0 +1,23 @@
+{
+  // Node-side typecheck for the `aek` CLI. The package's main tsconfig is a
+  // client shape (no ambient node types), so the CLI sources — the runner,
+  // the runtime resolver and the oclif commands — are checked here instead.
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types-cli",
+    "types": ["node"],
+    "paths": {}
+  },
+  "include": [
+    "src/aek-cli.ts",
+    "src/runtime.ts",
+    "src/command-namespace.ts",
+    "src/commands/**/*.ts"
+  ],
+  "exclude": [
+    "lib",
+    "node_modules",
+    "bin"
+  ]
+}

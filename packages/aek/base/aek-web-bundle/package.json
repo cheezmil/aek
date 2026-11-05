@@ -1,0 +1,40 @@
+{
+  "name": "@cheezmil/aek-web-bundle",
+  "description": "AEK web bundle: mounts the AEK identity layer and the aek-home application root into a dsh web profile, replacing the dsh shell with the AEK surface",
+  "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "cordis.patch.yml",
+  "exports": {
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "cordis.patch.yml"
+  ],
+  "license": "Apache-2.0",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "aek": {
+    "type": "dsh-bundle",
+    "description": "AEK web bundle: the AEK identity layer + the aek-home application root for a dsh web profile"
+  },
+  "dependencies": {
+    "@cheezmil/aek-home": "^0.0.3",
+    "@cheezmil/coraek": "^1.0.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5"
+  },
+  "scripts": {
+    "check": "cat cordis.patch.yml"
+  }
+}

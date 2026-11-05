@@ -1079,6 +1079,19 @@ importers:
         specifier: workspace:*
         version: link:../../interaction/user-approval
 
+  packages/aek/base/aek-web-bundle:
+    dependencies:
+      '@cheezmil/aek-home':
+        specifier: workspace:*
+        version: link:../../coraek-plugins/aek-home
+      '@cheezmil/coraek':
+        specifier: workspace:*
+        version: link:../coraek
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: ^4.0.5
+        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
+
   packages/aek/base/coraek:
     dependencies:
       '@oclif/core':

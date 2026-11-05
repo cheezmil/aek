@@ -4,6 +4,9 @@
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "aek": "packages/aek/base/coraek/bin/aek.mjs"
+  },
   "packageManager": "pnpm@12.16.1",
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
@@ -181,6 +184,8 @@
     "gen-module-graph": "tsx scripts/gen-module-graph.ts",
     "verify-module-graph": "tsx scripts/gen-module-graph.ts --check",
     "constraints": "tsx scripts/check-workspace-constraints.ts",
+    "verify:command-namespace": "node scripts/aek/verify-command-namespace.mjs",
+    "verify-command-namespace": "node scripts/aek/verify-command-namespace.mjs",
     "doc-sync": "tsx scripts/run-gates.ts doc-sync",
     "hygiene": "tsx scripts/run-gates.ts hygiene",
     "publish:npm-baseline": "tsx scripts/publish-npm-baseline.ts",
@@ -190,11 +195,11 @@
     "release:pack": "tsx scripts/release/pack.ts",
     "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
     "release:publish": "tsx scripts/release/publish.ts",
-    "dsh": "node --import tsx/esm apps/cli/src/bin.ts",
+    "aek": "node packages/aek/base/coraek/bin/aek.mjs",
     "demo:ptc": "node scripts/demo-ptc.mjs",
-    "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
+    "demo:inspector": "node packages/aek/base/coraek/bin/aek.mjs web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
     "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
-    "start:web": "node --import tsx/esm apps/cli/src/bin.ts web",
+    "start:web": "node packages/aek/base/coraek/bin/aek.mjs web",
     "dev:web": "tsx scripts/dev-web.ts --poll",
     "dev:bundle-registry": "tsx scripts/dev-bundle-registry.ts",
     "postinstall": "node scripts/install-lefthook.mjs",

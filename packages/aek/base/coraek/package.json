@@ -8,6 +8,9 @@
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
+  "bin": {
+    "aek": "bin/aek.mjs"
+  },
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
@@ -16,6 +19,10 @@
     "./client": {
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
+    },
+    "./cli": {
+      "types": "./lib/types/cli.d.ts",
+      "default": "./lib/cli.mjs"
     },
     "./types": {
       "types": "./lib/types/index.d.ts",
@@ -56,8 +63,19 @@
   "files": [
     "lib/index.js",
     "lib/client.js",
-    "lib/types/**/*.d.ts"
+    "lib/cli.mjs",
+    "lib/aek-cli.mjs",
+    "lib/commands/*.mjs",
+    "lib/types/**/*.d.ts",
+    "bin/"
   ],
+  "oclif": {
+    "bin": "aek",
+    "dirname": "aek",
+    "commands": "lib/commands",
+    "plugins": [],
+    "topicSeparator": " "
+  },
   "aek": {
     "type": "dsh-bundle",
     "description": "AEK identity layer: re-exports Context/Volatile/ClientContext types and prints the aek web: readiness line"

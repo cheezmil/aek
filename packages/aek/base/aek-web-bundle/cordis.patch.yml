@@ -1,0 +1,29 @@
+# The AEK web bundle: the AEK-owned surface layer over dsh-web-app.
+#
+# Applied as ONE insert over the profile tree, after dsh-base and dsh-web-app
+# (the profile's `dsh.profile.bundles` list decides the order). Rows here
+# address plugins by id, so a later layer (the profile's own cordis.patch.yml)
+# can still disable or reconfigure them.
+#
+# This bundle exists because the AEK home surface is NOT part of
+# `@cheezmil/aek-for-dsh`: that bundle carries the dsh-facing AEK plugins
+# (coraek, aek-websearch, aek-prompt-manager) for a profile that still shows
+# the dsh shell. The web profile replaces the dsh shell with aek-home, so the
+# surface lives here, in a bundle the web profile mounts on its own.
+
+- insert:
+    # ── AEK identity ─────────────────────────────────────────────────────────
+
+    # coraek: the host-side identity layer — prints the `aek web: <url>`
+    # readiness line (the dsh web-app bundle's own line is suppressed with
+    # `printUrl: false` in the web profile's cordis.patch.yml).
+    - id: aek-base
+      name: '@cheezmil/coraek'
+
+    # ── AEK home surface ────────────────────────────────────────────────────
+
+    # aek-home: the AEK application root. Its client half renders directly
+    # into `#root` via createRoot, so the dsh slot/AppFrame system is not
+    # involved; the dsh `ui-renderer` stays disabled in the web profile.
+    - id: aek-home
+      name: '@cheezmil/aek-home'

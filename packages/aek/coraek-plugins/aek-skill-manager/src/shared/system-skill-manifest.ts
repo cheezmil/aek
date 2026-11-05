@@ -1,7 +1,7 @@
 /**
  * The single source of truth for "which packages are AEK system skills".
  *
- * The manifest lives at the PACKAGE ROOT (`system-skills.yml`), which is the
+ * The manifest lives at the PACKAGE ROOT (`aek-system-skills.yml`), which is the
  * same relative location in a dev checkout and in a published tarball. We walk
  * up from the calling module instead of hardcoding a directory depth or a
  * monorepo layout: tsc preserves `src/` -> `lib/`, so both resolve to the root.
@@ -11,7 +11,7 @@ import path from 'node:path'
 import YAML from 'yaml'
 import { SkillsManagerError } from './errors.js'
 
-export const SYSTEM_SKILL_MANIFEST_FILE = 'system-skills.yml'
+export const SYSTEM_SKILL_MANIFEST_FILE = 'aek-system-skills.yml'
 
 /** Legacy hub shelf holding mirrored copies of bundled system skills. */
 export const SYSTEM_SKILL_SHELF_DIR = 'aek-system-skill'

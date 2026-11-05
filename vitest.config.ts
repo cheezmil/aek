@@ -143,6 +143,7 @@ const testIncludes = [
   // coraek plugins live one level deeper than the standard packages/<group>/<pkg>
   // layout, so their spec files need an explicit include.
   'packages/aek/coraek-plugins/*/tests/**/*.spec.{ts,tsx}',
+  'packages/aek/base/coraek/tests/**/*.spec.{ts,tsx}',
   'apps/*/tests/**/*.spec.{ts,tsx}',
   'scripts/**/*.spec.ts',
 ]

@@ -38,7 +38,7 @@ export class DoctorService {
     }
     const undefinedSystem = this.findUndefinedSystemSkills()
     if (undefinedSystem.length > 0) {
-      warnings.push(`${undefinedSystem.length} undeclared system skill(s) in ${SYSTEM_SKILL_SHELF_DIR}/ (no package in system-skills.yml): ${undefinedSystem.join(', ')}; run \`aeksm bootstrap\` to back them up into .backups/`)
+      warnings.push(`${undefinedSystem.length} undeclared system skill(s) in ${SYSTEM_SKILL_SHELF_DIR}/ (no package in aek-system-skills.yml): ${undefinedSystem.join(', ')}; run \`aeksm bootstrap\` to back them up into .backups/`)
     }
     warnings.push(...this.distribute.archivedDistributedWarnings())
     const brokenLinks = [...this.findBrokenLinks([this.home.collectionsDir]), ...this.distribute.runtimeBrokenLinks()].sort()

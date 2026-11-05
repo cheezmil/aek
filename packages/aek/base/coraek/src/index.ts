@@ -49,5 +49,8 @@ export function apply(ctx: Context): void {
 // CLI re-exports — plugins import from '@cheezmil/coraek/cli'
 export * from './cli.ts'
 
+// Command namespace guard — every AEK plugin CLI validates its operator face
+export * from './command-namespace.ts'
+
 // Coraek framework layer identity
 export * from './coraek.ts'

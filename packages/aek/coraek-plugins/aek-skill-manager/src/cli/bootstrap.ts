@@ -92,7 +92,7 @@ function resolveInstalledPackageRoot(req: NodeRequire, name: string): string | n
 
 /**
  * Bundled system skills come ONLY from the package-root manifest
- * `system-skills.yml`. An undeclared package is not an AEK system package and
+ * `aek-system-skills.yml`. An undeclared package is not an AEK system package and
  * is never discovered/seeded — no more scanning every `aek-*` folder.
  *
  * Works in both execution contexts:

@@ -7,6 +7,14 @@
   "include": [
     "src"
   ],
+  "exclude": [
+    "lib",
+    "node_modules",
+    "bin",
+    "src/aek-cli.ts",
+    "src/runtime.ts",
+    "src/commands"
+  ],
   "references": [
     {
       "path": "../../../../vendor/cordis"

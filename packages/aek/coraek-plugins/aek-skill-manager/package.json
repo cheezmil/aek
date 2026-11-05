@@ -23,7 +23,7 @@
     "lib/",
     "bin/",
     "skills/",
-    "system-skills.yml",
+    "aek-system-skills.yml",
     "docs/CLI.md",
     "docs/CLI.zh-CN.md",
     "scripts/install-guard.mjs",

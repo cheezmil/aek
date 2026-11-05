@@ -1,7 +1,7 @@
 /**
  * Keep the legacy `aek-system-skill/` shelf consistent with the manifest.
  *
- * A shelf entry whose name is not declared in `system-skills.yml` has no
+ * A shelf entry whose name is not declared in `aek-system-skills.yml` has no
  * corresponding AEK package. It must not stay in the hub; we MOVE it into
  * `.backups/undefined-system-skills-<timestamp>/` (never delete), so the
  * operator can restore it if a package is added to the manifest later.

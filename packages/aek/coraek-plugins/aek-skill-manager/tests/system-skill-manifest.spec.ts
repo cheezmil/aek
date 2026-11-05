@@ -45,7 +45,7 @@ function writeManifest(pkgRoot: string, contents = MANIFEST): void {
   writeFileSync(path.join(pkgRoot, SYSTEM_SKILL_MANIFEST_FILE), contents, 'utf8')
 }
 
-describe('system-skills.yml (the only allowlist)', () => {
+describe('aek-system-skills.yml (the only allowlist)', () => {
   it('reads the shipped manifest from the real package root', () => {
     const manifest = loadSystemSkillManifest(here)
     expect(manifest.version).toBe(1)
