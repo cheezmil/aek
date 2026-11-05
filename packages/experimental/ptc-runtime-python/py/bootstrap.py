@@ -24,6 +24,7 @@ import resource
 import signal
 import sys
 import threading
+import time
 import traceback
 from decimal import Context, Decimal
 
@@ -2590,7 +2591,52 @@ def _done_with_value(
     return '{"type": "done", "value": ' + _encode_json_plain(value) + "}"
 
 
+def _start_orphan_watchdog(
+    # Bound at def time: this bootstrap IS ``__main__``, so model code running
+    # as a top-level statement could rebind ``__main__.os`` / ``__main__.time``
+    # / ``__main__.threading`` and silently disable the watchdog. The rest of
+    # this file uses the same def-time capture discipline for the same reason.
+    _getppid: Any = os.getppid,
+    _exit: Any = os._exit,
+    _sleep: Any = time.sleep,
+    _thread: Any = threading.Thread,
+) -> None:
+    """Terminate this worker as soon as the Node host that spawned it is gone.
+
+    macOS has no ``PR_SET_PDEATHSIG``. When the host is killed (SIGKILL, a
+    dropped terminal session, an aborted test runner), none of the host-side
+    cleanup in ``src/index.ts`` runs: ``dispose()``, ``maxWallMs`` and the
+    process-group SIGTERM/SIGKILL escalation all live in the dead parent. The
+    worker is reparented to launchd and can pin a core indefinitely, because a
+    dead fd 3 need not even deliver EOF when a grandchild inherited its write
+    end. Upstream tracks this as deepseek-ai/deepseek-harness discussion #6661
+    (open since 2026-09); the watchdog below is the mitigation its reporters
+    and commenters converged on.
+
+    Compare against the ppid captured at boot instead of testing ``== 1``:
+    a container or a ``PR_SET_CHILD_SUBREAPER`` can legitimately have PID 1 as
+    the parent, but a CHANGE from the boot ppid always means the host is gone.
+    A daemon thread (not an asyncio task) is used so the check still runs when
+    model code blocks the event loop with CPU-bound work. It is started BEFORE
+    ``_run`` applies RLIMIT_AS, so its stack is mapped while the limit is still
+    unbounded. The thread only calls sleep/getppid, so it allocates no arena.
+    """
+
+    boot_ppid = _getppid()
+
+    def _watch() -> None:
+        while True:
+            _sleep(1)
+            if _getppid() != boot_ppid:
+                # os._exit, not sys.exit: no atexit handlers, no stdio flush,
+                # and no chance for model code to intercept SystemExit.
+                _exit(0)
+
+    _thread(target=_watch, daemon=True).start()
+
+
 def main() -> None:
+    _start_orphan_watchdog()
     channel = ProtocolChannel(PROTOCOL_FD)
     asyncio.run(_run(channel))
 
