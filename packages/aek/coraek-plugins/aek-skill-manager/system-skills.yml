@@ -1,0 +1,32 @@
+# AEK 系统 skill 白名单 —— 唯一事实来源
+#
+# 只有这里声明的包才被视作「aek 系统的包」：
+#   1. bootstrap / self-check 只会 seed 这里列出的 skill，不再扫描工作区或
+#      node_modules 里所有 aek-* 包；
+#   2. hub 的 aek-system-skill/ 下出现但不在白名单里的目录，会被移到
+#      .backups/ 保留（不删除），并由 `aeksm doctor` 报告。
+#
+# 本文件位于包根，dev（源码 checkout）与 npm（发布 tarball）两种形态都在
+# 同一相对位置；package.json 的 files 字段显式包含它。
+#
+# 新增一个系统 skill = 在这里加一个包，并在该包内提供 skills/<skill>/SKILL.md。
+# 不要在别处另建清单，也不要靠目录扫描猜。
+
+version: 1
+
+packages:
+  - name: aek-websearch
+    skills:
+      - aek-websearch
+
+  - name: aek-prompt-manager
+    skills:
+      - aek-prompt-manager
+
+  # aek-skill-manager 自带的 manager skill 由 ManagerSkillService 单独 seed，
+  # 不进 SystemSkillService 的 bundle 列表（否则同一个 skill 会被 seed 两次）。
+  # 但它仍是合法的白名单成员：出现在 hub 里不算「未定义的包」。
+  - name: aek-skill-manager
+    skills:
+      - aek-skill-manager
+    seed: false

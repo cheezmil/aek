@@ -16,7 +16,8 @@ export type SystemSkillBundle = {
   version: string
   /** The skill name (directory name inside skills/). */
   skillName: string
-  /** Canonical upstream repo URL — the seeded entry's update source. */
+  /** Legacy field kept for bundle-shape parity; AEK system skills are seeded
+   *  as `local` sources (see layDown), so no upstream URL is ever written. */
   repoUrl: string
 }
 
@@ -139,10 +140,15 @@ export class SystemSkillService {
     if (this.fs.kind(hubDir) !== 'missing') this.fs.removeTree(hubDir)
     this.fs.makeDirectory(hubDir)
     this.fs.copyDirectoryContents(bundledDir, hubDir)
+    // AEK-owned system skills come from the package-root manifest, not from an
+    // upstream git install. A `git` source here would make the frontmatter
+    // mirror stamp external `github-*` provenance back into SKILL.md and mark
+    // the skill as externally updatable. `ref` stays as an internal refresh
+    // anchor so an older bundle can never overwrite a newer hub copy.
     const source = {
-      type: 'git' as const,
-      url: bundle.repoUrl,
-      subpath: `skills/${bundle.skillName}`,
+      type: 'local' as const,
+      url: null,
+      subpath: null,
       ref: `v${bundle.version}`,
       upstream_commit: null,
       upstream_tree: null,

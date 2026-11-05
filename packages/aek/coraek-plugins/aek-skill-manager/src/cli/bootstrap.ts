@@ -7,13 +7,16 @@ import { normalizeGitSourceUrl } from '../core/services/source-service.js'
 import { SkillsManagerError } from '../shared/errors.js'
 import { multiSelect, type SelectOption } from './bootstrap-prompt.js'
 import { defaultDistributeAgents } from './shared-pool.js'
-import { resolve, dirname, join } from 'node:path'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
+import { loadSystemSkillManifest, seedablePackages } from '../shared/system-skill-manifest.js'
+import { quarantineUndefinedSystemSkills } from '../core/services/system-skill-guard.js'
+import { NodeFileSystem } from '../infra/fs-skill-home.js'
 
 const pkg = createRequire(import.meta.url)('../../package.json') as {
   version: string
   repository?: { url?: string }
-  aek?: { systemSkills?: string[] }
 }
 const projectRoot = projectRootFromImportMeta(import.meta.url)
 const ownRepoUrl = normalizeGitSourceUrl((pkg.repository?.url ?? 'shenysun/skills-manager').replace(/^git\+/, ''))
@@ -27,77 +30,116 @@ export function managerSkillBundle(): ManagerSkillBundle {
 }
 
 /**
- * Discover bundled system skills from any installed @cheezmil/* package.
- *
- * Each AEK package declares its system skills via `package.json.aek.systemSkills`.
- * This function finds all installed @cheezmil/* packages (workspace or npm),
- * reads their declarations, and returns a flat list of SystemSkillBundle entries.
- *
- * No hardcoded paths or package names — fully extensible.
+ * Locate the pnpm workspace root without assuming any monorepo layout.
+ * Dev checkouts may relocate packages; the manifest, not a hardcoded path,
+ * decides what counts as an AEK system package.
  */
-export function systemSkillBundles(): SystemSkillBundle[] {
-  const results: SystemSkillBundle[] = []
-
-  // Resolve the skill-manager package root (works in both dev and installed modes)
-  const scriptPath = resolve(import.meta.url.replace('file://', ''))
-  const pkgRoot = dirname(dirname(scriptPath))
-
-  // Discover candidate package.json paths
-  const discovered = new Set<string>()
-
-  // Strategy 1: workspace root (dev mode)
-  let dir = pkgRoot
-  for (let i = 0; i < 10; i++) {
-    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) {
-      // Scan both packages/aek/* and packages/aek/coraek-plugins/*
-      for (const sub of ['packages', 'packages/aek', 'packages/aek/coraek-plugins']) {
-        const dirToScan = join(dir, sub)
-        if (existsSync(dirToScan)) {
-          for (const entry of readdirSync(dirToScan)) {
-            const candidate = join(dirToScan, entry, 'package.json')
-            if (entry.startsWith('aek-')) discovered.add(candidate)
-          }
-        }
-      }
-      break
-    }
-    const parent = dirname(dir)
-    if (parent === dir) break
+function findWorkspaceRoot(start: string): string | null {
+  let dir = start
+  for (;;) {
+    if (existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return dir
+    const parent = path.dirname(dir)
+    if (parent === dir) return null
     dir = parent
   }
+}
 
-  // Strategy 2: node_modules/@cheezmil/* (installed mode)
-  const nmDir = join(pkgRoot, 'node_modules', '@cheezmil')
-  if (existsSync(nmDir)) {
-    for (const entry of readdirSync(nmDir)) {
-      if (entry.startsWith('aek-')) discovered.add(join(nmDir, entry, 'package.json'))
+const SCAN_SKIP_DIRS = new Set(['node_modules', '.git', 'lib', 'dist', 'build', 'coverage', '.cache'])
+
+/** Match declared packages by their package.json `name`, independent of depth. */
+function findDeclaredPackageRoots(workspaceRoot: string, wanted: Set<string>, out: Map<string, string>): void {
+  const stack: { dir: string; depth: number }[] = [{ dir: workspaceRoot, depth: 0 }]
+  while (stack.length > 0 && out.size < wanted.size) {
+    const { dir, depth } = stack.pop()!
+    if (depth > 6) continue
+    let entries
+    try { entries = readdirSync(dir, { withFileTypes: true }) } catch { continue }
+    if (entries.some(entry => entry.isFile() && entry.name === 'package.json')) {
+      try {
+        const raw = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as { name?: string }
+        const shortName = raw.name?.replace(/^@cheezmil\//, '')
+        if (shortName && wanted.has(shortName)) out.set(shortName, dir)
+      } catch { /* unreadable package.json — keep scanning */ }
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && !SCAN_SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
+        stack.push({ dir: path.join(dir, entry.name), depth: depth + 1 })
+      }
     }
   }
+}
 
-  // Always include skill-manager itself
-  discovered.add(join(pkgRoot, 'package.json'))
-
-  for (const pkgPath of discovered) {
+/**
+ * Installed mode: resolve siblings through Node resolution. A pnpm global
+ * install puts all @cheezmil/* packages in one node_modules, so this works
+ * whether aeksm was installed alone or from a consumer project.
+ */
+function resolveInstalledPackageRoot(req: NodeRequire, name: string): string | null {
+  const specifier = `@cheezmil/${name}`
+  for (const request of [`${specifier}/package.json`, specifier]) {
     try {
-      const raw = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
-        version?: string
-        repository?: { url?: string }
-        aek?: { systemSkills?: string[] }
+      let dir = path.dirname(req.resolve(request))
+      for (;;) {
+        if (existsSync(path.join(dir, 'package.json'))) return dir
+        const parent = path.dirname(dir)
+        if (parent === dir) break
+        dir = parent
       }
-      if (!raw.aek?.systemSkills?.length) continue
-      const pkgDir = dirname(pkgPath)
-      const repoUrl = normalizeGitSourceUrl((raw.repository?.url ?? ownRepoUrl).replace(/^git\+/, ''))
-      for (const skillName of raw.aek.systemSkills) {
-        const skillDir = join(pkgDir, 'skills', skillName)
-        if (existsSync(join(skillDir, 'SKILL.md'))) {
-          results.push({ root: pkgDir, version: raw.version ?? '0.0.0', skillName, repoUrl })
-        }
-      }
-    } catch {
-      // Skip unreadable package.json files
+    } catch { /* exports map may forbid ./package.json — try the entry point */ }
+  }
+  return null
+}
+
+/**
+ * Bundled system skills come ONLY from the package-root manifest
+ * `system-skills.yml`. An undeclared package is not an AEK system package and
+ * is never discovered/seeded — no more scanning every `aek-*` folder.
+ *
+ * Works in both execution contexts:
+ *   dev       — walk up to the workspace root and match package.json names;
+ *   installed — Node resolution from this module + legacy sibling node_modules.
+ * The manifest itself is found by walking up from THIS module's directory, so
+ * `src/cli/` and `lib/cli/` both land on the same package-root file.
+ */
+export function systemSkillBundles(): SystemSkillBundle[] {
+  const manifest = loadSystemSkillManifest(path.dirname(fileURLToPath(import.meta.url)))
+  const wanted = seedablePackages(manifest)
+  if (wanted.length === 0) return []
+
+  const wantedNames = new Set(wanted.map(entry => entry.name))
+  const roots = new Map<string, string>()
+
+  const workspaceRoot = findWorkspaceRoot(projectRoot)
+  if (workspaceRoot) findDeclaredPackageRoots(workspaceRoot, wantedNames, roots)
+
+  const requireFromHere = createRequire(import.meta.url)
+  for (const name of wantedNames) {
+    if (roots.has(name)) continue
+    const resolved = resolveInstalledPackageRoot(requireFromHere, name)
+    if (resolved) {
+      roots.set(name, resolved)
+      continue
     }
+    const legacy = path.join(projectRoot, 'node_modules', '@cheezmil', name)
+    if (existsSync(path.join(legacy, 'package.json'))) roots.set(name, legacy)
   }
 
+  const results: SystemSkillBundle[] = []
+  for (const entry of wanted) {
+    const pkgDir = roots.get(entry.name)
+    if (!pkgDir) continue
+    let version = '0.0.0'
+    try {
+      const raw = JSON.parse(readFileSync(path.join(pkgDir, 'package.json'), 'utf8')) as { version?: string }
+      version = raw.version ?? version
+    } catch { /* version is only used for the refresh anchor */ }
+    for (const skillName of entry.skills) {
+      if (!existsSync(path.join(pkgDir, 'skills', skillName, 'SKILL.md'))) continue
+      // AEK-owned skills are seeded as `local` sources (see SystemSkillService);
+      // no external upstream URL is ever written into the registry/frontmatter.
+      results.push({ root: pkgDir, version, skillName, repoUrl: '' })
+    }
+  }
   return results
 }
 
@@ -118,6 +160,14 @@ export async function runBootstrap(opts: BootstrapOptions, cmd: Command): Promis
   const s = createRuntimeServices({ home: globalOpts.home, ensureDefaultHub: true }, projectRoot)
   const bundle = managerSkillBundle()
   const systemBundles = systemSkillBundles()
+
+  // Undeclared entries in the legacy aek-system-skill/ shelf have no package
+  // behind them. Move them into .backups/ (never delete) before seeding.
+  const manifest = loadSystemSkillManifest(path.dirname(fileURLToPath(import.meta.url)))
+  const quarantined = quarantineUndefinedSystemSkills(new NodeFileSystem(), s.home.root, manifest)
+  if (quarantined.moved.length > 0) {
+    console.log(`• undeclared system skills backed up: ${quarantined.moved.join(', ')} -> ${quarantined.backupDir}`)
+  }
 
   const seeded = s.managerSkill.seed(bundle)
   const seedNotes: Record<string, string> = {

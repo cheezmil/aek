@@ -8,6 +8,9 @@ import { CatalogService } from './catalog-service.js'
 import { CostLedgerService } from './cost-ledger-service.js'
 import { SecurityScanService } from './security-scan.js'
 import { inspectSkillTree } from '../../shared/skill-tree.js'
+import { fileURLToPath } from 'node:url'
+import { loadSystemSkillManifest, SYSTEM_SKILL_SHELF_DIR } from '../../shared/system-skill-manifest.js'
+import { listUndefinedSystemSkills } from './system-skill-guard.js'
 
 const CATALOG_STALE_DAYS = 90
 
@@ -32,6 +35,10 @@ export class DoctorService {
     const doubleNested = this.findDoubleNestedSkills()
     if (doubleNested.length > 0) {
       warnings.push(`${doubleNested.length} skill(s) have a redundant nested copy (<skill>/<skill>/SKILL.md): ${doubleNested.join(', ')}; remove the inner directory (it is never discovered and breaks the refresh fingerprint)`)
+    }
+    const undefinedSystem = this.findUndefinedSystemSkills()
+    if (undefinedSystem.length > 0) {
+      warnings.push(`${undefinedSystem.length} undeclared system skill(s) in ${SYSTEM_SKILL_SHELF_DIR}/ (no package in system-skills.yml): ${undefinedSystem.join(', ')}; run \`aeksm bootstrap\` to back them up into .backups/`)
     }
     warnings.push(...this.distribute.archivedDistributedWarnings())
     const brokenLinks = [...this.findBrokenLinks([this.home.collectionsDir]), ...this.distribute.runtimeBrokenLinks()].sort()
@@ -87,6 +94,17 @@ export class DoctorService {
       .filter(skill => inspectSkillTree(this.fs, this.registry.skillDir(skill.name), skill.name).kind !== 'clean')
       .map(skill => skill.name)
       .sort()
+  }
+
+  /** Read-only check; the manifest is a shipped asset, so a missing one is
+   *  reported by bootstrap and must not make `doctor` crash. */
+  private findUndefinedSystemSkills(): string[] {
+    try {
+      const manifest = loadSystemSkillManifest(path.dirname(fileURLToPath(import.meta.url)))
+      return listUndefinedSystemSkills(this.fs, this.home.root, manifest)
+    } catch {
+      return []
+    }
   }
 
   private findBrokenLinks(roots: string[]) {
