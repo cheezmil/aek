@@ -315,6 +315,7 @@ describe('CI workflow', () => {
       || !isRecord(workflow.jobs['all-checks-passed'])
       || !isRecord(masterWorkflow.jobs)
       || !isRecord(masterWorkflow.jobs['serial-windows'])) {
+      throw new TypeError('CI workflow must define windows-build, windows-coverage, windows-native-tests, node-24, node-24-coverage, node-24-consumers, node-compat, and all-checks-passed; ci-master must define serial-windows')
     }
 
     const windowsBuild = workflow.jobs['windows-build']
@@ -323,6 +324,7 @@ describe('CI workflow', () => {
     const serialWindows = masterWorkflow.jobs['serial-windows']
     const node24 = workflow.jobs['node-24']
     const node24Coverage = workflow.jobs['node-24-coverage']
+    const node24Bench = workflow.jobs['node-24-bench']
     const node24Consumers = workflow.jobs['node-24-consumers']
     const nodeCompat = workflow.jobs['node-compat']
     const aggregate = workflow.jobs['all-checks-passed']
@@ -471,13 +473,19 @@ describe('CI workflow', () => {
     // half-close tests are stabilized; observational stays out too.
     expect(aggregate.needs).not.toContain('windows')
     expect(aggregate.needs).toContain('windows-build')
-    })
-    expect(JSON.stringify(node24Bench.steps)).not.toContain('DSH_CI_FAILOVER_LINUX')
-      env: { DSH_GATE_VERBOSE: '1' },
-    })
     expect(aggregate.needs).not.toContain('windows-coverage')
     expect(aggregate.needs).toContain('windows-native-tests')
     expect(aggregate.needs).not.toContain('windows-observational')
+
+    // The benchmark lane is a required verdict input; after the 11-04 bench
+    // lane retirement its steps no longer gate on DSH_CI_FAILOVER_LINUX.
+    if (!isRecord(node24Bench) || !Array.isArray(node24Bench.steps)) {
+      throw new TypeError('node-24-bench job must define steps')
+    }
+    expect(JSON.stringify(node24Bench.steps)).not.toContain('DSH_CI_FAILOVER_LINUX')
+    expect(node24Bench.steps).toContainEqual({
+      env: { DSH_GATE_VERBOSE: '1' },
+    })
     expect(aggregate.needs).not.toContain('serial-windows')
 
     // Linux failover is a separate switch: the three enterprise Linux workers
@@ -564,6 +572,7 @@ describe('CI workflow', () => {
     })
   })
 
+  it('gates standalone keyless blacksmith jobs and benchmark tiers on the failover variables', () => {
     const expectedFilenames = workflowJob(loadWorkflow('.github/workflows/expected-filenames.yml'), 'expected-filenames')
     const sandbox = workflowJob(loadWorkflow('.github/workflows/sandbox.yml'), 'sandbox-e2e')
     expect(expectedFilenames['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
@@ -573,8 +582,12 @@ describe('CI workflow', () => {
     expect(sandbox['runs-on']).toContain("matrix.runner == 'bwrap'")
     expect(sandbox['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
     expect(sandbox['runs-on']).toContain('blacksmith-4vcpu-ubuntu-2404')
+    for (const name of ['larger-runner-benchmark', 'consolidated-runner-benchmark'] as const) {
+      const benchmark = workflowJob(loadWorkflow('.github/workflows/ci-master.yml'), name)
+      if (!isRecord(benchmark.strategy) || !isRecord(benchmark.strategy.matrix) || !Array.isArray(benchmark.strategy.matrix.include)) {
         throw new TypeError(`${name} must define a matrix include list`)
       }
+      for (const row of benchmark.strategy.matrix.include as Array<Record<string, string>>) {
         expect(typeof row.blacksmith, `${name} ${row.cores}-core row must declare a blacksmith label`).toBe('string')
         if (row.cores === '64' || row.cores === '96') {
           expect(row.blacksmith, `${name} ${row.cores}-core row has no Blacksmith tier`).toBe('')
@@ -585,12 +598,30 @@ describe('CI workflow', () => {
     }
   })
 
+  it('runs required benchmarks on a four-vCPU Blacksmith runner and falls back to hosted Linux', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml')
+    const benchmark = workflowJob(workflow, 'node-24-bench')
     const aggregate = workflowJob(workflow, 'all-checks-passed')
 
+    // The shared self-hosted pool is not an idle runner, so only the
+    // Blacksmith leg moves the benchmarks off hosted Linux.
+    expect(evaluateRunsOn(benchmark['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: 'blacksmith' } }))
+      .toBe('blacksmith-4vcpu-ubuntu-2404')
+    for (const mode of ['', 'selfhosted', 'unexpected']) {
+      expect(evaluateRunsOn(benchmark['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: mode } })).toBe('ubuntu-24.04')
+    }
+    expect(JSON.stringify(benchmark.steps)).not.toContain('DSH_CI_FAILOVER_LINUX')
+    expect(benchmark.if).toBe("github.event_name == 'pull_request'")
+    expect(benchmark.needs).toBeUndefined()
+    expect(benchmark['continue-on-error']).toBeUndefined()
+    expect(benchmark.env).toBeUndefined()
+    expect(aggregate.needs).toContain('node-24-bench')
   })
 
+  it('always restores the hosted benchmark pnpm cache', () => {
+    const benchmark = workflowJob(loadWorkflow('.github/workflows/ci.yml'), 'node-24-bench')
     if (!Array.isArray(benchmark.steps)) throw new TypeError('benchmark job must define steps')
+    const caches = benchmark.steps.filter(step => isRecord(step) && step.uses === 'actions/cache/restore@v6.1.0')
 
     expect(caches).toHaveLength(1)
     expect(caches[0]).not.toHaveProperty('if')
@@ -603,11 +634,16 @@ describe('CI workflow', () => {
   })
 
 
+  it('pins the benchmark lane step environment', () => {
+    const benchmark = workflowJob(loadWorkflow('.github/workflows/ci.yml'), 'node-24-bench')
+
     expect(benchmark.steps).toContainEqual({
       env: { DSH_GATE_VERBOSE: '1' },
     })
   })
 
+  it('publishes the scaled benchmark report even when a budget fails', () => {
+    const benchmark = workflowJob(loadWorkflow('.github/workflows/ci.yml'), 'node-24-bench')
     if (!Array.isArray(benchmark.steps)) throw new TypeError('benchmark job must define steps')
 
     expect(benchmark.steps).toContainEqual({
@@ -620,6 +656,8 @@ describe('CI workflow', () => {
       },
     })
 
+    const uploadIndex = benchmark.steps.findIndex(step => isRecord(step) && step.uses === 'actions/upload-artifact@v7.0.1')
+    const benchmarkIndex = benchmark.steps.findIndex(step => isRecord(step) && isRecord(step.env) && step.env.DSH_GATE_VERBOSE === '1')
     expect(uploadIndex).toBeGreaterThan(benchmarkIndex)
   })
 
@@ -683,6 +721,7 @@ describe('CI workflow', () => {
     expect(pushReachable).toEqual(['python-runtime', 'serial-linux-selfhosted', 'serial-windows', 'windows'])
 
     // Manual benchmarks retain their bounded fan-out.
+    for (const name of ['larger-runner-benchmark', 'consolidated-runner-benchmark'] as const) {
       const job = workflow.jobs[name]
       if (!isRecord(job) || !isRecord(job.strategy)) {
         throw new TypeError(`${name} must define a matrix strategy`)

@@ -175,7 +175,6 @@ describe('@Remote resources', () => {
       fewer(request: { readonly roomId: WireSessionId }, signal: AbortSignal): void { void request; void signal }
 
       // @ts-expect-error -- `nope` is not a field of the decorated method's request.
-      // oxlint-disable-next-line typescript/no-unsafe-return -- the compile error above is the assertion.
       @Remote({ resources: { 'test-room': request => request.nope } })
       missing(request: { readonly roomId: WireSessionId }): void { void request }
 
@@ -225,7 +224,6 @@ describe('@RemoteScope resources', () => {
     relocate(request: { readonly targetRoomId: WireSessionId }): void { void request }
 
     // @ts-expect-error -- `nope` is not a field of the decorated method's request.
-    // oxlint-disable-next-line typescript/no-unsafe-return -- the compile error above is the assertion.
     @RemoteScope('protocolAccessRoom', { resources: { 'test-room': request => request.nope } })
     missing(request: { readonly roomId: WireSessionId }): void { void request }
 

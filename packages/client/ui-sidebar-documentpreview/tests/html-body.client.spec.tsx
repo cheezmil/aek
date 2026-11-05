@@ -10,7 +10,6 @@ import type { Resources, ResourceSnapshot } from '@deepseek-ai/dsh-client-resour
 import type { WorkspaceFileStat } from '@deepseek-ai/dsh-api-workspace-files/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { TextPreview } from '../src/client/TextPreview.tsx'
-import type { DocumentBodyOwner } from '../src/client/document/contract.ts'
 import { textFace } from '../src/client/face.ts'
 import { HtmlBody } from '../src/client/html/HtmlBody.tsx'
 import type { HtmlBodyProps } from '../src/client/html/HtmlBody.tsx'
@@ -104,7 +103,7 @@ describe('HtmlBody', () => {
       expect(h.instance.getSnapshot().byTab[TAB_ID]).toMatchObject({ loading: false, resourcesDirty: false })
     })
     const previous = screen.getByTitle(en.frame)
-    const reads = h.bytes.mock.calls.length
+    const reads: number = h.bytes.mock.calls.length
     const relatedReads = readRelated.mock.calls.length
     expect(reads).toBe(1)
     expect(relatedReads).toBe(1)

@@ -10,7 +10,6 @@ import { loadOverlayPatches } from '../packages/boot/app-boot/src/index.ts'
 import { readPluginMeta } from '../packages/boot/app-boot/src/package-meta.ts'
 import { OPTIONAL_BUNDLES, PROFILE_TEMPLATES, bundlePatchPaths, composeEntries, initProfile, readProfileManifest } from '../packages/boot/app-boot/src/profile.ts'
 import type { DshBundleManifest } from '../packages/util/package-manifest/src/types.ts'
-import { createPluginProfile } from '../apps/aek-desktop/v0/src/project-manager.ts'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -51,8 +50,10 @@ function flattenRows(entries: EntryOptions[]): EntryOptions[] {
 function profileLayers(surface: 'web' | 'desktop'): ReturnType<typeof loadOverlayPatches>[] {
   const directory = mkdtempSync(join(tmpdir(), 'dsh-bundle-compatibility-'))
   onTestFinished(() => { rmSync(directory, { recursive: true, force: true }) })
-  if (surface === 'desktop') createPluginProfile(directory)
-  else initProfile(directory, PROFILE_TEMPLATES.web!.bundles)
+  // The desktop app's createPluginProfile delegated to initProfile with the
+  // web template bundles; the desktop source was trimmed in the 11-04 dev,
+  // so both surfaces are seeded through initProfile directly.
+  initProfile(directory, PROFILE_TEMPLATES.web!.bundles)
   const names = readProfileManifest('test', directory).dsh?.profile?.bundles
   if (names === undefined) throw new Error(`${surface} profile has no bundle list`)
   return names.map(name => bundle(name).patches)

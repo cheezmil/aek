@@ -861,15 +861,6 @@ function docSyncLeafGates(options: {
   ]
 }
 
-/**
- * The quick comprehensive documentation-standard aggregate for `test:docs`.
- * It covers the prose, pairing, README, budget, and Agent Note gates
- * without builds, generator regeneration, or the VitePress site build.
- */
-function docQuickLeafGates(): Gate[] {
-  return docSyncLeafGates({ includeDocTypecheck: false }).filter(gate => gate.quick === true)
-}
-
 function builtBinSmokeGate(needs: string[] = ['build']): Gate {
   return pnpmExec('built-bin-smoke', [
     'vitest',

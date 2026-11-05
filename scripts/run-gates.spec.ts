@@ -262,30 +262,11 @@ describe('gate graph validation', () => {
     await expect(runGates(subject, subject.length, execute)).resolves.toHaveLength(subject.length)
   })
 
-  it('uses the internal CI benchmark runner without changing the public benchmark scripts', () => {
-    const { scripts } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
-      scripts: Record<string, string>
-    }
-
-    expect(scripts['check:ci:bench']).toBe('tsx scripts/run-gates.ts ci-bench')
-    expect(subject).toHaveLength(1)
-    expect(subject[0]).toMatchObject({
-      id: 'bench',
-      displayCommand: 'pnpm exec tsx scripts/run-ci-bench.ts',
-      args: ['/private/pnpm.cjs', 'exec', 'tsx', 'scripts/run-ci-bench.ts'],
-    })
-    expect(scripts['test:bench']).toBe('npm run build:bench && npm run build:web && npm run test:bench:built')
-    expect(scripts['build:bench']).toBe(
-      ,
-    )
-    expect(scripts['build:native-system']).toBe('tsx native/system/scripts/build.ts --host-addon-only')
-    expect(scripts['test:bench:built']).toBe('vitest run --config vitest.bench.config.ts')
-  })
-
   it('checks all maintained repository references locally and in CI', () => {
     const { scripts } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
       scripts: Record<string, string>
     }
+    for (const mode of ['doc-sync', 'ci-static'] as const) {
       const gates = withPnpmEntrypoint(() => gatesForMode(mode))
       expect(gates).toContainEqual(expect.objectContaining({
         id: 'repository-references',
@@ -325,6 +306,7 @@ describe('gate graph validation', () => {
     const { scripts } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
       scripts: Record<string, string>
     }
+    for (const mode of ['doc-sync', 'ci-static'] as const) {
       expect(withPnpmEntrypoint(() => gatesForMode(mode))).toContainEqual(expect.objectContaining({
         id: 'persistence-formats',
         displayCommand: 'pnpm run verify-persistence-formats',
@@ -345,16 +327,9 @@ describe('gate graph validation', () => {
     expect(ids).toContain('package-readme-summaries')
   })
 
-  it('derives the quick documentation aggregate from marked doc-sync leaves', () => {
-    const full = withPnpmEntrypoint(() => gatesForMode('doc-sync'))
-
-    expect(quick).toEqual(full.filter(gate => gate.quick === true))
-  })
-
-  it('checks the recorded npm dependency catalog in both documentation aggregates', () => {
-      expect(withPnpmEntrypoint(() => gatesForMode(mode).find(gate => gate.id === 'dependency-catalog')))
-        .toMatchObject({ args: ['/private/pnpm.cjs', 'run', 'verify-dependency-catalog'] })
-    }
+  it('checks the recorded npm dependency catalog in the documentation aggregate', () => {
+    expect(withPnpmEntrypoint(() => gatesForMode('doc-sync').find(gate => gate.id === 'dependency-catalog')))
+      .toMatchObject({ args: ['/private/pnpm.cjs', 'run', 'verify-dependency-catalog'] })
   })
 
   it('keeps the hygiene aggregate aligned with the package script checks', () => {

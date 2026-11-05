@@ -6,7 +6,6 @@
  * always reaches the console, the fiber owns the runner's teardown, and the
  * node half remains inert.
  */
-/* oxlint-disable typescript/no-unsafe-assignment -- Vitest asymmetric matchers are typed as any. */
 
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
