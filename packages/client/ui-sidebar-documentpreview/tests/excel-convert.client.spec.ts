@@ -60,7 +60,7 @@ describe('Excel conversion', () => {
     await expect(convertExcel(new Uint8Array([1, 2, 3]), 'xlsx', limits)).rejects.toMatchObject({ code: 'invalid' })
     const input = await excelFixture()
     await expect(convertExcel(input, 'xlsx', { ...limits, maxBytes: input.byteLength - 1 })).rejects.toMatchObject({ code: 'tooLarge' })
-    const framed = new Uint8Array((input.byteLength as number) + 2)
+    const framed = new Uint8Array(input.byteLength + 2)
     framed.set(input, 1)
     await expect(convertExcel(framed.subarray(1, -1), 'xlsx', limits)).resolves.toMatchObject({ missingResults: 1 })
     const workbook = new ExcelJS.Workbook()

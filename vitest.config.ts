@@ -72,7 +72,20 @@ const nonLinuxWebWorkerTests = process.platform === 'linux'
       'packages/experimental/webworker-runtime/tests/node/sandbox-stack.spec.ts',
     ]
 
-const platformUnsupportedTests = [...windowsUnsupportedTests, ...nonLinuxWebWorkerTests]
+// AEK 一次性分叉后 dsh 文档 corpus 已移除（边界见 scripts/aek/upstream/scope.mjs）。
+// 下面三个 spec 断言的是 dsh 文档站 / 双语 / Session 格式历史规范，AEK 不维护这些资产，
+// 因此不进任何测试 lane；文件本身保留，run-gates.ts 的门与 lint baseline 仍引用它们。
+const aekExcludedDshDocSpecs = [
+  'scripts/doc-standard.spec.ts',
+  'scripts/persistence-developer.spec.ts',
+  'scripts/translation-prompt.spec.ts',
+]
+
+const platformUnsupportedTests = [
+  ...windowsUnsupportedTests,
+  ...nonLinuxWebWorkerTests,
+  ...aekExcludedDshDocSpecs,
+]
 
 const windowsUnsupportedCoveragePackages = process.platform === 'win32'
   ? [...windowsUnsupportedPackages, 'packages/subprocess/*']
