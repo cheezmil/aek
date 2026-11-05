@@ -53,7 +53,7 @@ AEK 从 `deepseek-harness`（简称 dsh）整仓复制而来，**是一次性分
 
 ## 4. 代码与架构
 
-- **源码中禁止硬编码任何绝对路径**——项目面向全球用户。路径一律相对仓库根、由运行时解析。本文件下方的本机路径只用于开发流程，不得写进源码或配置。
+- **禁止硬编码任何绝对路径**——项目面向全球用户。源码与配置里的路径一律相对仓库根、由运行时解析；本文件同样不写开发者本机的绝对路径（笔记目录、临时目录、clone 目标等一律由使用者当轮提供，不预设）。
 - **改 dsh 原来源码，优先通过 `aek-base` 插件（现包名 `@cheezmil/coraek`）扩展**；cordis 插件能做到的都在插件层做，实在解决不了才直接改源码。注意：cordis 插件是**运行时**扩展点，管不到 vitest spec 和 `run-gates` 这类构建期门禁，别硬套。
 - **框架直接装、别 vendor；别人 MIT 产品整只复制后裁剪；只有 AEK 自己的能力自己写。** 例外：已存在的 `vendor/cordis/` 是本次分叉保留的运行时资产，属于 KEEP，不要按「别 vendor」这条去删它。
 - 插件接口分层：**CLI 必须**（`aek{能力名}`，入口 `bin/*.mjs`）、**MCP 只有 `aek-mcp-gateway` 需要**、**REST 可选**。
@@ -75,22 +75,22 @@ AEK 从 `deepseek-harness`（简称 dsh）整仓复制而来，**是一次性分
 - 所有命令**先 cd 到仓库根**再执行。
 - **提交/推送一律用 `cqg`，禁止裸 `git`**（会绕过 token 注入与 exclude 校验）。非交互提交：`cqg acp --all -m "..."`；只推不提交 `cqg push-only`；其它 git 操作 `cqg git <args> --platform <name>`。
 - 脚本 **不带参数默认必须是安全的只读 / dry-run，零副作用**；`--prune` / `--copy` 之类改变状态的操作必须显式 `--yes` 才生效。dry-run 要逐行确认没有漏网的真实执行点。
-- 改动 `~/.aek/`、`~/.zshrc`、`~/.*rc`、`/etc/` 等用户级/系统级配置前**先留 `.bak.<时间戳>-pre-edit` 备份**；同类提权操作合并成一次授权，需要 sudo 就直接 sudo。
+- 改动用户级 / 系统级配置文件（shell 启动文件、工具配置目录、系统配置等）前**先留 `<原文件名>.bak.<时间戳>-pre-edit` 备份**；同类提权操作合并成一次授权，需要 sudo 就直接 sudo。
 - 需要提权的注册类操作（如 launchd bootstrap）在沙箱内会失败，需在沙箱外执行并自检。
 
 ## 7. 笔记与 Todo
 
-- 笔记根目录（本机约定）：`~/MyDurio/my-skills/aek-dev-notes/`。
-  - 当前待办：`todos/aek-todos.md`；**已完成的 todo 移到 `todos/archive/`**；架构决策/参考放 `references/`；完成记录放 `archive/`。
-  - **todo 和 archive 文件不要放在 `~/MyDurio/my-skills/` 根目录下**，也不要放项目根。
+- 笔记目录由使用者在会话中给出，属于本机资料、**不在本仓库内**；本文件不预设它的位置，找不到就先问，别猜。
+  - 目录内的固定结构：当前待办 `todos/aek-todos.md`；**已完成的 todo 移到 `todos/archive/`**；架构决策/参考放 `references/`；完成记录放 `archive/`。
+  - **todo 与 archive 只放在上述子目录里**，不要散落到笔记目录本身、它的上层目录或项目根。
 - 用户需求随时会变：**过时或不正确的 todo 及时清理**，不要留着误导下一轮；详情写归档、live 只留指针。
-- 用户没明确要求时**不新建 skill**；要写就写在 `~/MyDurio/my-skills/` 下，结构遵循 `~/.aek/skill-manager/skills/skill-structure-example/`（`SKILL.md` + `assets/` + `references/` + `scripts/`），文件夹名**不带 `skill` / `notes` 等冗余词**；主题相近先问用户是否合并成一个。
+- 用户没明确要求时**不新建 skill**；要写就写在使用者指定的目录下，结构遵循使用者提供的 skill 结构范例（`SKILL.md` + `assets/` + `references/` + `scripts/`），文件夹名**不带 `skill` / `notes` 等冗余词**；主题相近先问用户是否合并成一个。
 
 ## 8. 调研与工具
 
 - **上网搜索只用 aek websearch skill**（`aekws`），且要**多次搜索交叉确认**；**禁止 `| head` 截断结果**；未经用户允许不用其它工具联网搜索。可配合 `gh` CLI。
 - **遇到不会的先上网搜**，棘手问题主动找解决办法和开源项目借鉴，**不要全部自己写**。
-- 找 GitHub 仓库就 clone 下来看（必须 `--filter=blob:none`）；macOS / WSL 放 `~/MyDurio`，Windows 放 `D:\MyDurio`；有 release 就用 release，不要擅自编译；总结时写清编程语言、技术栈、star 数。
+- 找 GitHub 仓库就 clone 下来看（必须 `--filter=blob:none`）；clone 到哪个目录由使用者当轮指定（不同操作系统位置不同，不预设）；有 release 就用 release，不要擅自编译；总结时写清编程语言、技术栈、star 数。
 - 下载二进制优先 `aria2`，GitHub 资源用 `gh` CLI；装软件默认 Homebrew。
 - 推荐跨平台开源工具时，按**网友评价推荐度 → 热度**综合排序，写明编程语言与真实依据（star / 仓库路径 / 日期），**不要凭印象编造**；默认偏好免费 + 开源 + 原生实现，避开付费墙。
 - 断言版本 / 兼容性等事实前**先检索核实**，拿不准就写「待核实」，禁止凭记忆下结论。
@@ -112,4 +112,4 @@ AEK 从 `deepseek-harness`（简称 dsh）整仓复制而来，**是一次性分
 
 > 用户口中的「aek-base 插件」= 现在的 `@cheezmil/coraek` 包 / 插件层，按新名理解即可。
 >
-> 当前待办唯一真源：`~/MyDurio/my-skills/aek-dev-notes/todos/aek-todos.md`（本机笔记，不在本仓库内）。
+> 当前待办唯一真源：使用者当轮给出的笔记目录里的 `todos/aek-todos.md`（本机笔记，不在本仓库内，此处不记录其绝对路径）。
