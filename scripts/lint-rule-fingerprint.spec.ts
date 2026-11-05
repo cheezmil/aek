@@ -28,9 +28,9 @@ const profiles = {
     sha256: 'e2b944c028ef1971302d47b2eb0e95c05e740623c7cbaebb4b1312dbf73bf156',
   },
   test: {
-    count: 84,
+    count: 75,
     indexes: [0, 3, 4, 5],
-    sha256: '7e4e1ed0cfca06ac94eeb26081195b5f753e7527775d5f5b95ccfefac9d2b137',
+    sha256: 'fe0fdf6f05172222096c569f46b08b0f529199d0c8b4029873f10124cf2cd099',
   },
 } as const satisfies Record<string, Profile>
 
