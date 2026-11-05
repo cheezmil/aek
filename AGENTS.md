@@ -1,7 +1,9 @@
 # AGENTS.md — Agent Enhance Kit (AEK)
 
 > 本仓库的最高优先级协作约定。任何 AI agent / 开发者动手前先读。
+>
 > **事实冲突时的优先级：源码现状 > 本文件 > `scripts/aek/upstream/scope.mjs` > 项目笔记。**
+>
 > 笔记是历史记录、会过时；发现不一致一律以源码为准，并顺手把过时笔记标注或清掉，不要照着旧笔记继续干。
 
 ---
@@ -109,4 +111,5 @@ AEK 从 `deepseek-harness`（简称 dsh）整仓复制而来，**是一次性分
 | 各笔记中「aek 有文档站 / 有 GitHub Actions」的隐含假设 | — | `docs/` 只剩 2 个文件，`.github/` 已裁决不恢复 |
 
 > 用户口中的「aek-base 插件」= 现在的 `@cheezmil/coraek` 包 / 插件层，按新名理解即可。
+>
 > 当前待办唯一真源：`~/MyDurio/my-skills/aek-dev-notes/todos/aek-todos.md`（本机笔记，不在本仓库内）。
