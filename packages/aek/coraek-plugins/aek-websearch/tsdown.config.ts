@@ -3,7 +3,7 @@ import { defineConfig } from 'tsdown'
 export default defineConfig([
   {
     // index: Cordis plugin entry. cli: compiled oclif runner — the published
-    // bin/aekws.mjs (installed context) imports lib/cli.js, which discovers
+    // bin/aekws.mjs (installed context) imports lib/cli.mjs, which discovers
     // lib/commands/*.mjs relative to itself.
     // Outputs .mjs/.d.mts to match package.json (main/types/exports/files).
     // cosmokit + schemastery are externals so the emitted d.mts names Config

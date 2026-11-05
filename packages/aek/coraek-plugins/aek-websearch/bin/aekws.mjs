@@ -6,7 +6,7 @@
  * (symlinks resolved):
  *
  *   installed — the real path is inside a node_modules dir / no src/ next to
- *     bin/: the published tarball ships the compiled CLI (lib/cli.js +
+ *     bin/: the published tarball ships the compiled CLI (lib/cli.mjs +
  *     lib/commands/*.mjs); run it directly. This is the bare-command path
  *     after `pnpm add -g @cheezmil/aek-websearch` (AEK installs with pnpm).
  *   dev       — a repo checkout (pnpm-workspace.yaml found by walking up):

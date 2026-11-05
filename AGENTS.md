@@ -10,7 +10,7 @@
 
 ## 1. 这个项目是什么（先搞清楚目的）
 
-AEK 从 `deepseek-harness`（简称 dsh）整仓复制而来，**是一次性分叉，不是 dsh 的长期下游**：
+AEK 一开始从 `deepseek-harness`（简称 dsh）整仓复制而来，削减了很多不需要的东西，**是一次性分叉，不是 dsh 的长期下游**：
 
 - 保留 dsh 的 **cordis 运行时架构**（coraek 建立在它之上，这部分一个都不能少）
 - 自己改了 **web** 和 **desktop**

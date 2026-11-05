@@ -7,6 +7,7 @@ import { DistributeService } from './distribute-service.js'
 import { CatalogService } from './catalog-service.js'
 import { CostLedgerService } from './cost-ledger-service.js'
 import { SecurityScanService } from './security-scan.js'
+import { inspectSkillTree } from '../../shared/skill-tree.js'
 
 const CATALOG_STALE_DAYS = 90
 
@@ -28,6 +29,10 @@ export class DoctorService {
     if (this.fs.kind(this.home.skillsDir) !== 'directory') warnings.push(`Missing skills directory: ${this.home.skillsDir}`)
     const leftover = this.distribute.leftoverViewWarning()
     if (leftover) warnings.push(leftover)
+    const doubleNested = this.findDoubleNestedSkills()
+    if (doubleNested.length > 0) {
+      warnings.push(`${doubleNested.length} skill(s) have a redundant nested copy (<skill>/<skill>/SKILL.md): ${doubleNested.join(', ')}; remove the inner directory (it is never discovered and breaks the refresh fingerprint)`)
+    }
     warnings.push(...this.distribute.archivedDistributedWarnings())
     const brokenLinks = [...this.findBrokenLinks([this.home.collectionsDir]), ...this.distribute.runtimeBrokenLinks()].sort()
     const gitStatus = this.git.statusShort(this.home.root)
@@ -74,6 +79,14 @@ export class DoctorService {
       residentCost,
       security,
     }
+  }
+
+  /** Report hub skills carrying a redundant `<skill>/<skill>/SKILL.md` layer. */
+  private findDoubleNestedSkills(): string[] {
+    return this.registry.listSkills()
+      .filter(skill => inspectSkillTree(this.fs, this.registry.skillDir(skill.name), skill.name).kind !== 'clean')
+      .map(skill => skill.name)
+      .sort()
   }
 
   private findBrokenLinks(roots: string[]) {

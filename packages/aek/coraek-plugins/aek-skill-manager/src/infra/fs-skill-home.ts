@@ -3,6 +3,7 @@ import { isAbsolute } from 'node:path'
 import path from 'node:path'
 import { createDirLink } from './link-policy.js'
 import type { DirectoryEntry, FileKind, FileSystemPort } from '../core/ports/filesystem.js'
+import { inspectSkillTree } from '../shared/skill-tree.js'
 
 export class NodeFileSystem implements FileSystemPort {
   exists(filePath: string): boolean {
@@ -79,7 +80,22 @@ export class NodeFileSystem implements FileSystemPort {
     mkdirSync(destinationDir, { recursive: true })
     rmSync(destinationDir, { recursive: true, force: true })
     mkdirSync(destinationDir, { recursive: true })
-    cpSync(sourceDir, destinationDir, { recursive: true, dereference: false, force: true, verbatimSymlinks: true })
+    // Never propagate a double-nested skill. `duplicate` means the outer
+    // SKILL.md is authoritative and the same-named inner directory is a pure
+    // copy (leave it behind); `buried` means only the inner directory is a real
+    // skill (copy its contents up to the destination root). All install/seed/
+    // distribute/pool-reconcile callers go through this one primitive, so the
+    // hub can never grow `<skill>/<skill>/SKILL.md` again.
+    const layout = inspectSkillTree(this, sourceDir, path.basename(destinationDir))
+    const effectiveSource = layout.kind === 'buried' ? layout.innerDir : sourceDir
+    const skip = layout.kind === 'duplicate' ? layout.innerDir : null
+    cpSync(effectiveSource, destinationDir, {
+      recursive: true,
+      dereference: false,
+      force: true,
+      verbatimSymlinks: true,
+      ...(skip ? { filter: (src: string) => src !== skip && !src.startsWith(skip + path.sep) } : {}),
+    })
   }
 
   move(source: string, destination: string): void {

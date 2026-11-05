@@ -5,7 +5,7 @@ AEK web search CLI with key pool management. Multi-provider (Tavily, Exa) with a
 ## Installation
 
 ```bash
-npm install -g @cheezmil/aek-websearch
+pnpm add -g @cheezmil/aek-websearch
 ```
 
 ## Usage
