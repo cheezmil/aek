@@ -1,9 +1,18 @@
 /**
- * The AEK home landing — a minimal hello-world surface shown before the dsh
- * onboarding/login flow. Identity text (the AEK wordmark and greeting) is
- * plain localized copy, like the brand-name span in @cheezmil/aek-base.
+ * The AEK home landing — the AEK application shell. The dsh shell is not
+ * mounted in the AEK web profile, so this surface owns the app root: a
+ * greeting plus the AEK feature panels that live in this bundle.
+ *
+ * Identity text (the AEK wordmark and greeting) is plain localized copy,
+ * like the brand-name span in @cheezmil/aek-base.
  * @module @cheezmil/aek-home/src/client/Home
  */
+
+import { useState } from 'react'
+import { WebSearchPanel } from './WebSearchPanel.tsx'
+
+/** The panels the shell can show. */
+type PanelId = 'home' | 'websearch'
 
 /** No slot-owned props are required to render the home surface. */
 export interface AekHomeProps {
@@ -12,24 +21,49 @@ export interface AekHomeProps {
 }
 
 /**
- * The AEK hello-world landing: the orange-slice brand mark over a centered
- * greeting and a single continue affordance.
+ * The AEK application shell: the greeting card plus the panel switcher.
  * @param props.onContinue - optional advance callback.
- * @returns the centered home surface.
+ * @returns the shell.
  */
 export function AekHome({ onContinue }: AekHomeProps) {
+  const [panel, setPanel] = useState<PanelId>('home')
   return (
-    <div style={containerStyle}>
-      <div style={cardStyle}>
-        <AekHomeMark />
-        <h1 style={titleStyle}>Hello, AEK</h1>
-        <p style={subtitleStyle}>Agent Enhance Kit · home surface</p>
-        {onContinue === undefined ? undefined : (
-          <button type="button" style={buttonStyle} onClick={onContinue}>
-            继续
-          </button>
+    <div style={shellStyle}>
+      <nav style={navStyle}>
+        <button
+          type="button"
+          style={panel === 'home' ? activeTabStyle : tabStyle}
+          onClick={() => setPanel('home')}
+        >
+          首页
+        </button>
+        <button
+          type="button"
+          style={panel === 'websearch' ? activeTabStyle : tabStyle}
+          onClick={() => setPanel('websearch')}
+        >
+          Web Search
+        </button>
+      </nav>
+
+      {panel === 'home'
+        ? (
+          <div style={cardStyle}>
+            <AekHomeMark />
+            <h1 style={titleStyle}>Hello, AEK</h1>
+            <p style={subtitleStyle}>Agent Enhance Kit · home surface</p>
+            {onContinue === undefined ? undefined : (
+              <button type="button" style={buttonStyle} onClick={onContinue}>
+                继续
+              </button>
+            )}
+          </div>
+        )
+        : (
+          <div style={panelContainerStyle}>
+            <WebSearchPanel />
+          </div>
         )}
-      </div>
     </div>
   )
 }
@@ -59,15 +93,44 @@ function AekHomeMark() {
   )
 }
 
-const containerStyle: React.CSSProperties = {
+const shellStyle: React.CSSProperties = {
   display: 'flex',
+  flexDirection: 'column',
   alignItems: 'center',
-  justifyContent: 'center',
   minHeight: '100vh',
   width: '100%',
-  padding: '48px 24px',
+  padding: '32px 24px 48px',
   boxSizing: 'border-box',
   background: 'radial-gradient(120% 120% at 50% 0%, #fffaf0 0%, #fff 60%)',
+}
+
+const navStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '8px',
+  marginBottom: '24px',
+}
+
+const tabStyle: React.CSSProperties = {
+  padding: '8px 18px',
+  fontSize: '14px',
+  fontWeight: 600,
+  color: '#78716c',
+  background: 'transparent',
+  border: '1px solid #e7e5e4',
+  borderRadius: '999px',
+  cursor: 'pointer',
+}
+
+const activeTabStyle: React.CSSProperties = {
+  ...tabStyle,
+  color: '#ffffff',
+  background: 'linear-gradient(135deg, #fb923c, #ea580c)',
+  borderColor: 'transparent',
+}
+
+const panelContainerStyle: React.CSSProperties = {
+  width: '100%',
+  maxWidth: '720px',
 }
 
 const cardStyle: React.CSSProperties = {

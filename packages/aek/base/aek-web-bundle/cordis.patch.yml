@@ -20,6 +20,16 @@
     - id: aek-base
       name: '@cheezmil/coraek'
 
+    # ── AEK web-search management API ───────────────────────────────────────
+
+    # aek-websearch-admin: the host-side management API the AEK home surface
+    # reads (`GET /api/aek/websearch`) and writes through
+    # (`POST /api/aek/websearch`). It is the ADMIN half only — the search
+    # provider itself is registered by the host that composes the search
+    # seam, and the AEK web bundle does not own that composition.
+    - id: aek-websearch-admin
+      name: '@cheezmil/aek-websearch/admin'
+
     # ── AEK home surface ────────────────────────────────────────────────────
 
     # aek-home: the AEK application root. Its client half renders directly

@@ -1,7 +1,7 @@
 {
   "name": "@cheezmil/aek-home",
   "description": "AEK home surface: the React application root aek-home renders directly into #root, replacing the dsh shell",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publishConfig": {
     "access": "public"
   },
@@ -50,6 +50,6 @@
   ],
   "aek": {
     "type": "dsh-bundle",
-    "description": "AEK home surface \u2014 client-side UI root that replaces the dsh shell"
+    "description": "AEK home surface — client-side UI root that replaces the dsh shell"
   }
 }

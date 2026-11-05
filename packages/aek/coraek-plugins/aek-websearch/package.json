@@ -1,7 +1,7 @@
 {
   "name": "@cheezmil/aek-websearch",
   "description": "Multi-provider web search with key rotation and fallback (tavily, exa). oclif-based CLI + Cordis plugin.",
-  "version": "1.1.14",
+  "version": "1.1.15",
   "type": "module",
   "main": "lib/index.mjs",
   "types": "lib/index.d.mts",
@@ -13,14 +13,20 @@
       "types": "./lib/index.d.mts",
       "default": "./lib/index.mjs"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./admin": {
+      "types": "./lib/types/admin.d.mts",
+      "default": "./lib/admin.mjs"
+    }
   },
   "files": [
     "lib/index.mjs",
     "lib/cli.mjs",
+    "lib/admin.mjs",
     "lib/commands/*.mjs",
     "lib/index.d.mts",
     "lib/cli.d.mts",
+    "lib/types/admin.d.mts",
     "scripts/install-guard.mjs",
     "bin/",
     "skills/"

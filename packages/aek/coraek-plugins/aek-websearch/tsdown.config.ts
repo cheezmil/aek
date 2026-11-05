@@ -8,7 +8,7 @@ export default defineConfig([
     // Outputs .mjs/.d.mts to match package.json (main/types/exports/files).
     // cosmokit + schemastery are externals so the emitted d.mts names Config
     // portably (their types resolve from declared deps, not inlined).
-    entry: ['src/index.ts', 'src/cli.ts'],
+    entry: ['src/index.ts', 'src/cli.ts', 'src/admin.ts'],
     outDir: 'lib',
     format: ['esm'],
     platform: 'node',

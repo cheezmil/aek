@@ -25,8 +25,9 @@
     "description": "AEK web bundle: the AEK identity layer + the aek-home application root for a dsh web profile"
   },
   "dependencies": {
-    "@cheezmil/aek-home": "^0.0.3",
-    "@cheezmil/coraek": "^1.0.1"
+    "@cheezmil/aek-home": "0.0.4",
+    "@cheezmil/aek-websearch": "1.1.15",
+    "@cheezmil/coraek": "1.0.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.0"
