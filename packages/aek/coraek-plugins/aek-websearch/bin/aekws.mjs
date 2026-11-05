@@ -95,7 +95,15 @@ if (INSTALLED) {
   // it must always run locally, so a missing global can never trap the user.
   const target = findGlobalAekws()
   if (target) {
-    execFileSync(process.execPath, [target, ...args], { stdio: 'inherit' })
+    // A global bin can be a POSIX shell shim (pnpm), a .cmd shim (Windows) or
+    // a JS file with a shebang. Let the OS resolve it via the shebang instead
+    // of forcing `node <target>`: feeding a shell script to node throws
+    // "SyntaxError: Invalid or unexpected token". Windows .cmd/.bat cannot be
+    // spawned directly by execFileSync, so route those through the shell.
+    execFileSync(target, args, {
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    })
     process.exit(0)
   }
   console.error('Error: pnpm global CLI not found (looked in the pnpm global bin dir, $NPM_PREFIX/bin, ~/.npm-global/bin).')
