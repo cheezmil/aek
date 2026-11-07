@@ -1,11 +1,10 @@
 /**
  * The AEK console application root. The dsh shell is not mounted in the AEK
  * web profile, so this surface owns the whole `#root`: a left navigation rail
- * and a content column. There is no top bar any more — the "local instance"
- * badge lives in the sidebar header instead.
+ * and a content column. There is no top bar and no header badge any more.
  *
- * All host facts flow through two hooks so the sidebar badge, the overview
- * stats, the provider table and the About page never disagree. UI preferences
+ * All host facts flow through two hooks so the overview stats, the provider
+ * table and the About page never disagree. UI preferences (last panel, sidebar
  * (last panel, sidebar lock, hover-to-expand, language) are persisted in
  * localStorage so a refresh never throws the user back to the default page.
  *

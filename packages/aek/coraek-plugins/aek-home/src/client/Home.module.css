@@ -61,6 +61,9 @@
   --aek-sidebar-width: 248px;
   --aek-sidebar-compact: 72px;
   --aek-ease: cubic-bezier(0.2, 0, 0.2, 1);
+  /* Decelerating curve for the rail: ease/linear reads as robotic here. */
+  --aek-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --aek-sidebar-duration: 260ms;
 }
 
 /* Element-level reset only. `#root` is an id and would be hashed by CSS
@@ -96,7 +99,9 @@ body {
   height: 100vh;
   background: var(--aek-surface);
   border-right: 1px solid var(--aek-border);
-  transition: flex-basis 200ms var(--aek-ease), width 200ms var(--aek-ease);
+  transition:
+    flex-basis var(--aek-sidebar-duration) var(--aek-ease-out),
+    width var(--aek-sidebar-duration) var(--aek-ease-out);
   overflow: hidden;
   z-index: 2;
 }
@@ -115,6 +120,7 @@ body {
   min-height: 72px;
   padding: 0 var(--aek-space-4);
   border-bottom: 1px solid var(--aek-border);
+  transition: padding var(--aek-sidebar-duration) var(--aek-ease-out);
 }
 
 .brand {
@@ -136,7 +142,26 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  max-width: 180px;
   white-space: nowrap;
+}
+
+/* Labels fade and slide out instead of blinking away with `display: none`.
+   `max-width` collapses them alongside the rail so the icon-only layout
+   stays centred for the whole animation. `visibility` is delayed only when
+   hiding, so showing starts immediately. */
+.brandText,
+.navLabel,
+.navBadge {
+  overflow: hidden;
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 150ms var(--aek-ease),
+    transform var(--aek-sidebar-duration) var(--aek-ease-out),
+    max-width var(--aek-sidebar-duration) var(--aek-ease-out),
+    padding var(--aek-sidebar-duration) var(--aek-ease-out),
+    visibility 0s linear 0s;
 }
 
 .brandName {
@@ -177,6 +202,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: var(--aek-space-4) var(--aek-space-3);
+  transition: padding var(--aek-sidebar-duration) var(--aek-ease-out);
 }
 
 .sidebarBody::-webkit-scrollbar {
@@ -226,7 +252,11 @@ body {
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
-  transition: color 150ms var(--aek-ease), background 150ms var(--aek-ease);
+  transition:
+    color 150ms var(--aek-ease),
+    background 150ms var(--aek-ease),
+    gap var(--aek-sidebar-duration) var(--aek-ease-out),
+    padding var(--aek-sidebar-duration) var(--aek-ease-out);
 }
 
 .navItem:hover {
@@ -273,12 +303,15 @@ body {
 
 .navLabel {
   flex: 1;
+  min-width: 0;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .navBadge {
   flex: 0 0 auto;
+  max-width: 80px;
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--aek-surface-hover);
@@ -294,28 +327,40 @@ body {
   color: var(--aek-accent-ink);
 }
 
+/* Compact state: collapse the text to zero width while it fades/slides.
+   Keeping `visibility` (rather than `display: none`) lets the transition run
+   in BOTH directions; the delay applies only while hiding. */
 .sidebarCompact .brandText,
 .sidebarCompact .navLabel,
-.sidebarCompact .navBadge,
-.sidebarCompact .navGroupLabel,
-.sidebarCompact .statusText,
-.sidebarCompact .sidebarMeta,
-.sidebarCompact .headerBadgeText {
-  display: none;
+.sidebarCompact .navBadge {
+  max-width: 0;
+  padding: 0;
+  opacity: 0;
+  transform: translateX(-8px);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 140ms var(--aek-ease),
+    transform var(--aek-sidebar-duration) var(--aek-ease-out),
+    max-width var(--aek-sidebar-duration) var(--aek-ease-out),
+    padding var(--aek-sidebar-duration) var(--aek-ease-out),
+    visibility 0s linear var(--aek-sidebar-duration);
 }
 
+.sidebarCompact .brandButton {
+  gap: 0;
+}
+
+/* Keep `justify-content` unchanged (it cannot be transitioned): animated
+   padding slides the 34px logo / 20px nav icons into the centered position
+   of the narrow rail instead of making them jump horizontally. */
 .sidebarCompact .sidebarHeader {
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--aek-space-1);
-  height: 88px;
-  min-height: 88px;
-  padding: 0;
+  padding: 0 18px;
 }
 
 .sidebarCompact .navItem {
-  justify-content: center;
-  padding: 0;
+  gap: 0;
+  padding: 0 17px;
 }
 
 .sidebarCompact .sidebarBody {
@@ -1187,10 +1232,19 @@ body {
 }
 
 /* ── 2026-11-08 console revision ────────────────────────────────────────
-   Logo-as-toggle, header badge, flat searchable menu, two-icon footer,
-   one display preference, and key-pool CRUD. The old top-bar / group-label /
-   status-pill rules above are retained as historical tokens but are no
+   Logo-as-toggle, flat searchable menu, two-icon footer, one display
+   preference, and key-pool CRUD. The old top-bar / group-label / status-pill
+   / header-badge rules above are retained as historical tokens but are no
    longer referenced by any component. */
+
+@media (prefers-reduced-motion: reduce) {
+  .app *,
+  .app *::before,
+  .app *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
 
 .brandButton {
   display: flex;
@@ -1204,6 +1258,7 @@ body {
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition: gap var(--aek-sidebar-duration) var(--aek-ease-out);
 }
 
 .brandButton:focus-visible {
@@ -1214,28 +1269,6 @@ body {
 
 .brandButton:hover .brandMark {
   filter: drop-shadow(0 2px 10px rgba(234, 88, 12, 0.45));
-}
-
-.headerBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border: 1px solid var(--aek-border);
-  border-radius: 999px;
-  background: var(--aek-surface-subtle);
-  color: var(--aek-text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.headerBadgeText {
-  font-size: 12px;
-}
-
-.sidebarCompact .headerBadge {
-  padding: 5px;
 }
 
 .navSearchWrap {
@@ -1249,7 +1282,11 @@ body {
   border: 1px solid var(--aek-border);
   border-radius: var(--aek-radius-sm);
   background: var(--aek-surface-subtle);
-  transition: border-color 150ms var(--aek-ease), background 150ms var(--aek-ease);
+  transition:
+    border-color 150ms var(--aek-ease),
+    background 150ms var(--aek-ease),
+    gap var(--aek-sidebar-duration) var(--aek-ease-out),
+    padding var(--aek-sidebar-duration) var(--aek-ease-out);
 }
 
 .navSearchWrap:focus-within {
@@ -1266,6 +1303,7 @@ body {
 .navSearchInput {
   flex: 1;
   min-width: 0;
+  max-width: 200px;
   height: 100%;
   padding: 0;
   color: var(--aek-text);
@@ -1274,6 +1312,10 @@ body {
   outline: 0;
   font: inherit;
   font-size: 13px;
+  opacity: 1;
+  transition:
+    opacity 150ms var(--aek-ease),
+    max-width var(--aek-sidebar-duration) var(--aek-ease-out);
 }
 
 .navSearchInput::placeholder {
@@ -1297,6 +1339,8 @@ body {
   border: 0;
   border-radius: 4px;
   cursor: pointer;
+  opacity: 1;
+  transition: opacity 150ms var(--aek-ease), max-width var(--aek-sidebar-duration) var(--aek-ease-out);
 }
 
 .navSearchClear:hover {
@@ -1309,17 +1353,33 @@ body {
   color: var(--aek-text-muted);
   font-size: 12px;
   text-align: center;
+  opacity: 1;
+  transition: opacity 150ms var(--aek-ease);
 }
 
 .sidebarCompact .navSearchWrap {
   justify-content: center;
+  gap: 0;
   padding: 0;
 }
 
-.sidebarCompact .navSearchInput,
+/* The input stays focusable (no `visibility: hidden`), so a keyboard user can
+   still reach it while the rail is collapsed and hovering reveals it. */
+.sidebarCompact .navSearchInput {
+  max-width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .sidebarCompact .navSearchClear,
 .sidebarCompact .navNoMatch {
-  display: none;
+  flex-basis: 0;
+  width: 0;
+  max-width: 0;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .footerActions {

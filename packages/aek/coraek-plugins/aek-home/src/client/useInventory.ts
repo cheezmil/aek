@@ -1,7 +1,8 @@
 /**
  * The About page's live source of truth: `GET /api/aek/inventory`, served by
- * `@cheezmil/aek-home`'s host half. Versions and the dev/npm install kind are
- * read on the host at request time, never baked into the client bundle.
+ * `@cheezmil/aek-websearch/admin`'s host half. Versions and the dev/npm
+ * install kind are read on the host at request time, never baked into the
+ * client bundle. Packages carry a role group instead of an installed flag.
  *
  * @module @cheezmil/aek-home/src/client/useInventory
  */
@@ -13,6 +14,9 @@ export const INVENTORY_API = '/api/aek/inventory'
 /** How a package reached this machine. */
 export type InstallKind = 'dev' | 'npm'
 
+/** Which section a package belongs to. */
+export type InventoryGroup = 'plugin' | 'base'
+
 /** One package row. */
 export interface InventoryPackage {
   /** Package id. */
@@ -21,8 +25,8 @@ export interface InventoryPackage {
   version: string
   /** dev checkout or npm install. */
   kind: InstallKind
-  /** Whether the running web profile registered it. */
-  active: boolean
+  /** AEK plugin or base environment. */
+  group: InventoryGroup
 }
 
 /** The inventory snapshot. */
@@ -31,7 +35,7 @@ export interface InventorySnapshot {
   installKind: InstallKind
   /** How the host determined it. */
   source: string
-  /** All discovered AEK packages. */
+  /** Displayed AEK packages. */
   packages: InventoryPackage[]
 }
 

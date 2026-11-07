@@ -1,20 +1,22 @@
 /**
  * The informational surfaces behind the remaining menu entries.
  *
- * 2026-11-08 revision:
- * - Settings was emptied and now contains ONE real preference: auto-expand the
- *   sidebar on pointer hover (on by default).
- * - About was emptied and now shows the live host inventory: every AEK package
- *   version plus the overall dev/npm installation kind. No version is
- *   hard-coded in the client bundle.
- * - Plugins now renders the same live inventory instead of a static roster.
+ * 2026-11-08 revision + polish pass:
+ * - Settings contains ONE real preference: auto-expand the sidebar on pointer
+ *   hover (on by default).
+ * - About shows the live host inventory, split by ROLE into "AEK plugins" and
+ *   "base environment". There is deliberately no "installed / registered"
+ *   status column: the list is the answer, not a state badge.
+ * - Plugins renders the AEK-plugin group of the same live inventory.
+ * - Explanatory notes / subtitles that restated how the data is read were
+ *   removed; versions still come from the host at request time.
  *
  * @module @cheezmil/aek-home/src/client/InfoPanels
  */
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { css, cx } from './styles.ts'
-import type { InventoryState } from './useInventory.ts'
+import type { InventoryPackage, InventoryState } from './useInventory.ts'
 
 /** Panels handled here (the other two have dedicated components). */
 export type InfoPanelId = 'plugins' | 'settings' | 'about'
@@ -41,10 +43,37 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-/** @param props - live inventory. @returns the real plugin roster. */
+/** @param props - rows of one role group. @returns the version table. */
+function PackageTable({ rows }: { rows: readonly InventoryPackage[] }) {
+  const { t } = useI18n()
+  return (
+    <div className={css.tableWrap}>
+      <table className={css.table}>
+        <thead>
+          <tr>
+            <th className={css.th}>{t('about.col.package')}</th>
+            <th className={css.th}>{t('about.col.version')}</th>
+            <th className={css.th}>{t('about.col.kind')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(pkg => (
+            <tr key={pkg.name}>
+              <td className={css.td}><span className={css.providerName}>{pkg.name}</span></td>
+              <td className={css.td}><span className={css.countChip}>{pkg.version}</span></td>
+              <td className={css.td}>{pkg.kind === 'dev' ? t('about.dev') : t('about.npm')}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** @param props - live inventory. @returns the AEK plugin roster. */
 function PluginsPanel({ inventory }: { inventory: InventoryState }) {
   const { t, tf } = useI18n()
-  const active = inventory.snapshot?.packages.filter(pkg => pkg.active) ?? []
+  const plugins = inventory.snapshot?.packages.filter(pkg => pkg.group === 'plugin') ?? []
   return (
     <section className={css.card}>
       <header className={css.cardHeader}>
@@ -52,7 +81,7 @@ function PluginsPanel({ inventory }: { inventory: InventoryState }) {
           <h2 className={css.cardTitle}>{t('plugins.title')}</h2>
           <p className={css.cardSubtitle}>{t('plugins.subtitle')}</p>
         </div>
-        <span className={cx(css.badge, css.badgeAccent)}>{tf('plugins.count', { n: active.length })}</span>
+        <span className={cx(css.badge, css.badgeAccent)}>{tf('plugins.count', { n: plugins.length })}</span>
       </header>
       <div className={css.cardBody}>
         {inventory.error !== undefined
@@ -61,13 +90,13 @@ function PluginsPanel({ inventory }: { inventory: InventoryState }) {
         {inventory.snapshot === undefined && inventory.error === undefined
           ? <div className={css.loadingState}>{t('about.loading')}</div>
           : null}
-        {inventory.snapshot !== undefined && active.length === 0
+        {inventory.snapshot !== undefined && plugins.length === 0
           ? <div className={css.emptyState}>{t('plugins.empty')}</div>
           : null}
-        {active.length > 0
+        {plugins.length > 0
           ? (
             <div className={css.featureGrid}>
-              {active.map(pkg => (
+              {plugins.map(pkg => (
                 <div className={css.featureItem} key={pkg.name}>
                   <span className={css.featureIcon}><Icon name="layers" size={18} /></span>
                   <div>
@@ -82,11 +111,6 @@ function PluginsPanel({ inventory }: { inventory: InventoryState }) {
             </div>
           )
           : null}
-        <div className={css.divider} />
-        <div className={css.note}>
-          <Icon name="layers" size={18} className={css.noteIcon} />
-          <span>{t('plugins.note')}</span>
-        </div>
       </div>
     </section>
   )
@@ -121,17 +145,16 @@ function SettingsPanel({
   )
 }
 
-/** @param props - live inventory. @returns the version card. */
+/** @param props - live inventory. @returns the grouped version card. */
 function AboutPanel({ inventory }: { inventory: InventoryState }) {
   const { t, tf } = useI18n()
   const snapshot = inventory.snapshot
+  const plugins = snapshot?.packages.filter(pkg => pkg.group === 'plugin') ?? []
+  const base = snapshot?.packages.filter(pkg => pkg.group === 'base') ?? []
   return (
     <section className={css.card}>
       <header className={css.cardHeader}>
-        <div>
-          <h2 className={css.cardTitle}>{t('about.title')}</h2>
-          <p className={css.cardSubtitle}>{t('about.subtitle')}</p>
-        </div>
+        <h2 className={css.cardTitle}>{t('about.title')}</h2>
         <button
           type="button"
           className={css.iconButton}
@@ -160,37 +183,15 @@ function AboutPanel({ inventory }: { inventory: InventoryState }) {
                 <InfoRow label={t('about.source')} value={snapshot.source} />
               </div>
               <div className={css.divider} />
-              <h3 className={css.sectionTitle}>{t('about.packages')}</h3>
-              <div className={css.tableWrap}>
-                <table className={css.table}>
-                  <thead>
-                    <tr>
-                      <th className={css.th}>{t('about.col.package')}</th>
-                      <th className={css.th}>{t('about.col.version')}</th>
-                      <th className={css.th}>{t('about.col.kind')}</th>
-                      <th className={css.th}>{t('about.col.status')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {snapshot.packages.map(pkg => (
-                      <tr key={pkg.name}>
-                        <td className={css.td}><span className={css.providerName}>{pkg.name}</span></td>
-                        <td className={css.td}><span className={css.countChip}>{pkg.version}</span></td>
-                        <td className={css.td}>{pkg.kind === 'dev' ? t('about.dev') : t('about.npm')}</td>
-                        <td className={css.td}>
-                          <span className={cx(css.badge, pkg.active && css.badgeSuccess)}>
-                            {pkg.active ? t('about.active') : t('about.installed')}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {snapshot.packages.length === 0
-                ? <div className={css.emptyState}>{t('about.empty')}</div>
-                : null}
-              <p className={css.hint}>{t('about.note')}</p>
+              <h3 className={css.sectionTitle}>{t('about.group.plugin')}</h3>
+              {plugins.length > 0
+                ? <PackageTable rows={plugins} />
+                : <div className={css.emptyState}>{t('about.empty')}</div>}
+              <div className={css.divider} />
+              <h3 className={css.sectionTitle}>{t('about.group.base')}</h3>
+              {base.length > 0
+                ? <PackageTable rows={base} />
+                : <div className={css.emptyState}>{t('about.empty')}</div>}
             </>
           )
           : null}

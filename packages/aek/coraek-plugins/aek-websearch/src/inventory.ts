@@ -7,10 +7,15 @@
  * (`lib/types/index.js`), so adding a relative TS import there would not
  * survive the bundle — this is why the inventory route is registered here.
  *
- * The page must show REAL facts: every `@cheezmil/*` package actually present,
- * its version from its own `package.json`, and whether this install is a dev
- * checkout (`link:` into a workspace) or an npm install (`node_modules`).
- * Everything is resolved at request time; no absolute path is hard-coded.
+ * The page shows REAL facts: the version of every displayed `@cheezmil/*`
+ * package (read from its own manifest at request time) and whether this
+ * install is a dev checkout (`link:` into a workspace) or an npm install.
+ * No absolute path and no version number is hard-coded.
+ *
+ * Packages are split into two groups by their role, not by a runtime
+ * "installed / registered" state: AEK plugins and the base environment.
+ * Support libraries and optional adapters that the AEK console profile does
+ * not install by default are excluded from the list entirely.
  *
  * Route: `GET /api/aek/inventory`.
  *
@@ -32,6 +37,25 @@ const AEK_SCOPE = '@cheezmil/'
 /** Directories that never carry a source `package.json`. */
 const SKIP_DIRS = new Set(['node_modules', 'lib', 'dist', 'types', 'tests', '.git'])
 
+/**
+ * Packages that must not appear in the console list:
+ * - `prevent-agent-directly-seeing-key` is a support library, neither an
+ *   AEK plugin nor part of the base environment.
+ * - `aek-for-dsh` is an optional dsh-facing adapter. The AEK console profile
+ *   installs `dsh-base`, `dsh-web-app` and `coraek-profile` only, so listing
+ *   it would imply a default install that does not exist.
+ */
+const HIDDEN_PACKAGES = new Set([
+  `${AEK_SCOPE}prevent-agent-directly-seeing-key`,
+  `${AEK_SCOPE}aek-for-dsh`,
+])
+
+/** The base runtime / assembly layer, shown separately from AEK plugins. */
+const BASE_PACKAGES = new Set([
+  `${AEK_SCOPE}coraek`,
+  `${AEK_SCOPE}coraek-profile`,
+])
+
 /** The narrow `webServer` seam used to register one exact route. */
 interface WebServerSeam {
   /** Register one named route; returns its disposer. */
@@ -42,11 +66,8 @@ interface WebServerSeam {
   }): () => void
 }
 
-/** The narrow Loader seam used to mark which packages are actually registered. */
-interface LoaderSeam {
-  /** Iterate the current Loader entries. */
-  entries(): Iterable<{ options?: { name?: string } }>
-}
+/** Which section of the About page a package belongs to. */
+export type InventoryGroup = 'plugin' | 'base'
 
 /** How a package reached this machine. */
 export type InstallKind = 'dev' | 'npm'
@@ -59,8 +80,8 @@ export interface InventoryPackage {
   version: string
   /** Whether this copy is a dev checkout or an npm install. */
   kind: InstallKind
-  /** Whether the running web profile registered this package. */
-  active: boolean
+  /** AEK plugin or base environment. */
+  group: InventoryGroup
 }
 
 /** The snapshot the About page renders. */
@@ -69,8 +90,21 @@ export interface InventorySnapshot {
   installKind: InstallKind
   /** Short human-readable explanation of how the kind was determined. */
   source: string
-  /** All discovered AEK packages, sorted by name. */
+  /** Displayed AEK packages, sorted by name. */
   packages: InventoryPackage[]
+}
+
+/**
+ * Classify one package. Unknown `@cheezmil/*` packages are left out rather
+ * than shown under a meaningless "installed" status.
+ * @param name - package id.
+ * @returns its section, or undefined when the package must stay hidden.
+ */
+function groupOf(name: string): InventoryGroup | undefined {
+  if (HIDDEN_PACKAGES.has(name)) return undefined
+  if (BASE_PACKAGES.has(name)) return 'base'
+  if (name.startsWith(`${AEK_SCOPE}aek-`)) return 'plugin'
+  return undefined
 }
 
 /** @param file - manifest path. @returns its name/version, or undefined. */
@@ -119,7 +153,8 @@ function findWorkspaceRoot(start: string): string | undefined {
 }
 
 /**
- * Read every AEK package manifest inside the checkout's `packages/aek/` tree.
+ * Read every displayable AEK package manifest inside the checkout's
+ * `packages/aek/` tree.
  * @param root - workspace root.
  * @param sink - accumulator, keyed by package name.
  */
@@ -134,9 +169,10 @@ function collectFromWorkspace(root: string, sink: Map<string, InventoryPackage>)
         walk(full)
       } else if (entry.name === 'package.json') {
         const meta = manifestOf(full)
-        if (meta?.name?.startsWith(AEK_SCOPE) === true && meta.version !== undefined) {
-          sink.set(meta.name, { name: meta.name, version: meta.version, kind: 'dev', active: false })
-        }
+        if (meta?.name === undefined || meta.version === undefined) continue
+        const group = groupOf(meta.name)
+        if (group === undefined) continue
+        sink.set(meta.name, { name: meta.name, version: meta.version, kind: 'dev', group })
       }
     }
   }
@@ -158,13 +194,9 @@ function collectFromScope(scopeDir: string, sink: Map<string, InventoryPackage>)
     const meta = manifestOf(join(dir, 'package.json'))
     if (meta === undefined || meta.version === undefined) continue
     const name = meta.name ?? `${AEK_SCOPE}${entry.name}`
-    if (!name.startsWith(AEK_SCOPE) || sink.has(name)) continue
-    sink.set(name, {
-      name,
-      version: meta.version,
-      kind: installKindOf(dir),
-      active: false,
-    })
+    const group = groupOf(name)
+    if (group === undefined || sink.has(name)) continue
+    sink.set(name, { name, version: meta.version, kind: installKindOf(dir), group })
   }
 }
 
@@ -197,44 +229,20 @@ function scopeDirs(selfDir: string): string[] {
 }
 
 /**
- * Package names the running profile actually registered. Loader entries may
- * carry a subpath (`@cheezmil/aek-websearch/admin`), so only the first two
- * segments are compared.
- * @param ctx - plugin context.
- * @returns the active package names.
- */
-function activePackageNames(ctx: Context): Set<string> {
-  const names = new Set<string>()
-  try {
-    const loader = (ctx as unknown as { loader?: LoaderSeam }).loader
-    if (loader === undefined) return names
-    for (const entry of loader.entries()) {
-      const module = entry.options?.name
-      if (typeof module !== 'string' || !module.startsWith(AEK_SCOPE)) continue
-      const parts = module.split('/')
-      if (parts[1] !== undefined) names.add(`${parts[0]}/${parts[1]}`)
-    }
-  } catch {
-    // Loader shape differs across hosts; version rows remain truthful.
-  }
-  return names
-}
-
-/**
- * Build the About-page snapshot from the filesystem and the live Loader.
- * @param ctx - plugin context.
+ * Build the About-page snapshot from the filesystem. There is deliberately no
+ * "installed / registered" flag: the list is grouped by role instead.
+ * @param _ctx - plugin context, kept for the registration seam.
  * @returns the inventory snapshot.
  */
-export function readInventory(ctx: Context): InventorySnapshot {
+export function readInventory(_ctx: Context): InventorySnapshot {
   const selfDir = dirname(fileURLToPath(import.meta.url))
   const installKind = installKindOf(selfDir)
   const sink = new Map<string, InventoryPackage>()
   const root = findWorkspaceRoot(selfDir)
   if (root !== undefined) collectFromWorkspace(root, sink)
   for (const dir of scopeDirs(selfDir)) collectFromScope(dir, sink)
-  const active = activePackageNames(ctx)
   const packages = [...sink.values()]
-    .map(entry => ({ ...entry, active: active.has(entry.name) }))
+    .filter(entry => groupOf(entry.name) !== undefined)
     .sort((a, b) => a.name.localeCompare(b.name))
   return {
     installKind,

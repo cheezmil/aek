@@ -5,6 +5,10 @@
  * They are inlined rather than imported from an icon package so the frontend
  * stays exactly React + Vite + TS + lightningcss with zero extra runtime deps.
  *
+ * Every glyph must match its meaning: `search` is a magnifier, `language` is
+ * the A/文 translate mark. A globe was previously used for both and read as
+ * a web-browser icon.
+ *
  * @module @cheezmil/aek-home/src/client/Icons
  */
 import { useId } from 'react'
@@ -14,9 +18,9 @@ import type { ReactNode } from 'react'
 export type IconName =
   | 'dashboard' | 'search' | 'plugins' | 'settings' | 'about'
   | 'chevronLeft' | 'chevronRight' | 'refresh' | 'arrowRight'
-  | 'key' | 'shield' | 'alert' | 'check' | 'server' | 'external'
-  | 'sparkles' | 'layers' | 'activity'
-  | 'globe' | 'star' | 'github' | 'plus' | 'trash' | 'edit' | 'close'
+  | 'key' | 'shield' | 'alert' | 'check' | 'external'
+  | 'sparkles' | 'layers' | 'activity' | 'server'
+  | 'language' | 'star' | 'github' | 'plus' | 'trash' | 'edit' | 'close'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 const ICONS: Record<IconName, ReactNode> = {
@@ -30,9 +34,8 @@ const ICONS: Record<IconName, ReactNode> = {
   ),
   search: (
     <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18" />
-      <path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18" />
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-4.2-4.2" />
     </>
   ),
   plugins: (
@@ -95,14 +98,6 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   check: <path d="m5 13 4 4L19 7" />,
-  server: (
-    <>
-      <rect x="3" y="4" width="18" height="7" rx="2" />
-      <rect x="3" y="13" width="18" height="7" rx="2" />
-      <path d="M7 7.5h.01" />
-      <path d="M7 16.5h.01" />
-    </>
-  ),
   external: (
     <>
       <path d="M14 4h6v6" />
@@ -124,11 +119,23 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   activity: <path d="M3 12h4l3-8 4 16 3-8h4" />,
-  globe: (
+  server: (
     <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18" />
-      <path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18" />
+      <rect x="3" y="4" width="18" height="7" rx="2" />
+      <rect x="3" y="13" width="18" height="7" rx="2" />
+      <path d="M7 7.5h.01" />
+      <path d="M7 16.5h.01" />
+    </>
+  ),
+  /** Lucide `languages`: a Latin "A" plus a CJK glyph — unmistakably i18n. */
+  language: (
+    <>
+      <path d="m5 8 6 6" />
+      <path d="m4 14 6-6 2-3" />
+      <path d="M2 5h12" />
+      <path d="M7 2h1" />
+      <path d="m22 22-5-10-5 10" />
+      <path d="M14 18h6" />
     </>
   ),
   star: <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" />,

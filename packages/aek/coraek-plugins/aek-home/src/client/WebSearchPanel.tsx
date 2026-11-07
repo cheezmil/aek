@@ -149,11 +149,6 @@ export function WebSearchPanel({ state }: WebSearchPanelProps) {
                 </p>
 
                 <div className={css.divider} />
-
-                <div className={css.note}>
-                  <Icon name="shield" size={18} className={css.noteIcon} />
-                  <span>{t('websearch.note')}</span>
-                </div>
               </>
             )
             : null}
