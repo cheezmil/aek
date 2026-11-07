@@ -35,7 +35,7 @@ interface PluginEntry {
   tag: string
 }
 
-/** The AEK plugin roster as mounted by the web profile bundle. */
+/** The AEK plugin rows inserted by @cheezmil/coraek-profile. */
 const PLUGINS: readonly PluginEntry[] = [
   {
     name: 'coraek', pkg: '@cheezmil/coraek', icon: 'layers',
@@ -48,10 +48,6 @@ const PLUGINS: readonly PluginEntry[] = [
   {
     name: 'aek-home', pkg: '@cheezmil/aek-home', icon: 'dashboard',
     text: '接管 #root 的 React 应用外壳，也就是当前管理面板', tag: '界面',
-  },
-  {
-    name: 'aek-web-bundle', pkg: '@cheezmil/aek-web-bundle', icon: 'plugins',
-    text: 'web profile 的 bundle 层，一次注册上面三个插件', tag: '装配',
   },
 ]
 
@@ -77,9 +73,9 @@ function PluginsPanel() {
       <header className={css.cardHeader}>
         <div>
           <h2 className={css.cardTitle}>已注册插件</h2>
-          <p className={css.cardSubtitle}>web profile 通过 cordis.patch.yml 挂载的 AEK 插件</p>
+          <p className={css.cardSubtitle}>coraek-profile 的 insert 行写进 web profile 插件树的 AEK 插件</p>
         </div>
-        <span className={cx(css.badge, css.badgeAccent)}>4 个</span>
+        <span className={cx(css.badge, css.badgeAccent)}>3 个</span>
       </header>
       <div className={css.cardBody}>
         <div className={css.featureGrid}>
@@ -99,10 +95,12 @@ function PluginsPanel() {
         </div>
         <div className={css.divider} />
         <div className={css.note}>
-          <Icon name="activity" size={18} className={css.noteIcon} />
+          <Icon name="layers" size={18} className={css.noteIcon} />
           <span>
-            这份清单描述 web profile 的装配结构。运行时的真实插件清单接口尚未接入，
-            因此此处不声称是从宿主动态读取的。
+            装配层 <span className={css.code}>@cheezmil/coraek-profile</span> 不是插件：它只是一份
+            <span className={css.code}>cordis.patch.yml</span>，把上面三个插件写进 profile 的插件树，
+            本身不出现在 boot manifest 的 entries 里。运行时的真实插件清单接口尚未接入，
+            此处不声称是从宿主动态读取的。
           </span>
         </div>
       </div>

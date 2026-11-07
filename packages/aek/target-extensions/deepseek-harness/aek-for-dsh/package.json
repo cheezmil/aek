@@ -4,6 +4,11 @@
   "version": "0.1.4",
   "type": "module",
   "main": "cordis.patch.yml",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "exports": {
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"

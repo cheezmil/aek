@@ -1,6 +1,6 @@
 {
-  "name": "@cheezmil/aek-web-bundle",
-  "description": "AEK web bundle: mounts the AEK identity layer and the aek-home application root into a dsh web profile, replacing the dsh shell with the AEK surface",
+  "name": "@cheezmil/coraek-profile",
+  "description": "coraek profile assembly layer: a cordis patch that inserts the AEK identity, web-search admin API, and aek-home root into a dsh web profile",
   "version": "0.1.0",
   "publishConfig": {
     "access": "public"
@@ -22,7 +22,7 @@
   },
   "aek": {
     "type": "dsh-bundle",
-    "description": "AEK web bundle: the AEK identity layer + the aek-home application root for a dsh web profile"
+    "description": "coraek profile layer: declares which AEK plugins a web profile mounts; contains no runtime code"
   },
   "dependencies": {
     "@cheezmil/aek-home": "0.0.4",

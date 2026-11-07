@@ -77,7 +77,7 @@
     "topicSeparator": " "
   },
   "aek": {
-    "type": "dsh-bundle",
+    "type": "dsh-plugin",
     "description": "AEK identity layer: re-exports Context/Volatile/ClientContext types and prints the aek web: readiness line"
   },
   "dependencies": {

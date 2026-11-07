@@ -1079,7 +1079,7 @@ importers:
         specifier: workspace:*
         version: link:../../interaction/user-approval
 
-  packages/aek/base/aek-web-bundle:
+  packages/aek/base/coraek-profile:
     dependencies:
       '@cheezmil/aek-home':
         specifier: ^0.0.3

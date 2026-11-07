@@ -49,7 +49,7 @@
     "lib/types/**/*.d.ts"
   ],
   "aek": {
-    "type": "dsh-bundle",
+    "type": "dsh-plugin",
     "description": "AEK home surface — client-side UI root that replaces the dsh shell"
   }
 }

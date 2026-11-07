@@ -1,15 +1,14 @@
-# The AEK web bundle: the AEK-owned surface layer over dsh-web-app.
+# @cheezmil/coraek-profile — the AEK assembly layer for a dsh web profile.
 #
-# Applied as ONE insert over the profile tree, after dsh-base and dsh-web-app
-# (the profile's `dsh.profile.bundles` list decides the order). Rows here
-# address plugins by id, so a later layer (the profile's own cordis.patch.yml)
-# can still disable or reconfigure them.
+# This file is the package's entire substance: ONE insert over the profile
+# tree, applied after dsh-base and dsh-web-app (the profile's
+# `dsh.profile.bundles` list decides the order). Rows address plugins by id,
+# so a later layer (the profile's own cordis.patch.yml) can still disable or
+# reconfigure them.
 #
-# This bundle exists because the AEK home surface is NOT part of
-# `@cheezmil/aek-for-dsh`: that bundle carries the dsh-facing AEK plugins
-# (coraek, aek-websearch, aek-prompt-manager) for a profile that still shows
-# the dsh shell. The web profile replaces the dsh shell with aek-home, so the
-# surface lives here, in a bundle the web profile mounts on its own.
+# It is separate from `@cheezmil/aek-for-dsh`: that bundle carries the
+# dsh-facing AEK plugins for a profile that still shows the dsh shell. This
+# one is mounted only by profiles that want the AEK console as their root.
 
 - insert:
     # ── AEK identity ─────────────────────────────────────────────────────────
@@ -26,7 +25,7 @@
     # reads (`GET /api/aek/websearch`) and writes through
     # (`POST /api/aek/websearch`). It is the ADMIN half only — the search
     # provider itself is registered by the host that composes the search
-    # seam, and the AEK web bundle does not own that composition.
+    # seam, and coraek-profile does not own that composition.
     - id: aek-websearch-admin
       name: '@cheezmil/aek-websearch/admin'
 
