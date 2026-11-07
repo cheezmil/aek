@@ -43,7 +43,9 @@ pre-merge-commit:
       glob: '.agents/notes/archived/**'
       run: node_modules/.bin/tsx scripts/verify-archived-agent-notes.ts
 
-pre-push:
-  jobs:
-    - name: typecheck
-      run: pnpm run typecheck
+# pre-push 原为上游 dsh 的 `pnpm run typecheck`（全仓 aggregate 门禁），已移除。
+# AEK 按 AGENTS.md 第 2/3 节不搬 dsh 的 CI 与测试夹具：该门禁恒定报 20 条
+# dsh 遗留测试红（packages/aek 0 条），每次 push 100% 被挡，只能 LEFTHOOK=0 跳过，
+# 零信噪比且诱导「跳 hook」习惯。全仓 gate matrix 归 CI（见文件头注释），
+# 本地只保留 pre-commit 的 staged 快速检查；aek 自有代码的 lint / typecheck
+# 在提交前单独跑，按错误数量与文件分布判断是否有回归。
