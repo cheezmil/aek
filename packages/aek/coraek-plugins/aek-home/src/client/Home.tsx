@@ -1,43 +1,30 @@
 /**
  * The AEK console application root. The dsh shell is not mounted in the AEK
- * web profile, so this surface owns the whole app root: a left navigation rail,
- * a top bar and a content column that switches between the overview, the
- * web-search admin table and the informational panels.
+ * web profile, so this surface owns the whole `#root`: a left navigation rail
+ * and a content column. There is no top bar any more — the "local instance"
+ * badge lives in the sidebar header instead.
  *
- * All host facts flow through one `useWebsearchStatus` hook instance so the
- * sidebar badge, the overview stats and the provider table never disagree.
+ * All host facts flow through two hooks so the sidebar badge, the overview
+ * stats, the provider table and the About page never disagree. UI preferences
+ * (last panel, sidebar lock, hover-to-expand, language) are persisted in
+ * localStorage so a refresh never throws the user back to the default page.
  *
  * @module @cheezmil/aek-home/src/client/Home
  */
-import { useState } from 'react'
-import { Icon } from './Icons.tsx'
+import { useCallback } from 'react'
+import { I18nProvider, useI18n } from './i18n.tsx'
 import { InfoPanels } from './InfoPanels.tsx'
 import { OverviewPanel } from './OverviewPanel.tsx'
+import { oneOf, parseBoolean, PREF_KEYS, useStoredState } from './preferences.ts'
 import { Sidebar } from './Sidebar.tsx'
 import type { PanelId } from './Sidebar.tsx'
 import { css } from './styles.ts'
+import { useInventory } from './useInventory.ts'
 import { WebSearchPanel } from './WebSearchPanel.tsx'
-import type { WebsearchState } from './useWebsearchStatus.ts'
 import { useWebsearchStatus } from './useWebsearchStatus.ts'
 
-/** Header copy for each panel. */
-interface PanelMeta {
-  /** Small uppercase kicker. */
-  eyebrow: string
-  /** Page heading. */
-  title: string
-  /** One-line explanation. */
-  subtitle: string
-}
-
-/** Static header copy, keyed by panel. */
-const META: Record<PanelId, PanelMeta> = {
-  overview: { eyebrow: '工作台', title: '概览', subtitle: '本地实例的运行状态与快捷入口' },
-  websearch: { eyebrow: '工作台 / Web Search', title: 'Web Search', subtitle: '管理多提供商搜索与密钥池状态' },
-  plugins: { eyebrow: '管理 / 插件', title: '插件', subtitle: 'web profile 装配的 AEK 插件' },
-  settings: { eyebrow: '管理 / 设置', title: '设置', subtitle: '运行环境与数据位置（只读）' },
-  about: { eyebrow: '帮助 / 关于', title: '关于', subtitle: '技术栈与开源借鉴' },
-}
+/** All valid panel ids, used to validate a persisted value. */
+const PANEL_IDS: readonly PanelId[] = ['overview', 'websearch', 'plugins', 'settings', 'about']
 
 /**
  * Props kept for API compatibility with earlier aek-home releases; the
@@ -48,34 +35,16 @@ export interface AekHomeProps {
   onContinue?: (() => void) | undefined
 }
 
-/**
- * Select the content surface for the active panel.
- * @param panel - active panel id.
- * @param state - shared host state.
- * @param onOpen - navigation callback.
- * @returns the content surface.
- */
-function renderPanel(panel: PanelId, state: WebsearchState, onOpen: (id: PanelId) => void) {
-  switch (panel) {
-    case 'overview':
-      return <OverviewPanel state={state} onOpen={onOpen} />
-    case 'websearch':
-      return <WebSearchPanel state={state} />
-    default:
-      return <InfoPanels panel={panel} state={state} />
-  }
-}
-
-/**
- * Render the AEK console.
- * @param _props - retained for API compatibility.
- * @returns the application root.
- */
-export function AekHome(_props: AekHomeProps) {
-  const [panel, setPanel] = useState<PanelId>('overview')
-  const [collapsed, setCollapsed] = useState(false)
+/** The console body; separated so it can consume the i18n context. */
+function Console() {
+  const { t } = useI18n()
+  const [panel, setPanel] = useStoredState<PanelId>(PREF_KEYS.panel, 'overview', oneOf(PANEL_IDS))
+  const [collapsed, setCollapsed] = useStoredState<boolean>(PREF_KEYS.collapsed, false, parseBoolean)
+  const [hoverExpand, setHoverExpand] = useStoredState<boolean>(PREF_KEYS.hoverExpand, true, parseBoolean)
   const state = useWebsearchStatus()
-  const meta = META[panel]
+  const inventory = useInventory()
+
+  const toggleHoverExpand = useCallback((next: boolean) => setHoverExpand(next), [setHoverExpand])
 
   return (
     <div className={css.app}>
@@ -84,39 +53,49 @@ export function AekHome(_props: AekHomeProps) {
         onSelect={setPanel}
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed(value => !value)}
+        hoverExpandEnabled={hoverExpand}
         providerCount={state.status?.providers.length}
       />
 
       <div className={css.main}>
-        <header className={css.topbar}>
-          <div className={css.breadcrumb}>
-            <span>工作台</span>
-            <Icon name="chevronRight" size={14} className={css.breadcrumbSep} />
-            <span className={css.breadcrumbCurrent}>{meta.title}</span>
-          </div>
-          <div className={css.topbarActions}>
-            <span className={css.topbarBadge}><Icon name="server" size={14} /> 本地实例</span>
-            <button
-              type="button"
-              className={css.iconButton}
-              onClick={state.refresh}
-              title="刷新数据"
-              aria-label="刷新数据"
-            >
-              <Icon name="refresh" size={16} className={state.status === undefined ? css.spinning : undefined} />
-            </button>
-          </div>
-        </header>
-
         <main className={css.content}>
           <div className={css.pageHeader}>
-            <p className={css.pageEyebrow}>{meta.eyebrow}</p>
-            <h1 className={css.pageTitle}>{meta.title}</h1>
-            <p className={css.pageSubtitle}>{meta.subtitle}</p>
+            <p className={css.pageEyebrow}>{t(`page.eyebrow.${panel}`)}</p>
+            <h1 className={css.pageTitle}>{t(`panel.${panel}`)}</h1>
+            <p className={css.pageSubtitle}>{t(`page.subtitle.${panel}`)}</p>
           </div>
-          {renderPanel(panel, state, setPanel)}
+
+          {panel === 'overview'
+            ? <OverviewPanel state={state} onOpen={setPanel} />
+            : null}
+          {panel === 'websearch'
+            ? <WebSearchPanel state={state} />
+            : null}
+          {panel === 'plugins' || panel === 'settings' || panel === 'about'
+            ? (
+              <InfoPanels
+                panel={panel}
+                inventory={inventory}
+                hoverExpand={hoverExpand}
+                onToggleHoverExpand={toggleHoverExpand}
+              />
+            )
+            : null}
         </main>
       </div>
     </div>
+  )
+}
+
+/**
+ * Render the AEK console.
+ * @param _props - retained for API compatibility.
+ * @returns the application root.
+ */
+export function AekHome(_props: AekHomeProps) {
+  return (
+    <I18nProvider>
+      <Console />
+    </I18nProvider>
   )
 }

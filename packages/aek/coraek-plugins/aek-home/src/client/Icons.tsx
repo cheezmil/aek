@@ -16,6 +16,7 @@ export type IconName =
   | 'chevronLeft' | 'chevronRight' | 'refresh' | 'arrowRight'
   | 'key' | 'shield' | 'alert' | 'check' | 'server' | 'external'
   | 'sparkles' | 'layers' | 'activity'
+  | 'globe' | 'star' | 'github' | 'plus' | 'trash' | 'edit' | 'close'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 const ICONS: Record<IconName, ReactNode> = {
@@ -123,6 +124,35 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   activity: <path d="M3 12h4l3-8 4 16 3-8h4" />,
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18" />
+    </>
+  ),
+  star: <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" />,
+  github: (
+    <>
+      <path d="M9 19c-4 1.3-4-2.2-5.5-2.6M15 21v-3.4a3 3 0 0 0-.8-2.4c2.8-.3 5.8-1.4 5.8-6a4.7 4.7 0 0 0-1.3-3.2 4.4 4.4 0 0 0-.1-3.2S17 2.2 15 3.5a11 11 0 0 0-6 0C7 2.2 5.4 2.8 5.4 2.8a4.4 4.4 0 0 0-.1 3.2A4.7 4.7 0 0 0 4 9.2c0 4.6 3 5.7 5.8 6a3 3 0 0 0-.8 2.4V21" />
+    </>
+  ),
+  plus: <path d="M12 5v14M5 12h14" />,
+  trash: (
+    <>
+      <path d="M4 7h16" />
+      <path d="M9 7V4h6v3" />
+      <path d="M6 7l1 13h10l1-13" />
+      <path d="M10 11v6M14 11v6" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="M4 20h4l11-11-4-4L4 16v4Z" />
+      <path d="m13.5 6.5 4 4" />
+    </>
+  ),
+  close: <path d="M6 6l12 12M18 6 6 18" />,
 }
 
 /** Props for {@link Icon}. */

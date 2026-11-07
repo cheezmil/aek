@@ -299,7 +299,8 @@ body {
 .sidebarCompact .navBadge,
 .sidebarCompact .navGroupLabel,
 .sidebarCompact .statusText,
-.sidebarCompact .sidebarMeta {
+.sidebarCompact .sidebarMeta,
+.sidebarCompact .headerBadgeText {
   display: none;
 }
 
@@ -1183,4 +1184,327 @@ body {
   .cardBody {
     padding: var(--aek-space-4);
   }
+}
+
+/* ── 2026-11-08 console revision ────────────────────────────────────────
+   Logo-as-toggle, header badge, flat searchable menu, two-icon footer,
+   one display preference, and key-pool CRUD. The old top-bar / group-label /
+   status-pill rules above are retained as historical tokens but are no
+   longer referenced by any component. */
+
+.brandButton {
+  display: flex;
+  align-items: center;
+  gap: var(--aek-space-3);
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.brandButton:focus-visible {
+  outline: 2px solid var(--aek-accent);
+  outline-offset: 4px;
+  border-radius: var(--aek-radius-sm);
+}
+
+.brandButton:hover .brandMark {
+  filter: drop-shadow(0 2px 10px rgba(234, 88, 12, 0.45));
+}
+
+.headerBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--aek-border);
+  border-radius: 999px;
+  background: var(--aek-surface-subtle);
+  color: var(--aek-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.headerBadgeText {
+  font-size: 12px;
+}
+
+.sidebarCompact .headerBadge {
+  padding: 5px;
+}
+
+.navSearchWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--aek-space-2);
+  height: 36px;
+  margin-bottom: var(--aek-space-4);
+  padding: 0 var(--aek-space-2);
+  border: 1px solid var(--aek-border);
+  border-radius: var(--aek-radius-sm);
+  background: var(--aek-surface-subtle);
+  transition: border-color 150ms var(--aek-ease), background 150ms var(--aek-ease);
+}
+
+.navSearchWrap:focus-within {
+  border-color: var(--aek-accent-border);
+  background: var(--aek-surface);
+}
+
+.navSearchIcon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--aek-text-muted);
+}
+
+.navSearchInput {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  color: var(--aek-text);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 13px;
+}
+
+.navSearchInput::placeholder {
+  color: var(--aek-text-muted);
+}
+
+.navSearchInput::-webkit-search-cancel-button {
+  display: none;
+}
+
+.navSearchClear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--aek-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.navSearchClear:hover {
+  color: var(--aek-text);
+  background: var(--aek-surface-hover);
+}
+
+.navNoMatch {
+  padding: var(--aek-space-3);
+  color: var(--aek-text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.sidebarCompact .navSearchWrap {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebarCompact .navSearchInput,
+.sidebarCompact .navSearchClear,
+.sidebarCompact .navNoMatch {
+  display: none;
+}
+
+.footerActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--aek-space-2);
+}
+
+.sidebarCompact .footerActions {
+  flex-direction: column;
+}
+
+.localeWrap {
+  position: relative;
+}
+
+.footerIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: var(--aek-text-secondary);
+  background: transparent;
+  border: 1px solid var(--aek-border);
+  border-radius: var(--aek-radius-sm);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 150ms var(--aek-ease), border-color 150ms var(--aek-ease), background 150ms var(--aek-ease);
+}
+
+.footerIconButton:hover {
+  color: var(--aek-accent);
+  border-color: var(--aek-accent-border);
+  background: var(--aek-accent-soft);
+}
+
+.footerIconButton:focus-visible {
+  outline: 2px solid var(--aek-accent);
+  outline-offset: 2px;
+}
+
+/* Fixed so the menu is never clipped by the collapsed rail's overflow. */
+.localeMenu {
+  position: fixed;
+  left: var(--aek-space-4);
+  bottom: 72px;
+  min-width: 168px;
+  padding: 6px;
+  background: var(--aek-surface);
+  border: 1px solid var(--aek-border);
+  border-radius: var(--aek-radius);
+  box-shadow: var(--aek-shadow-lg);
+  z-index: 20;
+}
+
+.localeMenuItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--aek-space-2);
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--aek-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--aek-radius-sm);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.localeMenuItem:hover {
+  color: var(--aek-text);
+  background: var(--aek-surface-hover);
+}
+
+.localeMenuActive {
+  color: var(--aek-accent-ink);
+  background: var(--aek-accent-soft);
+  font-weight: 600;
+}
+
+.settingToggleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--aek-space-3);
+  padding: var(--aek-space-2) 0;
+  cursor: pointer;
+}
+
+.settingToggle {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--aek-accent);
+  cursor: pointer;
+}
+
+.settingToggleLabel {
+  color: var(--aek-text);
+  font-weight: 600;
+}
+
+.keyToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--aek-space-2);
+  margin-bottom: var(--aek-space-4);
+}
+
+.keySelect,
+.keyInput,
+.keyEditInput {
+  height: 36px;
+  padding: 0 10px;
+  color: var(--aek-text);
+  background: var(--aek-surface);
+  border: 1px solid var(--aek-border);
+  border-radius: var(--aek-radius-sm);
+  font: inherit;
+  font-size: 13px;
+}
+
+.keySelect:focus,
+.keyInput:focus,
+.keyEditInput:focus {
+  outline: 2px solid var(--aek-accent);
+  outline-offset: 1px;
+}
+
+.keyInput {
+  flex: 1;
+  min-width: 180px;
+}
+
+.keyEditInput {
+  width: 100%;
+  min-width: 140px;
+}
+
+.keyMasked {
+  color: var(--aek-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.keyActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.keyActionButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--aek-text-secondary);
+  background: var(--aek-surface);
+  border: 1px solid var(--aek-border);
+  border-radius: var(--aek-radius-sm);
+  cursor: pointer;
+  transition: color 150ms var(--aek-ease), border-color 150ms var(--aek-ease), background 150ms var(--aek-ease);
+}
+
+.keyActionButton:hover {
+  color: var(--aek-accent);
+  border-color: var(--aek-accent-border);
+  background: var(--aek-accent-soft);
+}
+
+.keyActionButton:disabled,
+.primaryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.keyActionDanger:hover {
+  color: var(--aek-danger);
+  border-color: var(--aek-danger-border);
+  background: var(--aek-danger-soft);
 }

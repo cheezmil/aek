@@ -1,8 +1,9 @@
 /**
- * AEK home surface, host half. The host side owns no runtime state: the
- * hello-world landing is a pure client-side registration into the UI slot
- * registry, so this entry only establishes the plugin identity for the Loader.
- * The client half (`./client`) registers the home view.
+ * AEK home surface, host half. The host side owns no UI state: the console is
+ * mounted by the client half directly into `#root` with `createRoot`.
+ * The About page's inventory API is registered by `@cheezmil/aek-websearch/admin`
+ * (that plugin already owns the `webServer` seam; aek-home's host entry is a
+ * tsc emit artifact, so it must stay free of relative TS imports).
  *
  * 类型导入说明：
  *   使用 `@cheezmil/coraek/types` 而非 `@deepseek-ai/cordis`，
@@ -21,10 +22,10 @@ export const name = 'aek-home'
 export const inject: readonly string[] = []
 
 /**
- * Host-side apply is a no-op: the home view is registered entirely on the
- * client side through the `slots` service.
- * @param ctx - plugin context (typed via @cheezmil/coraek/types).
+ * Host-side apply is a no-op: the home view is mounted entirely by the client
+ * half, and every host API the console reads lives in the admin plugin.
+ * @param _ctx - plugin context (typed via @cheezmil/coraek/types).
  */
 export function apply(_ctx: Context): void {
-  // no host-side work; identity-only entry for the client roster.
+  // Identity-only entry for the client roster.
 }

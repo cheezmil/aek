@@ -10,6 +10,20 @@
  *
  * - `GET  /api/aek/websearch`      → the status snapshot (read-only facts)
  * - `POST /api/aek/websearch`      → `{ kind, enabled }` toggles one provider
+ * - `GET  /api/aek/websearch/keys` → masked key-pool entries for one provider
+ * - `POST /api/aek/websearch/keys` → `{ kind, key }` appends one key
+ * - `PUT  /api/aek/websearch/keys` → `{ kind, id, key }` replaces one key
+ * - `PATCH /api/aek/websearch/keys`→ `{ kind, id, disabled }` enables/disables one
+ * - `DELETE /api/aek/websearch/keys`→ `{ kind, id }` removes one key
+ * - `GET  /api/aek/inventory`        → real AEK package versions + dev/npm kind
+ *
+ * This plugin owns all host routes the AEK console reads. The inventory route
+ * is registered here (not in aek-home) because that package's host entry is a
+ * tsc emit artifact that cannot carry relative TS imports through the bundle.
+ *
+ * The key-pool routes NEVER return a plaintext key literal: every response
+ * carries only masked tags and the real row id. This is the boundary the
+ * browser talks to, so a secret never crosses into the client bundle.
  *
  * The facts come from the same files the CLI reads, so the page and
  * `aekws doctor` / `aekws pool` never disagree:
@@ -33,6 +47,8 @@ import { join } from 'node:path'
 import { parse, stringify } from 'yaml'
 import { KeyStore } from '@cheezmil/prevent-agent-directly-seeing-key'
 import { PROVIDER_KINDS } from './defaults.ts'
+import { registerInventory } from './inventory.ts'
+import { KeyPool } from './key-pool.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'aek-websearch-admin'
@@ -42,6 +58,29 @@ export const inject = ['webServer'] as const
 
 /** The route the AEK management page talks to. */
 export const WEBSEARCH_API_PATH = '/api/aek/websearch'
+
+/** The key-pool CRUD route. Separate from the status route so the two can evolve independently. */
+export const WEBSEARCH_KEYS_API_PATH = '/api/aek/websearch/keys'
+
+/** One masked key-pool row, safe to send to the browser. */
+export interface KeyPoolEntry {
+  /** Real primary key in the encrypted pool (NOT `status()`'s 0-based display id). */
+  id: number
+  /** Masked display tag; never the literal. */
+  masked: string
+  /** Whether the key is disabled after repeated failures. */
+  disabled: boolean
+  /** Recorded failure count. */
+  failures: number
+}
+
+/** The key-pool snapshot a management UI renders. */
+export interface KeyPoolSnapshot {
+  /** Provider kind the snapshot belongs to. */
+  kind: string
+  /** Rows in insertion order. */
+  entries: KeyPoolEntry[]
+}
 
 /**
  * The narrow `webServer` seam this plugin uses. The AEK type layer
@@ -199,6 +238,53 @@ export function writeEnabled(kind: string, enabled: boolean): string {
 }
 
 /**
+ * Validate one provider kind against the known adapters. Admin routes must
+ * never open a database named by arbitrary client input.
+ * @param kind - untrusted provider name.
+ * @returns true when the kind is one of {@link PROVIDER_KINDS}.
+ */
+function isKnownKind(kind: unknown): kind is typeof PROVIDER_KINDS[number] {
+  return typeof kind === 'string' && PROVIDER_KINDS.includes(kind as typeof PROVIDER_KINDS[number])
+}
+
+/**
+ * Validate one API key literal. Keys are comma-joined by the older single-kv
+ * format, so a comma would corrupt that representation; blanks and huge
+ * payloads are rejected before touching the database.
+ * @param value - untrusted key literal.
+ * @returns the trimmed literal, or `undefined` when unusable.
+ */
+function validKey(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const key = value.trim()
+  if (key.length === 0 || key.length > 4096 || key.includes(',')) return undefined
+  return key
+}
+
+/**
+ * Validate one masked-row primary key.
+ * @param value - untrusted id.
+ * @returns the id, or `undefined` when unusable.
+ */
+function validId(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined
+}
+
+/**
+ * Read one provider's key pool as masked rows. Store is always closed, and
+ * plaintext literals never leave this function.
+ * @param kind - provider kind (already validated).
+ * @returns the snapshot for the browser.
+ */
+export function readKeyPool(kind: string): KeyPoolSnapshot {
+  try {
+    return { kind, entries: new KeyPool(kind).entries() }
+  } catch {
+    return { kind, entries: [] }
+  }
+}
+
+/**
  * Send one JSON response.
  * @param res - the response to write.
  * @param status - the HTTP status code.
@@ -240,7 +326,10 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
  * @param ctx - the plugin context (typed via @cheezmil/coraek/types).
  */
 export function apply(ctx: Context): void {
-  ctx.effect(() => webServerOf(ctx).register({
+  const server = webServerOf(ctx)
+  registerInventory(ctx)
+
+  ctx.effect(() => server.register({
     kind: 'exact',
     path: WEBSEARCH_API_PATH,
     handler: async (req, res) => {
@@ -260,7 +349,7 @@ export function apply(ctx: Context): void {
         sendJson(res, 400, { code: 'bad-request', message: 'kind and enabled are required' })
         return
       }
-      if (!PROVIDER_KINDS.includes(kind as typeof PROVIDER_KINDS[number])) {
+      if (!isKnownKind(kind)) {
         sendJson(res, 400, { code: 'unknown-provider', message: `unknown provider "${kind}"` })
         return
       }
@@ -268,4 +357,76 @@ export function apply(ctx: Context): void {
       sendJson(res, 200, readStatus())
     },
   }), 'aek-websearch: management API')
+
+  ctx.effect(() => server.register({
+    kind: 'exact',
+    path: WEBSEARCH_KEYS_API_PATH,
+    handler: async (req, res) => {
+      const method = req.method ?? 'GET'
+      const allowed = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+      if (!allowed.includes(method)) {
+        res.setHeader('allow', allowed.join(', '))
+        sendJson(res, 405, { code: 'method-not-allowed', message: `use ${allowed.join(', ')}` })
+        return
+      }
+
+      let body: Record<string, unknown> | undefined
+      if (method !== 'GET') body = await readJsonBody(req)
+      const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '')
+      const kind = method === 'GET' ? query.get('kind') : body?.kind
+      if (!isKnownKind(kind)) {
+        sendJson(res, 400, { code: 'unknown-provider', message: 'a known kind is required' })
+        return
+      }
+
+      if (method === 'GET') {
+        sendJson(res, 200, readKeyPool(kind))
+        return
+      }
+
+      const id = validId(body?.id)
+      const key = validKey(body?.key)
+      if (method !== 'POST' && id === undefined) {
+        sendJson(res, 400, { code: 'bad-request', message: 'a positive numeric id is required' })
+        return
+      }
+      if ((method === 'POST' || method === 'PUT') && key === undefined) {
+        sendJson(res, 400, { code: 'bad-request', message: 'a valid key is required' })
+        return
+      }
+      if (method === 'PATCH' && typeof body?.disabled !== 'boolean') {
+        sendJson(res, 400, { code: 'bad-request', message: 'disabled must be a boolean' })
+        return
+      }
+
+      try {
+        const pool = new KeyPool(kind)
+        let changed = true
+        switch (method) {
+          case 'POST':
+            pool.add(key as string)
+            break
+          case 'PUT':
+            changed = pool.update(id as number, key as string)
+            break
+          case 'DELETE':
+            changed = pool.remove(id as number)
+            break
+          case 'PATCH':
+            changed = pool.setDisabled(id as number, body?.disabled === true)
+            break
+          default:
+            break
+        }
+        if (!changed) {
+          sendJson(res, 404, { code: 'key-not-found', message: 'no key with that id' })
+          return
+        }
+        sendJson(res, 200, readKeyPool(kind))
+      } catch {
+        // Never include the caught text: it could echo the key literal.
+        sendJson(res, 500, { code: 'key-pool-failed', message: 'key pool operation failed' })
+      }
+    },
+  }), 'aek-websearch: key pool API')
 }

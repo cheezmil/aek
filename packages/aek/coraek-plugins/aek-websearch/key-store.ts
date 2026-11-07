@@ -195,6 +195,82 @@ export class KeyStore {
     db.prepare('UPDATE keys SET failures=0, cooldown_end=0').run()
   }
 
+  /**
+   * Make sure the `keys` table exists. A provider with no pool file yet has
+   * no schema at all, so INSERT/UPDATE/DELETE would fail on first write.
+   * Mirrors `migrateIfTxt`'s create + rekey + vacuum sequence for a brand-new
+   * encrypted database; a no-op for an existing pool.
+   */
+  private ensureSchema(): void {
+    const db = this.getDb()
+    const existing = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='keys'",
+    ).get()
+    if (existing !== undefined) return
+    db.exec(`
+      CREATE TABLE keys (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        key_enc      TEXT NOT NULL,
+        disabled     INTEGER NOT NULL DEFAULT 0,
+        failures     INTEGER NOT NULL DEFAULT 0,
+        cooldown_end BIGINT  NOT NULL DEFAULT 0
+      )
+    `)
+    // NOTE: must NOT enable WAL before rekey (SQLCipher limitation).
+    db.pragma(`rekey = '${this.passphrase}'`)
+    db.pragma('vacuum')
+    db.pragma('journal_mode = WAL')
+    chmodSync(dbPath(this.provider), DB_PERMISSIONS)
+  }
+
+  /** Append one API key. @returns the new row's real (1-based) id. */
+  add(key: string): number {
+    this.ensureSchema()
+    const db = this.getDb()
+    const result = db.prepare(
+      'INSERT INTO keys (key_enc, disabled, failures, cooldown_end) VALUES (?, 0, 0, 0)',
+    ).run(key)
+    return Number(result.lastInsertRowid)
+  }
+
+  /** Replace one key's literal by its real row id. @returns false when the id is gone. */
+  updateById(id: number, key: string): boolean {
+    this.ensureSchema()
+    const db = this.getDb()
+    const result = db.prepare(
+      'UPDATE keys SET key_enc=?, failures=0, cooldown_end=0 WHERE id=?',
+    ).run(key, id)
+    return result.changes > 0
+  }
+
+  /** Delete one key by its real row id. @returns false when the id is gone. */
+  removeById(id: number): boolean {
+    this.ensureSchema()
+    const db = this.getDb()
+    return db.prepare('DELETE FROM keys WHERE id=?').run(id).changes > 0
+  }
+
+  /**
+   * Masked entries for management UIs. Unlike `status()`, the ids here are
+   * the REAL primary keys, so they are safe to use in update/delete calls.
+   * Plaintext never leaves this method.
+   */
+  entries(): Array<{
+    id: number
+    masked: string
+    disabled: boolean
+    failures: number
+    cooldownEnd: number
+  }> {
+    return this.load().map(entry => ({
+      id: entry.id,
+      masked: maskKey(entry.key),
+      disabled: entry.disabled,
+      failures: entry.failures,
+      cooldownEnd: entry.cooldownEnd,
+    }))
+  }
+
   /** Count of entries. */
   count(): number {
     try {
