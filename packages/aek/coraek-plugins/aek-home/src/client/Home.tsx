@@ -1,173 +1,122 @@
 /**
- * The AEK home landing — the AEK application shell. The dsh shell is not
- * mounted in the AEK web profile, so this surface owns the app root: a
- * greeting plus the AEK feature panels that live in this bundle.
+ * The AEK console application root. The dsh shell is not mounted in the AEK
+ * web profile, so this surface owns the whole app root: a left navigation rail,
+ * a top bar and a content column that switches between the overview, the
+ * web-search admin table and the informational panels.
  *
- * Identity text (the AEK wordmark and greeting) is plain localized copy,
- * like the brand-name span in @cheezmil/aek-base.
+ * All host facts flow through one `useWebsearchStatus` hook instance so the
+ * sidebar badge, the overview stats and the provider table never disagree.
+ *
  * @module @cheezmil/aek-home/src/client/Home
  */
-
 import { useState } from 'react'
+import { Icon } from './Icons.tsx'
+import { InfoPanels } from './InfoPanels.tsx'
+import { OverviewPanel } from './OverviewPanel.tsx'
+import { Sidebar } from './Sidebar.tsx'
+import type { PanelId } from './Sidebar.tsx'
+import { css } from './styles.ts'
 import { WebSearchPanel } from './WebSearchPanel.tsx'
+import type { WebsearchState } from './useWebsearchStatus.ts'
+import { useWebsearchStatus } from './useWebsearchStatus.ts'
 
-/** The panels the shell can show. */
-type PanelId = 'home' | 'websearch'
+/** Header copy for each panel. */
+interface PanelMeta {
+  /** Small uppercase kicker. */
+  eyebrow: string
+  /** Page heading. */
+  title: string
+  /** One-line explanation. */
+  subtitle: string
+}
 
-/** No slot-owned props are required to render the home surface. */
-export interface AekHomeProps {
-  /** Optional click target that advances past the home surface. */
-  onContinue?: () => void
+/** Static header copy, keyed by panel. */
+const META: Record<PanelId, PanelMeta> = {
+  overview: { eyebrow: '工作台', title: '概览', subtitle: '本地实例的运行状态与快捷入口' },
+  websearch: { eyebrow: '工作台 / Web Search', title: 'Web Search', subtitle: '管理多提供商搜索与密钥池状态' },
+  plugins: { eyebrow: '管理 / 插件', title: '插件', subtitle: 'web profile 装配的 AEK 插件' },
+  settings: { eyebrow: '管理 / 设置', title: '设置', subtitle: '运行环境与数据位置（只读）' },
+  about: { eyebrow: '帮助 / 关于', title: '关于', subtitle: '技术栈与开源借鉴' },
 }
 
 /**
- * The AEK application shell: the greeting card plus the panel switcher.
- * @param props.onContinue - optional advance callback.
- * @returns the shell.
+ * Props kept for API compatibility with earlier aek-home releases; the
+ * console navigates internally and needs no external callback.
  */
-export function AekHome({ onContinue }: AekHomeProps) {
-  const [panel, setPanel] = useState<PanelId>('home')
-  return (
-    <div style={shellStyle}>
-      <nav style={navStyle}>
-        <button
-          type="button"
-          style={panel === 'home' ? activeTabStyle : tabStyle}
-          onClick={() => setPanel('home')}
-        >
-          首页
-        </button>
-        <button
-          type="button"
-          style={panel === 'websearch' ? activeTabStyle : tabStyle}
-          onClick={() => setPanel('websearch')}
-        >
-          Web Search
-        </button>
-      </nav>
+export interface AekHomeProps {
+  /** Optional advance callback (unused by the console). */
+  onContinue?: (() => void) | undefined
+}
 
-      {panel === 'home'
-        ? (
-          <div style={cardStyle}>
-            <AekHomeMark />
-            <h1 style={titleStyle}>Hello, AEK</h1>
-            <p style={subtitleStyle}>Agent Enhance Kit · home surface</p>
-            {onContinue === undefined ? undefined : (
-              <button type="button" style={buttonStyle} onClick={onContinue}>
-                继续
-              </button>
-            )}
+/**
+ * Select the content surface for the active panel.
+ * @param panel - active panel id.
+ * @param state - shared host state.
+ * @param onOpen - navigation callback.
+ * @returns the content surface.
+ */
+function renderPanel(panel: PanelId, state: WebsearchState, onOpen: (id: PanelId) => void) {
+  switch (panel) {
+    case 'overview':
+      return <OverviewPanel state={state} onOpen={onOpen} />
+    case 'websearch':
+      return <WebSearchPanel state={state} />
+    default:
+      return <InfoPanels panel={panel} state={state} />
+  }
+}
+
+/**
+ * Render the AEK console.
+ * @param _props - retained for API compatibility.
+ * @returns the application root.
+ */
+export function AekHome(_props: AekHomeProps) {
+  const [panel, setPanel] = useState<PanelId>('overview')
+  const [collapsed, setCollapsed] = useState(false)
+  const state = useWebsearchStatus()
+  const meta = META[panel]
+
+  return (
+    <div className={css.app}>
+      <Sidebar
+        active={panel}
+        onSelect={setPanel}
+        collapsed={collapsed}
+        onToggleCollapse={() => setCollapsed(value => !value)}
+        providerCount={state.status?.providers.length}
+      />
+
+      <div className={css.main}>
+        <header className={css.topbar}>
+          <div className={css.breadcrumb}>
+            <span>工作台</span>
+            <Icon name="chevronRight" size={14} className={css.breadcrumbSep} />
+            <span className={css.breadcrumbCurrent}>{meta.title}</span>
           </div>
-        )
-        : (
-          <div style={panelContainerStyle}>
-            <WebSearchPanel />
+          <div className={css.topbarActions}>
+            <span className={css.topbarBadge}><Icon name="server" size={14} /> 本地实例</span>
+            <button
+              type="button"
+              className={css.iconButton}
+              onClick={state.refresh}
+              title="刷新数据"
+              aria-label="刷新数据"
+            >
+              <Icon name="refresh" size={16} className={state.status === undefined ? css.spinning : undefined} />
+            </button>
           </div>
-        )}
+        </header>
+
+        <main className={css.content}>
+          <div className={css.pageHeader}>
+            <p className={css.pageEyebrow}>{meta.eyebrow}</p>
+            <h1 className={css.pageTitle}>{meta.title}</h1>
+            <p className={css.pageSubtitle}>{meta.subtitle}</p>
+          </div>
+          {renderPanel(panel, state, setPanel)}
+        </main>
+      </div>
     </div>
   )
-}
-
-/** The AEK orange-slice brand mark, matching @cheezmil/aek-base. */
-function AekHomeMark() {
-  return (
-    <svg width="96" height="96" viewBox="0 0 120 120" fill="none" aria-hidden="true">
-      <defs>
-        <linearGradient id="aek-home-rind" x1="0" y1="0" x2="1" y2="1">
-          <stop stopColor="#fdba74" />
-          <stop offset="1" stopColor="#ea580c" />
-        </linearGradient>
-        <linearGradient id="aek-home-flesh" x1="0" y1="0" x2="1" y2="1">
-          <stop stopColor="#fff0bc" />
-          <stop offset="1" stopColor="#fb923c" />
-        </linearGradient>
-      </defs>
-      <g transform="translate(60 60) scale(1.2) translate(-60 -60)">
-        <circle cx="60" cy="60" r="42" fill="url(#aek-home-rind)" />
-        <circle cx="60" cy="60" r="34" fill="#fffbeb" />
-        <circle cx="60" cy="60" r="30" fill="url(#aek-home-flesh)" />
-        <path d="M60 30 L60 90 M30 60 L90 60 M40 40 L80 80 M80 40 L40 80" stroke="#ea580c" strokeWidth="2" opacity="0.5" />
-        <circle cx="60" cy="60" r="8" fill="#fffebf" />
-      </g>
-    </svg>
-  )
-}
-
-const shellStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  minHeight: '100vh',
-  width: '100%',
-  padding: '32px 24px 48px',
-  boxSizing: 'border-box',
-  background: 'radial-gradient(120% 120% at 50% 0%, #fffaf0 0%, #fff 60%)',
-}
-
-const navStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '8px',
-  marginBottom: '24px',
-}
-
-const tabStyle: React.CSSProperties = {
-  padding: '8px 18px',
-  fontSize: '14px',
-  fontWeight: 600,
-  color: '#78716c',
-  background: 'transparent',
-  border: '1px solid #e7e5e4',
-  borderRadius: '999px',
-  cursor: 'pointer',
-}
-
-const activeTabStyle: React.CSSProperties = {
-  ...tabStyle,
-  color: '#ffffff',
-  background: 'linear-gradient(135deg, #fb923c, #ea580c)',
-  borderColor: 'transparent',
-}
-
-const panelContainerStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: '720px',
-}
-
-const cardStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  gap: '16px',
-  padding: '48px 40px',
-  borderRadius: '20px',
-  background: '#ffffff',
-  boxShadow: '0 10px 40px rgba(234, 88, 12, 0.12)',
-  textAlign: 'center',
-}
-
-const titleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: '28px',
-  fontWeight: 700,
-  letterSpacing: '0.02em',
-  color: '#1c1917',
-}
-
-const subtitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: '14px',
-  color: '#78716c',
-  letterSpacing: '0.04em',
-}
-
-const buttonStyle: React.CSSProperties = {
-  marginTop: '8px',
-  padding: '10px 28px',
-  fontSize: '14px',
-  fontWeight: 600,
-  color: '#ffffff',
-  background: 'linear-gradient(135deg, #fb923c, #ea580c)',
-  border: 'none',
-  borderRadius: '10px',
-  cursor: 'pointer',
 }

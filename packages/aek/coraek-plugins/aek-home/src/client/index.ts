@@ -8,7 +8,10 @@
  * stays pending (harmless: aek-home has already mounted).
  *
  * With no dsh shell owning `#root`, aek-home is the base future AEK plugins
- * extend (through aek-home's own slots, not dsh's).
+ * extend (through aek-home's own slots, not dsh's). The mounted surface is the
+ * AEK console: a left navigation rail plus a content column, styled entirely
+ * with CSS Modules compiled by lightningcss (no Tailwind / PostCSS / runtime
+ * styling dependency).
  * @module @cheezmil/aek-home/src/client/index
  */
 import type { Context as ClientContext } from '@cheezmil/coraek/types'
@@ -20,9 +23,8 @@ import { AekHome } from './Home.tsx'
 export const inject: readonly string[] = []
 
 /**
- * Mount the AEK hello-world surface as the application root. The dsh
- * `uiRenderer` is disabled in the AEK profile, so nothing else renders into
- * `#root`.
+ * Mount the AEK console as the application root. The dsh `uiRenderer` is
+ * disabled in the AEK profile, so nothing else renders into `#root`.
  * @param _ctx - Client root context (unused: aek-home needs no services).
  */
 export function apply(_ctx: ClientContext): void {

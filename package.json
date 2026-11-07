@@ -186,6 +186,7 @@
     "constraints": "tsx scripts/check-workspace-constraints.ts",
     "verify:command-namespace": "node scripts/aek/verify-command-namespace.mjs",
     "verify-command-namespace": "node scripts/aek/verify-command-namespace.mjs",
+    "verify:web-stack": "node scripts/aek/verify-web-stack.mjs",
     "doc-sync": "tsx scripts/run-gates.ts doc-sync",
     "hygiene": "tsx scripts/run-gates.ts hygiene",
     "publish:npm-baseline": "tsx scripts/publish-npm-baseline.ts",
