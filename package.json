@@ -212,7 +212,11 @@
     "verify:aek-home": "node scripts/aek/verify-aek-home.mjs",
     "verify:web-ui": "node scripts/aek/verify-web-ui.mjs",
     "start:dev": "node scripts/aek/launch.mjs start-dev",
-    "start:release": "node scripts/aek/launch.mjs start-release"
+    "start:release": "node scripts/aek/launch.mjs start-release",
+    "desktop:status": "node scripts/aek/desktop.mjs status",
+    "desktop:build": "node scripts/aek/desktop.mjs build",
+    "desktop:install": "node scripts/aek/desktop.mjs install",
+    "desktop:dev": "node scripts/aek/desktop.mjs dev"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-agent": "workspace:*",

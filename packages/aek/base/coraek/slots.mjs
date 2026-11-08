@@ -1,0 +1,110 @@
+#!/usr/bin/env node
+/**
+ * The single source of truth for the AEK app slots.
+ *
+ * AEK ships two equal, named instances: `AEK` and `AEK Next`. They share one
+ * source tree but must behave as two separate apps — separate bundle identity,
+ * separate data root, separate ports, separate installed bundle.
+ *
+ * Every layer that needs to know "which app am I?" reads this table:
+ *   - `apps/aek-desktop/v0/electron-builder.config.mjs` — appId / productName /
+ *     output dir / injected metadata, so a build produces one concrete app.
+ *   - `apps/aek-desktop/v0/src/main/index.ts` — which port to connect to and
+ *     which data root to lock.
+ *   - `scripts/aek/shared-logic.mjs` — the dev bundle, packaging and install.
+ *   - `scripts/aek/arbiter.mjs` — start / stop one slot.
+ *
+ * Deliberately dependency-free plain ESM (same rationale as `home.mjs`): the
+ * electron-builder config loads it before any build machinery exists, and the
+ * desktop main imports it inside the packaged app.
+ *
+ * No absolute path is hardcoded here: the data roots are derived from
+ * `resolveAekHome()`, which is the only place allowed to spell out the default
+ * directory name.
+ *
+ * @module @cheezmil/coraek/slots
+ */
+
+import { basename, dirname, join } from 'node:path'
+import { resolveAekHome } from './home.mjs'
+
+/** Environment variable that names the slot a process belongs to. */
+export const AEK_SLOT_ENV = 'AEK_SLOT'
+
+/** The two slot names, in canonical order. */
+export const SLOT_NAMES = /** @type {const} */ (['aek', 'next'])
+
+/**
+ * Slot descriptors. `bundleId` is what macOS sees as the app identity, so the
+ * two apps never collide in Spotlight, the Dock or `userData`.
+ */
+export const SLOTS = {
+  aek: {
+    slot: 'aek',
+    appId: 'com.aek.desktop',
+    bundleId: 'com.aek.desktop',
+    productName: 'AEK',
+    devAppName: 'AEK DEV',
+    webPort: 1680,
+    cdpPort: 1682,
+  },
+  next: {
+    slot: 'next',
+    appId: 'com.aek.desktop.next',
+    bundleId: 'com.aek.desktop.next',
+    productName: 'AEK Next',
+    devAppName: 'AEK DEV Next',
+    webPort: 1702,
+    cdpPort: 1704,
+  },
+}
+
+/**
+ * @param {unknown} value - candidate slot name.
+ * @returns {value is 'aek' | 'next'} true when the value names a known slot.
+ */
+export function isSlot(value) {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(SLOTS, value)
+}
+/**
+ * Work out which slot this process belongs to.
+ *
+ * Resolution order (first hit wins):
+ *   1. `AEK_SLOT` — set explicitly by the launcher / build scripts.
+ *   2. The data root: a root whose name ends in `-next` is the Next slot.
+ *   3. `aek` — the default single install.
+ *
+ * @param {Record<string, string | undefined>} [env] - environment override.
+ * @returns {'aek' | 'next'} the slot name.
+ */
+export function resolveSlot(env = process.env) {
+  const explicit = (env[AEK_SLOT_ENV] ?? '').trim()
+  if (isSlot(explicit)) return explicit
+  const home = resolveAekHome(env)
+  return basename(home).endsWith('-next') ? 'next' : 'aek'
+}
+
+/**
+ * Get the descriptor of a slot.
+ * @param {unknown} slot - slot name.
+ * @returns {typeof SLOTS['aek']} the slot descriptor.
+ * @throws {Error} when the slot name is unknown.
+ */
+export function slotConfig(slot) {
+  if (!isSlot(slot)) throw new Error(`unknown AEK slot: ${String(slot)}`)
+  return SLOTS[slot]
+}
+
+/**
+ * Resolve the data root of a slot. The Next root is the sibling of the base
+ * root, so pointing `AEK_HOME` at a custom root keeps the two apart.
+ * @param {unknown} slot - slot name.
+ * @param {Record<string, string | undefined>} [env] - environment override.
+ * @returns {string} the absolute data-root path for that slot.
+ */
+export function slotHome(slot, env = process.env) {
+  const base = resolveAekHome(env)
+  return slot === 'next'
+    ? join(dirname(base), `${basename(base)}-next`)
+    : base
+}

@@ -28,9 +28,10 @@
  */
 import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { basename, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveAekHome } from '../../packages/aek/base/coraek/home.mjs'
+import { SLOTS, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NODE = process.execPath
@@ -52,11 +53,6 @@ const GATE = join(HERE, 'verify-aek-home.mjs')
 const AEK_BIN = join(ROOT, 'packages', 'aek', 'base', 'coraek', 'bin', 'aek.mjs')
 const TSX = join(ROOT, 'node_modules', '.bin', 'tsx')
 
-const SLOTS = {
-  aek: { webPort: 1680, cdpPort: 1682 },
-  next: { webPort: 1702, cdpPort: 1704 },
-}
-
 const USAGE = `AEK launcher — root pnpm commands must go through scripts/aek.
 
   node scripts/aek/launch.mjs [--slot aek|next] <command> [args...]
@@ -71,6 +67,7 @@ Commands:
   verify-web-ui   read-only UI check / instance control
   start-dev       scripts/aek/start-dev.mjs
   start-release   scripts/aek/start-release.mjs
+  desktop         scripts/aek/desktop.mjs (status / build / install / dev)
 
 Slots: aek (default) -> ~/.aek, next -> ~/.aek-next; ports 1680/1682 vs 1702/1704.`
 
@@ -85,6 +82,7 @@ function invocation(cmd, args) {
     case 'verify-web-ui': return [NODE, [join(HERE, 'verify-web-ui.mjs'), ...args]]
     case 'start-dev': return [NODE, [join(HERE, 'start-dev.mjs'), ...args]]
     case 'start-release': return [NODE, [join(HERE, 'start-release.mjs'), ...args]]
+    case 'desktop': return [NODE, [join(HERE, 'desktop.mjs'), ...args]]
     default: return undefined
   }
 }
@@ -119,10 +117,11 @@ if (!call) {
 }
 
 const base = resolveAekHome()
-const home = slot === 'next' ? join(dirname(base), `${basename(base)}-next`) : base
+const home = slotHome(slot, { ...process.env, AEK_HOME: base })
 const env = { ...process.env }
 env.AEK_HOME = slotExplicit ? home : (env.AEK_HOME ?? home)
 env.DSH_HOME ??= env.AEK_HOME
+env.AEK_SLOT ??= slot
 env.AEK_WEB_PORT ??= String(SLOTS[slot].webPort)
 env.AEK_CDP_PORT ??= String(SLOTS[slot].cdpPort)
 

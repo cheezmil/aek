@@ -32,6 +32,10 @@
       "types": "./home.d.mts",
       "default": "./home.mjs"
     },
+    "./slots": {
+      "types": "./slots.d.mts",
+      "default": "./slots.mjs"
+    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
@@ -67,6 +71,8 @@
   "files": [
     "home.mjs",
     "home.d.mts",
+    "slots.mjs",
+    "slots.d.mts",
     "lib/index.js",
     "lib/client.js",
     "lib/cli.mjs",
