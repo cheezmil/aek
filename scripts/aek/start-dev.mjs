@@ -16,9 +16,9 @@ import {
   electronBin,
   mainJs,
   devAppDirForSlot,
+  slotHome,
   attachCleanup,
   APP_ROOT,
-  CDP_PORT,
   SLOTS,
 } from './shared-logic.mjs'
 
@@ -49,11 +49,22 @@ attachCleanup(web)
   if (!ready) console.warn('[start] web server not ready in time, launching anyway')
   else console.log('[start] web app ready')
 
-  console.log(`[start] launching dev ${cfg.productName} (CDP → port ${CDP_PORT})`)
+  console.log(`[start] launching dev ${cfg.productName} (CDP → port ${cfg.cdpPort})`)
+  // The shell must know which slot it is: without AEK_SLOT / AEK_HOME it would
+  // fall back to the default data root and lock the wrong slot's pid file.
+  const env = {
+    ...process.env,
+    DSH_HOME: slotHome(slot),
+    AEK_HOME: slotHome(slot),
+    AEK_SLOT: slot,
+    AEK_WEB_PORT: String(cfg.webPort),
+    AEK_CDP_PORT: String(cfg.cdpPort),
+  }
+  delete env.NODE_OPTIONS
   const app = spawn(electronBin(devAppDirForSlot(slot), cfg.devAppName), [
     mainJs,
-    `--remote-debugging-port=${CDP_PORT}`,
-  ], { cwd: APP_ROOT, stdio: 'inherit' })
+    `--remote-debugging-port=${cfg.cdpPort}`,
+  ], { cwd: APP_ROOT, env, stdio: 'inherit' })
 
   app.on('close', code => { web.kill(); process.exit(code ?? 0) })
 })()

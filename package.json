@@ -216,7 +216,10 @@
     "desktop:status": "node scripts/aek/desktop.mjs status",
     "desktop:build": "node scripts/aek/desktop.mjs build",
     "desktop:install": "node scripts/aek/desktop.mjs install",
-    "desktop:dev": "node scripts/aek/desktop.mjs dev"
+    "desktop:dev": "node scripts/aek/desktop.mjs dev",
+    "data-root:status": "node scripts/aek/data-root.mjs status",
+    "data-root:plan": "node scripts/aek/data-root.mjs plan",
+    "data-root:copy": "node scripts/aek/data-root.mjs copy"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-agent": "workspace:*",
