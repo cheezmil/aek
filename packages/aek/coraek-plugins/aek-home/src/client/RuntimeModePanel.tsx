@@ -1,103 +1,169 @@
 /**
- * 运行实例管理 (2026-11-09 rename of 运行模式).
+ * 运行实例管理 — granular instance control (2026-11-09 round).
  *
- * Redesigned from the ground up:
- * - One clean status line per instance instead of the four repeated
- *   "● 后端服务 / ● 桌面窗口" tags the user called out. The web / shell
- *   liveness from C6 is folded into a single sentence.
- * - Every endpoint shows its URL and port with a copy button; URLs and ports
- *   come from the HOST scan (`/api/aek/console/facts`), never a literal here.
- * - `only-aek` is the DEFAULT: when the host reports `none` (or has not
- *   answered yet) the UI still presents 仅 AEK as the selected behaviour.
- * - The required isolation note plus a copyable skill absolute path.
- * - Refresh / mode changes show a spinner and an indeterminate loading bar.
- * - All collections are unordered `<ul>/<li>`.
+ * The old panel offered three mode buttons (`1× AEK`, `1× AEK Next`, `同时运行
+ * 两个`) and a duplicated pair of "后端服务 / 桌面窗口" tags. The user asked for:
+ * - each slot's two halves (backend service / desktop window) independently
+ *   startable, stoppable and restartable, plus select-all;
+ * - restart / stop icons, including stopping the instance serving the console;
+ * - URL and port each with its own copy button, aligned in one column;
+ * - a spinner instead of a progress bar;
+ * - a low-resource refresh loop (see `useInstances`).
+ *
+ * All collections are unordered `<ul>/<li>`.
  *
  * @module @cheezmil/aek-home/src/client/RuntimeModePanel
  */
-import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { css, cx } from './styles.ts'
-import { CopyButton, LoadingBar, PanelCard, Spinner } from './ui-kit.tsx'
+import { CopyButton, PanelCard, Spinner } from './ui-kit.tsx'
 import type { SlotEndpoint } from './useConsoleFacts.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
-import type { RuntimeMode } from './useRuntimeMode.ts'
-import { useRuntimeMode } from './useRuntimeMode.ts'
+import type { Half, HalfAction } from './useInstances.ts'
+import { useInstances } from './useInstances.ts'
 
-/** One selectable mode with its i18n key + whether it stops the current slot. */
-interface ModeOption {
-  /** The mode value sent to the host. */
-  mode: RuntimeMode
-  /** i18n key of the label. */
-  labelKey: string
-  /** Slot this mode would stop, or `null` when it never stops the current one. */
-  stops: 'aek' | 'next' | null
-}
+/** The two slots, in display order. */
+const SLOTS = ['aek', 'next'] as const
 
-/** The three target modes; only-aek is the default and listed first. */
-const OPTIONS: readonly ModeOption[] = [
-  { mode: 'only-aek', labelKey: 'runtime.onlyAek', stops: 'next' },
-  { mode: 'only-next', labelKey: 'runtime.onlyNext', stops: 'aek' },
-  { mode: 'both', labelKey: 'runtime.both', stops: null },
-]
+/** One slot name. */
+type Slot = typeof SLOTS[number]
 
 /**
- * Render one endpoint row with copy affordances.
- * @param props - label, value and optional port.
+ * Render one endpoint row: label, value, port and their copy buttons in fixed
+ * columns so every icon lines up vertically across rows.
+ * @param props - label, value, optional port and the copy labels.
  * @returns a list item.
  */
-function EndpointRow({ label, value, port, copyLabel }: {
+function EndpointRow({ label, value, port, urlCopy, portCopy }: {
   label: string
   value: string
   port?: number
-  copyLabel: string
+  urlCopy: string
+  portCopy: string
 }): ReactNode {
   return (
     <li className={css.endpointRow}>
       <span className={css.endpointLabel}>{label}</span>
-      <span className={css.endpointValue}>{value}</span>
-      {port !== undefined
-        ? <span className={css.endpointPort}>{String(port)}</span>
-        : null}
-      <CopyButton value={value} label={copyLabel} />
-      {port !== undefined
-        ? <CopyButton value={String(port)} label={copyLabel} />
-        : null}
+      <span className={css.endpointValue} title={value}>{value}</span>
+      <span className={cx(css.endpointPort, port === undefined && css.endpointPortEmpty)}>
+        {port === undefined ? '—' : String(port)}
+      </span>
+      <CopyButton value={value} label={urlCopy} size={13} />
+      {port === undefined ? <span /> : <CopyButton value={String(port)} label={portCopy} size={13} />}
+    </li>
+  )
+}
+
+/** Props for {@link HalfRow}. */
+interface HalfRowProps {
+  /** Human label (`后端服务` / `桌面窗口`). */
+  label: string
+  /** Whether this half is alive. */
+  on: boolean
+  /** In-flight key for this half, or undefined. */
+  busyKey: string | undefined
+  /** This half's own busy prefix (`slot:half`). */
+  base: string
+  /** Start it. */
+  onStart: () => void
+  /** Stop it. */
+  onStop: () => void
+  /** Restart it. */
+  onRestart: () => void
+}
+
+/**
+ * One half of one instance: state, and its start / stop / restart controls.
+ * @param props - label, liveness and callbacks.
+ * @returns a list item.
+ */
+function HalfRow({ label, on, busyKey, base, onStart, onStop, onRestart }: HalfRowProps): ReactNode {
+  const { tf } = useI18n()
+  const busy = busyKey !== undefined && busyKey.startsWith(base)
+  const control = (action: HalfAction, icon: 'play' | 'stop' | 'refresh', hint: string, disabled: boolean): ReactNode => (
+    <button
+      type="button"
+      className={cx(css.halfButton, !disabled && css.halfButtonOn)}
+      onClick={() => {
+        if (action === 'start') onStart()
+        else if (action === 'stop') onStop()
+        else onRestart()
+      }}
+      disabled={disabled || busy}
+      title={hint}
+      aria-label={hint}
+    >
+      <Icon name={icon} size={14} />
+    </button>
+  )
+  return (
+    <li className={css.halfRow}>
+      <span className={cx(css.halfDot, on ? css.halfDotOn : css.halfDotOff)} aria-hidden="true" />
+      <span className={css.halfLabel}>{label}</span>
+      <span className={css.halfActions}>
+        {busy ? <Spinner /> : null}
+        {control('start', 'play', tf('runtime.half.start', { label }), on)}
+        {control('restart', 'refresh', tf('runtime.half.restart', { label }), !on)}
+        {control('stop', 'stop', tf('runtime.half.stop', { label }), !on)}
+      </span>
     </li>
   )
 }
 
 /**
- * Render the instance manager panel.
+ * Render the instance manager.
  * @returns the panel surface.
  */
 export function RuntimeModePanel() {
   const { t, tf } = useI18n()
-  const state = useRuntimeMode()
+  const state = useInstances()
   const facts = useConsoleFacts()
-  const [confirmMode, setConfirmMode] = useState<RuntimeMode | undefined>(undefined)
   const current = state.status?.current.slot
-  // `none` (or no answer yet) is the documented default: only AEK.
-  const mode = state.status?.mode === undefined || state.status.mode === 'none'
-    ? 'only-aek'
-    : state.status.mode
-  const loading = facts.loading || state.status === undefined
+  const loading = state.status === undefined
+  const health = state.health
 
-  const endpointFor = (slot: string): SlotEndpoint | undefined => facts.facts?.endpoints.find(item => item.slot === slot)
+  const endpointFor = (slot: Slot): SlotEndpoint | undefined => facts.facts?.endpoints.find(item => item.slot === slot)
 
-  const onPick = (option: ModeOption): void => {
-    if (option.stops !== null && option.stops === current) {
-      setConfirmMode(option.mode)
-      return
-    }
-    state.setMode(option.mode)
+  /** Liveness for one half, health-first then the full snapshot. */
+  const halfOn = (slot: Slot, half: Half): boolean => {
+    const live = health?.slots[slot]
+    if (live !== undefined) return half === 'web' ? live.web : live.shell
+    const slotStatus = state.status?.slots[slot]
+    return half === 'web' ? slotStatus?.web === true : slotStatus?.shell === true
   }
 
-  const confirm = confirmMode !== undefined
-    ? OPTIONS.find(option => option.mode === confirmMode)
-    : undefined
+  /** Start every half that is currently down. */
+  const startAll = (): void => {
+    for (const slot of SLOTS) {
+      for (const half of ['web', 'shell'] as const) {
+        if (!halfOn(slot, half)) state.act(slot, half, 'start')
+      }
+    }
+  }
+
+  /** Stop every half that is currently up. */
+  const stopAll = (): void => {
+    for (const slot of SLOTS) {
+      for (const half of ['web', 'shell'] as const) {
+        if (halfOn(slot, half)) state.act(slot, half, 'stop')
+      }
+    }
+  }
+
+  /** Select-all on one card: any half down → start the missing ones, else stop both. */
+  const toggleSlot = (slot: Slot): void => {
+    const web = halfOn(slot, 'web')
+    const shell = halfOn(slot, 'shell')
+    if (web && shell) {
+      state.act(slot, 'web', 'stop')
+      state.act(slot, 'shell', 'stop')
+      return
+    }
+    if (!web) state.act(slot, 'web', 'start')
+    if (!shell) state.act(slot, 'shell', 'start')
+  }
 
   return (
     <PanelCard
@@ -105,7 +171,7 @@ export function RuntimeModePanel() {
       subtitle={t('runtime.subtitle')}
       actions={(
         <>
-          {loading ? <Spinner /> : null}
+          {loading || state.busy !== undefined ? <Spinner /> : null}
           <button
             type="button"
             className={css.iconButton}
@@ -118,62 +184,105 @@ export function RuntimeModePanel() {
         </>
       )}
     >
-      <LoadingBar active={loading || state.pending !== undefined} />
       <div className={css.cardBody}>
-        <div className={css.instanceDefault}>
-          <Icon name="shield" size={14} />
-          {t('runtime.default')}
+        <div className={css.instanceToolbar}>
+          <span className={css.instanceDefault}>
+            <Icon name="shield" size={14} />
+            {t('runtime.default')}
+          </span>
+          <span className={css.instanceToolbarActions}>
+            <button type="button" className={css.toolbarButton} onClick={startAll} title={t('runtime.startAll')}>
+              <Icon name="play" size={14} />
+              {t('runtime.startAll')}
+            </button>
+            <button type="button" className={css.toolbarButton} onClick={stopAll} title={t('runtime.stopAll')}>
+              <Icon name="stop" size={14} />
+              {t('runtime.stopAll')}
+            </button>
+          </span>
         </div>
 
         <ul className={css.instanceList}>
-          {(['aek', 'next'] as const).map((slot) => {
-            const live = state.status?.slots[slot]
-            const running = live?.running === true
+          {SLOTS.map((slot) => {
+            const web = halfOn(slot, 'web')
+            const shell = halfOn(slot, 'shell')
+            const running = web || shell
             const endpoint = endpointFor(slot)
             const name = slot === 'aek' ? t('runtime.aek') : t('runtime.next')
-            const halves = `${live?.web === true ? t('runtime.web') : '—'} / ${live?.shell === true ? t('runtime.shell') : '—'}`
+            const allOn = web && shell
             return (
               <li key={slot} className={cx(css.instanceCard, running && css.instanceCardOn)}>
                 <div className={css.instanceHead}>
-                  <span className={css.instanceName}>{name}</span>
-                  <span className={cx(css.runtimePill, running ? css.runtimePillOn : css.runtimePillOff)}>
-                    <span className={css.runtimeDot} />
-                    {running ? t('runtime.running') : t('runtime.stopped')}
+                  <span className={css.instanceName}>
+                    {name}
+                    {slot === current ? <span className={css.instanceSelf}>{t('runtime.current')}</span> : null}
+                  </span>
+                  <span className={css.instanceHeadRight}>
+                    <span className={cx(css.runtimePill, running ? css.runtimePillOn : css.runtimePillOff)}>
+                      <span className={css.runtimeDot} />
+                      {running ? t('runtime.running') : t('runtime.stopped')}
+                    </span>
+                    <button
+                      type="button"
+                      className={cx(css.halfButton, css.selectAllButton)}
+                      onClick={() => toggleSlot(slot)}
+                      title={allOn ? tf('runtime.stopAllSlot', { name }) : tf('runtime.startAllSlot', { name })}
+                      aria-label={allOn ? tf('runtime.stopAllSlot', { name }) : tf('runtime.startAllSlot', { name })}
+                    >
+                      <Icon name={allOn ? 'stop' : 'play'} size={14} />
+                    </button>
                   </span>
                 </div>
-                <p className={css.instanceHalves}>{halves}</p>
+
+                <ul className={css.halfList}>
+                  <HalfRow
+                    label={t('runtime.web')}
+                    on={web}
+                    busyKey={state.busy}
+                    base={`${slot}:web`}
+                    onStart={() => state.act(slot, 'web', 'start')}
+                    onStop={() => state.act(slot, 'web', 'stop')}
+                    onRestart={() => state.act(slot, 'web', 'restart')}
+                  />
+                  <HalfRow
+                    label={t('runtime.shell')}
+                    on={shell}
+                    busyKey={state.busy}
+                    base={`${slot}:shell`}
+                    onStart={() => state.act(slot, 'shell', 'start')}
+                    onStop={() => state.act(slot, 'shell', 'stop')}
+                    onRestart={() => state.act(slot, 'shell', 'restart')}
+                  />
+                </ul>
+
                 <ul className={css.endpointList}>
                   {endpoint !== undefined
                     ? (
                       <>
-                        <EndpointRow label={t('runtime.endpoint.web')} value={endpoint.url} port={endpoint.webPort} copyLabel={t('runtime.copyPort')} />
-                        <EndpointRow label={t('runtime.endpoint.cdp')} value={`127.0.0.1:${String(endpoint.cdpPort)}`} port={endpoint.cdpPort} copyLabel={t('runtime.copyPort')} />
-                        <EndpointRow label={t('runtime.endpoint.bundle')} value={endpoint.bundleId} copyLabel={t('common.copy')} />
+                        <EndpointRow
+                          label={t('runtime.endpoint.web')}
+                          value={endpoint.url}
+                          port={endpoint.webPort}
+                          urlCopy={t('runtime.copyUrl')}
+                          portCopy={t('runtime.copyPort')}
+                        />
+                        <EndpointRow
+                          label={t('runtime.endpoint.cdp')}
+                          value="127.0.0.1"
+                          port={endpoint.cdpPort}
+                          urlCopy={t('runtime.copyUrl')}
+                          portCopy={t('runtime.copyPort')}
+                        />
+                        <EndpointRow
+                          label={t('runtime.endpoint.bundle')}
+                          value={endpoint.bundleId}
+                          urlCopy={t('common.copy')}
+                          portCopy={t('common.copy')}
+                        />
                       </>
                     )
                     : <li className={css.emptyState}>{t('common.loading')}</li>}
                 </ul>
-              </li>
-            )
-          })}
-        </ul>
-
-        <div className={css.divider} />
-        <h3 className={css.sectionTitle}>{t('runtime.target')}</h3>
-        <ul className={css.modeList}>
-          {OPTIONS.map((option) => {
-            const active = mode === option.mode
-            return (
-              <li key={option.mode}>
-                <button
-                  type="button"
-                  className={cx(css.runtimeOption, active && css.runtimeOptionActive)}
-                  disabled={state.pending !== undefined}
-                  onClick={() => onPick(option)}
-                >
-                  {t(option.labelKey)}
-                  {active ? <span className={css.runtimeActiveTag}>{t('runtime.active')}</span> : null}
-                </button>
               </li>
             )
           })}
@@ -190,32 +299,11 @@ export function RuntimeModePanel() {
 
         <div className={css.pathBox}>
           <span className={css.pathLabel}>{t('runtime.skillPath')}</span>
-          <code className={css.pathValue}>{facts.facts?.skillPath ?? t('common.loading')}</code>
+          <code className={css.pathValue} title={facts.facts?.skillPath ?? ''}>
+            {facts.facts?.skillPath ?? t('common.loading')}
+          </code>
           <CopyButton value={facts.facts?.skillPath ?? ''} label={t('runtime.copyPath')} />
         </div>
-
-        {confirm && confirmMode
-          ? (
-            <div className={css.runtimeConfirmOverlay} role="dialog" aria-modal="true">
-              <div className={css.runtimeConfirmBox}>
-                <h3 className={css.runtimeConfirmTitle}>{t('runtime.confirmTitle')}</h3>
-                <p className={css.runtimeConfirmText}>{t('runtime.confirmText')}</p>
-                <div className={css.runtimeConfirmActions}>
-                  <button type="button" className={css.runtimeConfirmNo} onClick={() => setConfirmMode(undefined)}>
-                    {t('runtime.confirmNo')}
-                  </button>
-                  <button
-                    type="button"
-                    className={css.runtimeConfirmYes}
-                    onClick={() => { const next = confirmMode; setConfirmMode(undefined); state.setMode(next) }}
-                  >
-                    {t('runtime.confirmYes')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )
-          : null}
       </div>
     </PanelCard>
   )

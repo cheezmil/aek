@@ -4,8 +4,9 @@
  * One rule the user repeated (2026-11-09): EVERY list is an UNORDERED list.
  * The helpers here render `<ul>/<li>` only; there is no `<ol>` anywhere in the
  * console. Copy buttons, spinners, loading bars and the in-page search box are
- * shared so the runtime, settings, skills, prompts, permissions and websearch
- * surfaces look and behave identically.
+ * shared so the runtime, settings, skills, prompts and websearch surfaces
+ * look and behave identically. There is deliberately NO progress bar: the
+ * user asked for spinners only (2026-11-09 round).
  *
  * @module @cheezmil/aek-home/src/client/ui-kit
  */
@@ -81,20 +82,6 @@ export function Spinner({ label }: { label?: string }) {
   )
 }
 
-/**
- * An indeterminate progress bar shown while a host request is in flight.
- * @param props.active - whether the request is running.
- * @returns the bar, or nothing when idle.
- */
-export function LoadingBar({ active }: { active: boolean }) {
-  if (!active) return null
-  return (
-    <div className={css.spinnerTrack} role="progressbar" aria-label="loading">
-      <div className={css.spinnerFill} />
-    </div>
-  )
-}
-
 /** Props for {@link PanelSearch}. */
 export interface PanelSearchProps {
   /** Current query. */
@@ -104,7 +91,7 @@ export interface PanelSearchProps {
   /** Input placeholder (already translated). */
   placeholder: string
   /** Number of matches shown beside the box; `undefined` hides it. */
-  count?: number
+  count?: number | undefined
 }
 
 /**

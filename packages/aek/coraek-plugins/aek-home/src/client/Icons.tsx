@@ -22,6 +22,7 @@ export type IconName =
   | 'language' | 'star' | 'plus' | 'trash' | 'edit' | 'close'
   | 'eye' | 'eyeOff' | 'eyeAll' | 'layers'
   | 'copy' | 'pin' | 'book' | 'sparkles' | 'terminal' | 'layout' | 'restore'
+  | 'play' | 'stop'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 const ICONS: Record<IconName, ReactNode> = {
@@ -181,6 +182,10 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M3 3v5h5" />
     </>
   ),
+  /** Lucide `play`: start one half of an instance. */
+  play: <path d="m8 5 12 7-12 7Z" />,
+  /** Lucide `square`: stop one half of an instance. */
+  stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
   /** A double eye: reveal ALL keys at once (2026-11-09 round). */
   eyeAll: (
     <>

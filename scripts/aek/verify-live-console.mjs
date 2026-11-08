@@ -94,17 +94,43 @@ const index = await get(`${base}/`)
 const facts = await get(`${base}/api/aek/console/facts`)
 const status = await get(`${base}/api/aek/websearch`)
 const permissions = await get(`${base}/api/aek/permissions`)
+const health = await get(`${base}/api/aek/console/health`)
+const access = await get(`${base}/api/aek/access`)
+const instances = await get(`${base}/api/aek/instances`)
 const live = index.status === 200 && facts.status === 200 && status.status === 200
 check('web console (1685)', live, `index=${String(index.status)} facts=${String(facts.status)} status=${String(status.status)} permissions=${String(permissions.status)}`)
 if (facts.status === 200) {
   try {
     const parsed = JSON.parse(facts.body)
-    check('host facts', parsed.platform === 'darwin' && Array.isArray(parsed.endpoints) && Array.isArray(parsed.plugins),
+    check('host facts', parsed.platform === 'darwin' && Array.isArray(parsed.endpoints) && Array.isArray(parsed.plugins)
+      && String(parsed.skillPath ?? '').endsWith(join('aek-system-skill', 'aek-usage')),
       `platform=${parsed.platform} arch=${parsed.arch} plugins=${String(parsed.plugins?.length)} endpoints=${String(parsed.endpoints?.length)} entries=${String(parsed.entries?.length)}`)
   } catch {
     check('host facts', false, 'facts endpoint returned non-JSON')
   }
 }
+
+// 2b. Instance manager: health fingerprint, access policy view, method guard.
+let healthOk = false
+if (health.status === 200) {
+  try {
+    const parsed = JSON.parse(health.body)
+    healthOk = typeof parsed.signature === 'string' && parsed.signature.length === 4
+      && typeof parsed.slots?.aek?.web === 'boolean' && typeof parsed.slots?.aek?.shell === 'boolean'
+  } catch { healthOk = false }
+}
+check('instance health fingerprint', healthOk, `health=${String(health.status)}`)
+
+let accessOk = false
+if (access.status === 200) {
+  try {
+    const parsed = JSON.parse(access.body)
+    accessOk = typeof parsed.publicMode === 'boolean' && Array.isArray(parsed.allowlist) && typeof parsed.hasPassword === 'boolean'
+  } catch { accessOk = false }
+}
+check('access settings view', accessOk, `access=${String(access.status)}`)
+
+check('instance control requires POST', instances.status === 405, `GET /api/aek/instances → ${String(instances.status)}`)
 
 // 3. CDP: the Electron shell is actually alive (no window screenshot needed).
 const cdp = await get(`http://127.0.0.1:${String(aek.cdpPort)}/json/version`)

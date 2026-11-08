@@ -28,7 +28,7 @@ import type { ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { css, cx } from './styles.ts'
-import { CopyButton, LoadingBar, PanelSearch, Spinner } from './ui-kit.tsx'
+import { CopyButton, PanelSearch, Spinner } from './ui-kit.tsx'
 import { useKeyPool } from './useKeyPool.ts'
 import type { DisableReason, KeyPoolEntry, KeyPoolState, RecycleEntry } from './useKeyPool.ts'
 import type { WebsearchState } from './useWebsearchStatus.ts'
@@ -197,7 +197,6 @@ export function WebSearchPanel({ state }: WebSearchPanelProps) {
 
       <div className={css.cardBody}>
         <PanelSearch value={query} onChange={setQuery} placeholder={t('websearch.search')} count={providers.length} />
-        <LoadingBar active={loading || pool.pending} />
 
         {error !== undefined
           ? (

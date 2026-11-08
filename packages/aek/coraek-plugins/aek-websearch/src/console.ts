@@ -12,8 +12,8 @@
  *   (an explicit, user-initiated action; nothing is granted automatically)
  *
  * Paths are derived from `import.meta.url` (walk up to `pnpm-workspace.yaml`)
- * and from `@cheezmil/coraek/home` / `homedir()`. No absolute path literal is
- * embedded in the source — the project ships to machines with a different home.
+ * and from `@cheezmil/coraek/home`. No absolute path literal is embedded in the
+ * source — the project ships to machines with a different home.
  *
  * @module aek-websearch/console
  */
@@ -22,17 +22,18 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 
 import { spawn } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { homedir } from 'node:os'
 import type { Context } from '@cheezmil/coraek/types'
 import { resolveAekHome } from '@cheezmil/coraek/home'
-import { SLOT_NAMES, slotConfig } from '@cheezmil/coraek/slots'
-import { readPrefs } from './preferences.ts'
+import { SLOT_NAMES, slotConfig, slotHome } from '@cheezmil/coraek/slots'
+import { ACCESS_API_PATH, accessGuard, accessView, writeAccess } from './access.ts'
+import type { AccessUpdate } from './access.ts'
 
 /** Routes owned by this module. */
 export const CONSOLE_FACTS_API_PATH = '/api/aek/console/facts'
 export const PERMISSIONS_API_PATH = '/api/aek/permissions'
 export const PERMISSIONS_OPEN_API_PATH = '/api/aek/permissions/open'
 export const PLUGIN_ACTION_API_PATH = '/api/aek/plugins/action'
+export { ACCESS_API_PATH }
 
 /** macOS deep link to the Accessibility privacy pane (verified with aekws). */
 const ACCESSIBILITY_DEEP_LINK = 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'
@@ -237,19 +238,18 @@ function endpoints(): SlotEndpoint[] {
 }
 
 /**
- * Resolve the copyable skill path. Operators can point at their own notes
- * directory with `AEK_NOTES_SKILL_DIR`; otherwise the conventional location
- * under the current user's home is used. A host-side preference can override
- * both, so the path is never baked into the client bundle.
+ * Resolve the copyable skill path at runtime.
+ *
+ * The `aek-usage` system skill is seeded by `aek-skill-manager` into
+ * `<AEK_HOME>/skill-manager/aek-system-skill/aek-usage`. There is deliberately
+ * NO override setting and NO env override: the user asked for one fixed,
+ * host-resolved path (2026-11-09 round), not another "add every setting" knob.
  * @returns an absolute path resolved at runtime.
  */
 function skillPath(): string {
-  const prefs = readPrefs()
-  const override = prefs['aek-home.skillPath']
-  if (typeof override === 'string' && override.length > 0) return override
-  const env = process.env.AEK_NOTES_SKILL_DIR
-  if (typeof env === 'string' && env.length > 0) return env
-  return join(homedir(), 'MyDurio', 'my-skills', 'aek-dev-notes', 'SKILL.md')
+  // The user asked for the AEK slot's hub explicitly (not "whichever slot is
+  // serving this page"), so Next's console shows the same absolute path.
+  return join(slotHome('aek'), 'skill-manager', 'aek-system-skill', 'aek-usage')
 }
 
 /**
@@ -313,6 +313,7 @@ function serverOf(ctx: Context): {
     path: string
     handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
   }): () => void
+  registerGuard?: (guard: (req: IncomingMessage, res: ServerResponse) => boolean) => () => void
 } | undefined {
   return (ctx as unknown as {
     webServer?: {
@@ -321,6 +322,7 @@ function serverOf(ctx: Context): {
         path: string
         handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
       }): () => void
+      registerGuard?: (guard: (req: IncomingMessage, res: ServerResponse) => boolean) => () => void
     }
   }).webServer
 }
@@ -332,6 +334,54 @@ function serverOf(ctx: Context): {
 export function registerConsole(ctx: Context): void {
   const server = serverOf(ctx)
   if (server === undefined) return
+
+  // The guard must sit in front of route dispatch, otherwise the SPA fallback
+  // (and any non-AEK route) would bypass the LAN-only / Basic-Auth policy.
+  if (server.registerGuard !== undefined) {
+    ctx.effect(() => server.registerGuard?.(accessGuard) ?? (() => { /* no guard seam */ }), 'aek-websearch: access guard')
+  }
+
+  ctx.effect(() => server.register({
+    kind: 'exact',
+    path: ACCESS_API_PATH,
+    handler: async (req, res) => {
+      const method = req.method ?? 'GET'
+      if (method === 'GET') {
+        sendJson(res, 200, accessView())
+        return
+      }
+      if (method !== 'POST') {
+        res.setHeader('allow', 'GET, POST')
+        sendJson(res, 405, { code: 'method-not-allowed', message: 'use GET or POST' })
+        return
+      }
+      const chunks: Buffer[] = []
+      let size = 0
+      for await (const chunk of req) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string)
+        size += buffer.length
+        if (size > 64 * 1024) break
+        chunks.push(buffer)
+      }
+      let body: Record<string, unknown> = {}
+      try {
+        const parsed = JSON.parse(Buffer.concat(chunks).toString('utf-8')) as unknown
+        if (typeof parsed === 'object' && parsed !== null) body = parsed as Record<string, unknown>
+      } catch { /* bad-request below */ }
+      const update: AccessUpdate = {
+        publicMode: body.publicMode === true,
+        allowlist: Array.isArray(body.allowlist) ? body.allowlist as string[] : [],
+        username: typeof body.username === 'string' ? body.username : '',
+        password: typeof body.password === 'string' ? body.password : '',
+      }
+      const result = writeAccess(update)
+      if (!result.ok) {
+        sendJson(res, 400, { code: 'invalid-access', message: result.message })
+        return
+      }
+      sendJson(res, 200, result.view)
+    },
+  }), 'aek-websearch: access settings')
 
   ctx.effect(() => server.register({
     kind: 'exact',

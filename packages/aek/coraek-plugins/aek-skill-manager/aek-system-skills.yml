@@ -26,7 +26,13 @@ packages:
   # aek-skill-manager 自带的 manager skill 由 ManagerSkillService 单独 seed，
   # 不进 SystemSkillService 的 bundle 列表（否则同一个 skill 会被 seed 两次）。
   # 但它仍是合法的白名单成员：出现在 hub 里不算「未定义的包」。
+  #
+  # aek-usage 是「除插件自带 skill 之外的 AEK 系统 skill」，源码在
+  # aek-system-ohter-skills/aek-usage/，由 scripts/aek/seed-system-skills.mjs
+  # 落到 hub 的 aek-system-skill/。它在白名单里，aeksm doctor / bootstrap
+  # 的 quarantine 才不会把它当未声明项移进 .backups/。
   - name: aek-skill-manager
     skills:
       - aek-skill-manager
+      - aek-usage
     seed: false

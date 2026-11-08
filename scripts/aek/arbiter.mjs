@@ -35,10 +35,13 @@ import {
   DSH_HOME,
   slotWebUp,
   slotShellUp,
+  slotShellPids,
+  slotProcesses,
 } from './shared-logic.mjs'
 import {
   writeSlotLock,
   clearSlotLock,
+  isPidAlive,
 } from '../../packages/aek/base/coraek/slot-lock.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -49,7 +52,10 @@ const USAGE = `AEK runtime arbiter — per-slot instance lifecycle.
   node scripts/aek/arbiter.mjs status
   node scripts/aek/arbiter.mjs start <aek|next>
   node scripts/aek/arbiter.mjs stop  <aek|next>
-  node scripts/aek/arbiter.mjs mode  <only-aek|only-next|both>`
+  node scripts/aek/arbiter.mjs mode  <only-aek|only-next|both>
+  node scripts/aek/arbiter.mjs start-half   <aek|next> <web|shell>
+  node scripts/aek/arbiter.mjs stop-half    <aek|next> <web|shell>
+  node scripts/aek/arbiter.mjs restart-half <aek|next> <web|shell>`
 
 /** @param slot - candidate slot name. @returns true when it is a known slot. */
 function isSlot(slot) { return slot === 'aek' || slot === 'next' }
@@ -182,6 +188,82 @@ async function cmdStop(slot) {
 }
 
 /**
+ * Start ONE half of a slot without disturbing the other half.
+ *
+ * The console's instance manager lets the user pick the backend service and
+ * the desktop window independently (2026-11-09 round). A window needs a live
+ * backend to load, so `shell` refuses to start while the web half is down;
+ * a web half can be started (or restarted) while the window stays open —
+ * `watchBackend()` in the shell then reconnects automatically.
+ * @param slot - 'aek' | 'next'.
+ * @param half - 'web' | 'shell'.
+ * @returns {Promise<object>} the result payload.
+ */
+async function cmdStartHalf(slot, half) {
+  if (!isSlot(slot)) return { ok: false, error: `unknown slot "${slot}"` }
+  if (half !== 'web' && half !== 'shell') return { ok: false, error: `unknown half "${half}"` }
+  if (half === 'web') {
+    if (probe(slot)) return { ok: false, slot, half, error: `web server for slot "${slot}" already running` }
+    const foreign = slotProcesses(slot).foreign.filter(p => p.port === SLOTS[slot].webPort)
+    if (foreign.length > 0) {
+      return { ok: false, slot, half, error: `port conflict: ${foreign.map(f => `:${f.port} held by pid ${f.pid}`).join(', ')}`, foreign }
+    }
+    const web = spawnWebServerForSlot(slot, { detached: true })
+    writePid(slot, { webPid: web.pid })
+    return { ok: true, slot, half, webPid: web.pid }
+  }
+  if (slotShellUp(slot)) return { ok: false, slot, half, error: `shell for slot "${slot}" already running` }
+  if (!probe(slot)) return { ok: false, slot, half, error: 'start the backend service before the desktop window' }
+  const shell = launchShellForSlot(slot, { headless: false })
+  return { ok: true, slot, half, shellPid: shell?.pid ?? null }
+}
+
+/**
+ * Stop ONE half of a slot, leaving the other half alive.
+ *
+ * - `web`: reuse `killSlot(..., { keepShell: true })` so a running window is
+ *   explicitly excluded from the kill set, then forget the recorded web pid.
+ * - `shell`: SIGTERM only the pids that belong to the shell, wait a bounded
+ *   time, and forget the recorded shell pid. The web server keeps serving.
+ * @param slot - 'aek' | 'next'.
+ * @param half - 'web' | 'shell'.
+ * @returns {Promise<object>} the result payload.
+ */
+async function cmdStopHalf(slot, half) {
+  if (!isSlot(slot)) return { ok: false, error: `unknown slot "${slot}"` }
+  if (half !== 'web' && half !== 'shell') return { ok: false, error: `unknown half "${half}"` }
+  if (half === 'web') {
+    const result = await killSlot(slot, { keepShell: true })
+    writePid(slot, { webPid: null })
+    return { ok: result.ok, slot, half, stoppedPids: result.killed, stuck: result.stuck, foreign: result.foreign }
+  }
+  const pids = slotShellPids(slot)
+  for (const pid of pids) {
+    try { process.kill(pid, 'SIGTERM') } catch { /* already gone */ }
+  }
+  const deadline = Date.now() + 3000
+  while (Date.now() < deadline && pids.some(isPidAlive)) {
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  const stuck = pids.filter(isPidAlive)
+  writePid(slot, { shellPid: null })
+  return { ok: stuck.length === 0, slot, half, stoppedPids: pids, stuck }
+}
+
+/**
+ * Restart one half: stop it, then start it again.
+ * @param slot - 'aek' | 'next'.
+ * @param half - 'web' | 'shell'.
+ * @returns {Promise<object>} the result payload.
+ */
+async function cmdRestartHalf(slot, half) {
+  const stopped = await cmdStopHalf(slot, half)
+  if (stopped.ok === false && stopped.stuck?.length > 0) return { ok: false, slot, half, ...stopped }
+  const started = await cmdStartHalf(slot, half)
+  return { ok: started.ok === true, slot, half, stopped, started }
+}
+
+/**
  * Orchestrate a mode (CLI convenience). The API route does its own
  * orchestration so it can defer the self-stop past the HTTP response.
  * @param mode - target mode.
@@ -206,7 +288,9 @@ const argv = process.argv.slice(2)
 const command = argv[0]
 // The first POSITIONAL argument after the command (flags may come before or
 // after it). `start next --headless` and `start --headless next` both work.
-const arg = argv.slice(1).find(a => !a.startsWith('--'))
+const positional = argv.slice(1).filter(a => !a.startsWith('--'))
+const arg = positional[0]
+const half = positional[1]
 const headless = argv.includes('--headless')
 let out
 switch (command) {
@@ -214,6 +298,9 @@ switch (command) {
   case 'start': out = await cmdStart(arg, { headless }); break
   case 'stop': out = await cmdStop(arg); break
   case 'mode': out = await cmdMode(arg); break
+  case 'start-half': out = await cmdStartHalf(arg, half); break
+  case 'stop-half': out = await cmdStopHalf(arg, half); break
+  case 'restart-half': out = await cmdRestartHalf(arg, half); break
   default:
     console.error(USAGE)
     process.exit(2)

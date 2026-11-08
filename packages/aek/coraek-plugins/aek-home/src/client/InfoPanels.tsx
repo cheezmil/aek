@@ -1,19 +1,23 @@
 /**
- * Settings / 插件管理 / About surfaces (2026-11-09 round).
+ * Settings / 插件管理 / About surfaces (2026-11-09 fourth round).
  *
- * - Settings is now SCHEMA-DRIVEN: `settings-schema.ts` is the single source of
- *   truth for keys, ranges, defaults, labels and CSS variables. Adding a
- *   setting means adding one row there, not editing this component. Every
- *   numeric control is a slider PLUS a number box, kept in sync, and may have a
- *   negative range. The top search box filters the page's own settings.
- * - 插件管理 lists every plugin scanned by the host, with backend / CLI / MCP
- *   capability tags and restart / enable / disable actions.
+ * - Settings is SCHEMA-DRIVEN: `settings-schema.ts` is the single source of
+ *   truth for keys, ranges, defaults, labels and CSS variables. The
+ *   "Skill 绝对路径覆盖" field was REMOVED on user request — not every knob
+ *   deserves to exist.
+ * - Permissions is no longer a standalone panel; it is a settings group now.
+ * - Access settings (new): LAN-only by default (loopback + RFC1918 A/B/C),
+ *   custom IP / CIDR / host allowlist, and a public mode that FORCES a
+ *   username + password before it can be enabled.
+ * - 插件管理 actions are larger ICON buttons with `title` + `aria-label`
+ *   tooltips, not a row of text buttons.
  * - About marks `apps/web`, `apps/cli`, `apps/aek-desktop` as ENTRY POINTS.
- * - Every collection is an unordered `<ul>/<li>` (user rule).
+ * - Every collection is an unordered `<ul>/<li>` (user rule). No progress
+ *   bars: refresh states use `Spinner`.
  *
  * @module @cheezmil/aek-home/src/client/InfoPanels
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
@@ -22,12 +26,25 @@ import type { PrefValue } from './preferences.tsx'
 import { coerce, SETTINGS_SCHEMA } from './settings-schema.ts'
 import type { SettingField } from './settings-schema.ts'
 import { css } from './styles.ts'
-import { CapabilityTags, LoadingBar, PanelCard, PanelSearch, Spinner } from './ui-kit.tsx'
+import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner } from './ui-kit.tsx'
 import type { InventoryState } from './useInventory.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
 
 /** Panels handled here. */
 export type InfoPanelId = 'plugins' | 'settings' | 'about'
+
+/** Host routes. */
+const PLUGIN_ACTION_API = '/api/aek/plugins/action'
+const ACCESS_API = '/api/aek/access'
+const PERMISSIONS_OPEN_API = '/api/aek/permissions/open'
+
+/** The API-safe access settings view (never contains a password hash). */
+interface AccessView {
+  publicMode: boolean
+  allowlist: string[]
+  username: string
+  hasPassword: boolean
+}
 
 /**
  * Display-only package name (C3): strip the npm scope.
@@ -49,8 +66,7 @@ export interface InfoPanelsProps {
 
 /**
  * Render ONE schema field's control. The value is always coerced to the
- * declared range before it reaches an input, so a stale host value can never
- * break the slider / number box pair.
+ * declared range before it reaches an input.
  * @param props - field and change callback.
  * @returns the row content.
  */
@@ -147,7 +163,199 @@ function SettingControl({ field, value, onChange }: {
   )
 }
 
-/** @returns the schema-driven settings page. */
+/** @returns the access-control section of the settings page. */
+function AccessSection() {
+  const { t } = useI18n()
+  const [view, setView] = useState<AccessView | undefined>(undefined)
+  const [publicMode, setPublicMode] = useState(false)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [allowlist, setAllowlist] = useState('')
+  const [hasPassword, setHasPassword] = useState(false)
+  const [notice, setNotice] = useState<string | undefined>(undefined)
+  const [error, setError] = useState<string | undefined>(undefined)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void fetch(ACCESS_API, { headers: { accept: 'application/json' } })
+      .then(async response => await response.json() as AccessView)
+      .then((data) => {
+        if (cancelled) return
+        setView(data)
+        setPublicMode(data.publicMode)
+        setUsername(data.username)
+        setAllowlist(data.allowlist.join('\n'))
+        setHasPassword(data.hasPassword)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause))
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  const missingCredentials = publicMode && (username.trim().length === 0 || (password.length === 0 && !hasPassword))
+
+  /** Persist the whole form in one host write. */
+  const save = (): void => {
+    if (missingCredentials) {
+      setError(t('access.needCredentials'))
+      return
+    }
+    setSaving(true)
+    setError(undefined)
+    setNotice(undefined)
+    const entries = allowlist.split(/\r?\n/u).map(line => line.trim()).filter(line => line.length > 0)
+    void fetch(ACCESS_API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ publicMode, username, password, allowlist: entries }),
+    })
+      .then(async (response) => {
+        const data = await response.json() as AccessView & { message?: string }
+        if (!response.ok) throw new Error(data.message ?? `HTTP ${String(response.status)}`)
+        return data
+      })
+      .then((data) => {
+        setView(data)
+        setHasPassword(data.hasPassword)
+        setPassword('')
+        setNotice(t('access.saved'))
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => setSaving(false))
+  }
+
+  return (
+    <section className={css.settingGroup}>
+      <h3 className={css.sectionTitle}>{t('settings.group.access')}</h3>
+      <p className={css.hint}>{t('access.defaultHint')}</p>
+      <ul className={css.settingList}>
+        <li className={css.settingRow}>
+          <label className={css.settingToggleRow}>
+            <input
+              type="checkbox"
+              className={css.settingToggle}
+              checked={publicMode}
+              onChange={event => setPublicMode(event.target.checked)}
+            />
+            <span className={css.settingToggleLabel}>{t('access.publicMode')}</span>
+          </label>
+          <p className={css.hint}>{t('access.publicModeHint')}</p>
+        </li>
+        <li className={css.settingRow}>
+          <div className={css.settingRowHead}><span className={css.settingToggleLabel}>{t('access.allowlist')}</span></div>
+          <textarea
+            className={css.accessTextarea}
+            rows={4}
+            value={allowlist}
+            placeholder={t('access.allowlistPlaceholder')}
+            aria-label={t('access.allowlist')}
+            onChange={event => setAllowlist(event.target.value)}
+          />
+          <p className={css.hint}>{t('access.allowlistHint')}</p>
+        </li>
+        {publicMode
+          ? (
+            <>
+              <li className={css.settingRow}>
+                <div className={css.settingRowHead}><span className={css.settingToggleLabel}>{t('access.username')}</span></div>
+                <input
+                  type="text"
+                  className={css.textInput}
+                  value={username}
+                  autoComplete="off"
+                  aria-label={t('access.username')}
+                  onChange={event => setUsername(event.target.value)}
+                />
+              </li>
+              <li className={css.settingRow}>
+                <div className={css.settingRowHead}><span className={css.settingToggleLabel}>{t('access.password')}</span></div>
+                <input
+                  type="password"
+                  className={css.textInput}
+                  value={password}
+                  autoComplete="new-password"
+                  placeholder={hasPassword ? t('access.passwordKeep') : ''}
+                  aria-label={t('access.password')}
+                  onChange={event => setPassword(event.target.value)}
+                />
+              </li>
+            </>
+          )
+          : null}
+      </ul>
+      {missingCredentials ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{t('access.needCredentials')}</span></div> : null}
+      {error !== undefined ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{error}</span></div> : null}
+      {notice !== undefined ? <p className={css.hint}>{notice}</p> : null}
+      <div className={css.accessActions}>
+        <button type="button" className={css.primaryButton} disabled={saving || view === undefined || missingCredentials} onClick={save}>
+          {saving ? <Spinner /> : null}
+          {t('access.save')}
+        </button>
+      </div>
+    </section>
+  )
+}
+
+/** @returns the permissions section, now part of Settings. */
+function PermissionsSection() {
+  const { t } = useI18n()
+  const facts = useConsoleFacts()
+  const [notice, setNotice] = useState<string | undefined>(undefined)
+  const [pending, setPending] = useState(false)
+  const isMac = facts.facts?.platform === 'darwin'
+  const noteKey = facts.facts?.permissions.noteKey ?? 'permissions.note.other'
+  const bundles = facts.facts?.permissions.bundles ?? []
+
+  /** Open the OS privacy pane (explicit, user-initiated). */
+  const openPane = (): void => {
+    setPending(true)
+    setNotice(undefined)
+    void fetch(PERMISSIONS_OPEN_API, { method: 'POST' })
+      .then(async response => await response.json() as { ok?: boolean; reason?: string })
+      .then(data => setNotice(data.ok === true ? t('permissions.opened') : String(data.reason ?? 'unknown')))
+      .catch((cause: unknown) => setNotice(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => setPending(false))
+  }
+
+  return (
+    <section className={css.settingGroup}>
+      <h3 className={css.sectionTitle}>{t('settings.group.permissions')}</h3>
+      <ul className={css.infoList}>
+        <li className={css.infoRow}>
+          <span className={css.infoLabel}>{t('permissions.platform')}</span>
+          <span className={css.infoValue}>
+            {facts.facts === undefined ? t('common.loading') : `${facts.facts.platform} / ${facts.facts.arch}`}
+          </span>
+        </li>
+      </ul>
+      <div className={css.heroNote}>
+        <span className={css.noteIcon}><Icon name="shield" size={16} /></span>
+        <p>{t(noteKey)}</p>
+      </div>
+      <ul className={css.permList}>
+        {bundles.map(bundle => (
+          <li key={bundle.id} className={css.permRow}>
+            <span className={css.featureIcon}><Icon name="layout" size={16} /></span>
+            <span className={css.permName}>{bundle.name}.app</span>
+            <code className={css.pathValue}>{bundle.id}</code>
+            <CopyButton value={bundle.id} label={t('common.copy')} />
+          </li>
+        ))}
+      </ul>
+      <div className={css.accessActions}>
+        <button type="button" className={css.primaryButton} disabled={pending || !isMac} onClick={openPane}>
+          {pending ? <Spinner /> : null}
+          {t('permissions.open')}
+        </button>
+      </div>
+      {notice !== undefined ? <p className={css.hint}>{notice}</p> : null}
+    </section>
+  )
+}
+
+/** @returns the schema-driven settings page with permissions + access groups. */
 function SettingsPanel() {
   const { t } = useI18n()
   const { prefs, set, setMany } = useSettings()
@@ -158,6 +366,7 @@ function SettingsPanel() {
     return [t(field.labelKey), field.key, field.group].join(' ').toLowerCase().includes(needle)
   })
   const groups: readonly SettingField['group'][] = ['sidebar', 'navigation', 'general']
+  const matches = (keys: readonly string[]): boolean => needle.length === 0 || keys.join(' ').toLowerCase().includes(needle)
 
   /** Restore every schema default in ONE host write. */
   const resetAll = (): void => {
@@ -192,7 +401,9 @@ function SettingsPanel() {
             </section>
           )
         })}
-        {visible.length === 0
+        {matches(['access', 'lan', 'ip', 'cidr', 'basic auth', t('settings.group.access')]) ? <AccessSection /> : null}
+        {matches(['permission', 'tcc', 'accessibility', t('settings.group.permissions')]) ? <PermissionsSection /> : null}
+        {visible.length === 0 && needle.length > 0
           ? <div className={css.emptyState}>{t('common.noMatch')}</div>
           : null}
       </div>
@@ -200,8 +411,19 @@ function SettingsPanel() {
   )
 }
 
-/** Host route that queues one plugin action (see `console.ts`). */
-const PLUGIN_ACTION_API = '/api/aek/plugins/action'
+/** One plugin action: icon, i18n label and the host action id. */
+interface PluginAction {
+  id: 'restart' | 'enable' | 'disable'
+  icon: 'refresh' | 'check' | 'close'
+  labelKey: string
+}
+
+/** The three actions, rendered as ICON buttons with hover tooltips. */
+const PLUGIN_ACTIONS: readonly PluginAction[] = [
+  { id: 'restart', icon: 'refresh', labelKey: 'plugins.action.restart' },
+  { id: 'enable', icon: 'check', labelKey: 'plugins.action.enable' },
+  { id: 'disable', icon: 'close', labelKey: 'plugins.action.disable' },
+]
 
 /** @returns the plugin management page. */
 function PluginsPanel() {
@@ -217,7 +439,7 @@ function PluginsPanel() {
   })
 
   /** @param id - plugin directory name. @param action - requested action. */
-  const act = (id: string, action: 'restart' | 'enable' | 'disable'): void => {
+  const act = (id: string, action: PluginAction['id']): void => {
     setPending(`${id}:${action}`)
     setNotice(undefined)
     void fetch(PLUGIN_ACTION_API, {
@@ -242,9 +464,8 @@ function PluginsPanel() {
         </>
       )}
     >
-      <LoadingBar active={facts.loading} />
       <div className={css.cardBody}>
-        <PanelSearch value={query} onChange={setQuery} placeholder={t('plugins.search')} count={plugins.length} />
+        <PanelSearch value={query} onChange={setQuery} placeholder={t('plugins.search')} count={facts.loading ? undefined : plugins.length} />
         <p className={css.hint}>{t('plugins.action.note')}</p>
         {notice !== undefined ? <p className={css.hint}>{notice}</p> : null}
         {facts.error !== undefined
@@ -262,13 +483,24 @@ function PluginsPanel() {
                   <div className={css.featureTitle}>{displayName(plugin.packageName)}</div>
                   <div className={css.featureText}>{plugin.version} · {plugin.description}</div>
                 </div>
+                <ul className={css.pluginIconActions}>
+                  {PLUGIN_ACTIONS.map(action => (
+                    <li key={action.id}>
+                      <button
+                        type="button"
+                        className={css.pluginIconButton}
+                        disabled={pending !== undefined}
+                        onClick={() => act(plugin.id, action.id)}
+                        title={t(action.labelKey)}
+                        aria-label={`${t(action.labelKey)} · ${displayName(plugin.packageName)}`}
+                      >
+                        <Icon name={action.icon} size={20} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
               <CapabilityTags caps={plugin.capabilities} />
-              <div className={css.pluginActions}>
-                <button type="button" className={css.primaryButton} disabled={pending !== undefined} onClick={() => act(plugin.id, 'restart')}>{t('plugins.action.restart')}</button>
-                <button type="button" className={css.primaryButton} disabled={pending !== undefined} onClick={() => act(plugin.id, 'enable')}>{t('plugins.action.enable')}</button>
-                <button type="button" className={css.primaryButton} disabled={pending !== undefined} onClick={() => act(plugin.id, 'disable')}>{t('plugins.action.disable')}</button>
-              </div>
             </li>
           ))}
         </ul>

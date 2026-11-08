@@ -12,8 +12,9 @@
  *     not a hardcoded number in the UI.
  *  4. R1 — disable reasons exist in both dictionaries.
  *  5. R7 — both Web Search and Settings render the shared in-page search box.
- *  6. R10 — the Electron main process has NO hiddenInset / empty title /
- *     page-title-updated interception left.
+ *  6. Title bar — the native frame is kept (no hiddenInset) but the caption
+ *     text is intentionally empty, and external links go to the SYSTEM browser
+ *     instead of an Electron window.
  *
  * Usage: node scripts/aek/verify-console-round.mjs [--json]
  * @module scripts/aek/verify-console-round
@@ -133,13 +134,26 @@ check(
   'WebSearchPanel + SettingsPanel',
 )
 
-const desktopMain = stripComments(read(join(DESKTOP, 'index.ts')))
+// Naive comment stripping also eats `//` inside a regex literal such as
+// `/^https?:\/\//u`, so the string-search below runs on the RAW source. The
+// tokens it looks for only exist in code, not in the prose comments.
+const desktopRaw = read(join(DESKTOP, 'index.ts'))
+const desktopMain = stripComments(desktopRaw)
 check(
-  'R10 native Electron title bar',
+  'native frame with empty caption',
   !desktopMain.includes('hiddenInset')
-    && !desktopMain.includes('page-title-updated')
-    && /title:\s*SLOT_CFG\.productName/u.test(desktopMain),
-  'no hiddenInset / no title interception / real product title',
+    && /title:\s*''/u.test(desktopMain)
+    && desktopMain.includes("page-title-updated")
+    && desktopMain.includes('preventDefault()'),
+  'no hiddenInset / empty title / renderer title updates blocked',
+)
+
+check(
+  'external links open in the system browser',
+  desktopRaw.includes('setWindowOpenHandler')
+    && desktopRaw.includes('shell.openExternal')
+    && desktopRaw.includes("action: 'deny'"),
+  'setWindowOpenHandler → shell.openExternal, all other schemes denied',
 )
 
 const failed = results.filter(item => !item.ok)

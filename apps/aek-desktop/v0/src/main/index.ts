@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, systemPreferences } from 'electron'
+import { app, BrowserWindow, Menu, shell, systemPreferences } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -54,9 +54,10 @@ const SLOT_CFG = slotConfig(SLOT)
 // from the slot baked into the packaged app, and finally from the slot table.
 const WEB_PORT = Number(process.env.AEK_WEB_PORT ?? packaged?.webPort ?? SLOT_CFG.webPort)
 const CDP_PORT = Number(process.env.AEK_CDP_PORT ?? packaged?.cdpPort ?? SLOT_CFG.cdpPort)
-// R10 (2026-11-09): the user asked for the ORIGINAL Electron title bar back.
-// The window therefore keeps the standard frame and shows the product name.
-// No `hiddenInset`, no empty title, no `page-title-updated` interception.
+// Title bar: keep the ORIGINAL native frame (R10) but WITHOUT any text in it
+// (2026-11-09 follow-up). `title: ''` plus blocking `page-title-updated` keeps
+// the macOS traffic lights and the standard bar while leaving the centre empty;
+// this is not the old `hiddenInset` scheme, the frame is still the native one.
 
 // Headless mode: run the shell WITHOUT a window. Used when a slot is kept
 // warm (or verified) without wanting a second Dock icon.
@@ -375,13 +376,28 @@ function createWindow() {
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    // Native frame + real product name (R10).
-    title: SLOT_CFG.productName,
+    // Native frame kept; the caption text itself is intentionally empty.
+    title: '',
     icon: join(APP_ROOT, 'resources', 'icon.icns'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
+  })
+  // The HTML document also carries a <title>; without this the renderer would
+  // push it into the native caption and the text would come back.
+  win.on('page-title-updated', (event) => { event.preventDefault() })
+  // The star icon links to GitHub. Electron's default is a new BrowserWindow,
+  // which is not a browser the user wants. Send http(s) to the SYSTEM browser
+  // and refuse every other scheme (security: no file://, no custom protocols).
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//u.test(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url.startsWith(`http://127.0.0.1:${String(WEB_PORT)}`)) return
+    event.preventDefault()
+    if (/^https?:\/\//u.test(url)) void shell.openExternal(url)
   })
   const mismatch = portMismatchPage()
   if (mismatch) {

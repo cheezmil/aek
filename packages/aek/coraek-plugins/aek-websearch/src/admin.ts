@@ -89,6 +89,12 @@ export const WEBSEARCH_KEYS_RECYCLE_API_PATH = '/api/aek/websearch/keys/recycle'
 /** The runtime-mode route the dual-app switcher talks to. */
 export const RUNTIME_API_PATH = '/api/aek/runtime'
 
+/** Lightweight liveness fingerprint for the low-cost auto refresh. */
+export const CONSOLE_HEALTH_API_PATH = '/api/aek/console/health'
+
+/** Fine-grained per-slot, per-half (backend / desktop window) control. */
+export const INSTANCES_API_PATH = '/api/aek/instances'
+
 /** One masked key-pool row, safe to send to the browser. */
 export interface KeyPoolEntry {
   /** Real primary key in the encrypted pool (NOT `status()`'s 0-based display id). */
@@ -537,6 +543,103 @@ export function registerRuntime(ctx: Context): void {
   }), 'aek-websearch: runtime API')
 }
 
+/** Cached liveness fingerprint; a 2s TTL keeps polling almost free. */
+let healthCache: { at: number; payload: Record<string, unknown> } | undefined
+
+/**
+ * Build the tiny health payload the instance manager polls.
+ *
+ * Instead of re-fetching the whole facts/runtime snapshot on a timer, the UI
+ * asks for four booleans plus a signature; it re-reads the full status only
+ * when that signature changes. The arbiter result itself is cached for 2s so
+ * several open windows cannot stampede it.
+ * @returns the fingerprint payload.
+ */
+function readHealth(): Record<string, unknown> {
+  const now = Date.now()
+  if (healthCache !== undefined && now - healthCache.at < 2000) return healthCache.payload
+  const raw = runArbiter(['status'], true)
+  const source = raw.slots as Record<string, { web?: boolean; shell?: boolean }> | undefined
+  const slots: Record<string, { web: boolean; shell: boolean }> = {}
+  let signature = ''
+  for (const slot of ['aek', 'next']) {
+    const web = source?.[slot]?.web === true
+    const shell = source?.[slot]?.shell === true
+    slots[slot] = { web, shell }
+    signature += `${web ? '1' : '0'}${shell ? '1' : '0'}`
+  }
+  const payload = { ok: true, signature, slots, at: now }
+  healthCache = { at: now, payload }
+  return payload
+}
+
+/**
+ * Register the two routes the redesigned instance manager needs.
+ *
+ * - `GET  /api/aek/console/health` → four liveness booleans + a signature.
+ * - `POST /api/aek/instances` → `{ slot, half, action }`; `half` is `web`
+ *   (backend service) or `shell` (desktop window), `action` is start/stop/
+ *   restart. These map straight onto the arbiter's per-half commands, so the
+ *   user can combine the two halves freely and can also stop the very slot
+ *   serving the console (the shell then shows its reconnecting page).
+ *
+ * @param ctx - the plugin context.
+ */
+function registerInstanceControl(ctx: Context): void {
+  const server = webServerOf(ctx)
+
+  ctx.effect(() => server.register({
+    kind: 'exact',
+    path: CONSOLE_HEALTH_API_PATH,
+    handler: (_req, res) => {
+      try {
+        sendJson(res, 200, readHealth())
+      } catch (cause) {
+        sendJson(res, 502, { code: 'health-failed', message: messageOf(cause) })
+      }
+    },
+  }), 'aek-websearch: console health')
+
+  ctx.effect(() => server.register({
+    kind: 'exact',
+    path: INSTANCES_API_PATH,
+    handler: async (req, res) => {
+      if (req.method !== 'POST') {
+        res.setHeader('allow', 'POST')
+        sendJson(res, 405, { code: 'method-not-allowed', message: 'use POST' })
+        return
+      }
+      const body = await readJsonBody(req)
+      const slot = body?.slot
+      const half = body?.half
+      const action = body?.action
+      const slotOk = slot === 'aek' || slot === 'next'
+      const halfOk = half === 'web' || half === 'shell'
+      const command = action === 'start' ? 'start-half' : (action === 'stop' ? 'stop-half' : (action === 'restart' ? 'restart-half' : undefined))
+      if (!slotOk || !halfOk || command === undefined) {
+        sendJson(res, 400, { code: 'bad-request', message: 'slot (aek|next), half (web|shell) and action (start|stop|restart) are required' })
+        return
+      }
+      const args = [command, slot, half]
+      healthCache = undefined
+      // Stopping / restarting the BACKEND of our own slot would kill the
+      // process before this response flushes. Answer first, then act, exactly
+      // like the runtime switcher's self-stop path.
+      if (slot === currentSlot() && half === 'web' && action !== 'start') {
+        sendJson(res, 200, { ok: true, deferred: true, command, slot, half })
+        setTimeout(() => { try { runArbiter(args, false) } catch { /* best effort */ } }, 600)
+        return
+      }
+      try {
+        const result = runArbiter(args, true)
+        sendJson(res, 200, { ok: result.ok !== false, command, slot, half, result })
+      } catch (cause) {
+        sendJson(res, 502, { code: 'arbiter-failed', message: messageOf(cause) })
+      }
+    },
+  }), 'aek-websearch: instance control')
+}
+
 /**
  * Register the management API on the composition's web server.
  * @param ctx - the plugin context (typed via @cheezmil/coraek/types).
@@ -545,6 +648,7 @@ export function apply(ctx: Context): void {
   const server = webServerOf(ctx)
   registerInventory(ctx)
   registerRuntime(ctx)
+  registerInstanceControl(ctx)
   registerPreferences(ctx)
   registerConsole(ctx)
   // R6: enforce the 7-day (configurable) recycle-bin TTL as soon as the host

@@ -310,6 +310,14 @@ export class WebServer extends Service {
   private readonly tlsConnections = new Set<Duplex>()
   private readonly indexTaps: ((html: string) => string)[] = []
   private fallback: WebRoute['handler'] | undefined
+  /**
+   * Optional request-level access guard claimed by an AEK plugin. It runs for
+   * EVERY request (named routes, the SPA fallback and upgrades alike). A guard
+   * returning `false` must have already written the response. This is the only
+   * seam that can enforce LAN-only / Basic-Auth access without patching every
+   * route: cordis plugins own routes, not the raw `http.createServer` listener.
+   */
+  private accessGuard: ((req: IncomingMessage, res: ServerResponse) => boolean) | undefined
   private server!: Server
   private listenedPort: number | undefined
   private readonly gzip: NodeMiddleware | undefined
@@ -370,6 +378,23 @@ export class WebServer extends Service {
     }
     table.set(route.path, route)
     return () => { table.delete(route.path) }
+  }
+
+  /**
+   * Claim the single request-level access guard.
+   *
+   * The guard is called before route dispatch for every request. Returning
+   * `true` continues; returning `false` means the guard already answered the
+   * client (403 / 401 with `WWW-Authenticate`) and dispatch must stop.
+   * @param guard - the predicate with its own response handling.
+   * @returns the disposer releasing the guard seat.
+   */
+  registerGuard(guard: (req: IncomingMessage, res: ServerResponse) => boolean): () => void {
+    if (this.accessGuard !== undefined) {
+      throw new Error('webserver: access guard already registered')
+    }
+    this.accessGuard = guard
+    return () => { this.accessGuard = undefined }
   }
 
   /**
@@ -442,6 +467,9 @@ export class WebServer extends Service {
     // never a process exit.
     const listener = (req: IncomingMessage, res: ServerResponse): void => {
       const next = (): void => {
+        // AEK access control (LAN-only by default, optional Basic Auth for
+        // public exposure). The guard writes the rejection response itself.
+        if (this.accessGuard !== undefined && !this.accessGuard(req, res)) return
         void handle(req, res).catch((err: unknown) => {
           this.ctx.logger.warn(err instanceof Error ? err : new Error(String(err)))
           if (res.headersSent) {

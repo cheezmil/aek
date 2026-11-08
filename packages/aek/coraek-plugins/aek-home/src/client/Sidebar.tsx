@@ -30,7 +30,7 @@ const HOVER_ENTER_DELAY = 120
 const HOVER_LEAVE_DELAY = 200
 
 /** Every surface the console can show. */
-export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'settings' | 'permissions' | 'about'
+export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'settings' | 'about'
 
 /** The two drawer groups the user asked for (plus the pinned bucket). */
 export type NavGroup = 'plugins' | 'other'
@@ -52,12 +52,12 @@ interface NavEntry {
 /** Navigation model. Adding a panel = one row; the drawer picks it up. */
 const NAV: readonly NavEntry[] = [
   { id: 'runtime', labelKey: 'panel.runtime', icon: 'activity', group: 'other', keywords: ['runtime', 'instance', 'slot', 'port', '运行实例', '实例'] },
-  { id: 'websearch', labelKey: 'panel.websearch', icon: 'search', group: 'other', keywords: ['search', 'keys', 'api key', 'provider', '密钥'] },
+  // Web Search is a real AEK plugin, so it belongs in the 插件 drawer, not 其他.
+  { id: 'websearch', labelKey: 'panel.websearch', icon: 'search', group: 'plugins', keywords: ['search', 'keys', 'api key', 'provider', '密钥'] },
   { id: 'plugins', labelKey: 'panel.plugins', icon: 'plugins', group: 'plugins', keywords: ['plugin', 'package', 'inventory', '插件管理'] },
   { id: 'skills', labelKey: 'panel.skills', icon: 'book', group: 'plugins', keywords: ['skill', 'manager', '技能'] },
   { id: 'prompts', labelKey: 'panel.prompts', icon: 'sparkles', group: 'plugins', keywords: ['prompt', 'manager', '提示词'] },
   { id: 'settings', labelKey: 'panel.settings', icon: 'settings', group: 'other', keywords: ['preferences', 'options', 'sidebar', '设置'] },
-  { id: 'permissions', labelKey: 'panel.permissions', icon: 'shield', group: 'other', keywords: ['permission', 'tcc', 'accessibility', '权限'] },
   { id: 'about', labelKey: 'panel.about', icon: 'about', group: 'other', keywords: ['version', 'info', 'entry', '关于'] },
 ]
 

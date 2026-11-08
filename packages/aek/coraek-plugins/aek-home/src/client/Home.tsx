@@ -16,7 +16,7 @@
 import type { CSSProperties } from 'react'
 import { I18nProvider } from './i18n.tsx'
 import { InfoPanels } from './InfoPanels.tsx'
-import { PermissionsPanel, PromptsPanel, SkillsPanel } from './ConsolePanels.tsx'
+import { PromptsPanel, SkillsPanel } from './ConsolePanels.tsx'
 import { oneOf, PREF_KEYS, PrefProvider, usePref, useSettings } from './preferences.tsx'
 import { Sidebar } from './Sidebar.tsx'
 import type { PanelId } from './Sidebar.tsx'
@@ -30,7 +30,7 @@ import { useWebsearchStatus } from './useWebsearchStatus.ts'
 
 /** All valid panel ids, used to validate a persisted value. */
 const PANEL_IDS: readonly PanelId[] = [
-  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'settings', 'permissions', 'about',
+  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'settings', 'about',
 ]
 
 /** Props kept for API compatibility with earlier aek-home releases. */
@@ -70,7 +70,6 @@ function Console() {
             : null}
           {panel === 'skills' ? <SkillsPanel /> : null}
           {panel === 'prompts' ? <PromptsPanel /> : null}
-          {panel === 'permissions' ? <PermissionsPanel /> : null}
         </main>
       </div>
     </div>

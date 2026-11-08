@@ -131,10 +131,6 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     labelKey: 'settings.drawerExpanded', hintKey: 'settings.drawerExpandedHint', default: true,
   },
   {
-    key: 'aek-home.skillPath', kind: 'text', group: 'general',
-    labelKey: 'settings.skillPath', hintKey: 'settings.skillPathHint', default: '',
-  },
-  {
     key: 'aek-home.keyRetentionDays', kind: 'range', group: 'general',
     labelKey: 'settings.keyRetentionDays', hintKey: 'settings.keyRetentionDaysHint',
     default: 7, min: 1, max: 90, step: 1, unit: 'd',
