@@ -57,8 +57,10 @@ export const SLOTS = {
     bundleId: 'com.aek.desktop.next',
     productName: 'AEK Next',
     devAppName: 'AEK DEV Next',
-    webPort: 1702,
-    cdpPort: 1704,
+    // Same project range (1680-1689), numbered straight on from `aek` so the
+    // whole table is contiguous: every slot owns one adjacent pair.
+    webPort: 1687,
+    cdpPort: 1688,
   },
 }
 

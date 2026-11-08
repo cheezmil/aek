@@ -370,13 +370,39 @@ function currentSlot(): 'aek' | 'next' {
  * @param sync - block for completion when true.
  * @returns the arbiter payload (sync) or a detached acknowledgement.
  */
-function runArbiter(args: string[], sync: boolean): Record<string, unknown> {
-  if (sync) {
-    const r = spawnSync('node', [ARBITER_BIN, ...args], { encoding: 'utf8', cwd: ARBITER_ROOT })
-    if (r.status !== 0) throw new Error(`arbiter ${args[0]} failed: ${(r.stderr ?? '').trim() || r.status}`)
-    return JSON.parse(r.stdout) as Record<string, unknown>
+/**
+ * The arbiter prints exactly one JSON line on stdout, but anything it spawns
+ * (e.g. a helper that writes progress) can add lines ahead of it. Take the last
+ * line that parses rather than assuming stdout is pure JSON — a stray `[start]`
+ * line used to make every successful switch report `arbiter-failed`.
+ * @param stdout - raw arbiter stdout.
+ * @returns the parsed payload.
+ */
+function parseArbiterOutput(stdout: string): Record<string, unknown> {
+  const lines = stdout.split('\n').map(l => l.trim()).filter(Boolean)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]
+    if (!line || !line.startsWith('{')) continue
+    try {
+      return JSON.parse(line) as Record<string, unknown>
+    } catch { /* keep looking */ }
   }
-  const child = spawn('node', [ARBITER_BIN, ...args], { cwd: ARBITER_ROOT, stdio: 'ignore', detached: true })
+  throw new Error(`arbiter produced no JSON: ${stdout.trim().slice(0, 200)}`)
+}
+
+function runArbiter(args: string[], sync: boolean): Record<string, unknown> {
+  // Probe without HTTP. This route runs *inside* the web host, and the arbiter
+  // it spawns probes the very port this process is blocking on — a synchronous
+  // curl against ourselves can never be answered, so the host would deadlock
+  // until timeout (observed as the whole UI hanging with 0 bytes back).
+  // `slotWebUp` still verifies the listener belongs to the slot's data root.
+  const env = { ...process.env, AEK_PROBE_NO_HTTP: '1' }
+  if (sync) {
+    const r = spawnSync('node', [ARBITER_BIN, ...args], { encoding: 'utf8', cwd: ARBITER_ROOT, env })
+    if (r.status !== 0) throw new Error(`arbiter ${args[0]} failed: ${(r.stderr ?? '').trim() || r.status}`)
+    return parseArbiterOutput(r.stdout ?? '')
+  }
+  const child = spawn('node', [ARBITER_BIN, ...args], { cwd: ARBITER_ROOT, stdio: 'ignore', detached: true, env })
   child.unref()
   return { ok: true, detached: true, command: args[0] }
 }

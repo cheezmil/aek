@@ -9,7 +9,7 @@
  *
  * Slots (names are fixed; no bundle id is ever swapped):
  *   aek   -> ~/.aek        web 1685 / cdp 1686
- *   next  -> ~/.aek-next   web 1702 / cdp 1704
+ *   next  -> ~/.aek-next   web 1687 / cdp 1688
  * The Next root is derived from the resolved default (`<root>-next`), not
  * hardcoded, so an explicit `AEK_HOME` still produces the right sibling.
  *
@@ -76,7 +76,7 @@ Commands:
   data-root       scripts/aek/data-root.mjs (status / plan / copy)
   slots           scripts/aek/slots.mjs (check / only / both / stop-all / warm)
 
-Slots: aek (default) -> ~/.aek, next -> ~/.aek-next; ports 1685/1686 vs 1702/1704.`
+Slots: aek (default) -> ~/.aek, next -> ~/.aek-next; ports 1685/1686 vs 1687/1688.`
 
 /** @param {string} cmd @param {string[]} args @returns {[string, string[]] | undefined} */
 function invocation(cmd, args) {

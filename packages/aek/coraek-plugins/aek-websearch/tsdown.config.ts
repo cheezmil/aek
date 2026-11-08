@@ -13,7 +13,7 @@ export default defineConfig([
     format: ['esm'],
     platform: 'node',
     target: 'es2024',
-    outExtension: () => ({ js: '.js' }),
+    outExtension: () => ({ js: '.mjs' }),
     dts: true,
     external: ['@deepseek-ai/cordis', '@cheezmil/coraek', '@cheezmil/prevent-agent-directly-seeing-key', '@deepseek-ai/schemastery', 'yaml'],
     sourcemap: false,

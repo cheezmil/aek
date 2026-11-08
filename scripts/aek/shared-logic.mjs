@@ -42,7 +42,7 @@ export const APP_ROOT = join(PROJECT_ROOT, 'apps', 'aek-desktop', 'v0')
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // Ports are injected per slot by scripts/aek/launch.mjs (AEK 1685/1686, Next
-// 1702/1704). When the env is unset (direct invocation / packaged app opened
+// 1687/1688). When the env is unset (direct invocation / packaged app opened
 // without the launcher) we fall back to the AEK defaults so the existing
 // single-app flow keeps working.
 export const WEB_PORT   = Number(process.env.AEK_WEB_PORT ?? 1685)
@@ -55,7 +55,7 @@ export const INSTALL_DIR = join(homedir(), 'Applications')
 // ── Dual-app slots ─────────────────────────────────────────────────────────
 // Two equal, named instances share one bundle (same app id, never swapped):
 //   aek  → ~/.aek        web 1685 / cdp 1686
-//   next → ~/.aek-next   web 1702 / cdp 1704
+//   next → ~/.aek-next   web 1687 / cdp 1688
 // scripts/aek/arbiter.mjs uses these to start/stop a whole instance (web + shell).
 // The table itself comes from @cheezmil/coraek/slots (see the re-export above).
 
@@ -161,14 +161,14 @@ export function shell(cmd, opts = {}) {
 export function killPids(pids) {
   const pidArr = (pids || '').split(/\s+/).filter(Boolean)
   if (pidArr.length === 0) return
-  console.log(`[start] kill ${pidArr.join(' ')}`)
+  console.error(`[start] kill ${pidArr.join(' ')}`)
   execSync(`kill ${pidArr.join(' ')}`, { stdio: 'inherit' })
 }
 
 /** Kill anything holding the given port. */
 export function killPort(port) {
   const pids = shell(`lsof -ti:${port}`)
-  if (pids) { console.log(`[start] freeing port ${port} → ${pids}`); killPids(pids) }
+  if (pids) { console.error(`[start] freeing port ${port} → ${pids}`); killPids(pids) }
 }
 
 /** Kill ports used by this mode. */
@@ -200,7 +200,7 @@ export function spawnWebServerWith(home, port, options = {}) {
   delete env.NODE_OPTIONS
 
   const webCmd = `DSH_HOME=${home} ${tsxBin()} ${dshBin()} web --no-open --port ${port}`
-  console.log(`[start] web  → http://127.0.0.1:${port} (home ${home})`)
+  console.error(`[start] web  → http://127.0.0.1:${port} (home ${home})`)
   const web = spawn('bash', ['-c', webCmd], {
     cwd: PROJECT_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'], detached: Boolean(options.detached),
   })
@@ -217,7 +217,7 @@ export function spawnWebServer() {
 
 /**
  * Spawn the DSH web server for a slot. Equivalent to {@link spawnWebServer} for
- * `slot === 'aek'`; for `next` it points at `~/.aek-next` on port 1702.
+ * `slot === 'aek'`; for `next` it points at `~/.aek-next` on port 1687.
  * @param slot - 'aek' | 'next'.
  * @param options - forwarded to {@link spawnWebServerWith} (e.g. `{ detached: true }`).
  * @returns the spawned child process.
@@ -261,21 +261,43 @@ export function slotWebUp(slot) {
   const home = slotHome(slot)
   let ours = false
   try {
-    const pids = execFileSync('/usr/sbin/lsof', ['-ti', `:${s.webPort}`], { encoding: 'utf8' })
+    // LISTEN only: `lsof -ti :port` also returns peers that merely CONNECT to
+    // the port (the shell's ESTABLISHED sockets), so the pid list changed on
+    // every call and a foreign client could satisfy the check.
+    const pids = execFileSync('/usr/sbin/lsof',
+      ['-nP', '-ti', `-iTCP:${s.webPort}`, '-sTCP:LISTEN'], { encoding: 'utf8' })
       .trim().split(/\s+/).filter(Boolean)
     for (const pid of pids) {
-      const cmd = execFileSync('/bin/ps', ['-p', pid, '-o', 'command='], { encoding: 'utf8' })
-      if (cmd.includes(home) || cmd.includes(`--port ${s.webPort}`)) ours = true
+      let cmd
+      try {
+        cmd = execFileSync('/bin/ps', ['-p', pid, '-o', 'command='], { encoding: 'utf8' })
+      } catch { continue }   // pid vanished mid-scan; skip it, don't fail the probe
+      // `home` must match on a path boundary: `/a/.aek` must not match the
+      // command line of the sibling `/a/.aek-next` process.
+      if (cmd.includes(`${home}/`) || cmd.trimEnd().endsWith(home) ||
+          cmd.includes(`--port ${s.webPort}`)) ours = true
     }
   } catch { /* no listener */ }
   if (!ours) return false
-  try {
-    const result = spawnSync('curl', ['-s', '-m', '2', `http://127.0.0.1:${s.webPort}/`], { encoding: 'utf8' })
-    return result.status === 0 && typeof result.stdout === 'string' &&
-      (result.stdout.includes('aek') || result.stdout.includes('dsh'))
-  } catch {
-    return false
+  // SELF-DEADLOCK GUARD. When the web host's own admin route calls the arbiter
+  // (`GET /api/aek/runtime` → synchronous spawn), the arbiter probes the port
+  // that the calling process is *right now* blocking on. The TCP listener and
+  // pid are still valid, but no response can ever arrive — so the HTTP check
+  // would hang the whole host. Callers spawned from inside a host set this.
+  if (process.env.AEK_PROBE_NO_HTTP === '1') return true
+  // The body check is what separates "our server" from "a squatter answering
+  // on our port", so it must not be flaky: a single curl gets killed at the
+  // deadline on a loaded machine, which used to make the probe oscillate
+  // between running/stopped. Retry before declaring the slot down.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const result = spawnSync('curl', ['-s', '-m', '3', `http://127.0.0.1:${s.webPort}/`], { encoding: 'utf8' })
+      if (result.status === 0 && typeof result.stdout === 'string' &&
+          (result.stdout.includes('aek') || result.stdout.includes('dsh'))) return true
+    } catch { /* retry */ }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150)
   }
+  return false
 }
 
 // ── Web readiness poll ────────────────────────────────────────────────────────
@@ -325,13 +347,13 @@ export function brandDevBundle(slot = 'aek') {
 
   // Clean stale brand
   if (existsSync(target)) {
-    console.log(`[brand] removing stale ${appName}.app …`)
+    console.error(`[brand] removing stale ${appName}.app …`)
     rmSync(target, { recursive: true, force: true })
   }
 
   // Ensure source Electron.app exists
   if (!existsSync(srcElectronApp)) {
-    console.log('[brand] Electron.app missing, reinstalling …')
+    console.error('[brand] Electron.app missing, reinstalling …')
     const installScript = join(APP_ROOT, 'node_modules', 'electron', 'install.js')
     if (existsSync(installScript)) {
       execSync(`node "${installScript}"`, { cwd: APP_ROOT, stdio: 'pipe' })
@@ -340,10 +362,10 @@ export function brandDevBundle(slot = 'aek') {
       console.error('[brand] Electron.app still missing after reinstall')
       return false
     }
-    console.log('[brand] Electron.app restored')
+    console.error('[brand] Electron.app restored')
   }
 
-  console.log(`[brand] branding → ${appName}.app …`)
+  console.error(`[brand] branding → ${appName}.app …`)
   mkdirSync(INSTALL_DIR, { recursive: true })
   execSync(`cp -R "${srcElectronApp}" "${target}"`, { stdio: 'pipe' })
 
@@ -357,7 +379,7 @@ export function brandDevBundle(slot = 'aek') {
   const resourcesDir = join(target, 'Contents', 'Resources')
   if (existsSync(customIcon)) {
     copyFileSync(customIcon, join(resourcesDir, 'icon.icns'))
-    console.log('[brand] copied custom icon')
+    console.error('[brand] copied custom icon')
   }
 
   // Patch Info.plist — identity keys first, so the signature below seals them.
@@ -376,13 +398,13 @@ export function brandDevBundle(slot = 'aek') {
       `$1${cfg.bundleId}$2`,
     )
     writeFileSync(plistPath, plist)
-    console.log(`[brand] patched Info.plist → ${appName} (${cfg.bundleId})`)
+    console.error(`[brand] patched Info.plist → ${appName} (${cfg.bundleId})`)
   }
 
   // Sign LAST: the plist edit above invalidated Electron's original signature.
   if (!signApp(target)) return false
 
-  console.log(`[brand] done → ${target}`)
+  console.error(`[brand] done → ${target}`)
   return true
 }
 
@@ -390,7 +412,7 @@ export function brandDevBundle(slot = 'aek') {
 
 /** Build TypeScript sources. */
 export function buildTs() {
-  console.log('[start] building TypeScript…')
+  console.error('[start] building TypeScript…')
   const tsc = join(APP_ROOT, 'node_modules', '.bin', 'tsc')
   execSync(`"${tsc}" -p "${tsconfigPath}"`, { cwd: APP_ROOT, stdio: 'inherit' })
 }
@@ -411,14 +433,14 @@ export function packageApp(slot = 'aek') {
   const cfg = slotConfig(slot)
   const maxAttempts = 3
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    console.log(`[start] packaging [${slot}] with electron-builder (attempt ${attempt}/${maxAttempts})…`)
+    console.error(`[start] packaging [${slot}] with electron-builder (attempt ${attempt}/${maxAttempts})…`)
     try {
       execSync(`node "${builderCli()}" build --mac --config "${builderConfig}" --arm64`, {
         cwd: APP_ROOT,
         stdio: 'inherit',
         env: { ...process.env, AEK_SLOT: slot },
       })
-      console.log(`[start] packaged → ${join(APP_ROOT, 'dist', slot, 'mac-arm64', `${cfg.productName}.app`)}`)
+      console.error(`[start] packaged → ${join(APP_ROOT, 'dist', slot, 'mac-arm64', `${cfg.productName}.app`)}`)
       writeBuildFingerprint(slot)
       return true
     } catch (err) {
@@ -446,7 +468,7 @@ export function packageApp(slot = 'aek') {
  * @returns {boolean} true when the bundle signed and verified.
  */
 export function signApp(appPath) {
-  console.log('[start] signing with Cheezmil Dev…')
+  console.error('[start] signing with Cheezmil Dev…')
   const sign = 'codesign --force --deep --sign "Cheezmil Dev" --options runtime'
   const ent  = join(APP_ROOT, 'entitlements.plist')
 
@@ -461,7 +483,7 @@ export function signApp(appPath) {
   // "App is damaged and can't be opened" dialog.
   try {
     execSync(`codesign --verify --deep --strict --verbose=1 "${appPath}"`, { stdio: 'pipe' })
-    console.log('[start] signature verified')
+    console.error('[start] signature verified')
   } catch (err) {
     console.error(`[start] signature verification FAILED: ${err.message}`)
     return false
@@ -504,7 +526,7 @@ export function installApp(slot = 'aek') {
     const backup = `${target}.bak-${Date.now()}`
     try {
       execSync(`mv "${target}" "${backup}"`, { stdio: 'inherit' })
-      console.log(`[start] previous bundle kept → ${backup}`)
+      console.error(`[start] previous bundle kept → ${backup}`)
     } catch (err) {
       console.error(`[start] could not move the old bundle aside: ${err.message}`)
       rmSync(staging, { recursive: true, force: true })
@@ -522,7 +544,7 @@ export function installApp(slot = 'aek') {
     rmSync(target, { recursive: true, force: true })
     return false
   }
-  console.log(`[start] installed → ${target}`)
+  console.error(`[start] installed → ${target}`)
   return true
 }
 
@@ -644,7 +666,7 @@ export function launchShellForSlot(slot, options = {}) {
     ...(options.headless ? { AEK_HEADLESS: '1' } : {}),
   })
   const bin = electronBin(bundle, s.devAppName)
-  console.log(`[start] shell[${slot}] → ${bundle} (web ${s.webPort}, home ${home})`)
+  console.error(`[start] shell[${slot}] → ${bundle} (web ${s.webPort}, home ${home})`)
   const shellProc = spawn(bin, [mainJs, `--remote-debugging-port=${s.cdpPort}`], {
     cwd: PROJECT_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true,
   })
