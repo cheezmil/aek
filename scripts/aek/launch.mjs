@@ -13,6 +13,11 @@
  * The Next root is derived from the resolved default (`<root>-next`), not
  * hardcoded, so an explicit `AEK_HOME` still produces the right sibling.
  *
+ * `dev-web` also marks the process `AEK_MODE=dev`: that is what turns on the
+ * AEK packages' module hot reload in the host (`@cheezmil/coraek-profile` widens
+ * the `hmr` watch roots only under that flag). Every other entry point stays a
+ * plain run, so nothing here changes a production boot.
+ *
  * SAFETY: with no arguments this prints usage and exits — it never starts,
  * stops, writes or deletes anything. `--check` is a true dry run: it prints
  * the resolved environment and command without executing either the gate or
@@ -128,6 +133,10 @@ env.DSH_HOME ??= env.AEK_HOME
 env.AEK_SLOT ??= slot
 env.AEK_WEB_PORT ??= String(SLOTS[slot].webPort)
 env.AEK_CDP_PORT ??= String(SLOTS[slot].cdpPort)
+// Only the dev loop. The host half reads this flag to decide whether the AEK
+// packages' build outputs are watched for in-process replacement; a plain
+// `web` run must never hold such a watcher.
+if (rest[0] === 'dev-web') env.AEK_MODE ??= 'dev'
 
 if (checkOnly) {
   console.log(`slot:         ${slot}`)
@@ -135,6 +144,7 @@ if (checkOnly) {
   console.log(`DSH_HOME:     ${env.DSH_HOME}`)
   console.log(`AEK_WEB_PORT: ${env.AEK_WEB_PORT}`)
   console.log(`AEK_CDP_PORT: ${env.AEK_CDP_PORT}`)
+  console.log(`AEK_MODE:     ${env.AEK_MODE ?? '(unset)'}`)
   console.log(`command:      ${call[0]} ${call[1].join(' ')}`)
   console.log('dry run: nothing executed, no files changed.')
   process.exit(0)

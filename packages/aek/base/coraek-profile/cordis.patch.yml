@@ -10,6 +10,31 @@
 # dsh-facing AEK plugins for a profile that still shows the dsh shell. This
 # one is mounted only by profiles that want the AEK console as their root.
 
+# ── dev-only module hot reload ─────────────────────────────────────────────
+#
+# `dsh-base` mounts hmr with `root: []`: profile patches and the profile
+# manifest are watched, plugin modules are not. In dev the AEK packages are
+# `link:`ed into the profile, so their build outputs sit where a relative watch
+# root can reach them — `node_modules/@cheezmil/<pkg>/lib` under the profile dir.
+# The path stays profile-relative on purpose: the workspace lives at a different
+# absolute path on every machine, and a watch root must never be hardcoded.
+#
+# Only the build outputs are watched, never the package roots: those links point
+# at the workspace, and a root-level root would make the watcher walk every
+# package's `node_modules` and tests before the host ever becomes ready.
+#
+# A change here is applied to the running host by module-level replacement.
+# Anything the host itself links (framework packages) still falls back to a full
+# host restart, which is the shell's reconnecting path (T9).
+#
+# Only dev turns this on: a production install would hold a watcher over its own
+# node_modules for no benefit.
+- id: hmr
+  config:
+    root: !!js "process.env.AEK_MODE === 'dev' ? ['node_modules/@cheezmil/coraek/lib', 'node_modules/@cheezmil/aek-home/lib', 'node_modules/@cheezmil/aek-websearch/lib'] : []"
+    debounce: 100
+    ignored: ['**/*.map']
+
 - insert:
     # ── AEK identity ─────────────────────────────────────────────────────────
 
