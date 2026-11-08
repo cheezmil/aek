@@ -41,12 +41,12 @@ const PROJECT_ROOT = findProjectRoot()
 export const APP_ROOT = join(PROJECT_ROOT, 'apps', 'aek-desktop', 'v0')
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-// Ports are injected per slot by scripts/aek/launch.mjs (AEK 1680/1682, Next
+// Ports are injected per slot by scripts/aek/launch.mjs (AEK 1685/1686, Next
 // 1702/1704). When the env is unset (direct invocation / packaged app opened
 // without the launcher) we fall back to the AEK defaults so the existing
 // single-app flow keeps working.
-export const WEB_PORT   = Number(process.env.AEK_WEB_PORT ?? 1680)
-export const CDP_PORT   = Number(process.env.AEK_CDP_PORT ?? 1682)
+export const WEB_PORT   = Number(process.env.AEK_WEB_PORT ?? 1685)
+export const CDP_PORT   = Number(process.env.AEK_CDP_PORT ?? 1686)
 export const DEV_APP_NAME = 'AEK DEV'
 
 export const DSH_HOME   = resolveAekHome()
@@ -54,7 +54,7 @@ export const INSTALL_DIR = join(homedir(), 'Applications')
 
 // ── Dual-app slots ─────────────────────────────────────────────────────────
 // Two equal, named instances share one bundle (same app id, never swapped):
-//   aek  → ~/.aek        web 1680 / cdp 1682
+//   aek  → ~/.aek        web 1685 / cdp 1686
 //   next → ~/.aek-next   web 1702 / cdp 1704
 // scripts/aek/arbiter.mjs uses these to start/stop a whole instance (web + shell).
 // The table itself comes from @cheezmil/coraek/slots (see the re-export above).
@@ -246,8 +246,8 @@ export async function killSlot(slot) {
  * Is the slot's OWN web server running?
  *
  * A plain port probe is not enough: any foreign program holding the port
- * would be reported as "the slot is running" (on this machine `1680` is held
- * by an unrelated app), which then makes the arbiter refuse to start the slot
+ * would be reported as "the slot is running" (a third-party app once held
+ * port 1680 on one of our machines), which then makes the arbiter refuse to
  * and makes the switcher believe it is already up. Two checks:
  *   1. the process holding the port must point at this slot's data root;
  *   2. the server must answer with AEK's own marker — otherwise a squatter

@@ -45,8 +45,11 @@ export const SLOTS = {
     bundleId: 'com.aek.desktop',
     productName: 'AEK',
     devAppName: 'AEK DEV',
-    webPort: 1680,
-    cdpPort: 1682,
+    // 1680/1682 are NOT usable on this project's port range: 1680 is held by a
+    // third-party app on some machines. 1685/1686 are allocated via `cpuh` for
+    // agent-enhance-kit (1680-1689) and stay adjacent, so one slot owns one pair.
+    webPort: 1685,
+    cdpPort: 1686,
   },
   next: {
     slot: 'next',
