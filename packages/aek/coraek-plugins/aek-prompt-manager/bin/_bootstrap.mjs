@@ -18,8 +18,9 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import process from 'node:process';
+import { resolveAekHome } from '@cheezmil/coraek/home';
 
-const AEK_HOME = process.env.AEK_HOME ?? join(homedir(), '.aek');
+const AEK_HOME = resolveAekHome();
 const MODE_FILE = join(AEK_HOME, 'aekpm-mode');
 
 function mode() {

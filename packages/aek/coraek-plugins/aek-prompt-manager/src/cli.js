@@ -7,6 +7,7 @@
 import process from 'node:process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveAekHome } from '@cheezmil/coraek/home';
 
 import { PLATFORMS, SUPPORTED_IDS } from './platforms.js';
 import {
@@ -314,8 +315,7 @@ Source layout (.aek/prompt-manager/project-rules):
 
 async function runUse(args) {
   const { readFileSync, writeFileSync, mkdirSync } = await import('node:fs');
-  const { homedir } = await import('node:os');
-  const AEK_HOME = process.env.AEK_HOME ?? join(homedir(), '.aek');
+  const AEK_HOME = resolveAekHome();
   const MODE_FILE = join(AEK_HOME, 'aekpm-mode');
   const readMode = () => {
     try { return readFileSync(MODE_FILE, 'utf8').trim() || 'local' } catch { return 'local' };

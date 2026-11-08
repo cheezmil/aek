@@ -9,8 +9,8 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { parse } from 'yaml'
+import { aekHomePath } from '@cheezmil/coraek/home'
 import { KeyStore } from '@cheezmil/encrypted-key-store'
 import { PROVIDER_KINDS } from './defaults.ts'
 import type { QueueEntry } from './types.ts'
@@ -25,10 +25,7 @@ interface ProvidersConfig {
  * Returns default config when file is absent or malformed.
  */
 export function readProviders(): QueueEntry[] {
-  const home = process.env.HOME
-  if (!home) return []
-
-  const filePath = join(home, '.aek', 'websearch', 'providers.yml')
+  const filePath = aekHomePath('websearch', 'providers.yml')
 
   try {
     const content = readFileSync(filePath, 'utf-8')

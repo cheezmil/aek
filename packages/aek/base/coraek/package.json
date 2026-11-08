@@ -28,6 +28,10 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./home": {
+      "types": "./home.d.mts",
+      "default": "./home.mjs"
+    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
@@ -61,6 +65,8 @@
     "react-dom": "^18.2.0"
   },
   "files": [
+    "home.mjs",
+    "home.d.mts",
     "lib/index.js",
     "lib/client.js",
     "lib/cli.mjs",

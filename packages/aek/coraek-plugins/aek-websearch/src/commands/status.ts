@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { resolveAekHome } from '@cheezmil/coraek/home'
 
 export default class StatusCommand extends Command {
   static description = 'Show current mode and resolved paths'
@@ -29,7 +30,7 @@ export default class StatusCommand extends Command {
     const pkgRoot = findPkgRoot(here)
     const INSTALLED = import.meta.url.includes('/node_modules/')
 
-    const AEK_HOME = process.env.AEK_HOME ?? resolve(homedir(), '.aek')
+    const AEK_HOME = resolveAekHome()
     const MODE_FILE = join(AEK_HOME, 'aekws-mode')
 
     let mode = 'dev'

@@ -23,6 +23,7 @@ import Database from 'better-sqlite3-multiple-ciphers'
 import { readFileSync, existsSync, chmodSync, renameSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
+import { aekHomePath } from '@cheezmil/coraek/home'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -49,7 +50,7 @@ export function maskKey(key: string): string {
 // ── Path helpers ─────────────────────────────────────────────────────────────
 
 function aekDir(): string {
-  return join(process.env.HOME ?? '', '.aek', 'websearch')
+  return aekHomePath('websearch')
 }
 
 function dbPath(provider: string): string {

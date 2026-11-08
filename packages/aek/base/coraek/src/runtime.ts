@@ -19,7 +19,8 @@
 
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join } from 'node:path'
+import { resolveAekHome } from '../home.mjs'
 
 /** A resolved way to execute the harness runtime. */
 export interface RuntimeInvocation {
@@ -79,9 +80,13 @@ export function resolveRuntime(here: string): RuntimeInvocation | undefined {
   }
 }
 
-/** The AEK home directory. The harness reads `DSH_HOME`; AEK isolates itself. */
+/**
+ * The AEK home directory. `home.mjs` is the single source of truth; this
+ * wrapper keeps the CLI layer's existing call site while making every caller
+ * (including the Next slot) resolve the same root.
+ */
 export function aekHome(): string {
-  return process.env.AEK_HOME ?? join(process.env.HOME ?? resolve('/tmp'), '.aek')
+  return resolveAekHome()
 }
 
 /**

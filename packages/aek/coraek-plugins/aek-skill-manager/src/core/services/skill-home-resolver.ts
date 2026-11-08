@@ -1,5 +1,5 @@
-import os from 'node:os'
 import path from 'node:path'
+import { aekHomePath } from '@cheezmil/coraek/home'
 import type { FileSystemPort } from '../ports/filesystem.js'
 import { createSkillHome, SkillHomeService } from './skill-home-service.js'
 
@@ -25,7 +25,7 @@ export class SkillHomeResolver {
   resolve(input: SkillHomeResolutionInput = {}): SkillHomeResolution {
     const env = input.env || process.env
     const cwd = path.resolve(input.cwd || process.cwd())
-    const defaultHome = path.resolve(input.defaultHome || env.AEK_SKILL_MANAGER_HOME || path.join(os.homedir(), '.aek', 'skill-manager'))
+    const defaultHome = path.resolve(input.defaultHome || env.AEK_SKILL_MANAGER_HOME || aekHomePath('skill-manager'))
     // An explicit home (flag or env) is operator intent: it is ensured, as before.
     if (input.explicitHome) return this.ensure(path.resolve(input.explicitHome), 'explicit')
     if (env.SKILL_HOME) return this.ensure(path.resolve(env.SKILL_HOME), 'env')

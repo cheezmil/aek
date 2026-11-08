@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { resolveAekHome } from '@cheezmil/coraek/home'
 
 const APP_ROOT = join(fileURLToPath(import.meta.url), '../..')
 const WEB_PORT = 1680
@@ -12,7 +12,7 @@ const APP_NAME = process.env.AEK_MODE === 'dev' ? 'AEK DEV' : 'AEK'
 const isDev = process.env.AEK_MODE === 'dev'
 
 if (isDev) {
-  const devDataDir = join(homedir(), '.aek', 'desktop-dev')
+  const devDataDir = join(resolveAekHome(), 'desktop-dev')
   app.setPath('appData', devDataDir)
 }
 

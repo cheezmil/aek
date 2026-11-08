@@ -18,6 +18,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@cheezmil/coraek": "workspace:*",
     "better-sqlite3-multiple-ciphers": "^13.0.3"
   },
   "devDependencies": {

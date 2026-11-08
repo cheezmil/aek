@@ -20,6 +20,7 @@ import { resolve, dirname, join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { readFileSync, existsSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { resolveAekHome } from '@cheezmil/coraek/home'
 
 // Resolve REAL script path (follows symlinks — resolve() does NOT)
 let SCRIPT_PATH
@@ -45,7 +46,7 @@ function findRepoRoot(start) {
 }
 const REPO_ROOT = findRepoRoot(SCRIPT_DIR)
 
-const AEK_HOME = process.env.AEK_HOME ?? join(homedir(), '.aek')
+const AEK_HOME = resolveAekHome()
 const MODE_FILE = join(AEK_HOME, 'aekws-mode')
 const TSX_BIN = REPO_ROOT ? join(REPO_ROOT, 'node_modules', '.bin', 'tsx') : null
 // bin/ and src/ sit together inside the package — no hardcoded repo paths.

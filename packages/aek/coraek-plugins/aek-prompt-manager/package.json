@@ -33,7 +33,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@cheezmil/coraek": "^1.0.1",
+    "@cheezmil/coraek": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~"
   },
   "peerDependencies": {

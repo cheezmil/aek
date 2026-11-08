@@ -42,6 +42,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { aekHomePath } from '@cheezmil/coraek/home';
 
 export const HEAD = '<!-- head-aek-pm-patch -->';
 export const HEAD_SHARED = '<!-- head-aek-pm-patch-shared -->';
@@ -63,10 +64,10 @@ const ONLY_PATCH_SOURCE = 'only-patch';
 export { MAPPING_SOURCE, ONLY_PATCH_SOURCE };
 
 export function sourceRoot(source) {
-  return join(process.env.HOME || '', '.aek', 'prompt-manager', source);
+  return aekHomePath('prompt-manager', source);
 }
 export function aekDir() {
-  return join(process.env.HOME || '', '.aek', 'prompt-manager');
+  return aekHomePath('prompt-manager');
 }
 export const MAPPING_ROOT = sourceRoot(MAPPING_SOURCE);
 export const ONLY_PATCH_ROOT = sourceRoot(ONLY_PATCH_SOURCE);

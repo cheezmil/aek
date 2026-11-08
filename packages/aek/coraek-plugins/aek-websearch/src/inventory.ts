@@ -24,8 +24,8 @@
 import type { Context } from '@cheezmil/coraek/types'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
+import { aekHomePath } from '@cheezmil/coraek/home'
 import { fileURLToPath } from 'node:url'
 
 /** The route the About page reads. */
@@ -215,7 +215,7 @@ function scopeDirs(selfDir: string): string[] {
     if (parent === dir) break
     dir = parent
   }
-  const profiles = join(homedir(), '.aek', 'profiles')
+  const profiles = aekHomePath('profiles')
   try {
     for (const entry of readdirSync(profiles, { withFileTypes: true })) {
       if (entry.isDirectory() || entry.isSymbolicLink()) {

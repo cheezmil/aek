@@ -8,6 +8,8 @@ import { execSync, spawn } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { existsSync, renameSync, copyFileSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { homedir } from 'node:os'
+import { resolveAekHome } from '../../packages/aek/base/coraek/home.mjs'
 
 // ── Root detection ────────────────────────────────────────────────────────────
 // walk up from this file's location until we find pnpm-workspace.yaml (the repo root)
@@ -36,8 +38,8 @@ export const WEB_PORT   = 1680
 export const CDP_PORT   = 1682
 export const DEV_APP_NAME = 'AEK DEV'
 
-export const DSH_HOME   = join(process.env.HOME ?? '/tmp', '.aek')
-export const INSTALL_DIR = join(process.env.HOME ?? '', 'Applications')
+export const DSH_HOME   = resolveAekHome()
+export const INSTALL_DIR = join(homedir(), 'Applications')
 
 /** Path to the branded dev bundle in ~/Applications */
 export const devAppDir = join(INSTALL_DIR, `${DEV_APP_NAME}.app`)

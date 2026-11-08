@@ -45,7 +45,7 @@
     "@deepseek-ai/cordis": ">=4.0.0"
   },
   "dependencies": {
-    "@cheezmil/coraek": "^1.0.1",
+    "@cheezmil/coraek": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
     "commander": "^15.0.0",
     "yaml": "^2.9.0"

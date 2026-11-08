@@ -1,9 +1,9 @@
 import { Command, Args } from '@oclif/core'
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { homedir } from 'node:os'
+import { resolveAekHome } from '@cheezmil/coraek/home'
 
-const AEK_HOME = process.env.AEK_HOME ?? join(homedir(), '.aek')
+const AEK_HOME = resolveAekHome()
 const MODE_FILE = join(AEK_HOME, 'aekws-mode')
 
 export default class UseCommand extends Command {

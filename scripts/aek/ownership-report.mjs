@@ -4,7 +4,7 @@
  *
  * 用法：
  *   node scripts/aek/ownership-report.mjs [基线目录]
- *   默认基线：/Users/xdx/MyDurio/deepseek-harness
+ *   默认基线：仓库同级的 deepseek-harness（可用第一个参数覆盖）
  *
  * 输出三份清单：
  *   1. 自研包（npm scope @cheezmil/*，按名字扫，与目录位置无关）
@@ -20,7 +20,7 @@ import path from 'node:path'
 import process from 'node:process'
 
 const ROOT = path.resolve(new URL('../..', import.meta.url).pathname)
-const BASELINE = process.argv[2] ?? '/Users/xdx/MyDurio/deepseek-harness'
+const BASELINE = process.argv[2] ?? path.resolve(ROOT, '..', 'deepseek-harness')
 const TOP_DIRS = ['packages', 'apps', 'vendor']
 const SKIP_DIRS = new Set(['node_modules', 'lib', 'dist', 'build', '.git', '.turbo'])
 // 生成物/二进制后缀，避免噪音

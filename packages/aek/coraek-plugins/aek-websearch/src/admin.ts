@@ -42,8 +42,8 @@
 import type { Context } from '@cheezmil/coraek/types'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { resolveAekHome } from '@cheezmil/coraek/home'
 import { parse, stringify } from 'yaml'
 import { KeyStore } from '@cheezmil/prevent-agent-directly-seeing-key'
 import { PROVIDER_KINDS } from './defaults.ts'
@@ -131,14 +131,13 @@ export interface WebsearchStatus {
 }
 
 /**
- * The AEK home directory. The path must match where the readers actually
- * look: the key pool (`@cheezmil/prevent-agent-directly-seeing-key`) and the
- * providers reader both resolve `~/.aek`, so the management page resolves the
- * same directory — otherwise it would report on files nobody reads.
+ * The AEK home directory. Every reader (key pool, providers config, CLI)
+ * resolves the root through `@cheezmil/coraek/home`, so the management page
+ * reports on the same directory the running app slot actually uses.
  * @returns the absolute AEK home directory.
  */
 function aekHome(): string {
-  return join(homedir(), '.aek')
+  return resolveAekHome()
 }
 
 /**

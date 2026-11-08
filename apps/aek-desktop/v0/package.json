@@ -11,6 +11,9 @@
     "build": "tsc -p tsconfig.json",
     "package": "electron-builder build --mac --config electron-builder.config.mjs"
   },
+  "dependencies": {
+    "@cheezmil/coraek": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "22.20.1",
     "electron": "44.7.0",

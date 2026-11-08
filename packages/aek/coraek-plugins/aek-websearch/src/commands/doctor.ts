@@ -1,8 +1,9 @@
 import { Command } from '@oclif/core'
 import { KeyStore } from '@cheezmil/prevent-agent-directly-seeing-key'
 import { join } from 'node:path'
+import { aekHomePath } from '@cheezmil/coraek/home'
 
-const AEK_DIR = join(process.env.HOME ?? '', '.aek', 'websearch')
+const AEK_DIR = aekHomePath('websearch')
 interface PoolEntry { id: number; key: string; disabled: boolean; failures: number; cooldownEnd: number }
 
 class KeyPool {
