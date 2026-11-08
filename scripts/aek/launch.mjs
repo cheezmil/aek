@@ -78,7 +78,7 @@ Slots: aek (default) -> ~/.aek, next -> ~/.aek-next; ports 1680/1682 vs 1702/170
 function invocation(cmd, args) {
   switch (cmd) {
     case 'aek': return [NODE, [AEK_BIN, ...args]]
-    case 'web': return [NODE, [AEK_BIN, 'web', ...args]]
+    case 'web': return [NODE, [AEK_BIN, 'web', '--port', String(SLOTS[slot].webPort), ...args]]
     case 'dev-web': return [TSX, [join(ROOT, 'scripts', 'dev-web.ts'), '--poll', ...args]]
     case 'inspector': return [NODE, [AEK_BIN, 'web', '--patch', './packages/experimental/inspector/cordis.source.patch.yml', ...args]]
     case 'demo-ptc': return [NODE, [join(ROOT, 'scripts', 'demo-ptc.mjs'), ...args]]

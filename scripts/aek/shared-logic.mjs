@@ -34,8 +34,12 @@ const PROJECT_ROOT = findProjectRoot()
 export const APP_ROOT = join(PROJECT_ROOT, 'apps', 'aek-desktop', 'v0')
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-export const WEB_PORT   = 1680
-export const CDP_PORT   = 1682
+// Ports are injected per slot by scripts/aek/launch.mjs (AEK 1680/1682, Next
+// 1702/1704). When the env is unset (direct invocation / packaged app opened
+// without the launcher) we fall back to the AEK defaults so the existing
+// single-app flow keeps working.
+export const WEB_PORT   = Number(process.env.AEK_WEB_PORT ?? 1680)
+export const CDP_PORT   = Number(process.env.AEK_CDP_PORT ?? 1682)
 export const DEV_APP_NAME = 'AEK DEV'
 
 export const DSH_HOME   = resolveAekHome()

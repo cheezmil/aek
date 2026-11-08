@@ -4,8 +4,13 @@ import { fileURLToPath } from 'node:url'
 import { resolveAekHome } from '@cheezmil/coraek/home'
 
 const APP_ROOT = join(fileURLToPath(import.meta.url), '../..')
-const WEB_PORT = 1680
-const CDP_PORT = 1682
+// Ports are injected per slot by scripts/aek/launch.mjs (AEK 1680/1682, Next
+// 1702/1704). When the env is unset the launcher did not run (e.g. the packaged
+// app opened directly) so we fall back to the AEK defaults. The window always
+// connects to the SAME port the web server was started on, which prevents the
+// Next window from accidentally rendering AEK's data root during coexistence.
+const WEB_PORT = Number(process.env.AEK_WEB_PORT ?? 1680)
+const CDP_PORT = Number(process.env.AEK_CDP_PORT ?? 1682)
 const APP_NAME = process.env.AEK_MODE === 'dev' ? 'AEK DEV' : 'AEK'
 
 // ── Dev vs Prod: separate userData so they never conflict ─────────────────────

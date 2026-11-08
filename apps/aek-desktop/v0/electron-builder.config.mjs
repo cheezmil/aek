@@ -35,14 +35,14 @@ export function createElectronBuilderConfig() {
       },
     },
     dmg: {
-      format: 'ULMO',
+      format: 'ULFO',
     },
     extraResources: [
       {
         from: '../../licenses',
         to: 'licenses',
       },
-    ],,
+    ],
     extraMetadata: {
       name: 'aek-desktop',
       version: packageJson.version,

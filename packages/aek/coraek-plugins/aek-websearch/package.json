@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@cheezmil/coraek": "workspace:*",
-    "@cheezmil/prevent-agent-directly-seeing-key": "^0.1.3",
+    "@cheezmil/prevent-agent-directly-seeing-key": "workspace:*",
     "@deepseek-ai/cosmokit": "workspace:~",
     "@deepseek-ai/schemastery": "workspace:~",
     "@oclif/core": "^5.1.11",
