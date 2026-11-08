@@ -33,8 +33,18 @@ const cfg = SLOTS[slot]
 console.log(`[start] AEK Desktop v0  mode=dev  slot=${slot}`)
 
 // Terminate THIS slot's previous instance only. Killing by the shared default
-// ports here would take down the other slot as well.
-await killSlot(slot)
+// ports here would take down the other slot as well. A FOREIGN process holding
+// one of our ports is never killed — we abort and let the user decide.
+const cleared = await killSlot(slot)
+if (cleared.foreign.length > 0) {
+  console.error(`[start] port conflict: ${cleared.foreign.map(f => `${f.kind} :${f.port} held by pid ${f.pid}`).join(', ')}`)
+  console.error('[start] refusing to start — the holding process is not ours')
+  process.exit(3)
+}
+if (cleared.stuck.length > 0) {
+  console.error(`[start] previous instance did not exit: ${cleared.stuck.join(' ')}`)
+  process.exit(3)
+}
 
 if (!brandDevBundle(slot)) {
   console.error('[start] branding failed, aborting')

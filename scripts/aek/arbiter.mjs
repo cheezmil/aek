@@ -36,10 +36,8 @@ import {
   slotWebUp,
 } from './shared-logic.mjs'
 import {
-  readSlotLock,
   writeSlotLock,
   clearSlotLock,
-  isPidAlive,
 } from '../../packages/aek/base/coraek/slot-lock.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -63,10 +61,12 @@ function isMode(mode) { return mode === 'only-aek' || mode === 'only-next' || mo
 // bare pid, this wrote JSON), so the shell could not see the arbiter's lock
 // and the arbiter could not see the shell's — a second shell would start and
 // the arbiter would forget the shell it had launched.
-const readPid = readSlotLock
+//
+// Reading/verifying pids lives in shared-logic's `killSlot`/`slotOwnedPids`:
+// a lock entry is only honoured after its command line is re-checked, so a
+// recycled pid can never be killed by mistake.
 const writePid = writeSlotLock
 const clearPid = clearSlotLock
-const isAlive = isPidAlive
 
 // The liveness probe is defined once in shared-logic (`slotWebUp`): the port
 // must be served by THIS slot's own runtime, not by an unrelated program that
@@ -97,13 +97,31 @@ function buildStatus() {
 
 /**
  * Start a slot: web server + Electron shell, both detached, recording their
- * PIDs in the slot's pid lock. Refuses to start a slot already reported running.
+ * PIDs in the slot's pid lock.
+ *
+ * SAFETY (per-slot isolation): refuses to run when the slot is already up, and
+ * clears only THIS slot's leftovers first — never a blanket port kill. A
+ * foreign program holding one of the slot's ports is reported as a conflict
+ * and left untouched; the start is aborted instead of stealing its port.
  * @param slot - 'aek' | 'next'.
- * @returns the result payload.
+ * @returns {Promise<object>} the result payload.
  */
-function cmdStart(slot, options = {}) {
+async function cmdStart(slot, options = {}) {
   if (!isSlot(slot)) return { ok: false, error: `unknown slot "${slot}"` }
   if (probe(slot)) return { ok: false, error: `slot "${slot}" already running`, slot }
+  // Same-slot leftovers only (half-dead web server, orphaned shell).
+  const cleared = await killSlot(slot)
+  if (cleared.foreign.length > 0) {
+    return {
+      ok: false,
+      slot,
+      error: `port conflict: ${cleared.foreign.map(f => `${f.kind} :${f.port} held by pid ${f.pid}`).join(', ')}`,
+      foreign: cleared.foreign,
+    }
+  }
+  if (cleared.stuck.length > 0) {
+    return { ok: false, slot, error: `previous instance did not exit: ${cleared.stuck.join(' ')}` }
+  }
   const web = spawnWebServerForSlot(slot, { detached: true })
   // `headless` runs the shell WITHOUT a window: the slot is kept warm (or
   // verified) without a second Dock icon on macOS.
@@ -112,24 +130,21 @@ function cmdStart(slot, options = {}) {
   // same file (the shared lock merges the fields), so writing a guessed
   // shellPid here would race with the shell's own write.
   writePid(slot, { webPid: web.pid, startedAt: Date.now() })
-  return { ok: true, slot, webPid: web.pid, shellPid: shell?.pid ?? null }
+  return { ok: true, slot, webPid: web.pid, shellPid: shell?.pid ?? null, clearedPids: cleared.killed }
 }
 
 /**
- * Stop a slot: SIGTERM the recorded PIDs, then a port-based kill as a fallback
- * for the actual listening web server, and clear the lock.
+ * Stop a slot: terminate only the processes that belong to it (recorded pids
+ * re-verified against their command line, plus slot-marked port holders), then
+ * clear the lock.
  * @param slot - 'aek' | 'next'.
- * @returns the result payload.
+ * @returns {Promise<object>} the result payload.
  */
-function cmdStop(slot) {
+async function cmdStop(slot) {
   if (!isSlot(slot)) return { ok: false, error: `unknown slot "${slot}"` }
-  const lock = readPid(slot)
-  for (const pid of [lock?.webPid, lock?.shellPid]) {
-    if (isAlive(pid)) { try { process.kill(pid, 'SIGTERM') } catch { /* gone */ } }
-  }
-  void killSlot(slot)
+  const result = await killSlot(slot)
   clearPid(slot)
-  return { ok: true, slot, stoppedPids: [lock?.webPid, lock?.shellPid].filter(Boolean) }
+  return { ...result, stoppedPids: result.killed }
 }
 
 /**
@@ -138,15 +153,16 @@ function cmdStop(slot) {
  * @param mode - target mode.
  * @returns the result payload.
  */
-function cmdMode(mode) {
+async function cmdMode(mode) {
   if (!isMode(mode)) return { ok: false, error: `unknown mode "${mode}"` }
   const want = mode === 'both' ? ['aek', 'next'] : [mode === 'only-aek' ? 'aek' : 'next']
   const unwanted = mode === 'both' ? [] : (mode === 'only-aek' ? ['next'] : ['aek'])
   const started = []
   const stopped = []
-  for (const s of want) if (!probe(s)) { cmdStart(s); started.push(s) }
-  for (const s of unwanted) if (probe(s)) { cmdStop(s); stopped.push(s) }
-  return { ok: true, mode, started, stopped }
+  const errors = []
+  for (const s of want) if (!probe(s)) { const r = await cmdStart(s); if (r.ok) started.push(s); else errors.push(r) }
+  for (const s of unwanted) if (probe(s)) { await cmdStop(s); stopped.push(s) }
+  return { ok: errors.length === 0, mode, started, stopped, ...(errors.length ? { errors } : {}) }
 }
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────
@@ -159,9 +175,9 @@ const headless = argv.includes('--headless')
 let out
 switch (command) {
   case 'status': out = buildStatus(); break
-  case 'start': out = cmdStart(arg, { headless }); break
-  case 'stop': out = cmdStop(arg); break
-  case 'mode': out = cmdMode(arg); break
+  case 'start': out = await cmdStart(arg, { headless }); break
+  case 'stop': out = await cmdStop(arg); break
+  case 'mode': out = await cmdMode(arg); break
   default:
     console.error(USAGE)
     process.exit(2)

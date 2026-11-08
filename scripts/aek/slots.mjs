@@ -120,6 +120,13 @@ function printState() {
  * @param {string[]} args - the arbiter arguments.
  * @returns {number} the exit code.
  */
+/**
+ * Run the arbiter and return BOTH its exit code and its parsed JSON payload.
+ * Callers that make decisions need the payload (`ok: false` still exits 0),
+ * so a numeric exit code alone is not enough.
+ * @param {string[]} args - arbiter arguments.
+ * @returns {{status: number, payload: object|null}} exit code + parsed stdout.
+ */
 function arbiter(args) {
   const result = spawnSync(process.execPath, [join(HERE, 'arbiter.mjs'), ...args], {
     encoding: 'utf8',
@@ -127,28 +134,24 @@ function arbiter(args) {
   const out = (result.stdout ?? '').trim()
   if (out) console.log(out)
   if (result.stderr) console.error(result.stderr.trim())
-  return result.status ?? 1
+  let payload = null
+  try { payload = out ? JSON.parse(out.split('\n').pop()) : null } catch { /* not JSON */ }
+  return { status: result.status ?? 1, payload }
 }
 
 /**
  * Health-check a slot's web server.
+ *
+ * Delegates to `slotWebUp`: a bare HTTP 200 is NOT proof of health — any
+ * squatter on the port (a `python -m http.server` is enough) answers 200 and
+ * used to be accepted, which let a switch report success and then stop the
+ * running slot, leaving the user with nothing. `slotWebUp` requires both the
+ * listener to belong to this slot AND the body to carry AEK's marker.
  * @param {'aek' | 'next'} slot - the slot to check.
- * @returns {Promise<boolean>} true when the slot answers.
+ * @returns {Promise<boolean>} true when the slot's OWN server answers.
  */
 async function healthy(slot) {
-  const port = slotConfig(slot).webPort
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => { controller.abort() }, 2000)
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/`, { signal: controller.signal })
-      return response.status < 500
-    } finally {
-      clearTimeout(timer)
-    }
-  } catch {
-    return false
-  }
+  return slotWebUp(slot)
 }
 
 /**
@@ -172,7 +175,15 @@ async function waitHealthy(slot, timeoutMs = 25000) {
  * @returns {Promise<boolean>} true when the slot is up.
  */
 async function startAndVerify(slot) {
-  arbiter(['start', slot])
+  const outcome = arbiter(['start', slot])
+  // A refused start (port held by a foreign program, leftover that would not
+  // exit) must abort the switch BEFORE anything is stopped — otherwise the
+  // user ends up with nothing running.
+  if (outcome.payload && outcome.payload.ok === false) {
+    console.error(`[slots] slot "${slot}" was refused: ${outcome.payload.error ?? 'unknown reason'}`)
+    console.error('[slots] the running instance was NOT stopped')
+    return false
+  }
   const ok = await waitHealthy(slot)
   if (!ok) {
     console.error(`[slots] slot "${slot}" did not become healthy — the old instance was NOT stopped`)
@@ -229,13 +240,10 @@ try {
     console.log(`[slots] warming ${slotConfig(slot).productName} (headless — no window, no Dock icon)`)
     // A headless warm start needs the shell to run without a window; the
     // arbiter starts the web server plus the shell, and the shell is told to
-    // stay windowless through AEK_HEADLESS.
-    const result = spawnSync(process.execPath, [
-      join(HERE, 'arbiter.mjs'), 'start', slot, '--headless',
-    ], { encoding: 'utf8' })
-    if (result.stdout) console.log(result.stdout.trim())
-    if (result.stderr) console.error(result.stderr.trim())
-    process.exit(result.status ?? 1)
+    // stay windowless through AEK_HEADLESS. The exit code alone is not enough
+    // (`ok: false` still exits 0), so the payload decides.
+    const outcome = arbiter(['start', slot, '--headless'])
+    process.exit(outcome.payload?.ok === false ? 3 : (outcome.status ?? 1))
   }
 
   if (options.both === true) {

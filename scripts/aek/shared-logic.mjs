@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { resolveAekHome } from '../../packages/aek/base/coraek/home.mjs'
 import { SLOTS, slotConfig, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
+import { readSlotLock, isPidAlive } from '../../packages/aek/base/coraek/slot-lock.mjs'
 
 // The slot table (identity, ports, data root) lives in @cheezmil/coraek/slots —
 // one source of truth shared by the desktop build, the desktop main process and
@@ -157,25 +158,24 @@ export function shell(cmd, opts = {}) {
   catch { return '' }
 }
 
-/** Kill PIDs by space-separated string. */
-export function killPids(pids) {
-  const pidArr = (pids || '').split(/\s+/).filter(Boolean)
-  if (pidArr.length === 0) return
-  console.error(`[start] kill ${pidArr.join(' ')}`)
-  execSync(`kill ${pidArr.join(' ')}`, { stdio: 'inherit' })
-}
-
-/** Kill anything holding the given port. */
-export function killPort(port) {
-  const pids = shell(`lsof -ti:${port}`)
-  if (pids) { console.error(`[start] freeing port ${port} → ${pids}`); killPids(pids) }
-}
-
-/** Kill ports used by this mode. */
-export async function killThisMode() {
-  killPort(WEB_PORT)
-  killPort(CDP_PORT)
-  await new Promise(r => setTimeout(r, 200))
+/**
+ * PIDs of the processes actually LISTENING on a TCP port.
+ *
+ * Do NOT use `lsof -ti`: `-t` (terse) wins over `-sTCP:LISTEN` and lsof then
+ * prints EVERY listening process on the machine (53 on this one) — which made
+ * "who holds :1685" return the whole system. `-Fp` emits one `p<pid>` line per
+ * process and is the reliable machine-readable form.
+ * @param port - TCP port number.
+ * @returns {string[]} listening pids.
+ */
+export function listenPids(port) {
+  try {
+    return execFileSync('/usr/sbin/lsof',
+      ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fp'], { encoding: 'utf8' })
+      .split('\n').filter(l => l.startsWith('p')).map(l => l.slice(1)).filter(Boolean)
+  } catch {
+    return []   // lsof exits 1 when nothing matches
+  }
 }
 
 // ── Web server launcher ───────────────────────────────────────────────────────
@@ -229,15 +229,121 @@ export function spawnWebServerForSlot(slot, options = {}) {
 }
 
 /**
- * Kill the web + cdp ports used by a slot (any process holding them).
+ * Which processes currently hold a slot's ports, split into OUR processes and
+ * FOREIGN ones.
+ *
+ * This is the single decision point for "may I kill this?" — see
+ * {@link killSlot}. The split matters because a plain port kill would take out
+ * an unrelated application that happens to hold one of our ports (a real case:
+ * a third-party utility held 1680 before the ports moved to 1685–1688).
+ *
+ * Ownership is decided by the command line, never by "it holds my port":
+ *   - the web server is spawned as `DSH_HOME=<root> … web --port <webPort>`;
+ *   - the shell is spawned as `<bundle>/…/AEK DEV <main.js>
+ *     --remote-debugging-port=<cdpPort>`;
+ *   - a process holding the port with neither marker is a squatter → foreign.
  * @param slot - 'aek' | 'next'.
+ * @returns {{ ours: Array<{pid:number, port:number, kind:string, cmd:string}>,
+ *             foreign: Array<{pid:number, port:number, kind:string, cmd:string}> }}
  */
-export async function killSlot(slot) {
+export function slotProcesses(slot) {
   const s = SLOTS[slot]
-  if (!s) return
-  killPort(s.webPort)
-  killPort(s.cdpPort)
-  await new Promise(r => setTimeout(r, 200))
+  const ours = []
+  const foreign = []
+  if (!s) return { ours, foreign }
+  const home = slotHome(slot)
+  for (const [kind, port] of [['web', s.webPort], ['cdp', s.cdpPort]]) {
+    let pids = []
+    try {
+      // LISTEN only — `lsof -ti :port` also lists CONNECTED peers (the shell's
+      // sockets), which must never be treated as the service itself.
+      pids = listenPids(port)
+    } catch { continue }
+    for (const pid of pids) {
+      let cmd
+      try {
+        cmd = execFileSync('/bin/ps', ['-p', pid, '-o', 'command='], { encoding: 'utf8' })
+      } catch { continue }   // vanished mid-scan
+      const entry = { pid: Number(pid), port, kind, cmd }
+      const owned =
+        cmd.includes(`${home}/`) || cmd.trimEnd().endsWith(home) ||
+        cmd.includes(`--port ${s.webPort}`) ||
+        cmd.includes(`--remote-debugging-port=${s.cdpPort}`)
+      ;(owned ? ours : foreign).push(entry)
+    }
+  }
+  return { ours, foreign }
+}
+
+/**
+ * Resolve the pids a slot is allowed to terminate.
+ *
+ * Sources are unioned so a stale lock cannot make us blind:
+ *   1. the slot's pid lock (`webPid` / `shellPid`) — but each pid is
+ *      re-verified against the command line, because pids get recycled;
+ *   2. the processes actually holding the slot's ports, if they carry a slot
+ *      marker (see {@link slotProcesses}).
+ * @param slot - 'aek' | 'next'.
+ * @returns {number[]} unique pids belonging to the slot.
+ */
+export function slotOwnedPids(slot) {
+  const s = SLOTS[slot]
+  if (!s) return []
+  const home = slotHome(slot)
+  const pids = new Set()
+  for (const p of slotProcesses(slot).ours) pids.add(p.pid)
+  const lock = readSlotLock(slot)
+  for (const pid of [lock?.webPid, lock?.shellPid]) {
+    if (!pid || !isPidAlive(pid)) continue
+    let cmd
+    try {
+      cmd = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' })
+    } catch { continue }
+    // A recycled pid belongs to something else now — never kill it.
+    if (cmd.includes(`${home}/`) || cmd.trimEnd().endsWith(home) ||
+        cmd.includes(`--port ${s.webPort}`) ||
+        cmd.includes(`--remote-debugging-port=${s.cdpPort}`)) pids.add(Number(pid))
+  }
+  return [...pids]
+}
+
+/**
+ * Terminate ONLY the processes that belong to a slot (see {@link slotOwnedPids}).
+ *
+ * Never blanket-kills a port. If a foreign program holds one of the slot's
+ * ports, it is reported back as a conflict and left alone — killing another
+ * application's process is the user's call, not ours.
+ *
+ * Uses SIGTERM (graceful) and a bounded wait; a process that survives is
+ * reported as `stuck` instead of being escalated to SIGKILL.
+ * @param slot - 'aek' | 'next'.
+ * @param options - `{ timeoutMs }` how long to wait for the pids to exit (3s).
+ * @returns {Promise<{ok:boolean, slot:string, killed:number[], stuck:number[],
+ *                    foreign:Array<{pid:number, port:number, kind:string}>}>}
+ */
+export async function killSlot(slot, options = {}) {
+  const s = SLOTS[slot]
+  const empty = { ok: true, slot, killed: [], stuck: [], foreign: [] }
+  if (!s) return empty
+  const timeoutMs = options.timeoutMs ?? 3000
+  const pids = slotOwnedPids(slot)
+  for (const pid of pids) {
+    try { process.kill(pid, 'SIGTERM') } catch { /* already gone */ }
+  }
+  if (pids.length > 0) console.error(`[stop] ${slot}: SIGTERM ${pids.join(' ')}`)
+
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline && pids.some(isPidAlive)) {
+    await new Promise(r => setTimeout(r, 100))
+  }
+  const stuck = pids.filter(isPidAlive)
+  const foreign = slotProcesses(slot).foreign.map(({ pid, port, kind }) => ({ pid, port, kind }))
+  if (stuck.length > 0) console.error(`[stop] ${slot}: still alive after SIGTERM → ${stuck.join(' ')}`)
+  if (foreign.length > 0) {
+    console.error(`[stop] ${slot}: FOREIGN process holds a slot port, left alone → ` +
+      foreign.map(f => `:${f.port} pid ${f.pid}`).join(', '))
+  }
+  return { ok: stuck.length === 0, slot, killed: pids.filter(p => !stuck.includes(p)), stuck, foreign }
 }
 
 // ── Slot liveness ────────────────────────────────────────────────────────────
@@ -264,9 +370,7 @@ export function slotWebUp(slot) {
     // LISTEN only: `lsof -ti :port` also returns peers that merely CONNECT to
     // the port (the shell's ESTABLISHED sockets), so the pid list changed on
     // every call and a foreign client could satisfy the check.
-    const pids = execFileSync('/usr/sbin/lsof',
-      ['-nP', '-ti', `-iTCP:${s.webPort}`, '-sTCP:LISTEN'], { encoding: 'utf8' })
-      .trim().split(/\s+/).filter(Boolean)
+    const pids = listenPids(s.webPort)
     for (const pid of pids) {
       let cmd
       try {
