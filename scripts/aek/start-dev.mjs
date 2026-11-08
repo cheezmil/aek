@@ -17,6 +17,7 @@ import {
   mainJs,
   devAppDirForSlot,
   slotHome,
+  electronEnv,
   attachCleanup,
   APP_ROOT,
   SLOTS,
@@ -52,15 +53,13 @@ attachCleanup(web)
   console.log(`[start] launching dev ${cfg.productName} (CDP → port ${cfg.cdpPort})`)
   // The shell must know which slot it is: without AEK_SLOT / AEK_HOME it would
   // fall back to the default data root and lock the wrong slot's pid file.
-  const env = {
-    ...process.env,
+  const env = electronEnv({
     DSH_HOME: slotHome(slot),
     AEK_HOME: slotHome(slot),
     AEK_SLOT: slot,
     AEK_WEB_PORT: String(cfg.webPort),
     AEK_CDP_PORT: String(cfg.cdpPort),
-  }
-  delete env.NODE_OPTIONS
+  })
   const app = spawn(electronBin(devAppDirForSlot(slot), cfg.devAppName), [
     mainJs,
     `--remote-debugging-port=${cfg.cdpPort}`,

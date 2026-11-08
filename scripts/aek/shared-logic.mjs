@@ -122,6 +122,35 @@ export function dshBin() {
 
 // ── Shell helpers ─────────────────────────────────────────────────────────────
 
+/**
+ * Build the environment for a spawned Electron shell.
+ *
+ * `ELECTRON_RUN_AS_NODE=1` makes the Electron binary start as a PLAIN NODE
+ * process: it never injects the main-process API, so `import { app } from
+ * 'electron'` resolves to the launcher path string instead of the module and
+ * every named import fails with
+ * `SyntaxError: The requested module 'electron' does not provide an export
+ * named 'BrowserWindow'`. That error looks like an ESM-interop problem but is
+ * not — the shell simply is not running as Electron.
+ *
+ * The variable is commonly inherited from an Electron-based host (VS Code,
+ * Cursor, and similar IDEs set it so they can reuse the bundled Node binary
+ * for sidecar scripts), so a shell launched from such a terminal silently
+ * fails to boot. We always clear it for the shell we spawn.
+ *
+ * `NODE_OPTIONS` is dropped for the same reason: the parent process may carry
+ * a `--require` belonging to another product's runtime.
+ *
+ * @param {Record<string, string | undefined>} extra - additional variables.
+ * @returns {Record<string, string | undefined>} the environment for the shell.
+ */
+export function electronEnv(extra = {}) {
+  const env = { ...process.env, ...extra }
+  delete env.ELECTRON_RUN_AS_NODE
+  delete env.NODE_OPTIONS
+  return env
+}
+
 /** Run a shell command and return trimmed stdout, or empty string on failure. */
 export function shell(cmd, opts = {}) {
   try { return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...opts }).trim() }
@@ -566,16 +595,14 @@ export function launchShellForSlot(slot) {
   if (!existsSync(bundle)) {
     if (!brandDevBundle(slot)) return null
   }
-  const env = {
-    ...process.env,
+  const env = electronEnv({
     DSH_HOME: home,
     AEK_HOME: home,
     AEK_SLOT: slot,
     AEK_WEB_PORT: String(s.webPort),
     AEK_CDP_PORT: String(s.cdpPort),
     AEK_MODE: 'dev',
-  }
-  delete env.NODE_OPTIONS
+  })
   const bin = electronBin(bundle, s.devAppName)
   console.log(`[start] shell[${slot}] → ${bundle} (web ${s.webPort}, home ${home})`)
   const shellProc = spawn(bin, [mainJs, `--remote-debugging-port=${s.cdpPort}`], {

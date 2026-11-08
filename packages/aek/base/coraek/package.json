@@ -37,7 +37,11 @@
       "default": "./slots.mjs"
     },
     "./src/*": "./src/*",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./slot-lock": {
+      "types": "./slot-lock.d.mts",
+      "default": "./slot-lock.mjs"
+    }
   },
   "dsh": {
     "client": {
@@ -79,7 +83,9 @@
     "lib/aek-cli.mjs",
     "lib/commands/*.mjs",
     "lib/types/**/*.d.ts",
-    "bin/"
+    "bin/",
+    "slot-lock.mjs",
+    "slot-lock.d.mts"
   ],
   "oclif": {
     "bin": "aek",

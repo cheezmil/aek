@@ -98,13 +98,18 @@ export function slotConfig(slot) {
 /**
  * Resolve the data root of a slot. The Next root is the sibling of the base
  * root, so pointing `AEK_HOME` at a custom root keeps the two apart.
+ *
+ * The base root may ALREADY be the Next root (the launcher sets
+ * `AEK_HOME=~/.aek-next` for the Next slot). Appending `-next` again would
+ * point at `~/.aek-next-next`, which nothing else knows about — so a base
+ * that already ends in `-next` is returned unchanged.
  * @param {unknown} slot - slot name.
  * @param {Record<string, string | undefined>} [env] - environment override.
  * @returns {string} the absolute data-root path for that slot.
  */
 export function slotHome(slot, env = process.env) {
   const base = resolveAekHome(env)
-  return slot === 'next'
-    ? join(dirname(base), `${basename(base)}-next`)
-    : base
+  if (slot !== 'next') return base
+  if (basename(base).endsWith('-next')) return base
+  return join(dirname(base), `${basename(base)}-next`)
 }

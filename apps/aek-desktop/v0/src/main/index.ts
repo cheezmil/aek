@@ -1,9 +1,10 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { resolveAekHome } from '@cheezmil/coraek/home'
 import { isSlot, resolveSlot, slotConfig } from '@cheezmil/coraek/slots'
+import { readSlotLock, writeSlotLock, clearSlotLock, isPidAlive } from '@cheezmil/coraek/slot-lock'
 
 const APP_ROOT = join(fileURLToPath(import.meta.url), '../..')
 
@@ -82,17 +83,23 @@ app.setName(SLOT_CFG.productName)
 // may have at most one shell, while the two slots coexist. The runtime arbiter
 // stops a slot by freeing its web port; this guard stops a second shell for the
 // same slot from ever opening.
+//
+// The lock format is shared with the arbiter through
+// `@cheezmil/coraek/slot-lock` — the two used to disagree (this wrote a bare
+// pid, the arbiter wrote JSON), so a second shell could start and the arbiter
+// forgot the shell it had launched.
 const SLOT_HOME = resolveAekHome()
 const LOCK_PATH = join(SLOT_HOME, '.aek-runtime.pid')
 
 /** @returns true when another shell for this slot is already alive. */
 function slotLockHeld(): boolean {
-  try {
-    const pid = Number(readFileSync(LOCK_PATH, 'utf8').trim())
-    if (Number.isInteger(pid) && pid > 0) {
-      try { process.kill(pid, 0); return true } catch { /* dead → stale lock */ }
-    }
-  } catch { /* no lock file */ }
+  const lock = readSlotLock(SLOT)
+  if (!lock) return false
+  const shellPid = lock.shellPid
+  if (isPidAlive(shellPid) && shellPid !== process.pid) return true
+  // A stale shell pid (the process died without releasing) does not hold the
+  // slot, but the web server's pid may still be valid — that does not block a
+  // new shell either.
   return false
 }
 
@@ -104,13 +111,18 @@ function acquireSlotLock(): boolean {
   // it — without this the lock write would throw ENOENT and the app would
   // quit on first launch.
   try { mkdirSync(SLOT_HOME, { recursive: true }) } catch { /* handled below */ }
-  try { writeFileSync(LOCK_PATH, String(process.pid), 'utf8') } catch { return false }
+  writeSlotLock(SLOT, { shellPid: process.pid })
   return true
 }
 
 /** Remove this slot's pid lock. */
 function releaseSlotLock(): void {
-  try { rmSync(LOCK_PATH) } catch { /* absent */ }
+  const lock = readSlotLock(SLOT)
+  // Only clear the file when WE are the shell it names; the arbiter may have
+  // written the web pid into the same file.
+  if (lock && (lock.shellPid === process.pid || lock.shellPid === undefined || lock.shellPid === null)) {
+    clearSlotLock(SLOT)
+  }
 }
 
 if (!acquireSlotLock()) {
@@ -142,6 +154,121 @@ function portMismatchPage(): string | null {
   return 'data:text/html;charset=utf-8,' + encodeURIComponent(html)
 }
 
+// ── Backend liveness + reconnect ─────────────────────────────────────────────
+// The shell talks to a local web server. That server can die (the user stopped
+// the slot, the runtime switched modes, the host crashed). Without a watcher
+// the window would sit on a dead "ERR_CONNECTION_REFUSED" page forever, and the
+// only fix would be to relaunch the app.
+//
+// Instead: watch the backend, show a reconnecting page while it is down, and
+// reload the window as soon as it answers again. This is the ONE place where a
+// real shell restart would otherwise be needed.
+
+/** How often the backend is probed, in milliseconds. */
+const PROBE_INTERVAL_MS = 1000
+
+/** @returns true when the slot's web server answers. */
+async function backendAlive(): Promise<boolean> {
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => { controller.abort() }, 1500)
+    try {
+      const response = await fetch(`http://127.0.0.1:${WEB_PORT}/`, {
+        signal: controller.signal,
+        headers: { accept: 'text/html' },
+      })
+      return response.status < 500
+    } finally {
+      clearTimeout(timer)
+    }
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The page shown while the backend is unreachable.
+ * @returns a data: URL carrying the reconnecting notice.
+ */
+function reconnectingPage(): string {
+  const html = [
+    '<!doctype html><meta charset="utf-8"><title>AEK</title>',
+    '<body style="font:14px -apple-system,sans-serif;padding:3rem;color:#222;',
+    'font-family:-apple-system,BlinkMacSystemFont,sans-serif">',
+    '<h2 style="font-size:1.1rem;margin-bottom:.4rem">Reconnecting…</h2>',
+    `<p style="color:#666;margin:0">The AEK ${SLOT_CFG.productName} backend on port ${WEB_PORT} is not responding.`,
+    'This window will reload automatically once it is back.</p>',
+    '<div id="dot" style="margin-top:1.5rem;width:10px;height:10px;border-radius:50%;',
+    'background:#888;animation:p 1s infinite"></div>',
+    '<style>@keyframes p{0%,100%{opacity:.25}50%{opacity:1}}</style>',
+    '</body>',
+  ].join('')
+  return 'data:text/html;charset=utf-8,' + encodeURIComponent(html)
+}
+
+/**
+ * Watch the backend and keep the window in sync with it.
+ *
+ * - When the window fails to load (or the page reports a network error), the
+ *   reconnecting page is shown.
+ * - While the backend is down, the window is reloaded periodically; the reload
+ *   only succeeds once the backend answers, so the user never sees a stale
+ *   error page for long.
+ * - When the backend comes back, the real URL is loaded.
+ * @param win - the window to keep alive.
+ * @returns a function that stops the watcher.
+ */
+function watchBackend(win: BrowserWindow): () => void {
+  const webUrl = `http://127.0.0.1:${WEB_PORT}`
+  let showingReconnect = false
+  let stopped = false
+  let timer: NodeJS.Timeout | undefined
+
+  const showReconnect = (): void => {
+    if (showingReconnect) return
+    showingReconnect = true
+    void win.loadURL(reconnectingPage()).catch(() => { /* the window may be gone */ })
+  }
+
+  const showApp = (): void => {
+    if (!showingReconnect) return
+    showingReconnect = false
+    void win.loadURL(webUrl).catch(() => { /* the window may be gone */ })
+  }
+
+  const probe = async (): Promise<void> => {
+    if (stopped || win.isDestroyed()) return
+    const alive = await backendAlive()
+    if (alive) {
+      showApp()
+      return
+    }
+    showReconnect()
+  }
+
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    // -3 is ERR_ABORTED, which fires for every normal navigation-away.
+    if (errorCode === -3) return
+    console.log(`[main] load failed (${String(errorCode)} ${errorDescription}) ${validatedURL}`)
+    showReconnect()
+  })
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.log(`[main] renderer gone: ${details.reason}`)
+    showReconnect()
+  })
+
+  timer = setInterval(() => { void probe() }, PROBE_INTERVAL_MS)
+
+  // The first load may already be failing (backend not up yet).
+  void probe()
+
+  return () => {
+    stopped = true
+    if (timer) clearInterval(timer)
+  }
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
@@ -160,6 +287,8 @@ function createWindow() {
     win.loadURL(mismatch)
     return
   }
+  const stopWatching = watchBackend(win)
+  win.on('closed', stopWatching)
   const webUrl = `http://127.0.0.1:${WEB_PORT}`
   win.loadURL(webUrl)
 }

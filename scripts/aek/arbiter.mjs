@@ -20,7 +20,7 @@
  *
  * @module scripts/aek/arbiter
  */
-import { spawnSync, spawn } from 'node:child_process'
+import { spawnSync, spawn, execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { basename, dirname } from 'node:path'
@@ -33,6 +33,12 @@ import {
   killSlot,
   DSH_HOME,
 } from './shared-logic.mjs'
+import {
+  readSlotLock,
+  writeSlotLock,
+  clearSlotLock,
+  isPidAlive,
+} from '../../packages/aek/base/coraek/slot-lock.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -50,35 +56,46 @@ function isSlot(slot) { return slot === 'aek' || slot === 'next' }
 /** @param slot - candidate mode name. @returns true when it is a known mode. */
 function isMode(mode) { return mode === 'only-aek' || mode === 'only-next' || mode === 'both' }
 
-/** @param slot - slot name. @returns the pid-lock path inside that slot's home. */
-function pidFile(slot) { return join(slotHome(slot), '.aek-runtime.pid') }
-
-/** @param slot - slot name. @returns the parsed lock, or null. */
-function readPid(slot) {
-  try { return JSON.parse(readFileSync(pidFile(slot), 'utf8')) }
-  catch { return null }
-}
-
-/** @param slot - slot name. @param data - lock payload. */
-function writePid(slot, data) { writeFileSync(pidFile(slot), JSON.stringify(data), 'utf8') }
-
-/** @param slot - slot name. Clear the lock file. */
-function clearPid(slot) { try { rmSync(pidFile(slot)) } catch { /* absent */ } }
-
-/** @param pid - a PID. @returns true when the process is alive. */
-function isAlive(pid) {
-  if (!pid || typeof pid !== 'number') return false
-  try { process.kill(pid, 0); return true } catch { return false }
-}
+// The pid lock is DEFINED in @cheezmil/coraek/slot-lock and shared with the
+// Electron shell. The two used to disagree on the format (the shell wrote a
+// bare pid, this wrote JSON), so the shell could not see the arbiter's lock
+// and the arbiter could not see the shell's — a second shell would start and
+// the arbiter would forget the shell it had launched.
+const readPid = readSlotLock
+const writePid = writeSlotLock
+const clearPid = clearSlotLock
+const isAlive = isPidAlive
 
 /**
- * Probe whether a web port answers. The dsh web server returns 200 on its root.
- * @param port - the web port to probe.
- * @returns true when something answers on that port.
+ * Probe whether a web port answers AND is served by THIS slot's runtime.
+ *
+ * A plain port probe is not enough: any foreign program holding the port would
+ * be reported as "the slot is running" (on this machine `1680` is held by an
+ * unrelated app), which then makes the arbiter refuse to start the slot and
+ * makes the stop path aim at a stranger's process. The response body must
+ * carry AEK's own readiness marker, and the process must be the one serving
+ * this slot's data root.
+ * @param slot - the slot name.
+ * @returns true when the slot's own web server answers.
  */
-function probe(port) {
-  const res = spawnSync('curl', ['-s', '-o', '/dev/null', '-m', '1', `http://127.0.0.1:${port}`], { stdio: 'ignore' })
-  return res.status === 0
+function probe(slot) {
+  const port = SLOTS[slot].webPort
+  const res = spawnSync('curl', ['-s', '-m', '2', `http://127.0.0.1:${port}/`], { encoding: 'utf8' })
+  if (res.status !== 0 || !res.stdout) return false
+  // The AEK web server answers with its own app shell; a foreign server will
+  // not carry the marker.
+  if (!res.stdout.includes('aek') && !res.stdout.includes('dsh')) return false
+  // The serving process must point at this slot's data root.
+  const home = slotHome(slot)
+  try {
+    const pids = execFileSync('/usr/sbin/lsof', ['-ti', `:${port}`], { encoding: 'utf8' })
+      .trim().split(/\s+/).filter(Boolean)
+    for (const pid of pids) {
+      const cmd = execFileSync('/bin/ps', ['-p', pid, '-o', 'command='], { encoding: 'utf8' })
+      if (cmd.includes(home) || cmd.includes(`--port ${port}`)) return true
+    }
+  } catch { /* no listener */ }
+  return false
 }
 
 /** @returns the slot identity of the process that launched this arbiter. */
@@ -94,7 +111,7 @@ function currentSlot() {
 function buildStatus() {
   const slots = {}
   for (const slot of ['aek', 'next']) {
-    slots[slot] = { webPort: SLOTS[slot].webPort, running: probe(SLOTS[slot].webPort) }
+    slots[slot] = { webPort: SLOTS[slot].webPort, running: probe(slot) }
   }
   let mode = 'none'
   if (slots.aek.running && slots.next.running) mode = 'both'
@@ -111,10 +128,13 @@ function buildStatus() {
  */
 function cmdStart(slot) {
   if (!isSlot(slot)) return { ok: false, error: `unknown slot "${slot}"` }
-  if (probe(SLOTS[slot].webPort)) return { ok: false, error: `slot "${slot}" already running`, slot }
+  if (probe(slot)) return { ok: false, error: `slot "${slot}" already running`, slot }
   const web = spawnWebServerForSlot(slot, { detached: true })
   const shell = launchShellForSlot(slot)
-  writePid(slot, { webPid: web.pid, shellPid: shell?.pid ?? null, startedAt: Date.now() })
+  // Only the web pid is recorded here. The shell records its OWN pid in the
+  // same file (the shared lock merges the fields), so writing a guessed
+  // shellPid here would race with the shell's own write.
+  writePid(slot, { webPid: web.pid, startedAt: Date.now() })
   return { ok: true, slot, webPid: web.pid, shellPid: shell?.pid ?? null }
 }
 
@@ -147,8 +167,8 @@ function cmdMode(mode) {
   const unwanted = mode === 'both' ? [] : (mode === 'only-aek' ? ['next'] : ['aek'])
   const started = []
   const stopped = []
-  for (const s of want) if (!probe(SLOTS[s].webPort)) { cmdStart(s); started.push(s) }
-  for (const s of unwanted) if (probe(SLOTS[s].webPort)) { cmdStop(s); stopped.push(s) }
+  for (const s of want) if (!probe(s)) { cmdStart(s); started.push(s) }
+  for (const s of unwanted) if (probe(s)) { cmdStop(s); stopped.push(s) }
   return { ok: true, mode, started, stopped }
 }
 
