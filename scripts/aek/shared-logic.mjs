@@ -45,6 +45,27 @@ export const DEV_APP_NAME = 'AEK DEV'
 export const DSH_HOME   = resolveAekHome()
 export const INSTALL_DIR = join(homedir(), 'Applications')
 
+// ── Dual-app slots ─────────────────────────────────────────────────────────
+// Two equal, named instances share one bundle (same app id, never swapped):
+//   aek  → ~/.aek        web 1680 / cdp 1682
+//   next → ~/.aek-next   web 1702 / cdp 1704
+// scripts/aek/arbiter.mjs uses these to start/stop a whole instance (web + shell).
+export const SLOTS = {
+  aek:  { webPort: 1680, cdpPort: 1682 },
+  next: { webPort: 1702, cdpPort: 1704 },
+}
+
+/**
+ * Resolve the data root for a slot. The Next root is `<base>-next`, matching
+ * the rule in launch.mjs so an explicit `AEK_HOME` still yields the sibling.
+ * @param slot - 'aek' | 'next'.
+ * @returns the absolute data-root path for that slot.
+ */
+export function slotHome(slot) {
+  const base = DSH_HOME
+  return slot === 'next' ? join(dirname(base), `${basename(base)}-next`) : base
+}
+
 /** Path to the branded dev bundle in ~/Applications */
 export const devAppDir = join(INSTALL_DIR, `${DEV_APP_NAME}.app`)
 
@@ -118,21 +139,63 @@ export async function killThisMode() {
 // ── Web server launcher ───────────────────────────────────────────────────────
 
 /**
- * Spawn the DSH web server. Returns the child process.
- * Must be called before waiting for web readiness.
+ * Spawn the DSH web server for a given data root + port.
+ * Returns the child process. Must be called before waiting for web readiness.
+ * @param home - the data root the web server should read (`DSH_HOME`/`AEK_HOME`).
+ * @param port - the web port to bind.
+ * @param options - when `detached` is true the child is uncoupled from the
+ *   parent so it survives the caller exiting (used by the runtime arbiter).
+ * @returns the spawned child process.
  */
-export function spawnWebServer() {
-  const env = { ...process.env, DSH_HOME, AEK_MODE: 'dev' }
+export function spawnWebServerWith(home, port, options = {}) {
+  const env = {
+    ...process.env,
+    DSH_HOME: home,
+    AEK_HOME: home,
+    AEK_WEB_PORT: String(port),
+    AEK_MODE: 'dev',
+  }
   delete env.NODE_OPTIONS
 
-  const webCmd = `DSH_HOME=${DSH_HOME} ${tsxBin()} ${dshBin()} web --no-open --port ${WEB_PORT}`
-  console.log(`[start] web  → http://127.0.0.1:${WEB_PORT}`)
+  const webCmd = `DSH_HOME=${home} ${tsxBin()} ${dshBin()} web --no-open --port ${port}`
+  console.log(`[start] web  → http://127.0.0.1:${port} (home ${home})`)
   const web = spawn('bash', ['-c', webCmd], {
-    cwd: PROJECT_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: PROJECT_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'], detached: Boolean(options.detached),
   })
+  if (options.detached) web.unref?.()
   web.stdout.on('data', d => process.stdout.write(d))
   web.stderr.on('data', d => process.stderr.write(d))
   return web
+}
+
+/** Spawn the default (current) DSH web server. */
+export function spawnWebServer() {
+  return spawnWebServerWith(DSH_HOME, WEB_PORT)
+}
+
+/**
+ * Spawn the DSH web server for a slot. Equivalent to {@link spawnWebServer} for
+ * `slot === 'aek'`; for `next` it points at `~/.aek-next` on port 1702.
+ * @param slot - 'aek' | 'next'.
+ * @param options - forwarded to {@link spawnWebServerWith} (e.g. `{ detached: true }`).
+ * @returns the spawned child process.
+ */
+export function spawnWebServerForSlot(slot, options = {}) {
+  const s = SLOTS[slot]
+  if (!s) throw new Error(`Unknown slot: ${slot}`)
+  return spawnWebServerWith(slotHome(slot), s.webPort, options)
+}
+
+/**
+ * Kill the web + cdp ports used by a slot (any process holding them).
+ * @param slot - 'aek' | 'next'.
+ */
+export async function killSlot(slot) {
+  const s = SLOTS[slot]
+  if (!s) return
+  killPort(s.webPort)
+  killPort(s.cdpPort)
+  await new Promise(r => setTimeout(r, 200))
 }
 
 // ── Web readiness poll ────────────────────────────────────────────────────────
@@ -262,4 +325,41 @@ export function attachCleanup(web) {
   const cleanup = () => { web.kill(); process.exit(0) }
   process.on('SIGINT',  cleanup)
   process.on('SIGTERM', cleanup)
+}
+
+/**
+ * Launch the Electron shell for a slot, pointing it at that slot's data root
+ * and ports. Both slots share the same branded dev bundle (`~/Applications/AEK
+ * DEV.app`); the env differentiates them, so the desktop main's slot-keyed
+ * lock (not Electron's app-id lock) is what keeps each slot single-instance.
+ * The child is spawned detached so it survives the caller (the runtime arbiter)
+ * exiting. Idempotent: it only brands when the bundle is missing.
+ * @param slot - 'aek' | 'next'.
+ * @returns the spawned shell child, or `null` on branding failure.
+ */
+export function launchShellForSlot(slot) {
+  const s = SLOTS[slot]
+  if (!s) return null
+  const home = slotHome(slot)
+  if (!existsSync(devAppDir)) {
+    if (!brandDevBundle()) return null
+  }
+  const env = {
+    ...process.env,
+    DSH_HOME: home,
+    AEK_HOME: home,
+    AEK_WEB_PORT: String(s.webPort),
+    AEK_CDP_PORT: String(s.cdpPort),
+    AEK_MODE: 'dev',
+  }
+  delete env.NODE_OPTIONS
+  const bin = electronBin(devAppDir)
+  console.log(`[start] shell[${slot}] → ${devAppDir} (web ${s.webPort}, home ${home})`)
+  const shellProc = spawn(bin, [mainJs, `--remote-debugging-port=${s.cdpPort}`], {
+    cwd: PROJECT_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true,
+  })
+  shellProc.unref?.()
+  shellProc.stdout?.on('data', d => process.stdout.write(d))
+  shellProc.stderr?.on('data', d => process.stderr.write(d))
+  return shellProc
 }

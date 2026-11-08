@@ -37,6 +37,7 @@ python/**/__pycache__/
 python/**/.pytest_cache/
 packages/**/__pycache__/
 apps/web/dist/
+apps/aek-desktop/v0/dist/
 .artifacts/
 .dsh-build/
 .dsh-report/

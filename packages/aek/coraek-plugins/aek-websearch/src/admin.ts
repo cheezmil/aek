@@ -42,7 +42,9 @@
 import type { Context } from '@cheezmil/coraek/types'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { spawn, spawnSync } from 'node:child_process'
 import { resolveAekHome } from '@cheezmil/coraek/home'
 import { parse, stringify } from 'yaml'
 import { KeyStore } from '@cheezmil/prevent-agent-directly-seeing-key'
@@ -61,6 +63,9 @@ export const WEBSEARCH_API_PATH = '/api/aek/websearch'
 
 /** The key-pool CRUD route. Separate from the status route so the two can evolve independently. */
 export const WEBSEARCH_KEYS_API_PATH = '/api/aek/websearch/keys'
+
+/** The runtime-mode route the dual-app switcher talks to. */
+export const RUNTIME_API_PATH = '/api/aek/runtime'
 
 /** One masked key-pool row, safe to send to the browser. */
 export interface KeyPoolEntry {
@@ -298,6 +303,15 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 /**
+ * Turn an unknown thrown value into a displayable message.
+ * @param cause - an unknown thrown value.
+ * @returns a displayable message.
+ */
+function messageOf(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause)
+}
+
+/**
  * Read a bounded JSON request body.
  * @param req - the request to read.
  * @returns the parsed body, or `undefined` when it is absent or malformed.
@@ -320,6 +334,121 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
   }
 }
 
+/** Walk up from this file to the repo root (where pnpm-workspace.yaml lives). */
+function repoRootFrom(start: string): string {
+  let dir = start
+  for (let i = 0; i < 12; i++) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return start
+}
+const ARBITER_ROOT = repoRootFrom(dirname(fileURLToPath(import.meta.url)))
+const ARBITER_BIN = join(ARBITER_ROOT, 'scripts', 'aek', 'arbiter.mjs')
+
+/** Target runtime modes the dual-app switcher can request. */
+type RuntimeMode = 'only-aek' | 'only-next' | 'both'
+
+/** @param mode - untrusted mode string. @returns true when it is a known mode. */
+function isRuntimeMode(mode: unknown): mode is RuntimeMode {
+  return mode === 'only-aek' || mode === 'only-next' || mode === 'both'
+}
+
+/** @returns the slot this web server process belongs to. */
+function currentSlot(): 'aek' | 'next' {
+  const home = process.env.AEK_HOME ?? resolveAekHome()
+  return home.endsWith('-next') ? 'next' : 'aek'
+}
+
+/**
+ * Run the host arbiter. When `sync`, block and return parsed JSON; otherwise
+ * spawn it detached (used to stop the slot serving this very request after the
+ * HTTP response has flushed, so the connection closes before the process dies).
+ * @param args - arbiter command + arguments.
+ * @param sync - block for completion when true.
+ * @returns the arbiter payload (sync) or a detached acknowledgement.
+ */
+function runArbiter(args: string[], sync: boolean): Record<string, unknown> {
+  if (sync) {
+    const r = spawnSync('node', [ARBITER_BIN, ...args], { encoding: 'utf8', cwd: ARBITER_ROOT })
+    if (r.status !== 0) throw new Error(`arbiter ${args[0]} failed: ${(r.stderr ?? '').trim() || r.status}`)
+    return JSON.parse(r.stdout) as Record<string, unknown>
+  }
+  const child = spawn('node', [ARBITER_BIN, ...args], { cwd: ARBITER_ROOT, stdio: 'ignore', detached: true })
+  child.unref()
+  return { ok: true, detached: true, command: args[0] }
+}
+
+/**
+ * Register the runtime-mode route the dual-app switcher talks to.
+ *
+ * - `GET`  → `{ current, slots, mode }`: the slot serving this request, both
+ *   slots' liveness (probed on their web ports) and the derived mode.
+ * - `POST` `{ mode }` → switch. Starting the other slot and stopping a slot
+ *   other than the one serving us are synchronous; stopping the serving slot is
+ *   deferred ~600ms past the 200 response so the browser gets a clean close.
+ *
+ * The host arbiter (`scripts/aek/arbiter.mjs`) does the real work; this route
+ * only validates input and orchestrates it.
+ * @param ctx - the plugin context.
+ */
+export function registerRuntime(ctx: Context): void {
+  const server = webServerOf(ctx)
+  ctx.effect(() => server.register({
+    kind: 'exact',
+    path: RUNTIME_API_PATH,
+    handler: async (req, res) => {
+      const method = req.method ?? 'GET'
+      if (method === 'GET') {
+        try {
+          sendJson(res, 200, runArbiter(['status'], true))
+        } catch (cause) {
+          sendJson(res, 502, { code: 'arbiter-failed', message: messageOf(cause) })
+        }
+        return
+      }
+      if (method !== 'POST') {
+        res.setHeader('allow', 'GET, POST')
+        sendJson(res, 405, { code: 'method-not-allowed', message: 'use GET or POST' })
+        return
+      }
+      const body = await readJsonBody(req)
+      const mode = body?.mode
+      if (!isRuntimeMode(mode)) {
+        sendJson(res, 400, { code: 'bad-request', message: 'mode must be only-aek | only-next | both' })
+        return
+      }
+      const here = currentSlot()
+      const want: Array<'aek' | 'next'> = mode === 'both' ? ['aek', 'next'] : [mode === 'only-aek' ? 'aek' : 'next']
+      const unwanted: Array<'aek' | 'next'> = mode === 'both' ? [] : (mode === 'only-aek' ? ['next'] : ['aek'])
+      const started: string[] = []
+      const stopped: string[] = []
+      try {
+        for (const s of want) {
+          const probe = runArbiter(['status'], true)
+          const slots = probe.slots as Record<string, { running: boolean }> | undefined
+          if (!slots?.[s]?.running) { runArbiter(['start', s], true); started.push(s) }
+        }
+        for (const s of unwanted) {
+          const probe = runArbiter(['status'], true)
+          const slots = probe.slots as Record<string, { running: boolean }> | undefined
+          if (slots?.[s]?.running && s !== here) { runArbiter(['stop', s], true); stopped.push(s) }
+        }
+        if (unwanted.includes(here)) {
+          sendJson(res, 200, { ok: true, mode, started, stopped, willStopSelf: true })
+          setTimeout(() => { try { runArbiter(['stop', here], false) } catch { /* best effort */ } }, 600)
+          return
+        }
+        sendJson(res, 200, { ok: true, mode, started, stopped, status: runArbiter(['status'], true) })
+      } catch (cause) {
+        sendJson(res, 502, { code: 'arbiter-failed', message: messageOf(cause) })
+      }
+    },
+  }), 'aek-websearch: runtime API')
+}
+
 /**
  * Register the management API on the composition's web server.
  * @param ctx - the plugin context (typed via @cheezmil/coraek/types).
@@ -327,6 +456,7 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
 export function apply(ctx: Context): void {
   const server = webServerOf(ctx)
   registerInventory(ctx)
+  registerRuntime(ctx)
 
   ctx.effect(() => server.register({
     kind: 'exact',

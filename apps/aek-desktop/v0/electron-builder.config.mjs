@@ -39,7 +39,7 @@ export function createElectronBuilderConfig() {
     },
     extraResources: [
       {
-        from: '../../licenses',
+        from: '../../../licenses',
         to: 'licenses',
       },
     ],

@@ -11,6 +11,8 @@ import type { IconName } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import type { PanelId } from './Sidebar.tsx'
 import { css, cx } from './styles.ts'
+import { RuntimeModeCard } from './RuntimeModeCard.tsx'
+import { useRuntimeMode } from './useRuntimeMode.ts'
 import type { WebsearchState } from './useWebsearchStatus.ts'
 
 /** One shortcut tile. */
@@ -57,6 +59,7 @@ export function OverviewPanel({ state, onOpen }: OverviewPanelProps) {
   const enabled = providers.filter(provider => provider.enabled).length
   const keys = providers.reduce((sum, provider) => sum + (provider.keyCount ?? 0), 0)
   const pending = t('common.loading')
+  const runtime = useRuntimeMode()
 
   return (
     <>
@@ -133,6 +136,8 @@ export function OverviewPanel({ state, onOpen }: OverviewPanelProps) {
         {t('overview.apiHint')} <span className={css.code}>GET /api/aek/websearch</span> ·{' '}
         <span className={css.code}>@cheezmil/aek-websearch/admin</span>
       </p>
+
+      <RuntimeModeCard state={runtime} />
     </>
   )
 }
