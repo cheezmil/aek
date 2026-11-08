@@ -5,7 +5,12 @@
  * - One flat menu: no first-level group headings, because the console will
  *   grow a lot and a search box scales better than more grouping.
  * - The top logo is the collapse toggle (with a native tooltip); there is no
- *   chevron button and no header badge any more.
+ *   chevron button. The toggle itself can be switched off in Settings (C10
+ *   `logoToggle`, on by default) — when off the logo is inert.
+ * - The header brand shows a small "Next" tag when this instance serves the
+ *   `next` slot (C9), so an AEK window is never confused with AEK Next.
+ * - The menu entries are: 运行模式, Web Search, 插件, 设置, 关于. The old
+ *   概览 was removed in favour of the dedicated 运行模式 panel (C5).
  * - `collapsed` is the LOCKED state. Hovering a locked-collapsed rail shows a
  *   temporary "peek" without changing the lock — the three-mode pattern
  *   (locked open / locked collapsed / hover peek) used by common sidebars.
@@ -33,7 +38,7 @@ const HOVER_ENTER_DELAY = 120
 const HOVER_LEAVE_DELAY = 200
 
 /** Every surface the console can show. */
-export type PanelId = 'overview' | 'websearch' | 'plugins' | 'settings' | 'about'
+export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'settings' | 'about'
 
 /** One menu row. */
 interface NavEntry {
@@ -52,7 +57,7 @@ interface NavEntry {
  * picks it up automatically through its label / id / keywords.
  */
 const NAV: readonly NavEntry[] = [
-  { id: 'overview', labelKey: 'panel.overview', icon: 'dashboard', keywords: ['home', 'dashboard', '概览', 'status'] },
+  { id: 'runtime', labelKey: 'panel.runtime', icon: 'activity', keywords: ['runtime', 'mode', 'switch', 'slot', '运行模式', '实例'] },
   { id: 'websearch', labelKey: 'panel.websearch', icon: 'search', keywords: ['search', 'keys', 'api key', 'provider', '密钥'] },
   { id: 'plugins', labelKey: 'panel.plugins', icon: 'plugins', keywords: ['plugin', 'package', 'inventory', '插件'] },
   { id: 'settings', labelKey: 'panel.settings', icon: 'settings', keywords: ['preferences', 'options', 'hover', '设置'] },
@@ -76,6 +81,10 @@ export interface SidebarProps {
   hoverExpandEnabled: boolean
   /** Provider count shown as a badge, `undefined` until the host answers. */
   providerCount: number | undefined
+  /** Which slot serves this console (C9); `undefined` until the host answers. */
+  currentSlot: 'aek' | 'next' | undefined
+  /** Whether the top logo acts as the collapse toggle (C10, on by default). */
+  logoToggleEnabled: boolean
 }
 
 /**
@@ -85,6 +94,7 @@ export interface SidebarProps {
  */
 export function Sidebar({
   active, onSelect, collapsed, onToggleCollapse, hoverExpandEnabled, providerCount,
+  currentSlot, logoToggleEnabled,
 }: SidebarProps) {
   const { t, locale, setLocale } = useI18n()
   const [query, setQuery] = useState('')
@@ -137,10 +147,12 @@ export function Sidebar({
   }
 
   /**
-   * Logo click changes the LOCK. Collapsing also suppresses the current hover
-   * visit, so the rail visibly closes even while the pointer is still inside.
+   * Logo click changes the LOCK — but only when the logo toggle is enabled
+   * (C10). When disabled the click is a no-op and the rail is driven by the
+   * search box / hover instead.
    */
   const handleToggle = (): void => {
+    if (!logoToggleEnabled) return
     if (collapsed) {
       setSuppressPeek(false)
     } else {
@@ -156,10 +168,13 @@ export function Sidebar({
 
   const peek = hoverExpandEnabled && hovered && !suppressPeek
   const compact = collapsed && !peek
-  // The tooltip describes the CURRENT visual state, not the saved lock.
-  const brandLabel = compact
-    ? t('brand.expand')
-    : (collapsed ? t('brand.pinOpen') : t('brand.collapse'))
+  // The tooltip describes the CURRENT visual state, not the saved lock. When
+  // the logo toggle is disabled the logo is decorative, so no action hint.
+  const brandLabel = !logoToggleEnabled
+    ? 'AEK'
+    : (compact
+      ? t('brand.expand')
+      : (collapsed ? t('brand.pinOpen') : t('brand.collapse')))
 
   const needle = query.trim().toLowerCase()
   const filtered = needle.length === 0
@@ -187,12 +202,18 @@ export function Sidebar({
           className={css.brandButton}
           onClick={handleToggle}
           aria-label={brandLabel}
-          aria-expanded={!compact}
+          aria-expanded={logoToggleEnabled ? !compact : undefined}
           title={brandLabel}
+          tabIndex={logoToggleEnabled ? 0 : -1}
         >
           <BrandMark size={34} className={css.brandMark} />
           <span className={css.brandText}>
-            <span className={css.brandTagline}>AEK</span>
+            <span className={css.brandTagline}>
+              AEK
+              {currentSlot === 'next'
+                ? <span className={css.slotBadge}>Next</span>
+                : null}
+            </span>
           </span>
         </button>
       </div>

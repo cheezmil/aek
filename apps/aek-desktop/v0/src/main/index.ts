@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Menu } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, readFileSync } from 'node:fs'
@@ -54,7 +54,10 @@ const SLOT_CFG = slotConfig(SLOT)
 // from the slot baked into the packaged app, and finally from the slot table.
 const WEB_PORT = Number(process.env.AEK_WEB_PORT ?? packaged?.webPort ?? SLOT_CFG.webPort)
 const CDP_PORT = Number(process.env.AEK_CDP_PORT ?? packaged?.cdpPort ?? SLOT_CFG.cdpPort)
-const APP_NAME = process.env.AEK_MODE === 'dev' ? SLOT_CFG.devAppName : SLOT_CFG.productName
+// The window title is intentionally kept empty (C2): the native title bar must
+// not show any text, so the web UI owns the whole top edge and the traffic
+// lights read as part of the sidebar. The slot identity (Dock / menu bar /
+// Cmd-Tab) still comes from `app.setName`, not the window title.
 
 // Headless mode: run the shell WITHOUT a window. Used when a slot is kept
 // warm (or verified) without wanting a second Dock icon.
@@ -273,19 +276,80 @@ function watchBackend(win: BrowserWindow): () => void {
   }
 }
 
+/**
+ * Register the application menu (C8: Chrome-style developer-tool shortcuts).
+ *
+ * Without an application menu the app has NO registered accelerators at all,
+ * so pressing Cmd-Option-I / F12 does nothing. A second, historical cause is
+ * that the role-based dev-tools accelerator silently failed on macOS
+ * (electron/electron#45925, opened and closed on 2025-03-08, labelled 34-x-y;
+ * the issue is CLOSED, not an outstanding Electron bug). An explicit `click`
+ * plus `accelerator` avoids both layers. Chrome opens
+ * DevTools with Cmd-Option-I (plus Cmd-Shift-I and Fn-F12) on macOS and
+ * F12 / Ctrl-Shift-I elsewhere — we mirror that set here explicitly.
+ *
+ * The menu also carries the standard edit roles: without them, copy/paste
+ * shortcuts in the console's text inputs would have no native binding.
+ */
+function registerApplicationMenu(): void {
+  const isMac = process.platform === 'darwin'
+  // The click callback's second argument is the window the menu belongs to;
+  // for the application menu that is the focused window.
+  // The menu callback passes the owning window typed as `BaseWindow`; only a
+  // BrowserWindow carries `webContents`. Fall back to the focused window so
+  // the accelerator also works when the menu arg is stale.
+  const toggleDevTools = (_item: Electron.MenuItem, win: Electron.BaseWindow | undefined): void => {
+    const target = (win !== undefined && 'webContents' in win ? win as BrowserWindow : undefined)
+      ?? BrowserWindow.getFocusedWindow()
+    target?.webContents.toggleDevTools()
+  }
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    { role: 'editMenu' },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+        { type: 'separator' },
+        { label: 'Developer Tools', accelerator: isMac ? 'Alt+Cmd+I' : 'F12', click: toggleDevTools },
+        // Accelerators on hidden items still fire (Electron keyboard-shortcuts
+        // docs), so the Chrome-combo equivalents stay one keypress away.
+        { label: '', visible: false, accelerator: 'CmdOrCtrl+Shift+I', click: toggleDevTools },
+        ...(isMac ? [{ label: '', visible: false, accelerator: 'F12', click: toggleDevTools }] : []),
+      ],
+    },
+    { role: 'windowMenu' },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    title: APP_NAME,
+    // C2: no title text anywhere. On macOS the traffic lights float over the
+    // web UI's top-left (hiddenInset), so the window and the console look
+    // like one surface; on other platforms the default frame stays.
+    title: '',
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
     icon: join(APP_ROOT, 'resources', 'icon.icns'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   })
+  // The web UI sets its own document title; never let it surface in the
+  // native title bar again (C2).
+  win.on('page-title-updated', event => event.preventDefault())
   const mismatch = portMismatchPage()
   if (mismatch) {
     win.loadURL(mismatch)
@@ -298,6 +362,9 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // The menu (and its dev-tools accelerators) is independent of windows, so
+  // it is installed in headless mode too — harmless, keeps one code path.
+  registerApplicationMenu()
   // Headless mode: the slot's web server runs, but no window is created, so
   // macOS never shows a second Dock icon for an "inactive" slot that is only
   // being kept warm (or verified). The app stays alive until it is stopped.

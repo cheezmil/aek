@@ -2,8 +2,9 @@
 /**
  * AEK Desktop v0 — DEV mode launcher.
  *
- * Brands Electron.app → ~/Applications/AEK DEV.app (or AEK DEV Next.app),
- * starts the web server and Electron in parallel, waits briefly for web ready.
+ * Brands Electron.app → ~/Applications/AEK.app (or AEK Next.app — C1: the Dock
+ * and Finder never show a "DEV" suffix), starts the web server and Electron in
+ * parallel, waits briefly for web ready.
  *
  * Usage: node scripts/aek/start-dev.mjs [aek|next]
  */

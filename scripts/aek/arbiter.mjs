@@ -34,6 +34,7 @@ import {
   killSlot,
   DSH_HOME,
   slotWebUp,
+  slotShellUp,
 } from './shared-logic.mjs'
 import {
   writeSlotLock,
@@ -80,13 +81,33 @@ function currentSlot() {
 }
 
 /**
+ * A slot is "running" when EITHER half is alive (C6): the web server, or the
+ * Electron shell. Reporting the web server alone made the switcher disagree
+ * with what the user actually sees in the Dock.
+ * @param slot - 'aek' | 'next'.
+ * @returns {boolean} true when any part of the slot is alive.
+ */
+function slotRunning(slot) {
+  return probe(slot) || slotShellUp(slot)
+}
+
+/**
  * Build the status payload: current slot + per-slot liveness + derived mode.
  * @returns the serialisable status object.
  */
 function buildStatus() {
+  const here = currentSlot()
+  // C6: when the arbiter runs INSIDE a host (AEK_PROBE_NO_HTTP is set by the
+  // admin route), the current slot's own port is blocked on this very request,
+  // so its HTTP probe would self-deadlock and is skipped. The OTHER slot can
+  // be probed over real HTTP — that is exactly the cross-slot fact the "both
+  // running" judgment used to get wrong.
+  const inHost = process.env.AEK_PROBE_NO_HTTP === '1'
   const slots = {}
   for (const slot of ['aek', 'next']) {
-    slots[slot] = { webPort: SLOTS[slot].webPort, running: probe(slot) }
+    const web = probe(slot, { allowHttp: inHost ? slot !== here : true })
+    const shell = slotShellUp(slot)
+    slots[slot] = { webPort: SLOTS[slot].webPort, web, shell, running: web || shell }
   }
   let mode = 'none'
   if (slots.aek.running && slots.next.running) mode = 'both'
@@ -108,9 +129,15 @@ function buildStatus() {
  */
 async function cmdStart(slot, options = {}) {
   if (!isSlot(slot)) return { ok: false, error: `unknown slot "${slot}"` }
-  if (probe(slot)) return { ok: false, error: `slot "${slot}" already running`, slot }
-  // Same-slot leftovers only (half-dead web server, orphaned shell).
-  const cleared = await killSlot(slot)
+  // Only the WEB half refuses to double-launch: a second web server on the same
+  // port is the real error. A shell that is already open must NOT block a
+  // backend (re)start — the user's window stays up and gets reconnected (C6).
+  if (probe(slot)) return { ok: false, error: `web server for slot "${slot}" already running`, slot }
+  const keepShell = slotShellUp(slot)
+  // Same-slot leftovers only (half-dead web server, orphaned shell). When a
+  // live shell is present it is kept out of the kill set so the restart never
+  // takes the user's window down with the backend.
+  const cleared = await killSlot(slot, { keepShell })
   if (cleared.foreign.length > 0) {
     return {
       ok: false,
@@ -125,12 +152,19 @@ async function cmdStart(slot, options = {}) {
   const web = spawnWebServerForSlot(slot, { detached: true })
   // `headless` runs the shell WITHOUT a window: the slot is kept warm (or
   // verified) without a second Dock icon on macOS.
-  const shell = launchShellForSlot(slot, { headless: Boolean(options.headless) })
+  const shell = keepShell ? null : launchShellForSlot(slot, { headless: Boolean(options.headless) })
   // Only the web pid is recorded here. The shell records its OWN pid in the
   // same file (the shared lock merges the fields), so writing a guessed
   // shellPid here would race with the shell's own write.
   writePid(slot, { webPid: web.pid, startedAt: Date.now() })
-  return { ok: true, slot, webPid: web.pid, shellPid: shell?.pid ?? null, clearedPids: cleared.killed }
+  return {
+    ok: true,
+    slot,
+    webPid: web.pid,
+    shellPid: keepShell ? null : (shell?.pid ?? null),
+    ...(keepShell ? { shellAlreadyRunning: true } : {}),
+    clearedPids: cleared.killed,
+  }
 }
 
 /**
@@ -160,8 +194,10 @@ async function cmdMode(mode) {
   const started = []
   const stopped = []
   const errors = []
+  // Start a slot when its BACKEND is down — `cmdStart` itself keeps a live
+  // shell and only (re)starts the web. Stop a slot when ANY half is alive.
   for (const s of want) if (!probe(s)) { const r = await cmdStart(s); if (r.ok) started.push(s); else errors.push(r) }
-  for (const s of unwanted) if (probe(s)) { await cmdStop(s); stopped.push(s) }
+  for (const s of unwanted) if (slotRunning(s)) { await cmdStop(s); stopped.push(s) }
   return { ok: errors.length === 0, mode, started, stopped, ...(errors.length ? { errors } : {}) }
 }
 

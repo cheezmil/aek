@@ -78,8 +78,19 @@ export interface AggregatedPluginConfig {
   attemptTimeoutMs: Volatile<number>
 }
 
-/** The schema shared by the composition entry and the settings form projected from it. */
-export const Config = z.object({
+/**
+ * The schema shared by the composition entry and the settings form projected
+ * from it.
+ *
+ * The type annotation is REQUIRED (TS2883): `z.object()` infers
+ * `Schema<ObjectS<X>, ObjectT<X>>`, and both `ObjectS` / `ObjectT` intersect
+ * cosmokit's internal `Dict`, so declaration emit cannot name the inferred
+ * type portably. Annotating with the global `Schemastery` interface keeps the
+ * emitted `.d.mts` free of internal references. The runtime value is still
+ * the very same schema instance built by `z.object` — the assertion only
+ * narrows the public type face to what this plugin actually promises.
+ */
+export const Config: Schemastery<ConfigInput, AggregatedPluginConfig> = z.object({
   providers: z.array(z.object({
     kind: z.union(PROVIDER_KINDS),
     enabled: z.boolean().default(true),
@@ -87,7 +98,7 @@ export const Config = z.object({
   })).default(DEFAULT_QUEUE.map(entry => ({ ...entry, baseURL: '' }))).volatile(),
   attemptTimeoutMs: z.number().step(1).min(MIN_ATTEMPT_TIMEOUT_MS).max(MAX_ATTEMPT_TIMEOUT_MS)
     .default(DEFAULT_ATTEMPT_TIMEOUT_MS).volatile(),
-})
+}) as unknown as Schemastery<ConfigInput, AggregatedPluginConfig>
 
 /**
  * Normalize one queue entry: trim the endpoint override and drop it when

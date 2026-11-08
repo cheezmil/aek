@@ -2,9 +2,11 @@
  * Key-pool CRUD for the Web Search page.
  *
  * The encrypted pool lives on the host; this hook only ever sends a literal
- * on a create/update request and only ever receives masked tags back. No
- * plaintext is stored in React state after submit, and error messages never
- * echo the submitted value.
+ * on a create/update request and only ever receives masked tags back — except
+ * for ONE explicit, user-initiated operation (C4): `reveal(id)` fetches the
+ * plaintext of a single row on purpose and nothing else. No plaintext is
+ * stored in React state by this hook, and error messages never echo the
+ * submitted value.
  *
  * @module @cheezmil/aek-home/src/client/useKeyPool
  */
@@ -12,6 +14,9 @@ import { useCallback, useEffect, useState } from 'react'
 
 /** The host route serving masked key rows. */
 export const KEYS_API = '/api/aek/websearch/keys'
+
+/** The host route for the explicit single-row plaintext reveal (C4). */
+export const KEYS_REVEAL_API = `${KEYS_API}/reveal`
 
 /** One masked key row. */
 export interface KeyPoolEntry {
@@ -51,6 +56,14 @@ export interface KeyPoolState {
   remove: (id: number) => void
   /** Enable or disable one key. */
   setDisabled: (id: number, disabled: boolean) => void
+  /**
+   * Explicitly reveal ONE row's plaintext literal (C4). Only called when the
+   * user clicks "show" on that exact row; the result is a one-shot value,
+   * never cached by this hook.
+   * @param id - real row id.
+   * @returns the literal, or `undefined` when the host has no such row.
+   */
+  reveal: (id: number) => Promise<string | undefined>
 }
 
 /** @param cause - unknown thrown value. @returns a displayable message. */
@@ -119,5 +132,21 @@ export function useKeyPool(kind: string | undefined): KeyPoolState {
     write('PATCH', { id, disabled })
   }, [write])
 
-  return { entries, error, pending, refresh, add, update, remove, setDisabled }
+  /** Explicit single-row reveal (C4); the only call that can return a literal. */
+  const reveal = useCallback(async (id: number): Promise<string | undefined> => {
+    if (kind === undefined) return undefined
+    const response = await fetch(KEYS_REVEAL_API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind, id }),
+    })
+    if (!response.ok) {
+      const detail = await response.json().catch(() => undefined) as { message?: string } | undefined
+      throw new Error(detail?.message ?? `HTTP ${String(response.status)}`)
+    }
+    const json = await response.json() as { plain?: string }
+    return json.plain
+  }, [kind])
+
+  return { entries, error, pending, refresh, add, update, remove, setDisabled, reveal }
 }

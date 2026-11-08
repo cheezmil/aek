@@ -15,15 +15,21 @@
  * - `PUT  /api/aek/websearch/keys` → `{ kind, id, key }` replaces one key
  * - `PATCH /api/aek/websearch/keys`→ `{ kind, id, disabled }` enables/disables one
  * - `DELETE /api/aek/websearch/keys`→ `{ kind, id }` removes one key
+ * - `POST /api/aek/websearch/keys/reveal` → `{ kind, id }` one explicit
+ *   user-initiated plaintext reveal (C4); the only literal-returning route
+ * - `GET  /api/aek/preferences`     → the host-stored UI settings (C11)
+ * - `POST /api/aek/preferences`     → `{ key, value }` upserts one setting
  * - `GET  /api/aek/inventory`        → real AEK package versions + dev/npm kind
  *
  * This plugin owns all host routes the AEK console reads. The inventory route
  * is registered here (not in aek-home) because that package's host entry is a
  * tsc emit artifact that cannot carry relative TS imports through the bundle.
  *
- * The key-pool routes NEVER return a plaintext key literal: every response
- * carries only masked tags and the real row id. This is the boundary the
- * browser talks to, so a secret never crosses into the client bundle.
+ * The key-pool LIST/CRUD routes NEVER return a plaintext key literal: every
+ * response carries only masked tags and the real row id. The sole exception is
+ * `/keys/reveal`, which returns one literal for one id, and ONLY because the
+ * user clicked "show" on that row — no listing, count or status call can drag
+ * a literal into the client bundle.
  *
  * The facts come from the same files the CLI reads, so the page and
  * `aekws doctor` / `aekws pool` never disagree:
@@ -51,6 +57,7 @@ import { KeyStore } from '@cheezmil/prevent-agent-directly-seeing-key'
 import { PROVIDER_KINDS } from './defaults.ts'
 import { registerInventory } from './inventory.ts'
 import { KeyPool } from './key-pool.ts'
+import { registerPreferences } from './preferences.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'aek-websearch-admin'
@@ -63,6 +70,13 @@ export const WEBSEARCH_API_PATH = '/api/aek/websearch'
 
 /** The key-pool CRUD route. Separate from the status route so the two can evolve independently. */
 export const WEBSEARCH_KEYS_API_PATH = '/api/aek/websearch/keys'
+
+/**
+ * The explicit key-reveal route (C4). Its own path keeps the CRUD handler
+ * unable to return a literal by accident; only a deliberate POST of
+ * `{ kind, id }` reaches it.
+ */
+export const WEBSEARCH_KEYS_REVEAL_API_PATH = '/api/aek/websearch/keys/reveal'
 
 /** The runtime-mode route the dual-app switcher talks to. */
 export const RUNTIME_API_PATH = '/api/aek/runtime'
@@ -411,7 +425,7 @@ function runArbiter(args: string[], sync: boolean): Record<string, unknown> {
  * Register the runtime-mode route the dual-app switcher talks to.
  *
  * - `GET`  → `{ current, slots, mode }`: the slot serving this request, both
- *   slots' liveness (probed on their web ports) and the derived mode.
+ *   slots' liveness (web server AND shell, C6) and the derived mode.
  * - `POST` `{ mode }` → switch. Starting the other slot and stopping a slot
  *   other than the one serving us are synchronous; stopping the serving slot is
  *   deferred ~600ms past the 200 response so the browser gets a clean close.
@@ -453,13 +467,16 @@ export function registerRuntime(ctx: Context): void {
       const stopped: string[] = []
       try {
         for (const s of want) {
+          // C6: start a wanted slot when its BACKEND is down — `cmdStart` keeps
+          // a live shell out of the restart path itself.
           const probe = runArbiter(['status'], true)
-          const slots = probe.slots as Record<string, { running: boolean }> | undefined
-          if (!slots?.[s]?.running) { runArbiter(['start', s], true); started.push(s) }
+          const slots = probe.slots as Record<string, { web?: boolean; running?: boolean }> | undefined
+          if (!slots?.[s]?.web) { runArbiter(['start', s], true); started.push(s) }
         }
         for (const s of unwanted) {
+          // Stop a slot when ANY half (web or shell) is alive.
           const probe = runArbiter(['status'], true)
-          const slots = probe.slots as Record<string, { running: boolean }> | undefined
+          const slots = probe.slots as Record<string, { web?: boolean; running?: boolean }> | undefined
           if (slots?.[s]?.running && s !== here) { runArbiter(['stop', s], true); stopped.push(s) }
         }
         if (unwanted.includes(here)) {
@@ -483,6 +500,7 @@ export function apply(ctx: Context): void {
   const server = webServerOf(ctx)
   registerInventory(ctx)
   registerRuntime(ctx)
+  registerPreferences(ctx)
 
   ctx.effect(() => server.register({
     kind: 'exact',
@@ -584,4 +602,42 @@ export function apply(ctx: Context): void {
       }
     },
   }), 'aek-websearch: key pool API')
+
+  // C4: the explicit user-initiated reveal. It is the ONLY route that can
+  // return a literal, and it requires a deliberate POST with kind + id —
+  // nothing in the list/count/status path calls it.
+  ctx.effect(() => server.register({
+    kind: 'exact',
+    path: WEBSEARCH_KEYS_REVEAL_API_PATH,
+    handler: async (req, res) => {
+      const method = req.method ?? 'GET'
+      if (method !== 'POST') {
+        res.setHeader('allow', 'POST')
+        sendJson(res, 405, { code: 'method-not-allowed', message: 'use POST' })
+        return
+      }
+      const body = await readJsonBody(req)
+      const kind = body?.kind
+      if (!isKnownKind(kind)) {
+        sendJson(res, 400, { code: 'unknown-provider', message: 'a known kind is required' })
+        return
+      }
+      const id = validId(body?.id)
+      if (id === undefined) {
+        sendJson(res, 400, { code: 'bad-request', message: 'a positive numeric id is required' })
+        return
+      }
+      try {
+        const plain = new KeyPool(kind).reveal(id)
+        if (plain === undefined) {
+          sendJson(res, 404, { code: 'key-not-found', message: 'no key with that id' })
+          return
+        }
+        sendJson(res, 200, { kind, id, plain })
+      } catch {
+        // Never include the caught text: it could echo the key literal.
+        sendJson(res, 500, { code: 'key-pool-failed', message: 'key pool operation failed' })
+      }
+    },
+  }), 'aek-websearch: key reveal API')
 }

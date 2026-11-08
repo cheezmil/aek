@@ -16,22 +16,15 @@ import type { ReactNode } from 'react'
 
 /** Every icon the console can render. */
 export type IconName =
-  | 'dashboard' | 'search' | 'plugins' | 'settings' | 'about'
-  | 'chevronLeft' | 'chevronRight' | 'refresh' | 'arrowRight'
-  | 'key' | 'shield' | 'alert' | 'check' | 'external'
-  | 'sparkles' | 'layers' | 'activity' | 'server'
-  | 'language' | 'star' | 'github' | 'plus' | 'trash' | 'edit' | 'close'
+  | 'activity' | 'search' | 'plugins' | 'settings' | 'about'
+  | 'chevronDown' | 'refresh'
+  | 'shield' | 'alert' | 'check'
+  | 'language' | 'star' | 'plus' | 'trash' | 'edit' | 'close'
+  | 'eye' | 'eyeOff' | 'layers'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 const ICONS: Record<IconName, ReactNode> = {
-  dashboard: (
-    <>
-      <rect x="3" y="3" width="7" height="9" rx="1.5" />
-      <rect x="14" y="3" width="7" height="5" rx="1.5" />
-      <rect x="14" y="12" width="7" height="9" rx="1.5" />
-      <rect x="3" y="16" width="7" height="5" rx="1.5" />
-    </>
-  ),
+  activity: <path d="M3 12h4l3-8 4 16 3-8h4" />,
   search: (
     <>
       <circle cx="11" cy="11" r="7" />
@@ -60,28 +53,13 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M12 8h.01" />
     </>
   ),
-  chevronLeft: <path d="m15 18-6-6 6-6" />,
-  chevronRight: <path d="m9 18 6-6-6-6" />,
+  chevronDown: <path d="m6 9 6 6 6-6" />,
   refresh: (
     <>
       <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
       <path d="M21 3v5h-5" />
       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
       <path d="M8 16H3v5" />
-    </>
-  ),
-  arrowRight: (
-    <>
-      <path d="M5 12h14" />
-      <path d="m12 5 7 7-7 7" />
-    </>
-  ),
-  key: (
-    <>
-      <circle cx="7.5" cy="15.5" r="4.5" />
-      <path d="m10.7 12.3 8.3-8.3" />
-      <path d="m16 7 3 3" />
-      <path d="m19 4 3 3" />
     </>
   ),
   shield: (
@@ -98,35 +76,6 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   check: <path d="m5 13 4 4L19 7" />,
-  external: (
-    <>
-      <path d="M14 4h6v6" />
-      <path d="M20 4 10 14" />
-      <path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" />
-    </>
-  ),
-  sparkles: (
-    <>
-      <path d="m12 3 1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3Z" />
-      <path d="m19 15 .8 2 .2-.8L22 16l-2 .8-.8 2-.2-2-2-.8 2-.2.8-2Z" />
-    </>
-  ),
-  layers: (
-    <>
-      <path d="m12 3 9 5-9 5-9-5 9-5Z" />
-      <path d="m3 13 9 5 9-5" />
-      <path d="m3 17 9 5 9-5" />
-    </>
-  ),
-  activity: <path d="M3 12h4l3-8 4 16 3-8h4" />,
-  server: (
-    <>
-      <rect x="3" y="4" width="18" height="7" rx="2" />
-      <rect x="3" y="13" width="18" height="7" rx="2" />
-      <path d="M7 7.5h.01" />
-      <path d="M7 16.5h.01" />
-    </>
-  ),
   /** Lucide `languages`: a Latin "A" plus a CJK glyph — unmistakably i18n. */
   language: (
     <>
@@ -139,11 +88,6 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   star: <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" />,
-  github: (
-    <>
-      <path d="M9 19c-4 1.3-4-2.2-5.5-2.6M15 21v-3.4a3 3 0 0 0-.8-2.4c2.8-.3 5.8-1.4 5.8-6a4.7 4.7 0 0 0-1.3-3.2 4.4 4.4 0 0 0-.1-3.2S17 2.2 15 3.5a11 11 0 0 0-6 0C7 2.2 5.4 2.8 5.4 2.8a4.4 4.4 0 0 0-.1 3.2A4.7 4.7 0 0 0 4 9.2c0 4.6 3 5.7 5.8 6a3 3 0 0 0-.8 2.4V21" />
-    </>
-  ),
   plus: <path d="M12 5v14M5 12h14" />,
   trash: (
     <>
@@ -160,6 +104,31 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   close: <path d="M6 6l12 12M18 6 6 18" />,
+  /** Lucide `eye`: the "show plaintext" affordance on a key row (C4). */
+  eye: (
+    <>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  /** Lucide `eye-off`: the "hide again" state of the same toggle. */
+  eyeOff: (
+    <>
+      <path d="m2 2 20 20" />
+      <path d="M6.7 6.7C3.9 8.3 2 12 2 12s3.5 7 10 7c1.9 0 3.5-.5 4.9-1.3" />
+      <path d="M10.6 5.1c.5-.1 1-.1 1.4-.1 6.5 0 10 7 10 7s-.7 1.4-2 2.9" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </>
+  ),
+  // Three stacked diamonds; used by the plugins feature badge. Keep every
+  // IconName member present here — a missing glyph is a TS2741 at build time.
+  layers: (
+    <>
+      <path d="m12 2 9 5-9 5-9-5 9-5Z" />
+      <path d="m3 12 9 5 9-5" />
+      <path d="m3 17 9 5 9-5" />
+    </>
+  ),
 }
 
 /** Props for {@link Icon}. */

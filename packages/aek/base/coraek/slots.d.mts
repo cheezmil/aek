@@ -13,6 +13,11 @@ export interface AekSlot {
   readonly productName: string
   /** User-visible name of the development bundle. */
   readonly devAppName: string
+  /**
+   * C1 one-off migration: retired dev-bundle names (same bundle id) that the
+   * swap routine removes from ~/Applications. Empty for new slots.
+   */
+  readonly legacyDevAppNames: readonly string[]
   /** Web backend port for this slot. */
   readonly webPort: number
   /** Remote-debugging (CDP) port for this slot. */

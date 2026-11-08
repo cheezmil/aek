@@ -1,19 +1,22 @@
 /**
- * The dual-app runtime switcher card.
+ * The dual-app runtime panel (C5: the old 概览 section was removed; runtime
+ * is its own first-class menu entry instead of a card buried in the overview).
  *
- * Shows which slot this console belongs to and whether each slot is live, then
- * lets the user pick a target mode (one instance, or both). Picking a mode that
+ * Shows which slot this console belongs to and which HALVES of each slot are
+ * live — the web backend AND the Electron window (C6: "both running" is only
+ * true when the user actually sees two windows / backends, not when some port
+ * probe is optimistic). Then it lets the user pick a target mode; a mode that
  * would stop the instance currently serving this console asks for a second
- * confirmation first — stopping it drops this very connection.
+ * confirmation first.
  *
- * All copy comes from the i18n dictionary; all facts from {@link useRuntimeMode}.
- *
- * @module @cheezmil/aek-home/src/client/RuntimeModeCard
+ * @module @cheezmil/aek-home/src/client/RuntimeModePanel
  */
 import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useI18n } from './i18n.tsx'
 import { css, cx } from './styles.ts'
-import type { RuntimeMode, RuntimeState } from './useRuntimeMode.ts'
+import type { RuntimeMode, SlotStatus } from './useRuntimeMode.ts'
+import { useRuntimeMode } from './useRuntimeMode.ts'
 
 /** One selectable mode with its i18n key + whether it stops the current slot. */
 interface ModeOption {
@@ -32,29 +35,23 @@ const OPTIONS: readonly ModeOption[] = [
   { mode: 'both', labelKey: 'runtime.both', stops: null },
 ]
 
-/** Props for {@link RuntimeModeCard}. */
-export interface RuntimeModeCardProps {
-  /** Live runtime state. */
-  state: RuntimeState
-}
-
 /**
- * Render the runtime switcher card.
- * @param props - runtime state.
- * @returns the card surface.
+ * Render the runtime mode panel.
+ * @returns the panel surface.
  */
-export function RuntimeModeCard({ state }: RuntimeModeCardProps) {
-  const { t } = useI18n()
+export function RuntimeModePanel() {
+  const { t, tf } = useI18n()
+  const state = useRuntimeMode()
   const [confirmMode, setConfirmMode] = useState<RuntimeMode | undefined>(undefined)
   const current = state.status?.current.slot
   const mode = state.status?.mode ?? 'none'
 
   const slots = useMemo(() => ([
-    { key: 'aek' as const, name: t('runtime.aek'), running: state.status?.slots.aek.running ?? false },
-    { key: 'next' as const, name: t('runtime.next'), running: state.status?.slots.next.running ?? false },
+    { key: 'aek' as const, name: t('runtime.aek'), live: state.status?.slots.aek },
+    { key: 'next' as const, name: t('runtime.next'), live: state.status?.slots.next },
   ]), [state.status, t])
 
-  const onPick = (option: ModeOption) => {
+  const onPick = (option: ModeOption): void => {
     if (option.stops !== null && option.stops === current) {
       setConfirmMode(option.mode)
       return
@@ -65,6 +62,14 @@ export function RuntimeModeCard({ state }: RuntimeModeCardProps) {
   const confirm = confirmMode
     ? OPTIONS.find(o => o.mode === confirmMode)
     : undefined
+
+  /** @param label - half name. @param live - whether it is up. @returns its tag. */
+  const halfTag = (label: string, live: boolean): ReactNode => (
+    <span className={cx(css.runtimeHalf, live && css.runtimeHalfOn)}>
+      <span className={css.runtimeDot} />
+      {label}
+    </span>
+  )
 
   return (
     <section className={css.runtimeCard}>
@@ -79,15 +84,27 @@ export function RuntimeModeCard({ state }: RuntimeModeCardProps) {
       </header>
 
       <div className={css.runtimeSlots}>
-        {slots.map(slot => (
-          <div key={slot.key} className={cx(css.runtimeSlot, slot.running ? css.runtimeSlotOn : css.runtimeSlotOff)}>
-            <span className={css.runtimeSlotName}>{slot.name}</span>
-            <span className={cx(css.runtimePill, slot.running ? css.runtimePillOn : css.runtimePillOff)}>
-              <span className={css.runtimeDot} />
-              {slot.running ? t('runtime.running') : t('runtime.stopped')}
-            </span>
-          </div>
-        ))}
+        {slots.map((slot) => {
+          const slotLive: SlotStatus = slot.live ?? { webPort: 0, web: false, shell: false, running: false }
+          return (
+            <div
+              key={slot.key}
+              className={cx(css.runtimeSlot, slotLive.running ? css.runtimeSlotOn : css.runtimeSlotOff)}
+            >
+              <div className={css.runtimeSlotHead}>
+                <span className={css.runtimeSlotName}>{slot.name}</span>
+                <span className={cx(css.runtimePill, slotLive.running ? css.runtimePillOn : css.runtimePillOff)}>
+                  <span className={css.runtimeDot} />
+                  {slotLive.running ? t('runtime.running') : t('runtime.stopped')}
+                </span>
+              </div>
+              <div className={css.runtimeSlotDetail}>
+                {halfTag(t('runtime.web'), slotLive.web)}
+                {halfTag(t('runtime.shell'), slotLive.shell)}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       <div className={css.runtimeTarget}>{t('runtime.target')}</div>
@@ -114,7 +131,7 @@ export function RuntimeModeCard({ state }: RuntimeModeCardProps) {
         ? <p className={css.runtimeStatusLine}>{t('common.loading')}</p>
         : null}
       {state.error !== undefined
-        ? <p className={css.runtimeError}>{t('runtime.error', { message: state.error })}</p>
+        ? <p className={css.runtimeError}>{tf('runtime.error', { message: state.error })}</p>
         : null}
 
       {confirm && confirmMode

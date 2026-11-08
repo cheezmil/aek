@@ -13,7 +13,11 @@
  * passphrase, pragmas and WAL settings stay in exactly one place and no new
  * dependency is introduced.
  *
- * Plaintext never leaves the host: `entries()` returns masked tags only.
+ * Plaintext never leaves the host for LIST reads: `entries()` returns masked
+ * tags only. The one exception is an EXPLICIT user-initiated reveal (C4),
+ * `reveal(id)`, which the admin surface exposes as a separate
+ * `/keys/reveal` route so a listing call can never drag a literal across the
+ * wire by accident.
  *
  * @module aek-websearch/key-pool
  */
@@ -106,6 +110,19 @@ export class KeyPool {
       disabled: entry.disabled,
       failures: entry.failures,
     })))
+  }
+
+  /**
+   * The ONE read that returns a plaintext literal: an explicit, user-initiated
+   * reveal of a single row (C4). The admin surface keeps it on its own
+   * `/keys/reveal` route so that listing, counting and status never leak a
+   * key, and an agent talking to the host cannot sweep the pool for secrets —
+   * it can at most request one row by id, on purpose.
+   * @param id - real row id.
+   * @returns the decrypted literal, or `undefined` when the id is gone.
+   */
+  reveal(id: number): string | undefined {
+    return this.transact(store => store.load().find(entry => entry.id === id)?.key)
   }
 
   /** @param key - new literal. @returns the new row's real id. */

@@ -1,17 +1,16 @@
 /**
  * Zero-dependency i18n for the AEK console.
  *
- * Two flat dictionaries (zh-CN / en-US), a React context and a persisted
- * preference. Deliberately no i18n library: the frontend stack gate allows
- * only React + Vite + TS + lightningcss + CSS Modules. The pattern follows
- * the common lightweight approach (flat keys, localStorage persistence,
- * instant switch, fallback to the default locale).
+ * Two flat dictionaries (zh-CN / en-US), a React context and a host-persisted
+ * preference (C11: the locale itself is stored under `<AEK_HOME>/preferences/`,
+ * never in localStorage). Deliberately no i18n library: the frontend stack
+ * gate allows only React + Vite + TS + lightningcss + CSS Modules.
  *
  * @module @cheezmil/aek-home/src/client/i18n
  */
 import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
-import { oneOf, PREF_KEYS, useStoredState } from './preferences.ts'
+import { oneOf, PREF_KEYS, usePref } from './preferences.tsx'
 
 /** Supported display languages. */
 export const LOCALES = ['zh-CN', 'en-US'] as const
@@ -21,47 +20,20 @@ export type Locale = typeof LOCALES[number]
 
 /** Simplified Chinese copy. Also the fallback for missing keys. */
 const ZH: Record<string, string> = {
-  'nav.search': '搜索选项…',
-  'nav.searchAria': '搜索侧边栏选项',
+  'nav.search': '搜索板块…',
+  'nav.searchAria': '搜索侧边栏板块',
   'nav.clear': '清除搜索',
-  'nav.noMatch': '没有匹配的选项',
+  'nav.noMatch': '没有匹配的板块',
   'brand.expand': '点击展开菜单栏',
   'brand.collapse': '点击收起菜单栏',
   'brand.pinOpen': '点击固定展开菜单栏',
   'footer.language': '显示语言',
   'footer.github': '打开 GitHub 仓库',
-  'panel.overview': '概览',
+  'panel.runtime': '运行模式',
   'panel.websearch': 'Web Search',
   'panel.plugins': '插件',
   'panel.settings': '设置',
   'panel.about': '关于',
-  'page.eyebrow.overview': '工作台',
-  'page.eyebrow.websearch': '工作台 / Web Search',
-  'page.eyebrow.plugins': '管理 / 插件',
-  'page.eyebrow.settings': '管理 / 设置',
-  'page.eyebrow.about': '帮助 / 关于',
-  'page.subtitle.overview': '本地实例的运行状态与快捷入口',
-  'page.subtitle.websearch': '管理多提供商搜索与密钥池状态',
-  'page.subtitle.plugins': 'AEK 插件包与版本',
-  'page.subtitle.settings': '界面显示偏好',
-  'page.subtitle.about': '插件版本与安装方式',
-  'overview.heroTitle': 'Hello, AEK',
-  'overview.heroText': 'Agent Enhance Kit 管理面板。这里集中展示本地实例的运行状态、搜索提供商与插件信息；所有数据都来自宿主 API，刷新后以配置文件为准。',
-  'overview.openWebsearch': '打开 Web Search',
-  'overview.viewPlugins': '查看插件',
-  'overview.stats': '运行概况',
-  'stat.providers': '搜索提供商',
-  'stat.providersHint': '已启用 {n} 个',
-  'stat.keys': '密钥池条目',
-  'stat.keysHint': '来自加密 key pool',
-  'stat.home': '配置目录',
-  'stat.homeHint': '宿主实际读取的位置',
-  'overview.quick': '快捷入口',
-  'quick.websearch': '管理搜索提供商与密钥池',
-  'quick.plugins': '查看 AEK 插件',
-  'quick.settings': '界面显示偏好',
-  'quick.about': '插件版本与安装方式',
-  'overview.apiHint': '数据接口',
   'common.loading': '读取中…',
   'common.retry': '重试',
   'common.refresh': '刷新',
@@ -79,8 +51,9 @@ const ZH: Record<string, string> = {
   'websearch.pool': '已配置密钥池',
   'websearch.noPool': '无密钥池文件',
   'websearch.config': '配置文件',
+  'websearch.manageKeys': '管理密钥',
   'keys.title': '密钥管理',
-  'keys.subtitle': '增删改查密钥；明文只在提交时离开输入框，页面永远只显示掩码。',
+  'keys.subtitle': '增删改查密钥；列表默认打码省略，只有点击某条的「显示」才会取回那一条的明文。',
   'keys.provider': '提供商',
   'keys.placeholder': '输入新的 API key',
   'keys.add': '添加',
@@ -98,16 +71,20 @@ const ZH: Record<string, string> = {
   'keys.deleteConfirm': '确认删除这条密钥？删除后无法恢复。',
   'keys.failures': '{n} 次失败',
   'keys.loading': '正在读取密钥池…',
-  'keys.note': '密钥保存在宿主的加密池中。列表只返回掩码标签与行 id，任何接口都不会把明文回传到浏览器。',
+  'keys.show': '显示明文',
+  'keys.hide': '隐藏明文',
+  'keys.note': '密钥保存在宿主的加密池中。列表只返回掩码标签与行 id；只有点击某一条密钥的「显示」后，宿主才会单独取回那一条的明文，用完即弃，任何列表接口都不会回传明文。',
   'keys.error': '密钥操作失败：{message}',
   'plugins.title': 'AEK 插件',
   'plugins.subtitle': 'AEK 插件包与版本',
   'plugins.count': '{n} 个',
   'plugins.empty': '暂时没有读取到插件清单',
   'settings.title': '显示设置',
-  'settings.subtitle': '偏好保存在本机浏览器中，刷新后依然生效',
+  'settings.subtitle': '设置保存在本机 AEK 数据目录中，所有窗口共享，刷新后依然生效',
   'settings.hover': '指针移动到侧边栏自动展开',
-  'settings.hoverHint': '勾选后，侧边栏处于收起状态时，把指针移到上面会临时展开；移出后恢复。点击顶部 logo 可永久展开或收起。',
+  'settings.hoverHint': '勾选后，侧边栏处于收起状态时，把指针移到上面会临时展开；移出后恢复。',
+  'settings.logoToggle': '点击 logo 展开或收起左侧侧栏',
+  'settings.logoToggleHint': '勾选后，点击侧边栏顶部的 logo 会立即展开或收起侧栏；取消勾选后 logo 不再响应点击。默认开启。',
   'about.title': '版本信息',
   'about.install': '安装方式',
   'about.dev': 'dev 开发版',
@@ -134,6 +111,8 @@ const ZH: Record<string, string> = {
   'runtime.both': '同时运行两个',
   'runtime.apply': '应用',
   'runtime.active': '当前',
+  'runtime.web': '后端服务',
+  'runtime.shell': '桌面窗口',
   'runtime.confirmTitle': '切换运行模式？',
   'runtime.confirmText': '该操作会停止当前正在使用的实例，其它已打开的窗口将断开连接。确定继续？',
   'runtime.confirmYes': '确定切换',
@@ -144,47 +123,20 @@ const ZH: Record<string, string> = {
 
 /** English copy. */
 const EN: Record<string, string> = {
-  'nav.search': 'Search menu…',
-  'nav.searchAria': 'Search sidebar items',
+  'nav.search': 'Search sections…',
+  'nav.searchAria': 'Search sidebar sections',
   'nav.clear': 'Clear search',
-  'nav.noMatch': 'No matching items',
+  'nav.noMatch': 'No matching sections',
   'brand.expand': 'Click to expand the sidebar',
   'brand.collapse': 'Click to collapse the sidebar',
   'brand.pinOpen': 'Click to keep the sidebar open',
   'footer.language': 'Display language',
   'footer.github': 'Open GitHub repository',
-  'panel.overview': 'Overview',
+  'panel.runtime': 'Runtime mode',
   'panel.websearch': 'Web Search',
   'panel.plugins': 'Plugins',
   'panel.settings': 'Settings',
   'panel.about': 'About',
-  'page.eyebrow.overview': 'Workspace',
-  'page.eyebrow.websearch': 'Workspace / Web Search',
-  'page.eyebrow.plugins': 'Manage / Plugins',
-  'page.eyebrow.settings': 'Manage / Settings',
-  'page.eyebrow.about': 'Help / About',
-  'page.subtitle.overview': 'Local instance status and shortcuts',
-  'page.subtitle.websearch': 'Manage search providers and key pools',
-  'page.subtitle.plugins': 'AEK packages and versions',
-  'page.subtitle.settings': 'Interface display preferences',
-  'page.subtitle.about': 'Plugin versions and installation kind',
-  'overview.heroTitle': 'Hello, AEK',
-  'overview.heroText': 'The Agent Enhance Kit console. It shows local instance status, search providers and plugin facts; all data comes from host APIs and the config file stays authoritative after a refresh.',
-  'overview.openWebsearch': 'Open Web Search',
-  'overview.viewPlugins': 'View plugins',
-  'overview.stats': 'At a glance',
-  'stat.providers': 'Search providers',
-  'stat.providersHint': '{n} enabled',
-  'stat.keys': 'Key pool entries',
-  'stat.keysHint': 'From the encrypted key pool',
-  'stat.home': 'Config directory',
-  'stat.homeHint': 'Where the host actually reads',
-  'overview.quick': 'Shortcuts',
-  'quick.websearch': 'Manage providers and API keys',
-  'quick.plugins': 'View AEK plugins',
-  'quick.settings': 'Display preferences',
-  'quick.about': 'Versions and installation',
-  'overview.apiHint': 'Data API',
   'common.loading': 'Loading…',
   'common.retry': 'Retry',
   'common.refresh': 'Refresh',
@@ -202,8 +154,9 @@ const EN: Record<string, string> = {
   'websearch.pool': 'Key pool configured',
   'websearch.noPool': 'No key pool file',
   'websearch.config': 'Config file',
+  'websearch.manageKeys': 'Manage keys',
   'keys.title': 'API keys',
-  'keys.subtitle': 'Create, read, update and delete keys. Plaintext leaves the input only on submit; the page always shows masked tags.',
+  'keys.subtitle': 'Create, read, update and delete keys. Rows stay masked by default; only clicking "show" on one row fetches that single literal.',
   'keys.provider': 'Provider',
   'keys.placeholder': 'New API key',
   'keys.add': 'Add',
@@ -221,16 +174,20 @@ const EN: Record<string, string> = {
   'keys.deleteConfirm': 'Delete this key? This cannot be undone.',
   'keys.failures': '{n} failures',
   'keys.loading': 'Reading key pool…',
-  'keys.note': 'Keys are stored in the host encrypted pool. The list returns masked tags and row ids only; no endpoint sends plaintext back to the browser.',
+  'keys.show': 'Show key',
+  'keys.hide': 'Hide key',
+  'keys.note': 'Keys live in the host encrypted pool. Listing returns masked tags and row ids only; a plaintext literal is fetched single-row, single-purpose — only when you click "show" on that exact row, and nothing ever re-echoes it into a list.',
   'keys.error': 'Key operation failed: {message}',
   'plugins.title': 'AEK plugins',
   'plugins.subtitle': 'AEK packages and versions',
   'plugins.count': '{n} total',
   'plugins.empty': 'No plugin inventory available yet',
   'settings.title': 'Display settings',
-  'settings.subtitle': 'Preferences are stored in this browser and survive a refresh',
+  'settings.subtitle': 'Settings are stored in the AEK data directory on this machine, shared by every window, and survive a refresh',
   'settings.hover': 'Auto-expand sidebar on pointer hover',
-  'settings.hoverHint': 'When the sidebar is collapsed, moving the pointer over it expands it temporarily and moving away collapses it again. Click the top logo to lock it open or closed.',
+  'settings.hoverHint': 'When the sidebar is collapsed, moving the pointer over it expands it temporarily and moving away collapses it again.',
+  'settings.logoToggle': 'Click the logo to expand or collapse the sidebar',
+  'settings.logoToggleHint': 'When on, clicking the top logo expands or collapses the sidebar; when off the logo is inert. On by default.',
   'about.title': 'Version information',
   'about.install': 'Installation',
   'about.dev': 'dev (workspace checkout)',
@@ -257,6 +214,8 @@ const EN: Record<string, string> = {
   'runtime.both': 'Run both',
   'runtime.apply': 'Apply',
   'runtime.active': 'Active',
+  'runtime.web': 'Backend',
+  'runtime.shell': 'Window',
   'runtime.confirmTitle': 'Switch runtime mode?',
   'runtime.confirmText': 'This stops the instance you are using now; other open windows will disconnect. Continue?',
   'runtime.confirmYes': 'Switch',
@@ -288,7 +247,7 @@ const I18nContext = createContext<I18nValue | undefined>(undefined)
  * @returns the provider.
  */
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setStored] = useStoredState<Locale>(PREF_KEYS.locale, 'zh-CN', oneOf(LOCALES))
+  const [locale, setStored] = usePref<Locale>(PREF_KEYS.locale, 'zh-CN', oneOf(LOCALES))
   const t = (key: string): string => DICTS[locale][key] ?? ZH[key] ?? key
   const tf = (key: string, values: Readonly<Record<string, string | number>>): string => t(key)
     .replace(/\{(\w+)\}/gu, (match, name: string) => values[name] === undefined ? match : String(values[name]))

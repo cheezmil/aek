@@ -48,7 +48,10 @@ export const APP_ROOT = join(PROJECT_ROOT, 'apps', 'aek-desktop', 'v0')
 // single-app flow keeps working.
 export const WEB_PORT   = Number(process.env.AEK_WEB_PORT ?? 1685)
 export const CDP_PORT   = Number(process.env.AEK_CDP_PORT ?? 1686)
-export const DEV_APP_NAME = 'AEK DEV'
+// The dev bundle of the default slot wears the slot's public name (C1: the
+// Dock/Finder must show `AEK.app`, never "AEK DEV"). It is only a fallback
+// default; callers that know their slot pass `slotConfig(slot).devAppName`.
+export const DEV_APP_NAME = 'AEK'
 
 export const DSH_HOME   = resolveAekHome()
 export const INSTALL_DIR = join(homedir(), 'Applications')
@@ -239,7 +242,7 @@ export function spawnWebServerForSlot(slot, options = {}) {
  *
  * Ownership is decided by the command line, never by "it holds my port":
  *   - the web server is spawned as `DSH_HOME=<root> … web --port <webPort>`;
- *   - the shell is spawned as `<bundle>/…/AEK DEV <main.js>
+ *   - the shell is spawned as `<bundle>/…/AEK <main.js>
  *     --remote-debugging-port=<cdpPort>`;
  *   - a process holding the port with neither marker is a squatter → foreign.
  * @param slot - 'aek' | 'next'.
@@ -317,7 +320,9 @@ export function slotOwnedPids(slot) {
  * Uses SIGTERM (graceful) and a bounded wait; a process that survives is
  * reported as `stuck` instead of being escalated to SIGKILL.
  * @param slot - 'aek' | 'next'.
- * @param options - `{ timeoutMs }` how long to wait for the pids to exit (3s).
+ * @param options - `{ timeoutMs }` how long to wait for the pids to exit (3s);
+ *   `{ keepShell: true }` (C6) leaves a RUNNING shell's pids out of the kill
+ *   set so a web-only restart cannot take the user's window down with it.
  * @returns {Promise<{ok:boolean, slot:string, killed:number[], stuck:number[],
  *                    foreign:Array<{pid:number, port:number, kind:string}>}>}
  */
@@ -326,7 +331,11 @@ export async function killSlot(slot, options = {}) {
   const empty = { ok: true, slot, killed: [], stuck: [], foreign: [] }
   if (!s) return empty
   const timeoutMs = options.timeoutMs ?? 3000
-  const pids = slotOwnedPids(slot)
+  let pids = slotOwnedPids(slot)
+  if (options.keepShell) {
+    const keep = new Set(slotShellPids(slot))
+    pids = pids.filter(pid => !keep.has(pid))
+  }
   for (const pid of pids) {
     try { process.kill(pid, 'SIGTERM') } catch { /* already gone */ }
   }
@@ -361,7 +370,7 @@ export async function killSlot(slot, options = {}) {
  * @param slot - 'aek' | 'next'.
  * @returns {boolean} true when the slot's own web server answers.
  */
-export function slotWebUp(slot) {
+export function slotWebUp(slot, options = {}) {
   const s = SLOTS[slot]
   if (!s) return false
   const home = slotHome(slot)
@@ -388,7 +397,12 @@ export function slotWebUp(slot) {
   // that the calling process is *right now* blocking on. The TCP listener and
   // pid are still valid, but no response can ever arrive — so the HTTP check
   // would hang the whole host. Callers spawned from inside a host set this.
-  if (process.env.AEK_PROBE_NO_HTTP === '1') return true
+  //
+  // C6: the guard now applies to the CALLER's own slot only. The arbiter may
+  // still probe the OTHER slot over real HTTP (`options.allowHttp`), which is
+  // exactly the case that used to misjudge "both running" — inside the host,
+  // the cross-slot liveness was decided by listener ownership alone.
+  if (process.env.AEK_PROBE_NO_HTTP === '1' && !options.allowHttp) return true
   // The body check is what separates "our server" from "a squatter answering
   // on our port", so it must not be flaky: a single curl gets killed at the
   // deadline on a loaded machine, which used to make the probe oscillate
@@ -402,6 +416,68 @@ export function slotWebUp(slot) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150)
   }
   return false
+}
+
+/**
+ * Is the slot's OWN Electron shell running? (C6)
+ *
+ * The mode judgment ("both / only-aek / only-next / none") used to key on the
+ * WEB server alone, so a slot whose shell was still open but whose backend had
+ * been stopped read as "stopped", and a backend that was up without a shell
+ * read as "running" — the user saw the truth in the Dock, the UI showed the
+ * opposite. A slot is alive when EITHER half is alive.
+ *
+ * Shell liveness comes from two independent sources, each re-verified against
+ * the command line so a recycled pid can never count:
+ *   1. a listener on the slot's CDP port whose command line carries a slot
+ *      marker (`--remote-debugging-port=<cdp>`, the slot's bundle path, or
+ *      the slot's data root) — covers launcher/dev starts;
+ *   2. the shell's own pid in the slot lock — covers packaged starts and
+ *      anything that forgot to pass the CDP flag.
+ * @param slot - 'aek' | 'next'.
+ * @returns {boolean} true when the slot's shell is alive.
+ */
+export function slotShellUp(slot) {
+  return slotShellPids(slot).length > 0
+}
+
+/**
+ * The pids that belong to the slot's Electron shell (see {@link slotShellUp}).
+ * @param slot - 'aek' | 'next'.
+ * @returns {number[]} shell pids, `[]` when none is alive.
+ */
+export function slotShellPids(slot) {
+  const s = SLOTS[slot]
+  if (!s) return []
+  const home = slotHome(slot)
+  const markers = [
+    `--remote-debugging-port=${s.cdpPort}`,
+    `/${s.productName}/Contents/MacOS/`,
+    `${home}/`,
+  ]
+  const matches = (cmd) =>
+    markers.some(marker => cmd.includes(marker)) || cmd.trimEnd().endsWith(home)
+  const pids = new Set()
+  let listeners = []
+  try { listeners = listenPids(s.cdpPort) } catch { /* no listener */ }
+  for (const pid of listeners) {
+    let cmd
+    try {
+      cmd = execFileSync('/bin/ps', ['-p', pid, '-o', 'command='], { encoding: 'utf8' })
+    } catch { continue }
+    if (matches(cmd)) pids.add(Number(pid))
+  }
+  const lock = readSlotLock(slot)
+  if (lock?.shellPid && isPidAlive(lock.shellPid)) {
+    // A `continue` is illegal here (this branch is not inside a loop): keep
+    // an empty command line on failure so `matches` simply reports no match.
+    let cmd = ''
+    try {
+      cmd = execFileSync('/bin/ps', ['-p', lock.shellPid, '-o', 'command='], { encoding: 'utf8' })
+    } catch { /* pid vanished mid-scan */ }
+    if (matches(cmd)) pids.add(Number(lock.shellPid))
+  }
+  return [...pids]
 }
 
 // ── Web readiness poll ────────────────────────────────────────────────────────
@@ -484,7 +560,7 @@ export function brandDevBundle(slot = 'aek') {
 
   const plistPath = join(staged, 'Contents', 'Info.plist')
 
-  // Rename inner binary (Electron → AEK DEV / AEK DEV Next)
+  // Rename inner binary (Electron → AEK / AEK Next, C1: no "DEV" label)
   const macosDir = join(staged, 'Contents', 'MacOS')
   const oldBin   = join(macosDir, 'Electron')
   const newBin   = join(macosDir, appName)
@@ -808,6 +884,22 @@ export function performSwap(slot, target, staged) {
     }
   } catch { /* cleanup only */ }
 
+  // C1 migration: retired dev-bundle names (e.g. "AEK DEV") keep this slot's
+  // bundle id, so leaving them in ~/Applications would be exactly the
+  // duplicate the Dock/Finder must not show. Remove them (never the target).
+  const legacyNames = slotConfig(slot).legacyDevAppNames ?? []
+  try {
+    for (const legacy of legacyNames) {
+      const legacyBase = `${legacy}.app`
+      if (legacyBase === base) continue
+      const legacyPath = join(INSTALL_DIR, legacyBase)
+      if (existsSync(legacyPath)) {
+        rmSync(legacyPath, { recursive: true, force: true })
+        console.error(`[install] removed retired dev name ${legacyBase} from ${INSTALL_DIR}`)
+      }
+    }
+  } catch { /* cleanup only */ }
+
   // Step 2: rename the verified staged bundle into place (same volume →
   // atomic). Failure rolls the previous bundle back from its rollback base.
   try {
@@ -1016,9 +1108,10 @@ export function attachCleanup(web) {
 
 /**
  * Launch the Electron shell for a slot, pointing it at that slot's data root
- * and ports. Each slot has its OWN branded dev bundle (`~/Applications/AEK DEV
- * .app` / `~/Applications/AEK DEV Next.app`) with its own bundle id, so macOS
- * treats them as two apps; the env points each at its own data root and ports.
+ * and ports. Each slot has its OWN branded dev bundle (`~/Applications/AEK.app`
+ * / `~/Applications/AEK Next.app` — C1: no "DEV" suffix) with its own bundle id
+ * (per slot), so macOS treats them as two apps; the env points each at its own
+ * data root and ports.
  * The child is spawned detached so it survives the caller (the runtime arbiter)
  * exiting. Idempotent: it only brands when the bundle is missing.
  * @param slot - 'aek' | 'next'.

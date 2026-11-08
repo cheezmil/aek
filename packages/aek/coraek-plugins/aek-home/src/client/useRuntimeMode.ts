@@ -17,6 +17,10 @@ export interface SlotStatus {
   /** The slot's web port. */
   webPort: number
   /** Whether the slot's web server answers. */
+  web: boolean
+  /** Whether the slot's Electron window is alive (C6). */
+  shell: boolean
+  /** Either half alive: what the user actually sees in the Dock. */
   running: boolean
 }
 
@@ -81,6 +85,24 @@ export async function writeMode(mode: RuntimeMode): Promise<Record<string, unkno
 /** @param cause - an unknown thrown value. @returns a displayable message. */
 function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
+}
+
+/**
+ * Read just the current slot once on mount (C9: the sidebar badge).
+ * Cheaper than the full switcher state and safe to call from anywhere the
+ * badge needs it; `undefined` until the host answers.
+ * @returns the serving slot, or `undefined`.
+ */
+export function useCurrentSlot(): 'aek' | 'next' | undefined {
+  const [slot, setSlot] = useState<'aek' | 'next' | undefined>(undefined)
+  useEffect(() => {
+    let cancelled = false
+    void fetchRuntime()
+      .then((snapshot) => { if (!cancelled) setSlot(snapshot.current.slot) })
+      .catch(() => { /* host unreachable: no badge, that is all */ })
+    return () => { cancelled = true }
+  }, [])
+  return slot
 }
 
 /**

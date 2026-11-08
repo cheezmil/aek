@@ -44,7 +44,15 @@ export const SLOTS = {
     appId: 'com.aek.desktop',
     bundleId: 'com.aek.desktop',
     productName: 'AEK',
-    devAppName: 'AEK DEV',
+    // The dev bundle wears the SAME name as the prod one: the user's Dock and
+    // Finder must show `AEK.app` / `AEK Next.app`, never an "AEK DEV" label.
+    // Dev and prod then collide on one ~/Applications/AEK.app path and one
+    // bundle id — by design, only one instance of each slot may exist.
+    devAppName: 'AEK',
+    // C1 one-off migration: retired dev-bundle names that still carry this
+    // slot's bundle id. `performSwap` removes them from ~/Applications so the
+    // Dock/Finder never shows two entries for one slot.
+    legacyDevAppNames: ['AEK DEV'],
     // 1680/1682 are NOT usable on this project's port range: 1680 is held by a
     // third-party app on some machines. 1685/1686 are allocated via `cpuh` for
     // agent-enhance-kit (1680-1689) and stay adjacent, so one slot owns one pair.
@@ -56,7 +64,9 @@ export const SLOTS = {
     appId: 'com.aek.desktop.next',
     bundleId: 'com.aek.desktop.next',
     productName: 'AEK Next',
-    devAppName: 'AEK DEV Next',
+    // Same naming rationale as the `aek` slot: no "DEV" suffix in the UI.
+    devAppName: 'AEK Next',
+    legacyDevAppNames: ['AEK DEV Next'],
     // Same project range (1680-1689), numbered straight on from `aek` so the
     // whole table is contiguous: every slot owns one adjacent pair.
     webPort: 1687,
