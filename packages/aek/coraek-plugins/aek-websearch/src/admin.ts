@@ -11,12 +11,15 @@
  * - `GET  /api/aek/websearch`      → the status snapshot (read-only facts)
  * - `POST /api/aek/websearch`      → `{ kind, enabled }` toggles one provider
  * - `GET  /api/aek/websearch/keys` → masked key-pool entries for one provider
- * - `POST /api/aek/websearch/keys` → `{ kind, key }` appends one key
+ * - `POST /api/aek/websearch/keys` → `{ kind, key }` or `{ kind, keys: [] }` (R2 bulk)
  * - `PUT  /api/aek/websearch/keys` → `{ kind, id, key }` replaces one key
  * - `PATCH /api/aek/websearch/keys`→ `{ kind, id, disabled }` enables/disables one
- * - `DELETE /api/aek/websearch/keys`→ `{ kind, id }` removes one key
+ * - `DELETE /api/aek/websearch/keys`→ `{ kind, id }` SOFT-deletes into the bin (R6)
+ * - `POST /api/aek/websearch/keys/recycle` → `{ kind, recycleId }` restores one
+ * - `DELETE /api/aek/websearch/keys/recycle` → `{ kind, recycleId }` purges one
  * - `POST /api/aek/websearch/keys/reveal` → `{ kind, id }` one explicit
- *   user-initiated plaintext reveal (C4); the only literal-returning route
+ *   user-initiated plaintext reveal (C4); `{ kind, all: true }` for the R3
+ *   "reveal all" click. The only literal-returning route.
  * - `GET  /api/aek/preferences`     → the host-stored UI settings (C11)
  * - `POST /api/aek/preferences`     → `{ key, value }` upserts one setting
  * - `GET  /api/aek/inventory`        → real AEK package versions + dev/npm kind
@@ -57,7 +60,9 @@ import { KeyStore } from '@cheezmil/prevent-agent-directly-seeing-key'
 import { PROVIDER_KINDS } from './defaults.ts'
 import { registerInventory } from './inventory.ts'
 import { KeyPool } from './key-pool.ts'
-import { registerPreferences } from './preferences.ts'
+import type { RecycleEntry } from './key-pool.ts'
+import { readPrefs, registerPreferences } from './preferences.ts'
+import { registerConsole } from './console.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'aek-websearch-admin'
@@ -78,6 +83,9 @@ export const WEBSEARCH_KEYS_API_PATH = '/api/aek/websearch/keys'
  */
 export const WEBSEARCH_KEYS_REVEAL_API_PATH = '/api/aek/websearch/keys/reveal'
 
+/** R6: restore / permanently purge soft-deleted keys. */
+export const WEBSEARCH_KEYS_RECYCLE_API_PATH = '/api/aek/websearch/keys/recycle'
+
 /** The runtime-mode route the dual-app switcher talks to. */
 export const RUNTIME_API_PATH = '/api/aek/runtime'
 
@@ -91,6 +99,8 @@ export interface KeyPoolEntry {
   disabled: boolean
   /** Recorded failure count. */
   failures: number
+  /** R1: why it was disabled (`manual` / `balance` / `invalid` / `auto`). */
+  disabledReason?: string
 }
 
 /** The key-pool snapshot a management UI renders. */
@@ -99,6 +109,10 @@ export interface KeyPoolSnapshot {
   kind: string
   /** Rows in insertion order. */
   entries: KeyPoolEntry[]
+  /** R6: soft-deleted rows still inside their retention window. */
+  recycle: RecycleEntry[]
+  /** R6: retention window in days, from the host preference (default 7). */
+  retentionDays: number
 }
 
 /**
@@ -289,17 +303,48 @@ function validId(value: unknown): number | undefined {
 }
 
 /**
+ * R6: the recycle-bin retention window is a host preference, never a number
+ * baked into the client bundle. `aek-home.keyRetentionDays` is a schema field
+ * owned by the settings page; 1..90 keeps a typo from deleting data at once.
+ * @returns the retention window in days.
+ */
+export function keyRetentionDays(): number {
+  const raw = readPrefs()['aek-home.keyRetentionDays']
+  const value = typeof raw === 'number' ? raw : 7
+  return Math.min(90, Math.max(1, Math.round(value)))
+}
+
+/**
  * Read one provider's key pool as masked rows. Store is always closed, and
- * plaintext literals never leave this function.
+ * plaintext literals never leave this function. Every read also enforces the
+ * retention window so an unattended instance still purges on the next touch;
+ * `apply()` additionally purges on host startup.
  * @param kind - provider kind (already validated).
  * @returns the snapshot for the browser.
  */
 export function readKeyPool(kind: string): KeyPoolSnapshot {
+  const days = keyRetentionDays()
   try {
-    return { kind, entries: new KeyPool(kind).entries() }
+    const pool = new KeyPool(kind)
+    pool.purgeExpired(days)
+    return { kind, entries: pool.entries(), recycle: pool.recycle(days), retentionDays: days }
   } catch {
-    return { kind, entries: [] }
+    return { kind, entries: [], recycle: [], retentionDays: days }
   }
+}
+
+/**
+ * R6: startup sweep across every known provider. Opens each encrypted pool
+ * once and permanently drops recycle rows past the retention window.
+ * @returns how many rows were purged.
+ */
+export function purgeExpiredKeys(): number {
+  const days = keyRetentionDays()
+  let total = 0
+  for (const kind of PROVIDER_KINDS) {
+    try { total += new KeyPool(kind).purgeExpired(days) } catch { /* pool may not exist yet */ }
+  }
+  return total
 }
 
 /**
@@ -501,6 +546,10 @@ export function apply(ctx: Context): void {
   registerInventory(ctx)
   registerRuntime(ctx)
   registerPreferences(ctx)
+  registerConsole(ctx)
+  // R6: enforce the 7-day (configurable) recycle-bin TTL as soon as the host
+  // boots, before any browser opens the console.
+  purgeExpiredKeys()
 
   ctx.effect(() => server.register({
     kind: 'exact',
@@ -559,11 +608,21 @@ export function apply(ctx: Context): void {
 
       const id = validId(body?.id)
       const key = validKey(body?.key)
+      // R2: `{ keys: [...] }` is the multiline-import path. Cap the batch so a
+      // pasted log file cannot flood the pool in one request.
+      const rawKeys = Array.isArray(body?.keys) ? body.keys : undefined
+      const keys: string[] = rawKeys === undefined
+        ? (key === undefined ? [] : [key])
+        : rawKeys.map(validKey).filter((item): item is string => item !== undefined)
       if (method !== 'POST' && id === undefined) {
         sendJson(res, 400, { code: 'bad-request', message: 'a positive numeric id is required' })
         return
       }
-      if ((method === 'POST' || method === 'PUT') && key === undefined) {
+      if (method === 'POST' && (keys.length === 0 || keys.length > 200)) {
+        sendJson(res, 400, { code: 'bad-request', message: '1..200 valid keys are required' })
+        return
+      }
+      if (method === 'PUT' && key === undefined) {
         sendJson(res, 400, { code: 'bad-request', message: 'a valid key is required' })
         return
       }
@@ -577,16 +636,18 @@ export function apply(ctx: Context): void {
         let changed = true
         switch (method) {
           case 'POST':
-            pool.add(key as string)
+            // addMany handles a single line too (one transaction, one request).
+            pool.addMany(keys)
             break
           case 'PUT':
             changed = pool.update(id as number, key as string)
             break
           case 'DELETE':
+            // R6: soft delete — the row moves to the encrypted recycle bin.
             changed = pool.remove(id as number)
             break
           case 'PATCH':
-            changed = pool.setDisabled(id as number, body?.disabled === true)
+            changed = pool.setDisabled(id as number, body?.disabled === true, 'manual')
             break
           default:
             break
@@ -622,13 +683,20 @@ export function apply(ctx: Context): void {
         sendJson(res, 400, { code: 'unknown-provider', message: 'a known kind is required' })
         return
       }
+      const all = body?.all === true
       const id = validId(body?.id)
-      if (id === undefined) {
-        sendJson(res, 400, { code: 'bad-request', message: 'a positive numeric id is required' })
+      if (!all && id === undefined) {
+        sendJson(res, 400, { code: 'bad-request', message: 'a positive numeric id or all:true is required' })
         return
       }
       try {
-        const plain = new KeyPool(kind).reveal(id)
+        if (all) {
+          // R3: the single "reveal all" click. Still an explicit user action;
+          // rule 13 forbids the agent from ever calling this route.
+          sendJson(res, 200, { kind, items: new KeyPool(kind).revealAll() })
+          return
+        }
+        const plain = new KeyPool(kind).reveal(id as number)
         if (plain === undefined) {
           sendJson(res, 404, { code: 'key-not-found', message: 'no key with that id' })
           return
@@ -640,4 +708,41 @@ export function apply(ctx: Context): void {
       }
     },
   }), 'aek-websearch: key reveal API')
+
+  // R6: restore / permanently purge one recycled row. No plaintext is ever
+  // returned here — the bin only shows masked tags and timestamps.
+  ctx.effect(() => server.register({
+    kind: 'exact',
+    path: WEBSEARCH_KEYS_RECYCLE_API_PATH,
+    handler: async (req, res) => {
+      const method = req.method ?? 'GET'
+      if (method !== 'POST' && method !== 'DELETE') {
+        res.setHeader('allow', 'POST, DELETE')
+        sendJson(res, 405, { code: 'method-not-allowed', message: 'use POST, DELETE' })
+        return
+      }
+      const raw = await readJsonBody(req)
+      const kind = raw?.kind
+      if (!isKnownKind(kind)) {
+        sendJson(res, 400, { code: 'unknown-provider', message: 'a known kind is required' })
+        return
+      }
+      const recycleId = validId(raw?.recycleId)
+      if (recycleId === undefined) {
+        sendJson(res, 400, { code: 'bad-request', message: 'a positive numeric recycleId is required' })
+        return
+      }
+      try {
+        const pool = new KeyPool(kind)
+        const changed = method === 'POST' ? pool.restore(recycleId) : pool.purge(recycleId)
+        if (!changed) {
+          sendJson(res, 404, { code: 'key-not-found', message: 'no recycled key with that id' })
+          return
+        }
+        sendJson(res, 200, readKeyPool(kind))
+      } catch {
+        sendJson(res, 500, { code: 'key-pool-failed', message: 'key pool operation failed' })
+      }
+    },
+  }), 'aek-websearch: key recycle API')
 }

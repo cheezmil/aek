@@ -6,6 +6,25 @@ import { aekHomePath } from '@cheezmil/coraek/home'
 const AEK_DIR = aekHomePath('websearch')
 interface PoolEntry { id: number; key: string; disabled: boolean; failures: number; cooldownEnd: number }
 
+// R1: keep the disable reason in the same SQLCipher database the console reads.
+// Inline (no shared chunk) and best-effort, just like the search command.
+function recordDisableReason(store: KeyStore, id: number, reason: string) {
+  try {
+    const db = (store as any).getDb?.()
+    if (!db) return
+    db.exec("CREATE TABLE IF NOT EXISTS key_flags (key_id INTEGER PRIMARY KEY, reason TEXT NOT NULL DEFAULT '')")
+    db.prepare('INSERT OR REPLACE INTO key_flags (key_id, reason) VALUES (?, ?)').run(id, reason)
+  } catch { /* best effort */ }
+}
+function clearDisableReason(store: KeyStore, id: number) {
+  try {
+    const db = (store as any).getDb?.()
+    if (!db) return
+    db.exec("CREATE TABLE IF NOT EXISTS key_flags (key_id INTEGER PRIMARY KEY, reason TEXT NOT NULL DEFAULT '')")
+    db.prepare('DELETE FROM key_flags WHERE key_id=?').run(id)
+  } catch { /* best effort */ }
+}
+
 class KeyPool {
   readonly provider: string
   private store: KeyStore
@@ -41,12 +60,24 @@ class KeyPool {
     return undefined
   }
   reportSuccess(key: string) {
-    for (const e of this.entries) { if (e.key === key) { e.failures = 0; e.cooldownEnd = 0; this.store.enableById(e.id); return } }
+    for (const e of this.entries) {
+      if (e.key === key) {
+        e.failures = 0; e.cooldownEnd = 0
+        this.store.enableById(e.id)
+        clearDisableReason(this.store, e.id)
+        return
+      }
+    }
   }
   reportFailure(key: string, permanent: boolean) {
     for (const e of this.entries) {
       if (e.key !== key) continue
-      if (permanent) { e.disabled = true; this.store.disableById(e.id); return }
+      if (permanent) {
+        e.disabled = true
+        this.store.disableById(e.id)
+        recordDisableReason(this.store, e.id, 'invalid')
+        return
+      }
       e.failures++; e.cooldownEnd = Date.now() + Math.min(60_000 * Math.pow(5, e.failures - 1), 3_600_000)
       this.store.enableById(e.id)
     }
@@ -61,11 +92,14 @@ class KeyPool {
   }
   disableKeyByIdx(idx: number) {
     if (idx < 0 || idx >= this.entries.length) throw new Error(`index ${idx} out of range`)
-    this.entries[idx].disabled = true; this.store.disableById(this.entries[idx].id)
+    this.entries[idx].disabled = true
+    this.store.disableById(this.entries[idx].id)
+    recordDisableReason(this.store, this.entries[idx].id, 'manual')
   }
   enableKeyByIdx(idx: number) {
     if (idx < 0 || idx >= this.entries.length) throw new Error(`index ${idx} out of range`)
     const e = this.entries[idx]; e.disabled = false; e.failures = 0; e.cooldownEnd = 0; this.store.enableById(e.id)
+    clearDisableReason(this.store, e.id)
   }
   resetCooldown() { for (const e of this.entries) { e.failures = 0; e.cooldownEnd = 0 } this.store.resetCooldowns() }
   close() { this.store.close() }

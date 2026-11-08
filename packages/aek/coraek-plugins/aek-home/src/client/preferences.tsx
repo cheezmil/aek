@@ -39,6 +39,8 @@ interface PrefContextValue {
   prefs: Record<string, PrefValue> | undefined
   /** Update one setting: optimistic local write + host POST. */
   set: (key: string, next: PrefValue | ((current: unknown) => PrefValue)) => void
+  /** Update several settings in ONE host request (presets / group reset). */
+  setMany: (values: Record<string, PrefValue>) => void
 }
 
 const PrefContext = createContext<PrefContextValue | undefined>(undefined)
@@ -80,7 +82,36 @@ export function PrefProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  return <PrefContext.Provider value={{ prefs, set }}>{children}</PrefContext.Provider>
+  const setMany = useCallback((values: Record<string, PrefValue>) => {
+    setPrefs(prev => ({ ...(prev ?? {}), ...values }))
+    void fetch(PREFS_API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ values }),
+    }).catch(() => {
+      // Optimistic values stay visible; the next GET reconciles.
+    })
+  }, [])
+
+  return <PrefContext.Provider value={{ prefs, set, setMany }}>{children}</PrefContext.Provider>
+}
+
+/**
+ * Read the whole settings map for schema-generated surfaces (settings page,
+ * sidebar CSS variables). No parser needed: {@link coerce} validates per field.
+ * @returns the raw map plus the single/batch writers.
+ */
+export function useSettings(): {
+  prefs: Record<string, PrefValue>
+  set: (key: string, next: PrefValue) => void
+  setMany: (values: Record<string, PrefValue>) => void
+} {
+  const { prefs, set, setMany } = usePrefContext()
+  return {
+    prefs: prefs ?? {},
+    set: (key, next) => set(key, next),
+    setMany,
+  }
 }
 
 /**

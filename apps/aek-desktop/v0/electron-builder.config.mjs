@@ -93,6 +93,12 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
     mac: {
       icon: 'resources/icon.icns',
       category: 'public.app-category.productivity',
+      // R20: macOS requires a declared reason before an app can appear in
+      // System Settings → Privacy & Security → Accessibility. The prompt shown
+      // by `isTrustedAccessibilityClient(true)` uses this string.
+      extendInfo: {
+        NSAccessibilityUsageDescription: 'AEK needs Accessibility access so you can explicitly enable desktop automation and verify developer-tool shortcuts.',
+      },
       hardenedRuntime: true,
       entitlements: 'entitlements.plist',
       entitlementsInherit: 'entitlements.plist',

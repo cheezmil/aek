@@ -1,7 +1,7 @@
-import { app, BrowserWindow, Menu } from 'electron'
-import { join } from 'node:path'
+import { app, BrowserWindow, Menu, systemPreferences } from 'electron'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolveAekHome } from '@cheezmil/coraek/home'
 import { isSlot, resolveSlot, slotConfig } from '@cheezmil/coraek/slots'
 import { readSlotLock, writeSlotLock, clearSlotLock, isPidAlive } from '@cheezmil/coraek/slot-lock'
@@ -54,10 +54,9 @@ const SLOT_CFG = slotConfig(SLOT)
 // from the slot baked into the packaged app, and finally from the slot table.
 const WEB_PORT = Number(process.env.AEK_WEB_PORT ?? packaged?.webPort ?? SLOT_CFG.webPort)
 const CDP_PORT = Number(process.env.AEK_CDP_PORT ?? packaged?.cdpPort ?? SLOT_CFG.cdpPort)
-// The window title is intentionally kept empty (C2): the native title bar must
-// not show any text, so the web UI owns the whole top edge and the traffic
-// lights read as part of the sidebar. The slot identity (Dock / menu bar /
-// Cmd-Tab) still comes from `app.setName`, not the window title.
+// R10 (2026-11-09): the user asked for the ORIGINAL Electron title bar back.
+// The window therefore keeps the standard frame and shows the product name.
+// No `hiddenInset`, no empty title, no `page-title-updated` interception.
 
 // Headless mode: run the shell WITHOUT a window. Used when a slot is kept
 // warm (or verified) without wanting a second Dock icon.
@@ -330,26 +329,60 @@ function registerApplicationMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
+/**
+ * Register this app with macOS TCC's Accessibility list (R20, 2026-11-09).
+ *
+ * Verified with aekws + the Electron docs: macOS has NO API that can GRANT
+ * Accessibility; `systemPreferences.isTrustedAccessibilityClient(true)` is the
+ * supported way to (a) check the state and (b) make the system show the prompt
+ * and ADD THIS BUNDLE to System Settings → Privacy & Security → Accessibility.
+ * Because AEK and AEK Next are separate bundles, each launch registers its own
+ * identity — which is exactly what makes both names visible in that list.
+ * The result is persisted for the host's `/api/aek/permissions` route.
+ *
+ * A second call does not re-prompt (electron/electron#20787, CLOSED 2019-12-05),
+ * so the Permissions panel offers a deep link to the pane instead.
+ */
+function registerAccessibility(): void {
+  if (process.platform !== 'darwin') return
+  let trusted = false
+  try {
+    trusted = systemPreferences.isTrustedAccessibilityClient(true)
+  } catch {
+    // An older Electron without this API must still start the console.
+  }
+  const file = join(SLOT_HOME, 'permissions.json')
+  let previous: Record<string, unknown> = {}
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown
+    if (typeof parsed === 'object' && parsed !== null) previous = parsed as Record<string, unknown>
+  } catch { /* first launch */ }
+  try {
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, JSON.stringify({
+      ...previous,
+      accessibility: trusted ? 'granted' : 'denied',
+      checkedAt: new Date().toISOString(),
+      bundleId: SLOT_CFG.bundleId,
+      productName: SLOT_CFG.productName,
+    }, null, 2) + '\n', 'utf8')
+  } catch { /* a disk failure must not stop the app */ }
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    // C2: no title text anywhere. On macOS the traffic lights float over the
-    // web UI's top-left (hiddenInset), so the window and the console look
-    // like one surface; on other platforms the default frame stays.
-    title: '',
-    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
+    // Native frame + real product name (R10).
+    title: SLOT_CFG.productName,
     icon: join(APP_ROOT, 'resources', 'icon.icns'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   })
-  // The web UI sets its own document title; never let it surface in the
-  // native title bar again (C2).
-  win.on('page-title-updated', event => event.preventDefault())
   const mismatch = portMismatchPage()
   if (mismatch) {
     win.loadURL(mismatch)
@@ -365,6 +398,8 @@ app.whenReady().then(() => {
   // The menu (and its dev-tools accelerators) is independent of windows, so
   // it is installed in headless mode too — harmless, keeps one code path.
   registerApplicationMenu()
+  // Each bundle registers itself in the macOS Accessibility list on launch.
+  registerAccessibility()
   // Headless mode: the slot's web server runs, but no window is created, so
   // macOS never shows a second Dock icon for an "inactive" slot that is only
   // being kept warm (or verified). The app stays alive until it is stopped.

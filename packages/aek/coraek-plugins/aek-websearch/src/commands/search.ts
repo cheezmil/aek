@@ -4,7 +4,28 @@ import { DEFAULT_ATTEMPT_TIMEOUT_MS, MAX_ATTEMPT_TIMEOUT_MS } from '../defaults.
 
 // ── Inline KeyPool (avoids shared chunk) ─────────────────────────────────────
 const PERMANENT_STATUS = new Set([401, 403, 402, 432])
+const BALANCE_STATUS = new Set([402, 432])
 interface PoolEntry { id: number; key: string; disabled: boolean; failures: number; cooldownEnd: number }
+
+// R1: record WHY a key was disabled in the same SQLCipher database the console
+// reads. Kept inline (no shared chunk) and best-effort: bookkeeping must never
+// break a search. The console writes 'manual' for its own disable button.
+function recordDisableReason(store: KeyStore, id: number, reason: string) {
+  try {
+    const db = (store as any).getDb?.()
+    if (!db) return
+    db.exec("CREATE TABLE IF NOT EXISTS key_flags (key_id INTEGER PRIMARY KEY, reason TEXT NOT NULL DEFAULT '')")
+    db.prepare('INSERT OR REPLACE INTO key_flags (key_id, reason) VALUES (?, ?)').run(id, reason)
+  } catch { /* best effort */ }
+}
+function clearDisableReason(store: KeyStore, id: number) {
+  try {
+    const db = (store as any).getDb?.()
+    if (!db) return
+    db.exec("CREATE TABLE IF NOT EXISTS key_flags (key_id INTEGER PRIMARY KEY, reason TEXT NOT NULL DEFAULT '')")
+    db.prepare('DELETE FROM key_flags WHERE key_id=?').run(id)
+  } catch { /* best effort */ }
+}
 
 class KeyPool {
   readonly provider: string
@@ -42,13 +63,23 @@ class KeyPool {
   }
   reportSuccess(key: string) {
     for (const e of this.entries) {
-      if (e.key === key) { e.failures = 0; e.cooldownEnd = 0; this.store.enableById(e.id); return }
+      if (e.key === key) {
+        e.failures = 0; e.cooldownEnd = 0
+        this.store.enableById(e.id)
+        clearDisableReason(this.store, e.id)
+        return
+      }
     }
   }
-  reportFailure(key: string, permanent: boolean) {
+  reportFailure(key: string, permanent: boolean, status?: number) {
     for (const e of this.entries) {
       if (e.key !== key) continue
-      if (permanent) { e.disabled = true; this.store.disableById(e.id); return }
+      if (permanent) {
+        e.disabled = true
+        this.store.disableById(e.id)
+        recordDisableReason(this.store, e.id, status !== undefined && BALANCE_STATUS.has(status) ? 'balance' : 'invalid')
+        return
+      }
       e.failures++
       e.cooldownEnd = Date.now() + Math.min(60_000 * Math.pow(5, e.failures - 1), 3_600_000)
       this.store.enableById(e.id)
@@ -64,11 +95,14 @@ class KeyPool {
   }
   disableKeyByIdx(idx: number) {
     if (idx < 0 || idx >= this.entries.length) throw new Error(`index ${idx} out of range`)
-    this.entries[idx].disabled = true; this.store.disableById(this.entries[idx].id)
+    this.entries[idx].disabled = true
+    this.store.disableById(this.entries[idx].id)
+    recordDisableReason(this.store, this.entries[idx].id, 'manual')
   }
   enableKeyByIdx(idx: number) {
     if (idx < 0 || idx >= this.entries.length) throw new Error(`index ${idx} out of range`)
     const e = this.entries[idx]; e.disabled = false; e.failures = 0; e.cooldownEnd = 0; this.store.enableById(e.id)
+    clearDisableReason(this.store, e.id)
   }
   resetCooldown() {
     for (const e of this.entries) { e.failures = 0; e.cooldownEnd = 0 }
@@ -146,7 +180,7 @@ async function searchWithPool(pool: KeyPool, searchFn: any, query: string, maxRe
       clearTimeout(attemptTimer)
       lastErr = err
       const status = err?.status
-      if (status && classifyStatus(status)) { pool.reportFailure(key, true); break }
+      if (status && classifyStatus(status)) { pool.reportFailure(key, true, status); break }
       pool.reportFailure(key, false)
     }
   }

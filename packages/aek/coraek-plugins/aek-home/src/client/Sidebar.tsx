@@ -1,35 +1,27 @@
 /**
  * The left navigation rail of the AEK console.
  *
- * Design notes (2026-11-08 revision + polish pass):
- * - One flat menu: no first-level group headings, because the console will
- *   grow a lot and a search box scales better than more grouping.
- * - The top logo is the collapse toggle (with a native tooltip); there is no
- *   chevron button. The toggle itself can be switched off in Settings (C10
- *   `logoToggle`, on by default) — when off the logo is inert.
- * - The header brand shows a small "Next" tag when this instance serves the
- *   `next` slot (C9), so an AEK window is never confused with AEK Next.
- * - The menu entries are: 运行模式, Web Search, 插件, 设置, 关于. The old
- *   概览 was removed in favour of the dedicated 运行模式 panel (C5).
- * - `collapsed` is the LOCKED state. Hovering a locked-collapsed rail shows a
- *   temporary "peek" without changing the lock — the three-mode pattern
- *   (locked open / locked collapsed / hover peek) used by common sidebars.
- * - The header contains exactly two controls in the footer: language and star.
- *
- * Hover intent (2026-11-08 polish): entering is delayed a little and leaving
- * is delayed a little longer, so crossing the rail edge does not flicker.
- * After a click-to-collapse the current pointer visit is suppressed until the
- * pointer actually leaves — otherwise the hover would immediately re-expand
- * the rail and the click would look like it did nothing. Text fades/slides via
- * CSS instead of `display: none`, so the rail never snaps between sizes.
+ * 2026-11-09 round:
+ * - One flat menu no longer scales, so entries live in collapsible DRAWER
+ *   groups. The plugin family is grouped under 插件, everything else under 其他.
+ *   The default expanded state is a host-persisted setting.
+ * - EVERY entry has a pin affordance; pinned entries float into their own group.
+ * - The logo (visibility / shape / the text beside it) and all rail metrics
+ *   come from the schema-driven settings; CSS custom properties carry the
+ *   numbers, so no dimension is hardcoded in JSX.
+ * - EVERY list is an unordered `<ul>/<li>` (user rule). No `<ol>` anywhere.
+ * - The top search box filters the rail; panel-level search boxes live in the
+ *   panels themselves.
  *
  * @module @cheezmil/aek-home/src/client/Sidebar
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { BrandMark, Icon } from './Icons.tsx'
-import type { IconName } from './Icons.tsx'
+import type { BrandVariant, IconName } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import type { Locale } from './i18n.tsx'
+import { parseBoolean, PREF_KEYS, usePref, useSettings } from './preferences.tsx'
 import { css, cx } from './styles.ts'
 
 /** Delay before a pointer hover starts the peek (hover intent). */
@@ -38,7 +30,10 @@ const HOVER_ENTER_DELAY = 120
 const HOVER_LEAVE_DELAY = 200
 
 /** Every surface the console can show. */
-export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'settings' | 'about'
+export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'settings' | 'permissions' | 'about'
+
+/** The two drawer groups the user asked for (plus the pinned bucket). */
+export type NavGroup = 'plugins' | 'other'
 
 /** One menu row. */
 interface NavEntry {
@@ -48,24 +43,31 @@ interface NavEntry {
   labelKey: string
   /** Icon drawn before the label. */
   icon: IconName
-  /** Extra aliases for the search box (same idea as cmdk's `keywords`). */
+  /** Which drawer holds it. */
+  group: NavGroup
+  /** Extra aliases for the search box. */
   keywords: readonly string[]
 }
 
-/**
- * Flat navigation model. New AEK features add one row here; the search box
- * picks it up automatically through its label / id / keywords.
- */
+/** Navigation model. Adding a panel = one row; the drawer picks it up. */
 const NAV: readonly NavEntry[] = [
-  { id: 'runtime', labelKey: 'panel.runtime', icon: 'activity', keywords: ['runtime', 'mode', 'switch', 'slot', '运行模式', '实例'] },
-  { id: 'websearch', labelKey: 'panel.websearch', icon: 'search', keywords: ['search', 'keys', 'api key', 'provider', '密钥'] },
-  { id: 'plugins', labelKey: 'panel.plugins', icon: 'plugins', keywords: ['plugin', 'package', 'inventory', '插件'] },
-  { id: 'settings', labelKey: 'panel.settings', icon: 'settings', keywords: ['preferences', 'options', 'hover', '设置'] },
-  { id: 'about', labelKey: 'panel.about', icon: 'about', keywords: ['version', 'info', 'install', '关于'] },
+  { id: 'runtime', labelKey: 'panel.runtime', icon: 'activity', group: 'other', keywords: ['runtime', 'instance', 'slot', 'port', '运行实例', '实例'] },
+  { id: 'websearch', labelKey: 'panel.websearch', icon: 'search', group: 'other', keywords: ['search', 'keys', 'api key', 'provider', '密钥'] },
+  { id: 'plugins', labelKey: 'panel.plugins', icon: 'plugins', group: 'plugins', keywords: ['plugin', 'package', 'inventory', '插件管理'] },
+  { id: 'skills', labelKey: 'panel.skills', icon: 'book', group: 'plugins', keywords: ['skill', 'manager', '技能'] },
+  { id: 'prompts', labelKey: 'panel.prompts', icon: 'sparkles', group: 'plugins', keywords: ['prompt', 'manager', '提示词'] },
+  { id: 'settings', labelKey: 'panel.settings', icon: 'settings', group: 'other', keywords: ['preferences', 'options', 'sidebar', '设置'] },
+  { id: 'permissions', labelKey: 'panel.permissions', icon: 'shield', group: 'other', keywords: ['permission', 'tcc', 'accessibility', '权限'] },
+  { id: 'about', labelKey: 'panel.about', icon: 'about', group: 'other', keywords: ['version', 'info', 'entry', '关于'] },
 ]
 
 /** The project's public repository (verified with `gh repo view`). */
 const GITHUB_REPO_URL = 'https://github.com/cheezmil/agent-enhance-kit'
+
+/** Host preference holding comma-separated pinned panel ids. */
+const PINNED_KEY = 'aek-home.pinned'
+/** Host preference holding the default drawer expanded state. */
+const DRAWER_KEY = 'aek-home.drawerExpanded'
 
 /** Props for {@link Sidebar}. */
 export interface SidebarProps {
@@ -73,37 +75,73 @@ export interface SidebarProps {
   active: PanelId
   /** Select a panel. */
   onSelect: (id: PanelId) => void
-  /** LOCKED collapse state (hover expansion is separate). */
-  collapsed: boolean
-  /** Toggle the locked collapse state. */
-  onToggleCollapse: () => void
-  /** Whether pointer hover temporarily expands a collapsed rail. */
-  hoverExpandEnabled: boolean
-  /** Provider count shown as a badge, `undefined` until the host answers. */
+  /** Provider count badge; `undefined` until the host answers. */
   providerCount: number | undefined
-  /** Which slot serves this console (C9); `undefined` until the host answers. */
+  /** Which slot serves this console (C9). */
   currentSlot: 'aek' | 'next' | undefined
-  /** Whether the top logo acts as the collapse toggle (C10, on by default). */
-  logoToggleEnabled: boolean
+}
+
+/** @param raw - untrusted pref value. @returns a valid logo variant. */
+function logoVariantOf(raw: unknown): BrandVariant {
+  return raw === 'round' || raw === 'square' || raw === 'text' ? raw : 'mark'
+}
+
+/**
+ * One drawer group: a collapsible heading plus an UNORDERED list of rows.
+ * @param props - label, open state, toggle and rows.
+ * @returns the group.
+ */
+function DrawerGroup({ label, open, onToggle, children }: {
+  label: string
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  const { t } = useI18n()
+  return (
+    <div className={css.drawerGroup}>
+      <button
+        type="button"
+        className={css.drawerHead}
+        onClick={onToggle}
+        aria-expanded={open}
+        title={open ? t('nav.collapse') : t('nav.expand')}
+      >
+        <Icon name="chevronDown" size={14} className={cx(css.drawerCaret, open && css.chevronOpen)} />
+        <span className={css.drawerLabel}>{label}</span>
+      </button>
+      {open ? <ul className={css.navList}>{children}</ul> : null}
+    </div>
+  )
 }
 
 /**
  * Render the navigation rail.
- * @param props - selection, collapse state and badge data.
+ * @param props - selection only; everything else comes from host settings.
  * @returns the sidebar.
  */
-export function Sidebar({
-  active, onSelect, collapsed, onToggleCollapse, hoverExpandEnabled, providerCount,
-  currentSlot, logoToggleEnabled,
-}: SidebarProps) {
+export function Sidebar({ active, onSelect, providerCount, currentSlot }: SidebarProps) {
   const { t, locale, setLocale } = useI18n()
+  const { prefs, set } = useSettings()
+  const [collapsed, setCollapsed] = usePref<boolean>(PREF_KEYS.collapsed, false, parseBoolean)
+  const [hoverExpand] = usePref<boolean>(PREF_KEYS.hoverExpand, true, parseBoolean)
+  const [logoToggle] = usePref<boolean>(PREF_KEYS.logoToggle, true, parseBoolean)
   const [query, setQuery] = useState('')
   const [hovered, setHovered] = useState(false)
   const [suppressPeek, setSuppressPeek] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [manualOpen, setManualOpen] = useState<Record<string, boolean>>({})
   const localeWrap = useRef<HTMLDivElement>(null)
   const enterTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  const defaultOpen = prefs[DRAWER_KEY] !== false
+  const pinned = useMemo(() => (typeof prefs[PINNED_KEY] === 'string'
+    ? String(prefs[PINNED_KEY]).split(',').filter(Boolean)
+    : []), [prefs])
+  const logoVisible = prefs['aek-home.logoVisible'] !== false
+  const brandText = typeof prefs['aek-home.brandText'] === 'string' ? String(prefs['aek-home.brandText']) : 'AEK'
+  const logoVariant = logoVariantOf(prefs['aek-home.logoVariant'])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -146,13 +184,9 @@ export function Sidebar({
     }, HOVER_LEAVE_DELAY)
   }
 
-  /**
-   * Logo click changes the LOCK — but only when the logo toggle is enabled
-   * (C10). When disabled the click is a no-op and the rail is driven by the
-   * search box / hover instead.
-   */
+  /** Logo click changes the LOCK, but only when the toggle is enabled. */
   const handleToggle = (): void => {
-    if (!logoToggleEnabled) return
+    if (!logoToggle) return
     if (collapsed) {
       setSuppressPeek(false)
     } else {
@@ -163,18 +197,12 @@ export function Sidebar({
         enterTimer.current = undefined
       }
     }
-    onToggleCollapse()
+    setCollapsed(value => !value)
   }
 
-  const peek = hoverExpandEnabled && hovered && !suppressPeek
+  const peek = hoverExpand && hovered && !suppressPeek
   const compact = collapsed && !peek
-  // The tooltip describes the CURRENT visual state, not the saved lock. When
-  // the logo toggle is disabled the logo is decorative, so no action hint.
-  const brandLabel = !logoToggleEnabled
-    ? 'AEK'
-    : (compact
-      ? t('brand.expand')
-      : (collapsed ? t('brand.pinOpen') : t('brand.collapse')))
+  const brandLabel = !logoToggle ? brandText : (compact ? t('brand.expand') : (collapsed ? t('brand.pinOpen') : t('brand.collapse')))
 
   const needle = query.trim().toLowerCase()
   const filtered = needle.length === 0
@@ -183,6 +211,52 @@ export function Sidebar({
       const haystack = [t(entry.labelKey), entry.id, ...entry.keywords].join(' ').toLowerCase()
       return haystack.includes(needle)
     })
+
+  /** @param id - panel to pin/unpin. */
+  const togglePin = (id: PanelId): void => {
+    const next = pinned.includes(id) ? pinned.filter(item => item !== id) : [...pinned, id]
+    set(PINNED_KEY, next.join(','))
+  }
+
+  /** @param group - drawer id. @returns whether it is expanded. */
+  const isOpen = (group: string): boolean => manualOpen[group] ?? defaultOpen
+
+  /** @param group - drawer id. */
+  const toggleGroup = (group: string): void => {
+    setManualOpen(current => ({ ...current, [group]: !isOpen(group) }))
+  }
+
+  /** @param entry - one row. @param pinnedNow - whether it is pinned. @returns the row. */
+  const renderRow = (entry: NavEntry, pinnedNow: boolean): ReactNode => (
+    <li key={entry.id} className={css.navRow}>
+      <button
+        type="button"
+        className={cx(css.navItem, active === entry.id && css.navItemActive)}
+        aria-current={active === entry.id ? 'page' : undefined}
+        title={t(entry.labelKey)}
+        onClick={() => onSelect(entry.id)}
+      >
+        <span className={css.navIcon}><Icon name={entry.icon} size={18} /></span>
+        <span className={css.navLabel}>{t(entry.labelKey)}</span>
+        {entry.id === 'websearch' && providerCount !== undefined
+          ? <span className={css.navBadge}>{String(providerCount)}</span>
+          : null}
+      </button>
+      <button
+        type="button"
+        className={cx(css.pinButton, pinnedNow && css.pinActive)}
+        onClick={() => togglePin(entry.id)}
+        title={pinnedNow ? t('nav.unpin') : t('nav.pin')}
+        aria-label={pinnedNow ? t('nav.unpin') : t('nav.pin')}
+      >
+        <Icon name="pin" size={13} />
+      </button>
+    </li>
+  )
+
+  const pinnedRows = filtered.filter(entry => pinned.includes(entry.id))
+  const pluginRows = filtered.filter(entry => entry.group === 'plugins' && !pinned.includes(entry.id))
+  const otherRows = filtered.filter(entry => entry.group === 'other' && !pinned.includes(entry.id))
 
   /** @param next - locale chosen in the footer menu. */
   const chooseLocale = (next: Locale): void => {
@@ -202,19 +276,25 @@ export function Sidebar({
           className={css.brandButton}
           onClick={handleToggle}
           aria-label={brandLabel}
-          aria-expanded={logoToggleEnabled ? !compact : undefined}
+          aria-expanded={logoToggle ? !compact : undefined}
           title={brandLabel}
-          tabIndex={logoToggleEnabled ? 0 : -1}
+          tabIndex={logoToggle ? 0 : -1}
         >
-          <BrandMark size={34} className={css.brandMark} />
-          <span className={css.brandText}>
-            <span className={css.brandTagline}>
-              AEK
-              {currentSlot === 'next'
-                ? <span className={css.slotBadge}>Next</span>
-                : null}
-            </span>
-          </span>
+          {logoVisible
+            ? <BrandMark size={34} className={css.brandMark} variant={logoVariant} />
+            : null}
+          {brandText.length > 0
+            ? (
+              <span className={css.brandText}>
+                <span className={css.brandTagline}>
+                  {brandText}
+                  {currentSlot === 'next'
+                    ? <span className={css.slotBadge}>Next</span>
+                    : null}
+                </span>
+              </span>
+            )
+            : null}
         </button>
       </div>
 
@@ -251,24 +331,21 @@ export function Sidebar({
             : null}
         </div>
 
-        <div className={css.navList}>
-          {filtered.map(item => (
-            <button
-              key={item.id}
-              type="button"
-              className={cx(css.navItem, active === item.id && css.navItemActive)}
-              aria-current={active === item.id ? 'page' : undefined}
-              title={t(item.labelKey)}
-              onClick={() => onSelect(item.id)}
-            >
-              <span className={css.navIcon}><Icon name={item.icon} size={18} /></span>
-              <span className={css.navLabel}>{t(item.labelKey)}</span>
-              {item.id === 'websearch' && providerCount !== undefined
-                ? <span className={css.navBadge}>{String(providerCount)}</span>
-                : null}
-            </button>
-          ))}
-        </div>
+        {pinnedRows.length > 0
+          ? (
+            <DrawerGroup label={t('nav.group.pinned')} open={isOpen('pinned')} onToggle={() => toggleGroup('pinned')}>
+              {pinnedRows.map(entry => renderRow(entry, true))}
+            </DrawerGroup>
+          )
+          : null}
+
+        <DrawerGroup label={t('nav.group.plugins')} open={isOpen('plugins')} onToggle={() => toggleGroup('plugins')}>
+          {pluginRows.map(entry => renderRow(entry, false))}
+        </DrawerGroup>
+
+        <DrawerGroup label={t('nav.group.other')} open={isOpen('other')} onToggle={() => toggleGroup('other')}>
+          {otherRows.map(entry => renderRow(entry, false))}
+        </DrawerGroup>
 
         {filtered.length === 0
           ? <div className={css.navNoMatch}>{t('nav.noMatch')}</div>
@@ -290,26 +367,30 @@ export function Sidebar({
             </button>
             {menuOpen
               ? (
-                <div className={css.localeMenu} role="menu">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={cx(css.localeMenuItem, locale === 'zh-CN' && css.localeMenuActive)}
-                    onClick={() => chooseLocale('zh-CN')}
-                  >
-                    简体中文
-                    {locale === 'zh-CN' ? <Icon name="check" size={14} /> : null}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={cx(css.localeMenuItem, locale === 'en-US' && css.localeMenuActive)}
-                    onClick={() => chooseLocale('en-US')}
-                  >
-                    English
-                    {locale === 'en-US' ? <Icon name="check" size={14} /> : null}
-                  </button>
-                </div>
+                <ul className={css.localeMenu} role="menu">
+                  <li>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={cx(css.localeMenuItem, locale === 'zh-CN' && css.localeMenuActive)}
+                      onClick={() => chooseLocale('zh-CN')}
+                    >
+                      简体中文
+                      {locale === 'zh-CN' ? <Icon name="check" size={14} /> : null}
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={cx(css.localeMenuItem, locale === 'en-US' && css.localeMenuActive)}
+                      onClick={() => chooseLocale('en-US')}
+                    >
+                      English
+                      {locale === 'en-US' ? <Icon name="check" size={14} /> : null}
+                    </button>
+                  </li>
+                </ul>
               )
               : null}
           </div>

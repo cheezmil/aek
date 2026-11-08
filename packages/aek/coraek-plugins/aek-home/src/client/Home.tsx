@@ -1,41 +1,39 @@
 /**
- * The AEK console application root. The dsh shell is not mounted in the AEK
- * web profile, so this surface owns the whole `#root`: a left navigation rail
- * and a content column. There is no top bar, no header badge and no per-page
- * title block any more (C11: the `pageHeader` strip was removed — panels own
- * their own headings).
+ * The AEK console application root.
  *
- * All host facts flow through hooks so the runtime panel, the provider table
- * and the About page never disagree. UI preferences (last panel, sidebar
- * lock, hover-to-expand, logo toggle, language) are persisted on the HOST
- * under `<AEK_HOME>/preferences/` (C11: never localStorage) so a refresh —
- * in any browser, on any machine — never throws the user back to defaults.
+ * 2026-11-09 round: the panel set grew (instance manager, web search, plugin
+ * management, skill manager, prompt manager, settings, permissions, about).
+ * All user-adjustable rail metrics are injected here as CSS custom properties
+ * derived from the schema-driven settings — no dimension is hardcoded in a
+ * component. The desktop shell is back to its NATIVE title bar (R10), so the
+ * old `trafficInset` workaround is gone.
  *
- * Inside the Electron shell (C2) the root gets a `trafficInset` class so the
- * macOS traffic lights do not cover the sidebar header.
+ * UI preferences live on the HOST (`<AEK_HOME>/preferences/`), never in
+ * localStorage, so every window and machine sees the same settings.
  *
  * @module @cheezmil/aek-home/src/client/Home
  */
-import { useCallback } from 'react'
+import type { CSSProperties } from 'react'
 import { I18nProvider } from './i18n.tsx'
 import { InfoPanels } from './InfoPanels.tsx'
-import { oneOf, parseBoolean, PREF_KEYS, PrefProvider, usePref } from './preferences.tsx'
+import { PermissionsPanel, PromptsPanel, SkillsPanel } from './ConsolePanels.tsx'
+import { oneOf, PREF_KEYS, PrefProvider, usePref, useSettings } from './preferences.tsx'
 import { Sidebar } from './Sidebar.tsx'
 import type { PanelId } from './Sidebar.tsx'
 import { RuntimeModePanel } from './RuntimeModePanel.tsx'
-import { css, cx } from './styles.ts'
+import { sidebarCssVars } from './settings-schema.ts'
+import { css } from './styles.ts'
 import { useInventory } from './useInventory.ts'
 import { useCurrentSlot } from './useRuntimeMode.ts'
 import { WebSearchPanel } from './WebSearchPanel.tsx'
 import { useWebsearchStatus } from './useWebsearchStatus.ts'
 
 /** All valid panel ids, used to validate a persisted value. */
-const PANEL_IDS: readonly PanelId[] = ['runtime', 'websearch', 'plugins', 'settings', 'about']
+const PANEL_IDS: readonly PanelId[] = [
+  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'settings', 'permissions', 'about',
+]
 
-/**
- * Props kept for API compatibility with earlier aek-home releases; the
- * console navigates internally and needs no external callback.
- */
+/** Props kept for API compatibility with earlier aek-home releases. */
 export interface AekHomeProps {
   /** Optional advance callback (unused by the console). */
   onContinue?: (() => void) | undefined
@@ -44,53 +42,35 @@ export interface AekHomeProps {
 /** The console body; separated so it can consume the i18n + prefs contexts. */
 function Console() {
   const [panel, setPanel] = usePref<PanelId>(PREF_KEYS.panel, 'runtime', oneOf(PANEL_IDS))
-  const [collapsed, setCollapsed] = usePref<boolean>(PREF_KEYS.collapsed, false, parseBoolean)
-  const [hoverExpand, setHoverExpand] = usePref<boolean>(PREF_KEYS.hoverExpand, true, parseBoolean)
-  const [logoToggle, setLogoToggle] = usePref<boolean>(PREF_KEYS.logoToggle, true, parseBoolean)
+  const { prefs } = useSettings()
   const state = useWebsearchStatus()
   const inventory = useInventory()
   const currentSlot = useCurrentSlot()
 
-  const toggleHoverExpand = useCallback((next: boolean) => setHoverExpand(next), [setHoverExpand])
-  const toggleLogoToggle = useCallback((next: boolean) => setLogoToggle(next), [setLogoToggle])
-
-  // C2: inside the Electron shell the macOS traffic lights float over the
-  // top-left corner, so the sidebar header gets an extra top inset.
-  const isElectron = /Electron\//u.test(navigator.userAgent)
+  // Schema-driven CSS: every numeric sidebar setting lands here. The cast is
+  // needed because React's CSSProperties type does not enumerate custom
+  // properties, even though the DOM accepts them.
+  const style = sidebarCssVars(prefs) as CSSProperties
 
   return (
-    <div className={cx(css.app, isElectron && css.trafficInset)}>
+    <div className={css.app} style={style}>
       <Sidebar
         active={panel}
         onSelect={setPanel}
-        collapsed={collapsed}
-        onToggleCollapse={() => setCollapsed(value => !value)}
-        hoverExpandEnabled={hoverExpand}
         providerCount={state.status?.providers.length}
         currentSlot={currentSlot}
-        logoToggleEnabled={logoToggle}
       />
 
       <div className={css.main}>
         <main className={css.content}>
-          {panel === 'runtime'
-            ? <RuntimeModePanel />
-            : null}
-          {panel === 'websearch'
-            ? <WebSearchPanel state={state} />
-            : null}
+          {panel === 'runtime' ? <RuntimeModePanel /> : null}
+          {panel === 'websearch' ? <WebSearchPanel state={state} /> : null}
           {panel === 'plugins' || panel === 'settings' || panel === 'about'
-            ? (
-              <InfoPanels
-                panel={panel}
-                inventory={inventory}
-                hoverExpand={hoverExpand}
-                onToggleHoverExpand={toggleHoverExpand}
-                logoToggle={logoToggle}
-                onToggleLogoToggle={toggleLogoToggle}
-              />
-            )
+            ? <InfoPanels panel={panel} inventory={inventory} />
             : null}
+          {panel === 'skills' ? <SkillsPanel /> : null}
+          {panel === 'prompts' ? <PromptsPanel /> : null}
+          {panel === 'permissions' ? <PermissionsPanel /> : null}
         </main>
       </div>
     </div>

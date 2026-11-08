@@ -233,8 +233,11 @@ if (command === 'rollback') {
     process.exit(ok ? 0 : 1)
   })()
 } else {
+  // APP_ROOT is <repo>/apps/aek-desktop/v0 — three levels up to reach <repo>.
+  // Using only two resolved to <repo>/apps/scripts/aek/... (which does not
+  // exist) and made `dev` / `start-release` fail with MODULE_NOT_FOUND.
   const script = command === 'dev'
-    ? join(APP_ROOT, '..', '..', 'scripts', 'aek', 'start-dev.mjs')
-    : join(APP_ROOT, '..', '..', 'scripts', 'aek', 'start-release.mjs')
+    ? join(APP_ROOT, '..', '..', '..', 'scripts', 'aek', 'start-dev.mjs')
+    : join(APP_ROOT, '..', '..', '..', 'scripts', 'aek', 'start-release.mjs')
   execFileSync(process.execPath, [script, slot], { stdio: 'inherit' })
 }

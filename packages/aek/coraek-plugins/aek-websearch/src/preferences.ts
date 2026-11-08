@@ -84,10 +84,21 @@ export function readPrefs(): Record<string, PrefValue> {
  * @returns the written file path.
  */
 export function writePref(key: string, value: PrefValue): string {
+  return writePrefs({ [key]: value })
+}
+
+/**
+ * Upsert several settings in ONE read/write pass. The settings page is
+ * schema-driven (2026-11-09 round): switching a preset or resetting a group
+ * must not fire N separate HTTP requests and N file rewrites.
+ * @param values - validated key/value pairs.
+ * @returns the written file path.
+ */
+export function writePrefs(values: Record<string, PrefValue>): string {
   const file = prefsFile()
   mkdirSync(dirname(file), { recursive: true })
   const current = readPrefs()
-  current[key] = value
+  for (const [key, value] of Object.entries(values)) current[key] = value
   writeFileSync(file, JSON.stringify(current, null, 2) + '\n', 'utf-8')
   return file
 }
@@ -144,6 +155,26 @@ export function registerPreferences(ctx: Context): void {
           body = parsed as Record<string, unknown>
         }
       } catch { /* malformed body → bad request below */ }
+      const batch = body?.values
+      if (typeof batch === 'object' && batch !== null && !Array.isArray(batch)) {
+        const entries = Object.entries(batch as Record<string, unknown>)
+        const normalized: Record<string, PrefValue> = {}
+        for (const [key, value] of entries) {
+          const safe = normalizeValue(value)
+          if (!isPrefKey(key) || safe === undefined) {
+            send(res, 400, { code: 'bad-request', message: 'every values entry needs a storable key and a primitive value' })
+            return
+          }
+          normalized[key] = safe
+        }
+        try {
+          writePrefs(normalized)
+        } catch {
+          // A disk failure keeps the console working on its in-memory values.
+        }
+        send(res, 200, readPrefs())
+        return
+      }
       const key = body?.key
       const value = normalizeValue(body?.value)
       if (!isPrefKey(key) || value === undefined) {

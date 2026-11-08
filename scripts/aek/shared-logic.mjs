@@ -588,6 +588,16 @@ export function brandDevBundle(slot = 'aek') {
       /(<key>CFBundleIdentifier<\/key>\s*<string>)[^<]*(<\/string>)/u,
       `$1${cfg.bundleId}$2`,
     )
+    // R20: Electron's stock Info.plist has no Accessibility usage description,
+    // so the dev bundle needs the same declaration as electron-builder's
+    // `mac.extendInfo`. Without it macOS may refuse to list the app in
+    // System Settings → Privacy & Security → Accessibility.
+    if (!plist.includes('NSAccessibilityUsageDescription')) {
+      plist = plist.replace(
+        /(\s*<\/dict>\s*<\/plist>)\s*$/u,
+        '\n\t<key>NSAccessibilityUsageDescription</key>\n\t<string>AEK needs Accessibility access so you can explicitly enable desktop automation and verify developer-tool shortcuts.</string>$1',
+      )
+    }
     writeFileSync(plistPath, plist)
     console.error(`[brand] patched Info.plist → ${appName} (${cfg.bundleId})`)
   }
