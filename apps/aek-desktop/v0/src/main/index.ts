@@ -56,6 +56,10 @@ const WEB_PORT = Number(process.env.AEK_WEB_PORT ?? packaged?.webPort ?? SLOT_CF
 const CDP_PORT = Number(process.env.AEK_CDP_PORT ?? packaged?.cdpPort ?? SLOT_CFG.cdpPort)
 const APP_NAME = process.env.AEK_MODE === 'dev' ? SLOT_CFG.devAppName : SLOT_CFG.productName
 
+// Headless mode: run the shell WITHOUT a window. Used when a slot is kept
+// warm (or verified) without wanting a second Dock icon.
+const HEADLESS = (process.env.AEK_HEADLESS ?? '').trim() === '1'
+
 // ── Dev vs Prod: separate userData so they never conflict ─────────────────────
 const isDev = process.env.AEK_MODE === 'dev'
 
@@ -294,6 +298,13 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Headless mode: the slot's web server runs, but no window is created, so
+  // macOS never shows a second Dock icon for an "inactive" slot that is only
+  // being kept warm (or verified). The app stays alive until it is stopped.
+  if (HEADLESS) {
+    console.log(`[main] headless mode: no window (slot ${SLOT}, web port ${WEB_PORT})`)
+    return
+  }
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

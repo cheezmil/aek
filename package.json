@@ -219,7 +219,11 @@
     "desktop:dev": "node scripts/aek/desktop.mjs dev",
     "data-root:status": "node scripts/aek/data-root.mjs status",
     "data-root:plan": "node scripts/aek/data-root.mjs plan",
-    "data-root:copy": "node scripts/aek/data-root.mjs copy"
+    "data-root:copy": "node scripts/aek/data-root.mjs copy",
+    "slots:check": "node scripts/aek/slots.mjs --check",
+    "slots:only": "node scripts/aek/slots.mjs --only",
+    "slots:both": "node scripts/aek/slots.mjs --both",
+    "slots:stop": "node scripts/aek/slots.mjs --stop-all"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-agent": "workspace:*",

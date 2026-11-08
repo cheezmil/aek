@@ -10,7 +10,8 @@
  *
  * Commands:
  *   node arbiter.mjs status                       → JSON: current slot + both slots' liveness + derived mode
- *   node arbiter.mjs start <slot>                  → start web + shell for a slot (detached), write a pid lock
+ *   node arbiter.mjs start <slot> [--headless]     → start web + shell for a slot (detached), write a pid lock
+ *                                                      (--headless: no window, no Dock icon)
  *   node arbiter.mjs stop  <slot>                  → SIGTERM the slot (pid lock + port fallback), clear lock
  *   node arbiter.mjs mode  <only-aek|only-next|both>→ orchestrate (CLI convenience; the API does its own orchestration)
  *
@@ -32,6 +33,7 @@ import {
   launchShellForSlot,
   killSlot,
   DSH_HOME,
+  slotWebUp,
 } from './shared-logic.mjs'
 import {
   readSlotLock,
@@ -66,37 +68,10 @@ const writePid = writeSlotLock
 const clearPid = clearSlotLock
 const isAlive = isPidAlive
 
-/**
- * Probe whether a web port answers AND is served by THIS slot's runtime.
- *
- * A plain port probe is not enough: any foreign program holding the port would
- * be reported as "the slot is running" (on this machine `1680` is held by an
- * unrelated app), which then makes the arbiter refuse to start the slot and
- * makes the stop path aim at a stranger's process. The response body must
- * carry AEK's own readiness marker, and the process must be the one serving
- * this slot's data root.
- * @param slot - the slot name.
- * @returns true when the slot's own web server answers.
- */
-function probe(slot) {
-  const port = SLOTS[slot].webPort
-  const res = spawnSync('curl', ['-s', '-m', '2', `http://127.0.0.1:${port}/`], { encoding: 'utf8' })
-  if (res.status !== 0 || !res.stdout) return false
-  // The AEK web server answers with its own app shell; a foreign server will
-  // not carry the marker.
-  if (!res.stdout.includes('aek') && !res.stdout.includes('dsh')) return false
-  // The serving process must point at this slot's data root.
-  const home = slotHome(slot)
-  try {
-    const pids = execFileSync('/usr/sbin/lsof', ['-ti', `:${port}`], { encoding: 'utf8' })
-      .trim().split(/\s+/).filter(Boolean)
-    for (const pid of pids) {
-      const cmd = execFileSync('/bin/ps', ['-p', pid, '-o', 'command='], { encoding: 'utf8' })
-      if (cmd.includes(home) || cmd.includes(`--port ${port}`)) return true
-    }
-  } catch { /* no listener */ }
-  return false
-}
+// The liveness probe is defined once in shared-logic (`slotWebUp`): the port
+// must be served by THIS slot's own runtime, not by an unrelated program that
+// happens to hold the port.
+const probe = slotWebUp
 
 /** @returns the slot identity of the process that launched this arbiter. */
 function currentSlot() {
@@ -126,11 +101,13 @@ function buildStatus() {
  * @param slot - 'aek' | 'next'.
  * @returns the result payload.
  */
-function cmdStart(slot) {
+function cmdStart(slot, options = {}) {
   if (!isSlot(slot)) return { ok: false, error: `unknown slot "${slot}"` }
   if (probe(slot)) return { ok: false, error: `slot "${slot}" already running`, slot }
   const web = spawnWebServerForSlot(slot, { detached: true })
-  const shell = launchShellForSlot(slot)
+  // `headless` runs the shell WITHOUT a window: the slot is kept warm (or
+  // verified) without a second Dock icon on macOS.
+  const shell = launchShellForSlot(slot, { headless: Boolean(options.headless) })
   // Only the web pid is recorded here. The shell records its OWN pid in the
   // same file (the shared lock merges the fields), so writing a guessed
   // shellPid here would race with the shell's own write.
@@ -173,11 +150,16 @@ function cmdMode(mode) {
 }
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────
-const [command, arg] = process.argv.slice(2)
+const argv = process.argv.slice(2)
+const command = argv[0]
+// The first POSITIONAL argument after the command (flags may come before or
+// after it). `start next --headless` and `start --headless next` both work.
+const arg = argv.slice(1).find(a => !a.startsWith('--'))
+const headless = argv.includes('--headless')
 let out
 switch (command) {
   case 'status': out = buildStatus(); break
-  case 'start': out = cmdStart(arg); break
+  case 'start': out = cmdStart(arg, { headless }); break
   case 'stop': out = cmdStop(arg); break
   case 'mode': out = cmdMode(arg); break
   default:

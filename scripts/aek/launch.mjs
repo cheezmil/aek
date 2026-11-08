@@ -69,6 +69,7 @@ Commands:
   start-release   scripts/aek/start-release.mjs
   desktop         scripts/aek/desktop.mjs (status / build / install / dev)
   data-root       scripts/aek/data-root.mjs (status / plan / copy)
+  slots           scripts/aek/slots.mjs (check / only / both / stop-all / warm)
 
 Slots: aek (default) -> ~/.aek, next -> ~/.aek-next; ports 1680/1682 vs 1702/1704.`
 
@@ -85,6 +86,7 @@ function invocation(cmd, args) {
     case 'start-release': return [NODE, [join(HERE, 'start-release.mjs'), ...args]]
     case 'desktop': return [NODE, [join(HERE, 'desktop.mjs'), ...args]]
     case 'data-root': return [NODE, [join(HERE, 'data-root.mjs'), ...args]]
+    case 'slots': return [NODE, [join(HERE, 'slots.mjs'), ...args]]
     default: return undefined
   }
 }

@@ -4,7 +4,7 @@
  * All path resolution is done relative to the project root (agent-enhance-kit/),
  * so these modules can be imported from any location in the repo.
  */
-import { execSync, spawn } from 'node:child_process'
+import { execSync, execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { join, dirname } from 'node:path'
 import { existsSync, renameSync, copyFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync } from 'node:fs'
@@ -238,6 +238,44 @@ export async function killSlot(slot) {
   killPort(s.webPort)
   killPort(s.cdpPort)
   await new Promise(r => setTimeout(r, 200))
+}
+
+// ── Slot liveness ────────────────────────────────────────────────────────────
+
+/**
+ * Is the slot's OWN web server running?
+ *
+ * A plain port probe is not enough: any foreign program holding the port
+ * would be reported as "the slot is running" (on this machine `1680` is held
+ * by an unrelated app), which then makes the arbiter refuse to start the slot
+ * and makes the switcher believe it is already up. Two checks:
+ *   1. the process holding the port must point at this slot's data root;
+ *   2. the server must answer with AEK's own marker — otherwise a squatter
+ *      that won the port would answer on our behalf.
+ * @param slot - 'aek' | 'next'.
+ * @returns {boolean} true when the slot's own web server answers.
+ */
+export function slotWebUp(slot) {
+  const s = SLOTS[slot]
+  if (!s) return false
+  const home = slotHome(slot)
+  let ours = false
+  try {
+    const pids = execFileSync('/usr/sbin/lsof', ['-ti', `:${s.webPort}`], { encoding: 'utf8' })
+      .trim().split(/\s+/).filter(Boolean)
+    for (const pid of pids) {
+      const cmd = execFileSync('/bin/ps', ['-p', pid, '-o', 'command='], { encoding: 'utf8' })
+      if (cmd.includes(home) || cmd.includes(`--port ${s.webPort}`)) ours = true
+    }
+  } catch { /* no listener */ }
+  if (!ours) return false
+  try {
+    const result = spawnSync('curl', ['-s', '-m', '2', `http://127.0.0.1:${s.webPort}/`], { encoding: 'utf8' })
+    return result.status === 0 && typeof result.stdout === 'string' &&
+      (result.stdout.includes('aek') || result.stdout.includes('dsh'))
+  } catch {
+    return false
+  }
 }
 
 // ── Web readiness poll ────────────────────────────────────────────────────────
@@ -585,9 +623,10 @@ export function attachCleanup(web) {
  * The child is spawned detached so it survives the caller (the runtime arbiter)
  * exiting. Idempotent: it only brands when the bundle is missing.
  * @param slot - 'aek' | 'next'.
+ * @param options - `{ headless: true }` runs the shell without a window.
  * @returns the spawned shell child, or `null` on branding failure.
  */
-export function launchShellForSlot(slot) {
+export function launchShellForSlot(slot, options = {}) {
   const s = SLOTS[slot]
   if (!s) return null
   const home = slotHome(slot)
@@ -602,6 +641,7 @@ export function launchShellForSlot(slot) {
     AEK_WEB_PORT: String(s.webPort),
     AEK_CDP_PORT: String(s.cdpPort),
     AEK_MODE: 'dev',
+    ...(options.headless ? { AEK_HEADLESS: '1' } : {}),
   })
   const bin = electronBin(bundle, s.devAppName)
   console.log(`[start] shell[${slot}] → ${bundle} (web ${s.webPort}, home ${home})`)
