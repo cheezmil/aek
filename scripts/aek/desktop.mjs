@@ -15,6 +15,8 @@
  *   node scripts/aek/desktop.mjs build <aek|next> --yes
  *   node scripts/aek/desktop.mjs install <aek|next> --yes
  *   node scripts/aek/desktop.mjs dev <aek|next> --yes
+ *   node scripts/aek/desktop.mjs rollback <aek|next> --yes
+ *   node scripts/aek/desktop.mjs rollback <aek|next> --dev --yes
  */
 import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -27,6 +29,10 @@ import {
   prodAppDirForSlot,
   isBuildFresh,
   buildFingerprint,
+  rollbackDirForSlot,
+  installApp,
+  installDevBundle,
+  killSlot,
   APP_ROOT,
 } from './shared-logic.mjs'
 
@@ -37,6 +43,9 @@ const USAGE = `AEK Desktop CLI
   desktop.mjs build <slot> --yes     compile + package the slot
   desktop.mjs install <slot> --yes   install the packaged app into ~/Applications
   desktop.mjs dev <slot> --yes       brand the dev bundle and launch it
+  desktop.mjs rollback <slot> --yes  restore the stashed previous prod bundle
+  desktop.mjs rollback <slot> --dev --yes
+                                     restore the stashed previous dev bundle
 
 Slots: ${Object.keys(SLOTS).join(' | ')}`
 
@@ -187,7 +196,7 @@ if (command === 'status') {
   process.exit(0)
 }
 
-if (!['build', 'install', 'dev'].includes(command)) {
+if (!['build', 'install', 'dev', 'rollback'].includes(command)) {
   console.error(USAGE)
   process.exit(2)
 }
@@ -202,7 +211,30 @@ if (!confirmed) {
   process.exit(2)
 }
 
-const script = command === 'dev'
-  ? join(APP_ROOT, '..', '..', 'scripts', 'aek', 'start-dev.mjs')
-  : join(APP_ROOT, '..', '..', 'scripts', 'aek', 'start-release.mjs')
-execFileSync(process.execPath, [script, slot], { stdio: 'inherit' })
+if (command === 'rollback') {
+  // T7: restore the stashed previous bundle. Terminate THIS slot's instance
+  // first — a foreign process holding a port is never touched.
+  void (async () => {
+    const cleared = await killSlot(slot)
+    if (cleared.foreign.length > 0) {
+      console.error(`[rollback] port conflict: ${cleared.foreign.map(f => `${f.kind} :${f.port} held by pid ${f.pid}`).join(', ')}`)
+      console.error('[rollback] refusing to run — the holding process is not ours')
+      process.exit(3)
+    }
+    if (cleared.stuck.length > 0) {
+      console.error(`[rollback] previous instance did not exit: ${cleared.stuck.join(' ')}`)
+      process.exit(3)
+    }
+    const cfg = slotConfig(slot)
+    const useDev = args.includes('--dev')
+    const ok = useDev
+      ? installDevBundle(slot)
+      : installApp(slot, join(rollbackDirForSlot(slot), `${cfg.productName}.app.old`))
+    process.exit(ok ? 0 : 1)
+  })()
+} else {
+  const script = command === 'dev'
+    ? join(APP_ROOT, '..', '..', 'scripts', 'aek', 'start-dev.mjs')
+    : join(APP_ROOT, '..', '..', 'scripts', 'aek', 'start-release.mjs')
+  execFileSync(process.execPath, [script, slot], { stdio: 'inherit' })
+}

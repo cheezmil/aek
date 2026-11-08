@@ -91,12 +91,18 @@ export function aekHome(): string {
 
 /**
  * Apply AEK's isolated environment before the runtime starts.
- * The harness reads `DSH_HOME`; the AEK profile tree lives under `~/.aek`.
+ * The native harness reads `DSH_HOME`; the AEK profile tree lives under the
+ * AEK data root (`AEK_HOME` or the default).
+ *
+ * The pin is unconditional: an inherited `DSH_HOME` is the outer DSH
+ * product's home (this fork's upstream shape) and must never steer AEK's
+ * runtime at it. Pinning here only affects this product's own process tree,
+ * never the launching parent's environment.
  */
 export function applyAekEnvironment(): void {
   const home = aekHome()
-  process.env.DSH_HOME ??= home
-  process.env.AEK_HOME ??= home
+  process.env.DSH_HOME = home
+  process.env.AEK_HOME = home
   // The parent process may carry a --require from another product's runtime.
   delete process.env.NODE_OPTIONS
 }

@@ -6,7 +6,7 @@
  */
 import { execSync, execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { join, dirname } from 'node:path'
+import { join, dirname, basename } from 'node:path'
 import { existsSync, renameSync, copyFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
@@ -439,7 +439,11 @@ export async function waitForWebReady(timeoutMs = 2000, port = WEB_PORT) {
  * app with "App is damaged and can't be opened". So the last step is always a
  * fresh signature with the Cheezmil Dev certificate (never adhoc).
  *
- * Deletes any stale brand first. Does NOT mutate the pnpm store.
+ * T7 ordering: everything (copy, branding, signing) happens on a STAGED copy
+ * inside the slot's data root. ~/Applications keeps the previous dev bundle
+ * until the staged one passes signature verification AND the arm64 smoke
+ * test; only then is it swapped in, with the previous one kept as the single
+ * rollback base (`rollbackDirForSlot`). Does NOT mutate the pnpm store.
  * @param slot - 'aek' | 'next'.
  * @returns {boolean} true on success, false on failure.
  */
@@ -447,13 +451,6 @@ export function brandDevBundle(slot = 'aek') {
   const cfg = slotConfig(slot)
   const appName = cfg.devAppName
   const target = devAppDirForSlot(slot)
-  const plistPath = join(target, 'Contents', 'Info.plist')
-
-  // Clean stale brand
-  if (existsSync(target)) {
-    console.error(`[brand] removing stale ${appName}.app …`)
-    rmSync(target, { recursive: true, force: true })
-  }
 
   // Ensure source Electron.app exists
   if (!existsSync(srcElectronApp)) {
@@ -469,18 +466,32 @@ export function brandDevBundle(slot = 'aek') {
     console.error('[brand] Electron.app restored')
   }
 
-  console.error(`[brand] branding → ${appName}.app …`)
-  mkdirSync(INSTALL_DIR, { recursive: true })
-  execSync(`cp -R "${srcElectronApp}" "${target}"`, { stdio: 'pipe' })
+  // Stage a fresh copy in the slot's data root; the installed bundle stays
+  // untouched until the checks below pass.
+  const rollback = rollbackDirForSlot(slot)
+  mkdirSync(rollback, { recursive: true })
+  const staged = join(rollback, `${appName}.app.staged`)
+  rmSync(staged, { recursive: true, force: true })
+
+  console.error(`[brand] staging → ${staged} …`)
+  try {
+    execSync(`cp -R "${srcElectronApp}" "${staged}"`, { stdio: 'pipe' })
+  } catch (err) {
+    console.error(`[brand] staging copy failed: ${err.message}`)
+    rmSync(staged, { recursive: true, force: true })
+    return false
+  }
+
+  const plistPath = join(staged, 'Contents', 'Info.plist')
 
   // Rename inner binary (Electron → AEK DEV / AEK DEV Next)
-  const macosDir = join(target, 'Contents', 'MacOS')
+  const macosDir = join(staged, 'Contents', 'MacOS')
   const oldBin   = join(macosDir, 'Electron')
   const newBin   = join(macosDir, appName)
   if (existsSync(oldBin)) renameSync(oldBin, newBin)
 
   // Copy custom icon
-  const resourcesDir = join(target, 'Contents', 'Resources')
+  const resourcesDir = join(staged, 'Contents', 'Resources')
   if (existsSync(customIcon)) {
     copyFileSync(customIcon, join(resourcesDir, 'icon.icns'))
     console.error('[brand] copied custom icon')
@@ -506,10 +517,14 @@ export function brandDevBundle(slot = 'aek') {
   }
 
   // Sign LAST: the plist edit above invalidated Electron's original signature.
-  if (!signApp(target)) return false
+  if (!signApp(staged)) {
+    rmSync(staged, { recursive: true, force: true })
+    return false
+  }
 
-  console.error(`[brand] done → ${target}`)
-  return true
+  // Verify (Cheezmil signature) + arm64 smoke test, then swap into place with
+  // the previous dev bundle kept as the single rollback base.
+  return placeVerifiedBundle(slot, target, staged)
 }
 
 // ── Prod packaging ────────────────────────────────────────────────────────────
@@ -595,61 +610,319 @@ export function signApp(appPath) {
   return true
 }
 
+// ── T7: verify-then-swap install ─────────────────────────────────────────────
+// The install ordering: stage the new bundle inside the slot's DATA ROOT
+// (hidden from Spotlight/Finder), prove it is Cheezmil-signed AND executable
+// (arm64 smoke test), and only then swap it into ~/Applications. The previous
+// bundle is moved out of the way first and kept as the SINGLE rollback base;
+// a failed swap puts it back. A failure at any step therefore never leaves
+// the user with neither the old nor the new app.
+
 /**
- * Install a packaged app into ~/Applications.
- *
- * The new bundle is staged and verified BEFORE the old one is replaced, so a
- * failure never leaves the user with neither the old nor the new app. The
- * previous bundle is kept as `AEK.app.bak-<timestamp>` for rollback.
- *
- * @param slot - 'aek' | 'next'.
- * @returns {boolean} true on success.
+ * Where the "previous bundle" rollback bases live: the slot's data root
+ * (`~/.aek/rollback/`, `~/.aek-next/rollback/`) — NOT next to the installed
+ * app, because ~/Applications must hold exactly one `<name>.app` per slot
+ * (no duplicated AEK.app entries in Spotlight/Finder).
+ * @param {string} slot - 'aek' | 'next'.
+ * @returns {string} the slot's rollback directory.
  */
-export function installApp(slot = 'aek') {
-  const cfg = slotConfig(slot)
-  const target = prodAppDirForSlot(slot)
-  const source = join(APP_ROOT, 'dist', slot, 'mac-arm64', `${cfg.productName}.app`)
-  if (!existsSync(source)) {
-    console.error(`[start] nothing to install: ${source} does not exist`)
-    return false
-  }
-  mkdirSync(INSTALL_DIR, { recursive: true })
+export function rollbackDirForSlot(slot) {
+  return join(slotHome(slot), 'rollback')
+}
 
-  // Stage the new bundle next to the target, then swap it in.
-  const staging = `${target}.new`
-  rmSync(staging, { recursive: true, force: true })
+/**
+ * Read `CFBundleExecutable` out of a bundle's Info.plist.
+ * @param {string} appPath - the .app bundle.
+ * @returns {string|null} the main executable's name, or null when unreadable.
+ */
+export function bundleExecutable(appPath) {
+  const plist = join(appPath, 'Contents', 'Info.plist')
   try {
-    execSync(`cp -R "${source}" "${staging}"`, { stdio: 'inherit' })
+    return execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleExecutable', plist], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim() || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Hard gate before a bundle may replace the installed one: it must carry a
+ * VALID Cheezmil signature (deep-strict verified, never adhoc). An adhoc or
+ * unverifiable bundle is exactly what makes macOS refuse to open the app
+ * ("App is damaged, you should move it to the Trash").
+ * @param {string} appPath - the .app bundle.
+ * @returns {boolean} true when the bundle is Cheezmil-signed and verifies.
+ */
+export function verifySignedBundle(appPath) {
+  try {
+    execSync(`codesign --verify --deep --strict "${appPath}"`, { stdio: 'pipe' })
   } catch (err) {
-    console.error(`[start] staging copy failed: ${err.message}`)
-    rmSync(staging, { recursive: true, force: true })
+    console.error(`[install] signature verification FAILED: ${String(err.message).split('\n')[0]}`)
     return false
   }
+  let out
+  try {
+    out = execSync(`codesign -dv --verbose=2 "${appPath}" 2>&1`, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+  } catch {
+    return true // deep-strict already passed; the identity report is unreadable
+  }
+  if (/^Signature=adhoc/m.test(out)) {
+    console.error('[install] bundle is ADHOC-signed — refusing (project requires the Cheezmil certificate)')
+    return false
+  }
+  const authority = out.match(/^Authority=(.*)$/m)?.[1]?.trim() ?? ''
+  if (!/cheezmil/iu.test(authority)) {
+    console.error(`[install] signed by '${authority || 'unknown'}' — expected the Cheezmil certificate`)
+    return false
+  }
+  console.error(`[install] signature OK (${authority})`)
+  return true
+}
 
-  if (existsSync(target)) {
-    const backup = `${target}.bak-${Date.now()}`
-    try {
-      execSync(`mv "${target}" "${backup}"`, { stdio: 'inherit' })
-      console.error(`[start] previous bundle kept → ${backup}`)
-    } catch (err) {
-      console.error(`[start] could not move the old bundle aside: ${err.message}`)
-      rmSync(staging, { recursive: true, force: true })
-      return false
+/**
+ * Prove a bundle can actually EXECUTE before it may replace the installed
+ * app: run its main binary in plain-node mode and demand an `arm64` answer.
+ * This catches a wrong-arch or corrupted bundle long before a user
+ * double-clicks it. ELECTRON_RUN_AS_NODE is stripped from the inherited env
+ * first (see the shell bug where an inherited value made the app run as node
+ * and no window ever appeared); HOME/PATH are kept so dyld resolves.
+ * @param {string} appPath - the .app bundle.
+ * @returns {boolean} true when the binary answers as a live arm64 process.
+ */
+export function smokeTestBundle(appPath) {
+  const exe = bundleExecutable(appPath)
+  if (!exe) {
+    console.error(`[install] smoke test: cannot read CFBundleExecutable from ${appPath}`)
+    return false
+  }
+  const bin = join(appPath, 'Contents', 'MacOS', exe)
+  if (!existsSync(bin)) {
+    console.error(`[install] smoke test: main binary missing (${bin})`)
+    return false
+  }
+  const res = spawnSync(bin, ['-e', 'process.stdout.write(process.arch)'], {
+    env: { ...electronEnv(), ELECTRON_RUN_AS_NODE: '1' },
+    encoding: 'utf8',
+    timeout: 20_000,
+  })
+  if (res.status !== 0) {
+    console.error(`[install] smoke test FAILED (exit ${res.status}): ${String(res.stderr ?? '').trim()}`)
+    return false
+  }
+  const arch = res.stdout.trim()
+  if (arch !== 'arm64') {
+    console.error(`[install] smoke test: binary answers '${arch}' — expected arm64`)
+    return false
+  }
+  console.error('[install] smoke test passed (arm64)')
+  return true
+}
+
+/**
+ * Atomic swap: move the installed bundle (if any) into the slot's rollback
+ * dir as the SINGLE rollback base (an older base is replaced), then rename
+ * the verified staged bundle into its place. On a failed rename the previous
+ * bundle is put back.
+ *
+ * The staged bundle lives on the same volume, so the final `mv` is a
+ * rename(2) — atomic. The legacy unbounded `*.app.bak-<ts>` clutter the old
+ * installApp left in ~/Applications is removed on the way.
+ * @param {string} slot - 'aek' | 'next'.
+ * @param {string} target - the installed .app path to replace.
+ * @param {string} staged - the verified staged .app path.
+ * @returns {boolean} true when the new bundle is in place.
+ */
+export function performSwap(slot, target, staged) {
+  const rollback = rollbackDirForSlot(slot)
+  mkdirSync(rollback, { recursive: true })
+  const base = basename(target)
+  const oldPath = join(rollback, `${base}.old`)
+  const pendingPath = join(rollback, `${base}.old-pending`)
+
+  // A leftover pending from a crashed previous run means that swap died with
+  // the installed bundle moved aside but not replaced. Put it back — unless
+  // the target reappeared, in which case a newer run completed the swap and
+  // the pending is stale garbage.
+  if (existsSync(pendingPath)) {
+    if (existsSync(target)) {
+      rmSync(pendingPath, { recursive: true, force: true })
+    } else {
+      try {
+        execSync(`mv "${pendingPath}" "${target}"`, { stdio: 'inherit' })
+        console.error(`[install] recovered previous ${base} from ${pendingPath} → ${target}`)
+      } catch (err) {
+        console.error(`[install] cannot recover ${pendingPath} (${String(err.message).split('\n')[0]}) — manual restore: mv "${pendingPath}" "${target}"`)
+        rmSync(staged, { recursive: true, force: true })
+        return false
+      }
     }
   }
 
+  // Step 1: move the installed bundle into the rollback dir under a PENDING
+  // name; the older base is discarded only once that move has succeeded.
+  // A failure here leaves the installed app untouched.
+  let hasPrevious = false
+  if (existsSync(target)) {
+    rmSync(pendingPath, { recursive: true, force: true })
+    try {
+      execSync(`mv "${target}" "${pendingPath}"`, { stdio: 'inherit' })
+      hasPrevious = true
+    } catch (err) {
+      console.error(`[install] could not move ${target} aside: ${String(err.message).split('\n')[0]}`)
+      console.error('[install] installed app untouched; nothing replaced')
+      rmSync(staged, { recursive: true, force: true })
+      return false
+    }
+    // One rollback base per slot: discard the older one, promote the pending.
+    rmSync(oldPath, { recursive: true, force: true })
+    try {
+      execSync(`mv "${pendingPath}" "${oldPath}"`, { stdio: 'inherit' })
+    } catch (err) {
+      // Storing the base failed — put the previous bundle back where it was.
+      console.error(`[install] could not store the previous bundle: ${String(err.message).split('\n')[0]}`)
+      try {
+        execSync(`mv "${pendingPath}" "${target}"`, { stdio: 'inherit' })
+        console.error(`[install] previous ${base} put back in place; nothing replaced`)
+      } catch {
+        console.error(`[install] previous ${base} kept at ${pendingPath} — manual restore: mv "${pendingPath}" "${target}"`)
+      }
+      rmSync(staged, { recursive: true, force: true })
+      return false
+    }
+    console.error(`[install] previous bundle kept → ${oldPath}`)
+  }
+
+  // Legacy clutter from the old installApp (unbounded *.bak-<ts> in ~/Applications).
+  // Best-effort: a read-only install dir must not abort an otherwise valid swap.
   try {
-    execSync(`mv "${staging}" "${target}"`, { stdio: 'inherit' })
+    for (const entry of readdirSync(INSTALL_DIR)) {
+      if (entry.startsWith(`${base}.bak-`)) {
+        rmSync(join(INSTALL_DIR, entry), { recursive: true, force: true })
+        console.error(`[install] removed legacy ${entry} from ${INSTALL_DIR}`)
+      }
+    }
+  } catch { /* cleanup only */ }
+
+  // Step 2: rename the verified staged bundle into place (same volume →
+  // atomic). Failure rolls the previous bundle back from its rollback base.
+  try {
+    execSync(`mv "${staged}" "${target}"`, { stdio: 'inherit' })
   } catch (err) {
-    console.error(`[start] install failed: ${err.message}`)
-    // Put the old bundle back.
-    const backup = `${target}.bak-${Date.now()}`
-    console.error(`[start] restoring the previous bundle from ${backup}`)
-    rmSync(target, { recursive: true, force: true })
+    console.error(`[install] swap failed: ${String(err.message).split('\n')[0]}`)
+    rmSync(staged, { recursive: true, force: true })
+    if (hasPrevious) {
+      try {
+        execSync(`mv "${oldPath}" "${target}"`, { stdio: 'inherit' })
+        console.error(`[install] ROLLED BACK — previous ${base} restored`)
+      } catch (restoreErr) {
+        console.error(`[install] ROLLBACK FAILED (${String(restoreErr.message).split('\n')[0]}) — manual restore: mv "${oldPath}" "${target}"`)
+      }
+    } else {
+      console.error('[install] nothing previous to restore — no bundle in place now')
+    }
     return false
   }
-  console.error(`[start] installed → ${target}`)
+  console.error(`[install] ${base} in place → ${target}${hasPrevious ? `  (previous kept → ${oldPath})` : ''}`)
   return true
+}
+
+/**
+ * The shared "verified → placed" tail of every bundle install: Cheezmil
+ * signature check, arm64 smoke test, then the atomic swap.
+ * @param {string} slot - 'aek' | 'next'.
+ * @param {string} target - the installed .app path to replace.
+ * @param {string} staged - the staged .app path (inside the rollback dir).
+ * @returns {boolean} true when the bundle is installed.
+ */
+export function placeVerifiedBundle(slot, target, staged) {
+  if (!verifySignedBundle(staged) || !smokeTestBundle(staged)) {
+    rmSync(staged, { recursive: true, force: true })
+    return false
+  }
+  return performSwap(slot, target, staged)
+}
+
+/**
+ * Install a packaged PROD app into ~/Applications.
+ *
+ * T7 ordering: the new bundle is staged in the slot's data root, then verified
+ * (Cheezmil signature + arm64 smoke test) BEFORE the old one is moved out of
+ * the way; the previous bundle is kept as the single rollback base in
+ * `rollbackDirForSlot(slot)`.
+ *
+ * @param {string} [slot] - 'aek' | 'next'.
+ * @param {string} [source] - bundle to install; defaults to this slot's
+ *   packaged dist artifact. Pass the stashed `.old` path to roll back — that
+ *   is what `desktop.mjs rollback` does.
+ * @returns {boolean} true on success.
+ */
+export function installApp(slot = 'aek', source) {
+  const cfg = slotConfig(slot)
+  const target = prodAppDirForSlot(slot)
+  const from = source ?? join(APP_ROOT, 'dist', slot, 'mac-arm64', `${cfg.productName}.app`)
+  if (!existsSync(from)) {
+    console.error(`[install] nothing to install: ${from} does not exist`)
+    return false
+  }
+
+  // Warn (do not block) when this slot's instance is still running: the swap
+  // is a rename and stays safe, but the running process keeps serving the old
+  // binary. start-release.mjs and desktop.mjs kill the slot first.
+  const lock = readSlotLock(slot)
+  const runningPid = lock?.shellPid ?? lock?.webPid
+  if (runningPid && isPidAlive(runningPid)) {
+    console.error(`[install] WARNING: ${slot} instance still running (pid ${runningPid}) — restart it to pick up the new bundle`)
+  }
+
+  const rollback = rollbackDirForSlot(slot)
+  mkdirSync(rollback, { recursive: true })
+  const staged = join(rollback, `${cfg.productName}.app.staged`)
+  rmSync(staged, { recursive: true, force: true })
+  try {
+    execSync(`cp -R "${from}" "${staged}"`, { stdio: 'inherit' })
+  } catch (err) {
+    console.error(`[install] staging copy failed: ${String(err.message).split('\n')[0]}`)
+    rmSync(staged, { recursive: true, force: true })
+    return false
+  }
+
+  return placeVerifiedBundle(slot, target, staged)
+}
+
+/**
+ * Install a bundle into a slot's DEV bundle location (used by
+ * `desktop.mjs rollback --dev` to restore a stashed dev bundle). Same
+ * verify-then-swap guarantees as `installApp`.
+ * @param {string} [slot] - 'aek' | 'next'.
+ * @param {string} [from] - the bundle to install; defaults to the stashed
+ *   previous dev bundle in the slot's rollback dir.
+ * @returns {boolean} true on success.
+ */
+export function installDevBundle(slot = 'aek', from) {
+  const cfg = slotConfig(slot)
+  const target = devAppDirForSlot(slot)
+  const rollback = rollbackDirForSlot(slot)
+  const src = from ?? join(rollback, `${cfg.devAppName}.app.old`)
+  if (!existsSync(src)) {
+    console.error(`[install] no stashed dev bundle for ${slot} (${src} does not exist)`)
+    return false
+  }
+  mkdirSync(rollback, { recursive: true })
+  const staged = join(rollback, `${cfg.devAppName}.app.staged`)
+  rmSync(staged, { recursive: true, force: true })
+  try {
+    execSync(`cp -R "${src}" "${staged}"`, { stdio: 'inherit' })
+  } catch (err) {
+    console.error(`[install] staging copy failed: ${String(err.message).split('\n')[0]}`)
+    rmSync(staged, { recursive: true, force: true })
+    return false
+  }
+  return placeVerifiedBundle(slot, target, staged)
 }
 
 // ── Build fingerprint (T3) ───────────────────────────────────────────────────

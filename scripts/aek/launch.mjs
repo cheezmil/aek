@@ -129,7 +129,10 @@ const base = resolveAekHome()
 const home = slotHome(slot, { ...process.env, AEK_HOME: base })
 const env = { ...process.env }
 env.AEK_HOME = slotExplicit ? home : (env.AEK_HOME ?? home)
-env.DSH_HOME ??= env.AEK_HOME
+// Pin unconditionally: an inherited DSH_HOME belongs to the outer DSH
+// product (this fork's upstream shape) and must never steer AEK's spawned
+// runtimes at that home. AEK's data root is AEK_HOME or the default.
+env.DSH_HOME = env.AEK_HOME
 env.AEK_SLOT ??= slot
 env.AEK_WEB_PORT ??= String(SLOTS[slot].webPort)
 env.AEK_CDP_PORT ??= String(SLOTS[slot].cdpPort)

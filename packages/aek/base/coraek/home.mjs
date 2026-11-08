@@ -10,8 +10,17 @@
  *
  * Resolution order (first non-empty wins):
  *   1. `AEK_HOME` — set by the launcher for a specific app slot.
- *   2. `DSH_HOME` — the harness runtime's own environment variable.
- *   3. `join(homedir(), '.aek')` — the default for a plain single install.
+ *   2. `join(homedir(), '.aek')` — the default for a plain single install.
+ *
+ * `DSH_HOME` is deliberately NOT an input. It is the environment variable of
+ * the OUTER DSH product this fork descended from, and an AEK process — most
+ * of all one running inside a coding-agent session — inherits that outer
+ * home. Treating it as AEK's data root would make every AEK script, plugin
+ * and CLI read and write the outer product's home, which AEK must never
+ * touch. AEK's data root is exactly `AEK_HOME` or the default; the launcher
+ * pins the spawned runtime's `DSH_HOME` to it explicitly (see
+ * `applyAekHomeEnvironment`), so the native reader still finds the AEK home
+ * without us ever reading the inherited variable.
  *
  * This is the ONLY file in the AEK source tree allowed to spell out the
  * default directory name. `scripts/aek/verify-aek-home.mjs` enforces that
@@ -43,7 +52,7 @@ export const AEK_HOME_DIRNAME = '.aek'
  * @returns {string} an absolute path to the AEK data root.
  */
 export function resolveAekHome(env = process.env) {
-  const configured = (env[AEK_HOME_ENV] || env[DSH_HOME_ENV] || '').trim()
+  const configured = (env[AEK_HOME_ENV] || '').trim()
   return configured ? resolve(configured) : join(homedir(), AEK_HOME_DIRNAME)
 }
 
@@ -57,14 +66,18 @@ export function aekHomePath(...segments) {
 }
 
 /**
- * Pin both environment variables to the resolved root without overwriting an
- * operator's explicit choice. Returns the root actually applied.
+ * Pin both environment variables to the resolved root. The pin is
+ * unconditional: an inherited `DSH_HOME` (for example the outer DSH product's
+ * home, when AEK runs inside a coding-agent session) must not leak into
+ * spawned children, because children' native runtimes would then read the
+ * foreign home. An operator who wants a custom data root sets `AEK_HOME`;
+ * that value wins and is what gets pinned. Returns the root actually applied.
  * @param {Record<string, string | undefined>} [env] - environment override.
  * @returns {string} the resolved data root.
  */
 export function applyAekHomeEnvironment(env = process.env) {
   const home = resolveAekHome(env)
-  if (!env[AEK_HOME_ENV]) env[AEK_HOME_ENV] = home
-  if (!env[DSH_HOME_ENV]) env[DSH_HOME_ENV] = home
+  env[AEK_HOME_ENV] = home
+  env[DSH_HOME_ENV] = home
   return home
 }
