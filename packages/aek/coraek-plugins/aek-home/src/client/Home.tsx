@@ -14,6 +14,7 @@
  * @module @cheezmil/aek-home/src/client/Home
  */
 import type { CSSProperties } from 'react'
+import { useEffect } from 'react'
 import { I18nProvider } from './i18n.tsx'
 import { InfoPanels } from './InfoPanels.tsx'
 import { PromptsPanel, SkillsPanel } from './ConsolePanels.tsx'
@@ -46,6 +47,14 @@ function Console() {
   const state = useWebsearchStatus()
   const inventory = useInventory()
   const currentSlot = useCurrentSlot()
+  // The status hook lives at the app root, so it does not remount when the user
+  // leaves and re-enters the panel. Reading it again on entry is what makes a
+  // plugin switched off *from the plugin page* show up here as a banner instead
+  // of a stale provider list.
+  const { refresh: refreshWebsearch } = state
+  useEffect(() => {
+    if (panel === 'websearch') refreshWebsearch()
+  }, [panel, refreshWebsearch])
 
   // Schema-driven CSS: every numeric sidebar setting lands here. The cast is
   // needed because React's CSSProperties type does not enumerate custom

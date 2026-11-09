@@ -35,10 +35,35 @@ export interface WebsearchStatus {
   providers: ProviderStatus[]
 }
 
+/** Thrown by the readers below when the plugin itself is switched off. */
+export class PluginDisabledError extends Error {
+  constructor() {
+    super('aek-websearch is switched off in the plugin manager')
+    this.name = 'PluginDisabledError'
+  }
+}
+
+/**
+ * Turn an HTTP failure into the right error: a 503 `plugin-disabled` is a
+ * *state*, not a fault, and the panels render it as a banner instead of a red
+ * "HTTP 503" line.
+ * @param response - the failed response.
+ * @throws always: {@link PluginDisabledError} or a plain `Error`.
+ */
+async function throwFor(response: Response): Promise<never> {
+  if (response.status === 503) {
+    const body = await response.json().catch(() => undefined) as { code?: string } | undefined
+    if (body?.code === 'plugin-disabled') throw new PluginDisabledError()
+  }
+  throw new Error(`HTTP ${String(response.status)}`)
+}
+
 /** The live admin state exposed to panels. */
 export interface WebsearchState {
   /** Last successful snapshot; `undefined` until the first read completes. */
   status: WebsearchStatus | undefined
+  /** True when the plugin is disabled, so its feature routes answer 503. */
+  disabled: boolean
   /** Last error message, cleared on the next successful action. */
   error: string | undefined
   /** Provider kind currently being written, or `undefined`. */
@@ -56,7 +81,7 @@ export interface WebsearchState {
  */
 export async function fetchStatus(): Promise<WebsearchStatus> {
   const response = await fetch(WEBSEARCH_API, { headers: { accept: 'application/json' } })
-  if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+  if (!response.ok) await throwFor(response)
   return await response.json() as WebsearchStatus
 }
 
@@ -73,7 +98,7 @@ export async function writeEnabled(kind: string, enabled: boolean): Promise<Webs
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ kind, enabled }),
   })
-  if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+  if (!response.ok) await throwFor(response)
   return await response.json() as WebsearchStatus
 }
 
@@ -90,13 +115,23 @@ export function useWebsearchStatus(): WebsearchState {
   const [status, setStatus] = useState<WebsearchStatus | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
   const [pending, setPending] = useState<string | undefined>(undefined)
+  const [disabled, setDisabled] = useState(false)
   const [revision, setRevision] = useState(0)
 
   useEffect(() => {
     let cancelled = false
     void fetchStatus()
-      .then((snapshot) => { if (!cancelled) { setStatus(snapshot); setError(undefined) } })
-      .catch((cause: unknown) => { if (!cancelled) setError(messageOf(cause)) })
+      .then((snapshot) => { if (!cancelled) { setStatus(snapshot); setDisabled(false); setError(undefined) } })
+      .catch((cause: unknown) => {
+        if (cancelled) return
+        if (cause instanceof PluginDisabledError) {
+          setStatus(undefined)
+          setDisabled(true)
+          setError(undefined)
+          return
+        }
+        setError(messageOf(cause))
+      })
     return () => { cancelled = true }
   }, [revision])
 
@@ -106,10 +141,10 @@ export function useWebsearchStatus(): WebsearchState {
     setPending(kind)
     setError(undefined)
     void writeEnabled(kind, enabled)
-      .then(snapshot => setStatus(snapshot))
+      .then((snapshot) => { setStatus(snapshot); setDisabled(false) })
       .catch((cause: unknown) => setError(messageOf(cause)))
       .finally(() => setPending(undefined))
   }, [])
 
-  return { status, error, pending, refresh, toggle }
+  return { status, disabled, error, pending, refresh, toggle }
 }

@@ -50,7 +50,7 @@
 
 import type { Context } from '@cheezmil/coraek/types'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync } from 'node:child_process'
@@ -185,6 +185,58 @@ function aekHome(): string {
  */
 function providersFile(): string {
   return join(aekHome(), 'websearch', 'providers.yml')
+}
+
+/** Cached `plugins.json` parse, keyed by mtime so an edit is seen at once. */
+let pluginsCache: { mtimeMs: number; disabled: Set<string> } | undefined
+
+/**
+ * Is a plugin switched off in `<AEK_HOME>/plugins.json`?
+ *
+ * This is what makes the console's enable / disable switch REAL instead of a
+ * note in a file nobody reads: the search routes below are gated on it, so
+ * flipping `aek-websearch` off takes effect on the next request, in the running
+ * host, with no restart. The console routes (`/api/aek/console/*`, the plugin
+ * action endpoint, preferences, inventory) are deliberately NOT gated — a
+ * switch that removes the only way to switch it back is not a switch.
+ *
+ * A missing or malformed file means "nothing is disabled", never an error.
+ * @param id - plugin directory name, e.g. `aek-websearch`.
+ * @returns true when that plugin is persisted as disabled.
+ */
+export function pluginSwitchedOff(id: string): boolean {
+  const file = join(aekHome(), 'plugins.json')
+  try {
+    const { mtimeMs } = statSync(file)
+    if (pluginsCache?.mtimeMs !== mtimeMs) {
+      const parsed = JSON.parse(readFileSync(file, 'utf-8')) as { disabled?: unknown }
+      const list = Array.isArray(parsed.disabled) ? parsed.disabled : []
+      pluginsCache = {
+        mtimeMs,
+        disabled: new Set(list.filter((item): item is string => typeof item === 'string')),
+      }
+    }
+    return pluginsCache.disabled.has(id)
+  } catch {
+    pluginsCache = undefined
+    return false
+  }
+}
+
+/**
+ * Answer 503 when the owning plugin is switched off, so the client can show a
+ * "disabled" state instead of a generic HTTP error.
+ * @param res - the response to write to, when the plugin is off.
+ * @returns true when the caller must stop (a response was already sent).
+ */
+function blockedWhenOff(res: ServerResponse): boolean {
+  if (!pluginSwitchedOff('aek-websearch')) return false
+  sendJson(res, 503, {
+    code: 'plugin-disabled',
+    id: 'aek-websearch',
+    message: 'aek-websearch is switched off in the plugin manager',
+  })
+  return true
 }
 
 /**
@@ -665,6 +717,7 @@ export function apply(ctx: Context): void {
     kind: 'exact',
     path: WEBSEARCH_API_PATH,
     handler: async (req, res) => {
+      if (blockedWhenOff(res)) return
       if (req.method === 'GET') {
         sendJson(res, 200, readStatus())
         return
@@ -694,6 +747,7 @@ export function apply(ctx: Context): void {
     kind: 'exact',
     path: WEBSEARCH_KEYS_API_PATH,
     handler: async (req, res) => {
+      if (blockedWhenOff(res)) return
       const method = req.method ?? 'GET'
       const allowed = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
       if (!allowed.includes(method)) {
@@ -781,6 +835,7 @@ export function apply(ctx: Context): void {
     kind: 'exact',
     path: WEBSEARCH_KEYS_REVEAL_API_PATH,
     handler: async (req, res) => {
+      if (blockedWhenOff(res)) return
       const method = req.method ?? 'GET'
       if (method !== 'POST') {
         res.setHeader('allow', 'POST')
@@ -825,6 +880,7 @@ export function apply(ctx: Context): void {
     kind: 'exact',
     path: WEBSEARCH_KEYS_RECYCLE_API_PATH,
     handler: async (req, res) => {
+      if (blockedWhenOff(res)) return
       const method = req.method ?? 'GET'
       if (method !== 'POST' && method !== 'DELETE') {
         res.setHeader('allow', 'POST, DELETE')

@@ -75,6 +75,20 @@ const DRAWER_KEY = 'aek-home.drawerExpanded'
  */
 const ORDER_KEY = 'aek-home.order'
 
+/**
+ * A pending insertion: the new row order of one drawer plus the row the
+ * indicator line is drawn against (`before` for "above this row", `after` for
+ * "below the last row").
+ */
+interface DropMark {
+  /** Row order after the move. */
+  ids: PanelId[]
+  /** Row the insertion line sits above. */
+  before?: PanelId | undefined
+  /** Row the insertion line sits below (insert at the very end). */
+  after?: PanelId | undefined
+}
+
 /** Props for {@link Sidebar}. */
 export interface SidebarProps {
   /** Currently selected panel. */
@@ -145,9 +159,17 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot }: Sideba
    * fast drag can hit the same window).
    */
   const dragIdRef = useRef<PanelId | undefined>(undefined)
-  /** Same reason as {@link dragIdRef}: `drop` runs before the next render. */
-  const dropAtRef = useRef<{ id: PanelId; after: boolean } | undefined>(undefined)
-  const [dropAt, setDropAt] = useState<{ id: PanelId; after: boolean } | undefined>(undefined)
+  /**
+   * The pending insertion, expressed as "the row this line sits above". It is
+   * resolved from GEOMETRY on the whole rail (`navRef`), not from per-row
+   * `drop` handlers: rows are separated by `--aek-sidebar-gap`, so a pointer
+   * released in the 4px gutter — or on a drawer heading, or on the empty tail
+   * of a short list — used to land on no row at all and the drag was silently
+   * discarded. That is exactly the "拖了但没保存" the user reported.
+   */
+  const dropAtRef = useRef<DropMark | undefined>(undefined)
+  const [dropMark, setDropMark] = useState<DropMark | undefined>(undefined)
+  const navRef = useRef<HTMLElement>(null)
   const localeWrap = useRef<HTMLDivElement>(null)
   const enterTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -265,67 +287,111 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot }: Sideba
   const handleDragStart = (event: ReactDragEvent<HTMLLIElement>, id: PanelId): void => {
     dragIdRef.current = id
     setDragId(id)
-    setDropAt(undefined)
+    setDropMark(undefined)
     event.dataTransfer.effectAllowed = 'move'
     // Some Chromium builds refuse to start a drag without payload data.
     event.dataTransfer.setData('text/plain', id)
   }
 
   /**
-   * Pick the insertion side from the pointer position: the upper half of a row
-   * drops before it, the lower half after it.
-   * @param event - the drag event.
-   * @param id - the row under the pointer.
+   * Resolve the drop into the row order of the DRAGGED row's own drawer.
+   *
+   * The rail is grouped (pinned / plugins / other) and each group renders its
+   * rows sorted by the global order, so an insertion is only meaningful inside
+   * one group. Cross-group drops are clamped to that group's first/last slot
+   * instead of being thrown away — the user dragged, so something must move.
+   *
+   * @param clientY - pointer height in viewport coordinates.
+   * @param movingId - the row being dragged.
+   * @returns the resulting group order plus the row the indicator belongs to.
    */
-  const handleDragOver = (event: ReactDragEvent<HTMLLIElement>, id: PanelId): void => {
-    const moving = dragIdRef.current
-    if (moving === undefined || moving === id) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    const rect = event.currentTarget.getBoundingClientRect()
-    const after = event.clientY > rect.top + rect.height / 2
-    dropAtRef.current = { id, after }
-    setDropAt(current => (current?.id === id && current.after === after ? current : { id, after }))
+  const resolveDrop = (clientY: number, movingId: PanelId): DropMark | undefined => {
+    const nav = navRef.current
+    if (nav === null) return undefined
+    const source = [...nav.querySelectorAll<HTMLLIElement>('li[data-panel]')]
+      .find(item => item.dataset.panel === movingId)
+    const list = source?.parentElement
+    if (list === null || list === undefined) return undefined
+    const rows = [...list.children] as HTMLLIElement[]
+    if (rows.length === 0) return undefined
+    const order = rows.map(row => row.dataset.panel as PanelId)
+    // Index of the row whose upper half holds the pointer; `rows.length` means
+    // "below every row", which is a valid drop too.
+    let index = rows.length
+    for (const [at, row] of rows.entries()) {
+      const rect = row.getBoundingClientRect()
+      if (clientY < rect.top + rect.height / 2) { index = at; break }
+    }
+    const removedBefore = order.indexOf(movingId) < index ? 1 : 0
+    const next = order.filter(id => id !== movingId)
+    const at = Math.max(0, Math.min(next.length, index - removedBefore))
+    next.splice(at, 0, movingId)
+    const before = at < next.length ? next[at] : undefined
+    const after = at >= next.length ? next[next.length - 1] : undefined
+    return { ids: next, before, after }
   }
 
   /**
-   * Commit one move. The list is the GLOBAL order, so the row also keeps its
-   * position when it is later pinned or unpinned into another drawer.
-   * @param event - the drop event.
-   * @param id - the row that was dropped on.
+   * Track the pointer across the WHOLE rail. Listening on the rail (instead of
+   * on every row) is what makes the gutters, the drawer headings and the empty
+   * space under a short list valid drop targets.
+   * @param event - the drag event.
    */
-  const handleDrop = (event: ReactDragEvent<HTMLLIElement>, id: PanelId): void => {
+  const handleRailDragOver = (event: ReactDragEvent<HTMLElement>): void => {
+    const moving = dragIdRef.current
+    if (moving === undefined) return
     event.preventDefault()
-    const moving = dragIdRef.current ?? dragId
-    const after = dropAtRef.current?.after === true
+    event.dataTransfer.dropEffect = 'move'
+    const resolved = resolveDrop(event.clientY, moving)
+    if (resolved === undefined) return
+    dropAtRef.current = resolved
+    setDropMark(current => (current?.before === resolved.before && current?.after === resolved.after
+      ? current
+      : resolved))
+  }
+
+  /**
+   * Commit the pending move. The group order is written back into the GLOBAL
+   * order by slot, so rows of the other drawer keep their positions and a row
+   * also keeps its slot when it is later pinned / unpinned.
+   * @param event - the drop event.
+   */
+  const handleRailDrop = (event: ReactDragEvent<HTMLElement>): void => {
+    event.preventDefault()
+    const moving = dragIdRef.current
+    const resolved = dropAtRef.current ?? (moving === undefined ? undefined : resolveDrop(event.clientY, moving))
     dragIdRef.current = undefined
     dropAtRef.current = undefined
     setDragId(undefined)
-    setDropAt(undefined)
-    if (moving === undefined || moving === id) return
-    const next = orderIds.filter(item => item !== moving)
-    const target = next.indexOf(id)
-    const insertAt = target < 0 ? next.length : (after ? target + 1 : target)
-    next.splice(insertAt, 0, moving)
+    setDropMark(undefined)
+    if (moving === undefined || resolved === undefined) return
+    const next = [...orderIds]
+    const slots = orderIds
+      .map((id, at) => (resolved.ids.includes(id) ? at : -1))
+      .filter(at => at >= 0)
+    for (const [offset, slot] of slots.entries()) {
+      const id = resolved.ids[offset]
+      if (id !== undefined) next[slot] = id
+    }
+    if (next.join(',') === orderIds.join(',')) return
     set(ORDER_KEY, next.join(','))
   }
 
   /** @param entry - one row. @param pinnedNow - whether it is pinned. @returns the row. */
   const renderRow = (entry: NavEntry, pinnedNow: boolean): ReactNode => {
-    const dropping = dropAt?.id === entry.id && dragId !== undefined && dragId !== entry.id
     return (
       <li
         key={entry.id}
+        data-panel={entry.id}
         className={cx(
           css.navRow,
           dragId === entry.id && css.navRowDragging,
-          dropping && (dropAt?.after === true ? css.navRowDropAfter : css.navRowDropBefore),
+          dropMark?.before === entry.id && dragId !== undefined && css.navRowDropBefore,
+          dropMark?.after === entry.id && dragId !== undefined && css.navRowDropAfter,
         )}
         draggable
         onDragStart={event => handleDragStart(event, entry.id)}
-        onDragOver={event => handleDragOver(event, entry.id)}
-        onDrop={event => handleDrop(event, entry.id)}
-        onDragEnd={() => { dragIdRef.current = undefined; dropAtRef.current = undefined; setDragId(undefined); setDropAt(undefined) }}
+        onDragEnd={() => { dragIdRef.current = undefined; dropAtRef.current = undefined; setDragId(undefined); setDropMark(undefined) }}
       >
         <button
           type="button"
@@ -397,7 +463,13 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot }: Sideba
         </button>
       </div>
 
-      <nav className={css.sidebarBody} aria-label={t('nav.searchAria')}>
+      <nav
+        className={css.sidebarBody}
+        aria-label={t('nav.searchAria')}
+        ref={navRef}
+        onDragOver={handleRailDragOver}
+        onDrop={handleRailDrop}
+      >
         <div className={css.navSearchWrap}>
           <span className={css.navSearchIcon}><Icon name="search" size={16} /></span>
           <input

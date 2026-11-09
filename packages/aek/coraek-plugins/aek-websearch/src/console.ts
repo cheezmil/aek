@@ -76,8 +76,8 @@ export interface PluginEntry {
    * either break the UI or kill the API serving this very response.
    */
   locked: boolean
-  /** Why it is locked: `root` (console UI) or `api` (this management API). */
-  lockReason: '' | 'root' | 'api'
+  /** Why it is locked: `root` means "this plugin IS the console UI". */
+  lockReason: '' | 'root'
 }
 
 /** One slot's reachable endpoints. */
@@ -215,12 +215,19 @@ function capabilitiesOf(manifest: Record<string, unknown>, id: string): { backen
  * Plugins that can never be switched off, with the reason.
  *
  * `aek-home` IS the console: switching it off leaves the window with no UI at
- * all. `aek-websearch` serves `/api/aek/console/facts` and this very switch
- * endpoint, so switching it off would delete the control that turned it off.
+ * all, so it is the ONLY structural plugin.
+ *
+ * `aek-websearch` used to be locked here as well, on the grounds that it serves
+ * `/api/aek/console/facts` and this very switch endpoint. That conflated two
+ * different faces of the package: the console routes are served by the
+ * `aek-websearch-admin` entry, while the *search feature* is a separate face.
+ * Disabling the plugin must switch off the feature — and it does, immediately:
+ * `admin.ts` gates `/api/aek/websearch*` on `plugins.json` (503
+ * `plugin-disabled`) and leaves every console route alive, so the switch can
+ * always turn it back on. A lock there was a wrong answer to a real concern.
  */
-const LOCKED_PLUGINS: Record<string, '' | 'root' | 'api'> = {
+const LOCKED_PLUGINS: Record<string, '' | 'root'> = {
   'aek-home': 'root',
-  'aek-websearch': 'api',
 }
 
 /** @returns the persisted disabled plugin ids (`<AEK_HOME>/plugins.json`). */

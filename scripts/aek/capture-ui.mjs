@@ -15,6 +15,8 @@
  *   node scripts/aek/capture-ui.mjs                        # list targets
  *   node scripts/aek/capture-ui.mjs --yes                  # expanded + collapsed
  *   node scripts/aek/capture-ui.mjs --yes --panel 设置     # open a panel first
+ *   node scripts/aek/capture-ui.mjs --yes --no-collapse    # only the current state
+ *   node scripts/aek/capture-ui.mjs --yes --motion         # emulate a motion-ok viewer
  *   node scripts/aek/capture-ui.mjs --yes --scroll-top     # top of the panel
  *   node scripts/aek/capture-ui.mjs --yes --scroll-bottom
  *   node scripts/aek/capture-ui.mjs --yes --out <dir>
@@ -55,6 +57,14 @@ const scroll = argv.includes('--scroll-bottom')
 // The console keeps its scroll position between captures, so a shot of the TOP
 // of a panel needs an explicit reset; `--scroll-top` is that reset.
 const scrollTop = argv.includes('--scroll-top')
+// `--no-collapse` keeps whatever rail state the window is in: the default
+// sequence assumes an expanded rail, so with a persisted collapsed pref the
+// two shots came out swapped.
+const noCollapse = argv.includes('--no-collapse')
+// This machine has macOS "Reduce motion" switched on, so `prefers-reduced-motion`
+// collapses every transition to 0.01ms and animations cannot be observed (or
+// screenshotted mid-flight). `--motion` emulates a normal-motion viewer.
+const forceMotion = argv.includes('--motion')
 // `--eval <expr>` prints one expression's value and exits without writing a
 // PNG. Handy for checking layout facts (row order, computed styles) instead of
 // eyeballing a screenshot.
@@ -143,11 +153,10 @@ let cdp = new Cdp(page.webSocketDebuggerUrl)
 await cdp.open()
 await cdp.send('Page.enable')
 
-if (EVAL !== undefined) {
-  const result = await cdp.send('Runtime.evaluate', { expression: EVAL, returnByValue: true, awaitPromise: true })
-  process.stdout.write(`${JSON.stringify(result.result?.value ?? null, null, 2)}\n`)
-  cdp.close()
-  process.exit(0)
+if (forceMotion) {
+  await cdp.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
+  })
 }
 
 // The shell may still be painting right after a restart; wait for the React
@@ -176,6 +185,16 @@ if (PANEL !== undefined) {
   process.stdout.write(`[shot] panel ${PANEL} → ${String(result.result?.value)}\n`)
 }
 
+// `--eval` runs AFTER the panel click: measuring the panel the user asked for
+// was impossible while this block sat above the click (it always read whatever
+// panel happened to be open).
+if (EVAL !== undefined) {
+  const result = await cdp.send('Runtime.evaluate', { expression: EVAL, returnByValue: true, awaitPromise: true })
+  process.stdout.write(`${JSON.stringify(result.result?.value ?? null, null, 2)}\n`)
+  cdp.close()
+  process.exit(0)
+}
+
 if (scrollTop) {
   await cdp.send('Runtime.evaluate', {
     expression: "document.querySelectorAll('main, .content, [class*=content]').forEach(node => { node.scrollTop = 0 }); window.scrollTo(0, 0)",
@@ -186,7 +205,19 @@ if (scroll) {
 }
 
 const suffix = `${PANEL === undefined ? '' : `-${PANEL}`}${scroll ? '-bottom' : ''}${scrollTop ? '-top' : ''}`
-await shot(cdp, join(OUT, `console-expanded${suffix}.png`))
+// With `--no-collapse` the rail may already be collapsed, so do not lie about
+// it in the filename.
+const railState = await cdp.send('Runtime.evaluate', {
+  expression: "document.querySelector('aside')?.className.includes('sidebarCompact') ? 'collapsed' : 'expanded'",
+  returnByValue: true,
+})
+const stateName = noCollapse ? `console-${String(railState.result?.value ?? 'state')}` : 'console-expanded'
+await shot(cdp, join(OUT, `${stateName}${suffix}.png`))
+
+if (noCollapse) {
+  cdp.close()
+  process.exit(0)
+}
 
 // Collapse the sidebar via the brand button, capture, then restore the lock.
 const clickBrand = `(() => {
@@ -196,6 +227,32 @@ const clickBrand = `(() => {
   return 'clicked'
 })()`
 const before = await cdp.send('Runtime.evaluate', { expression: clickBrand, returnByValue: true })
+// Wait for the rail to finish narrowing: without this the shot catches the
+// 260ms transition mid-flight and every metric in the PNG is a lie.
+await cdp.send('Runtime.evaluate', {
+  expression: `new Promise(resolve => {
+    const start = performance.now()
+    let last = -1
+    let same = 0
+    let moved = false
+    const tick = () => {
+      const aside = document.querySelector('aside')
+      const width = aside === null ? -1 : Math.round(aside.getBoundingClientRect().width)
+      // The click is handled by React, so the first frames still show the OLD
+      // width; a plain "stable for 3 frames" test would resolve immediately and
+      // the "collapsed" PNG would be a picture of the expanded rail.
+      if (width !== initialWidth) moved = true
+      same = width === last ? same + 1 : 0
+      last = width
+      if (moved && (same >= 3 || performance.now() - start > 1200)) resolve(width)
+      else if (!moved && performance.now() - start > 1200) resolve(width)
+      else requestAnimationFrame(tick)
+    }
+    const initialWidth = Math.round(document.querySelector('aside')?.getBoundingClientRect().width ?? -1)
+    tick()
+  })`,
+  awaitPromise: true,
+})
 process.stdout.write(`[shot] collapse → ${String(before.result?.value)}\n`)
 await shot(cdp, join(OUT, 'console-collapsed.png'))
 const after = await cdp.send('Runtime.evaluate', { expression: clickBrand, returnByValue: true })

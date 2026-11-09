@@ -120,7 +120,10 @@ body {
   border-right: 1px solid var(--aek-border);
   transition:
     flex-basis var(--aek-sidebar-duration) var(--aek-ease-out),
-    width var(--aek-sidebar-duration) var(--aek-ease-out);
+    width var(--aek-sidebar-duration) var(--aek-ease-out),
+    /* The rail-metrics padding (a SETTINGS value) drops to 0 on collapse; it
+       has to travel with the width or every row jumps sideways at t=0. */
+    padding var(--aek-sidebar-duration) var(--aek-ease-out);
   overflow: hidden;
   z-index: 2;
 }
@@ -336,14 +339,20 @@ body {
 
 /* Keep `justify-content` unchanged (it cannot be transitioned): animated
    padding slides the 34px logo / 20px nav icons into the centered position
-   of the narrow rail instead of making them jump horizontally. */
+   of the narrow rail instead of making them jump horizontally.
+   The padding is EXACTLY the rail slack around the 34px mark, so `space-between`
+   with a single child lands it dead centre. It used to be a fixed 18px, which
+   only looked right while a stray 18px was cancelled out by the header's own
+   shrink-wrapped width — see the `.sidebar.sidebarCompact` note on padding. */
 .sidebarCompact .sidebarHeader {
-  padding: 0 18px;
+  padding-left: calc((var(--aek-sidebar-compact) - 34px) / 2);
+  padding-right: calc((var(--aek-sidebar-compact) - 34px) / 2);
 }
 
 .sidebarCompact .navItem {
   gap: 0;
-  padding: 0 17px;
+  /* Nothing to inset for: the row itself is centred by `justify-content`. */
+  padding: 0;
 }
 
 .sidebarCompact .sidebarBody {
@@ -378,11 +387,41 @@ body {
 .sidebarCompact .drawerGroup {
   margin-top: var(--aek-space-2);
   padding-top: var(--aek-space-2);
-  border-top: 1px solid var(--aek-border);
+  /* NOT `border-top`: a border spans the element, and the element's width is
+     the animating rail width, so for the whole 260ms the line swept from full
+     width down to ~27px (and, drawn at fractional x, blurred into 2px for a
+     frame). That is the user's "突然变粗变长，一瞬间就变正常". The rule is the
+     fixed 24px pseudo-element below instead. */
+  border-top: 0;
 }
-.sidebarCompact .drawerGroup:first-of-type { border-top: 0; padding-top: 0; }
+.sidebarCompact .drawerGroup::before {
+  /* Fades in only after the rail has stopped narrowing; the delay lives in the
+     collapsed rule so leaving the state hides the rule immediately. Every group
+     gets one — including the first, which separates the search field from the
+     list (the old `:first-of-type` override never matched anything: the search
+     wrapper is the first `div` in the nav, so no drawer group is a first-of-
+     type and the rule was dead code from day one). */
+  opacity: 1;
+  transition-delay: 200ms;
+}
+
 .sidebarCompact .navItem { justify-content: center; }
-.sidebarCompact .navSearchInput { padding: 0; border: 0; }
+/* The search box is a 36px-tall field, but a 72px rail only has room for the
+   magnifier: centre the icon and let the input take the row back on focus. */
+.sidebarCompact .navSearchWrap { justify-content: center; padding: 0; }
+.sidebarCompact .navSearchInput {
+  flex: 0 1 0;
+  width: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+}
+.sidebarCompact .navSearchWrap:focus-within { justify-content: flex-start; padding: 0 var(--aek-space-2); }
+.sidebarCompact .navSearchWrap:focus-within .navSearchInput {
+  flex: 1 1 auto;
+  width: auto;
+  opacity: 1;
+}
 
 /* ── Main column ─────────────────────────────────────────────────────── */
 
@@ -707,6 +746,29 @@ body {
   font-size: 13px;
 }
 
+/* One transient result line after a plugin action. The static "here is how the
+   switch works" paragraph that used to live above the roster is gone: the user
+   does not want prose explaining the mechanism on the page (2026-11-09). */
+.noticeLine {
+  margin: 0 0 var(--aek-space-3);
+  color: var(--aek-text-secondary);
+  font-size: 12px;
+}
+
+/* A plain statement, not a failure: the plugin is switched off on purpose. */
+.noticeBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--aek-space-2);
+  margin-bottom: var(--aek-space-4);
+  padding: var(--aek-space-3) var(--aek-space-4);
+  border: 1px solid var(--aek-accent-border);
+  border-radius: var(--aek-radius-sm);
+  background: var(--aek-accent-soft);
+  color: var(--aek-accent-ink);
+  font-size: 13px;
+}
+
 .errorBanner {
   display: flex;
   align-items: center;
@@ -823,6 +885,7 @@ body {
 .featureText {
   margin-top: 2px;
   font-size: 12px;
+  line-height: 1.55;
   color: var(--aek-text-muted);
 }
 
@@ -885,7 +948,12 @@ body {
   .app *::before,
   .app *::after {
     transition-duration: 0.01ms !important;
+    /* Delays are part of the choreography (the rail rule waits for the width
+       animation), so they have to collapse too or the rule shows up 260ms late
+       with no animation to justify the wait. */
+    transition-delay: 0s !important;
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
   }
 }
 
@@ -1558,6 +1626,17 @@ body {
   padding-right: var(--aek-sidebar-pad-x);
 }
 
+/* The metrics padding is a 248px-rail value: 2×14px out of a 72px rail left
+   the header's content box 7px wide, so the 34px logo shrank the brand button
+   to 7px and overflowed it 13px to the right — the logo sat clearly off-centre
+   (measured: centre 49 vs rail centre 36). Each compact row centres itself, so
+   the rail needs no horizontal padding at all. Two classes to beat the rule
+   above, which is declared later in the file than `.sidebarCompact`. */
+.sidebar.sidebarCompact {
+  padding-left: 0;
+  padding-right: 0;
+}
+
 .sidebarHeader { padding-top: var(--aek-sidebar-pad-y); padding-bottom: var(--aek-sidebar-pad-y); }
 .navList, .drawerGroup ul, .localeMenu, .tagList, .bulletList, .settingList,
 .pluginList, .packageList, .entryList, .permList, .instanceList, .endpointList,
@@ -1578,7 +1657,28 @@ body {
 .navLabel { font-size: inherit; }
 
 /* Drawer groups + pin affordance (one per option) */
-.drawerGroup { margin-top: var(--aek-space-3); }
+.drawerGroup { position: relative; margin-top: var(--aek-space-3); }
+/* The collapsed rail marks each drawer group with a short centred rule. It is
+   present in BOTH states (transparent while expanded) so revealing it is a real
+   CSS transition; a pseudo-element that only exists under `.sidebarCompact`
+   starts life already at its end value and never animates — which is why the
+   first attempt needed an animation-with-delay hack. 24px wide and centred on
+   the group: the group's centre is the rail's centre for every animating rail
+   width (both edges move symmetrically), so the rule never slides. */
+.drawerGroup::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  margin-left: -12px;
+  width: 24px;
+  height: 1px;
+  border-radius: 1px;
+  background: var(--aek-border-strong);
+  opacity: 0;
+  transition: opacity 140ms var(--aek-ease);
+  pointer-events: none;
+}
 .drawerHead {
   display: flex;
   align-items: center;
@@ -1922,28 +2022,51 @@ body {
 
 /* Plugin / skill / prompt / permission rosters */
 .pluginList, .packageList, .entryList, .permList { display: flex; flex-direction: column; gap: var(--aek-space-2); }
+/* `.hint` only carries a TOP margin, so a roster placed right below it started
+   on the exact pixel the hint's last line ended — the "间距不对" the user called
+   out on the plugin page. Push the roster down by one step when a hint precedes
+   it (the optional notice line is also a `.hint`, so this covers both). */
+.hint + .pluginList,
+.hint + .packageList,
+.hint + .entryList,
+.hint + .permList { margin-top: var(--aek-space-3); }
 .pluginItem {
   padding: var(--aek-space-3);
   border: 1px solid var(--aek-border);
   border-radius: var(--aek-radius-sm);
   background: var(--aek-surface);
 }
-.pluginHead { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
-.pluginHead > div { flex: 1 1 auto; min-width: 0; }
+.pluginHead { display: flex; align-items: flex-start; gap: var(--aek-space-3); margin-bottom: 0; }
+/* The text column gets its OWN class. It used to be `.pluginHead > div`, which
+   also matched the action cluster (a `div` too) and — being a class + type
+   selector — beat `.pluginActions`' `flex: 0 0 auto`, so the grid was forced to
+   `flex: 1 1 auto` and its columns drifted with the description length. That is
+   why the switches sat at a different x on every row (2026-11-09). */
+.pluginText { flex: 1 1 auto; min-width: 0; padding-right: var(--aek-space-2); }
+.pluginItem > .tagList { margin-top: 10px; }
 /* The switch states the plugin's current condition; the restart icon is the
    only remaining separate action. NOTE: an old `.pluginActions` rule further
    down this file (`flex-wrap: wrap; margin-top: 10px`, from the text-button
    era) used to win over this one and pushed the restart icon onto a second
    line in rows with a long description. It is gone — keep only this rule. */
+/* Three FIXED columns: switch | lock slot | restart. The lock slot is always
+   present (empty when the plugin is not locked) so the switch lands on the same
+   x in every row — with the old `inline-flex` cluster the locked rows had one
+   extra child and the group slid ~150px left. */
 .pluginActions {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: 38px 16px 32px;
   align-items: center;
+  justify-items: center;
   gap: var(--aek-space-2);
   flex: 0 0 auto;
 }
 .pluginLockIcon {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   color: var(--aek-text-muted);
 }
 .pluginIconButton {

@@ -488,8 +488,7 @@ function PluginsPanel() {
     >
       <div className={css.cardBody}>
         <PanelSearch value={query} onChange={setQuery} placeholder={t('plugins.search')} count={facts.loading ? undefined : plugins.length} />
-        <p className={css.hint}>{t('plugins.action.note')}</p>
-        {notice !== undefined ? <p className={css.hint}>{notice}</p> : null}
+        {notice !== undefined ? <p className={css.noticeLine}>{notice}</p> : null}
         {facts.error !== undefined
           ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{tf('about.error', { message: facts.error })}</span></div>
           : null}
@@ -501,29 +500,28 @@ function PluginsPanel() {
             <li key={plugin.id} className={css.pluginItem}>
               <div className={css.pluginHead}>
                 <span className={css.featureIcon}><Icon name="layers" size={18} /></span>
-                <div>
+                <div className={css.pluginText}>
                   <div className={css.featureTitle}>{displayName(plugin.packageName)}</div>
                   <div className={css.featureText}>{plugin.version} · {plugin.description}</div>
                 </div>
+                {/* Fixed three-column cluster (switch | lock slot | restart) so the
+                    switch sits at the SAME x on every row. The lock slot is always
+                    rendered: with an inline-flex cluster the locked rows carried one
+                    extra child and the whole group slid left, which is exactly the
+                    "排版错乱" the user saw on 2026-11-09. */}
                 <div className={css.pluginActions}>
                   <ToggleSwitch
                     checked={plugin.enabled}
                     locked={plugin.locked}
                     onChange={next => toggle(plugin.id, next)}
-                    label={plugin.locked
-                      ? t(plugin.lockReason === 'root' ? 'plugins.switch.locked.root' : 'plugins.switch.locked.api')
-                      : (plugin.enabled ? t('plugins.switch.on') : t('plugins.switch.off'))}
+                    label={plugin.locked ? t('plugins.switch.locked.root') : (plugin.enabled ? t('plugins.switch.on') : t('plugins.switch.off'))}
                   />
-                  {plugin.locked
-                    ? (
-                      <span
-                        className={css.pluginLockIcon}
-                        title={t(plugin.lockReason === 'root' ? 'plugins.switch.locked.root' : 'plugins.switch.locked.api')}
-                      >
-                        <Icon name="lock" size={14} />
-                      </span>
-                    )
-                    : null}
+                  <span
+                    className={css.pluginLockIcon}
+                    title={plugin.locked ? t('plugins.switch.locked.root') : undefined}
+                  >
+                    {plugin.locked ? <Icon name="lock" size={14} /> : null}
+                  </span>
                   {PLUGIN_ACTIONS.map(action => (
                     <button
                       key={action.id}

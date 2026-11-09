@@ -56,8 +56,8 @@ interface Confirmation {
  */
 export function WebSearchPanel({ state }: WebSearchPanelProps) {
   const { t, tf } = useI18n()
-  const { status, error, pending, refresh, toggle } = state
-  const loading = status === undefined && error === undefined
+  const { status, disabled, error, pending, refresh, toggle } = state
+  const loading = status === undefined && error === undefined && !disabled
 
   const [query, setQuery] = useState('')
   const needle = query.trim().toLowerCase()
@@ -197,6 +197,15 @@ export function WebSearchPanel({ state }: WebSearchPanelProps) {
 
       <div className={css.cardBody}>
         <PanelSearch value={query} onChange={setQuery} placeholder={t('websearch.search')} count={providers.length} />
+
+        {disabled
+          ? (
+            <div className={css.noticeBanner}>
+              <Icon name="lock" size={16} />
+              <span>{t('websearch.disabled')}</span>
+            </div>
+          )
+          : null}
 
         {error !== undefined
           ? (

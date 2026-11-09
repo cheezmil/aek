@@ -55,7 +55,7 @@ export function SkillsPanel() {
             <li key={plugin.id} className={css.pluginItem}>
               <div className={css.pluginHead}>
                 <span className={css.featureIcon}><Icon name="book" size={18} /></span>
-                <div>
+                <div className={css.pluginText}>
                   <div className={css.featureTitle}>{displayName(plugin.packageName)}</div>
                   <div className={css.featureText}>{t('managers.version')} {plugin.version} · {plugin.description}</div>
                 </div>
