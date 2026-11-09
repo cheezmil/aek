@@ -12,9 +12,18 @@
  * collapsed-sidebar shot clicks the brand button, captures, then clicks back.
  *
  * Usage:
- *   node scripts/aek/capture-ui.mjs                     # list targets
- *   node scripts/aek/capture-ui.mjs --yes               # expanded + collapsed
+ *   node scripts/aek/capture-ui.mjs                        # list targets
+ *   node scripts/aek/capture-ui.mjs --yes                  # expanded + collapsed
+ *   node scripts/aek/capture-ui.mjs --yes --panel 设置     # open a panel first
+ *   node scripts/aek/capture-ui.mjs --yes --scroll-top     # top of the panel
+ *   node scripts/aek/capture-ui.mjs --yes --scroll-bottom
  *   node scripts/aek/capture-ui.mjs --yes --out <dir>
+ *   node scripts/aek/capture-ui.mjs --yes --eval "<expr>"  # print a value, no PNG
+ *
+ * There is deliberately NO `--reload`: `Page.reload` never answers once the
+ * renderer is torn down, and reconnecting a socket to the old target hangs as
+ * well. In dev the profile hot-reloads `@cheezmil/aek-home/lib` on rebuild; for
+ * a full page refresh restart the shell (`start-dev.mjs`).
  *
  * @module scripts/aek/capture-ui
  */
@@ -46,9 +55,6 @@ const scroll = argv.includes('--scroll-bottom')
 // The console keeps its scroll position between captures, so a shot of the TOP
 // of a panel needs an explicit reset; `--scroll-top` is that reset.
 const scrollTop = argv.includes('--scroll-top')
-// After rebuilding a client bundle the open window still runs the old JS, so a
-// fresh reload is needed before the shot means anything.
-const reload = argv.includes('--reload')
 // `--eval <expr>` prints one expression's value and exits without writing a
 // PNG. Handy for checking layout facts (row order, computed styles) instead of
 // eyeballing a screenshot.
@@ -112,7 +118,15 @@ async function shot(cdp, path) {
   process.stdout.write(`[shot] ${path}\n`)
 }
 
-const targets = await getJson('/json/list')
+let targets
+try {
+  targets = await getJson('/json/list')
+} catch {
+  // A packaged shell runs without `--remote-debugging-port`, so the port is
+  // simply closed. That is a normal state, not an error: say so and exit 0.
+  process.stdout.write(`SKIPPED  no CDP endpoint on ${String(CDP_PORT)} — only the dev shell opens it\n`)
+  process.exit(0)
+}
 const page = targets.find(item => item.type === 'page' && String(item.url).includes('1685'))
 if (page === undefined) {
   process.stdout.write('SKIPPED  no console page on CDP 1686 — is AEK.app running?\n')
@@ -134,19 +148,6 @@ if (EVAL !== undefined) {
   process.stdout.write(`${JSON.stringify(result.result?.value ?? null, null, 2)}\n`)
   cdp.close()
   process.exit(0)
-}
-
-if (reload) {
-  // `Page.reload` never answers once the renderer is torn down, so trigger the
-  // reload from the page and reconnect a FRESH socket afterwards.
-  await cdp.send('Runtime.evaluate', { expression: 'setTimeout(() => location.reload(), 0)' }).catch(() => {})
-  cdp.close()
-  await new Promise(resolve => setTimeout(resolve, 2500))
-  const targetsAfter = await getJson('/json/list')
-  const pageAfter = targetsAfter.find(item => item.type === 'page' && String(item.url).includes('1685')) ?? page
-  cdp = new Cdp(pageAfter.webSocketDebuggerUrl)
-  await cdp.open()
-  await cdp.send('Page.enable')
 }
 
 // The shell may still be painting right after a restart; wait for the React
