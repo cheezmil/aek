@@ -131,6 +131,14 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     labelKey: 'settings.drawerExpanded', hintKey: 'settings.drawerExpandedHint', default: true,
   },
   {
+    // Disabling a plugin takes its routes down immediately, so the switch asks
+    // for a second click by default. Users who disable plugins often can turn
+    // that off here instead of being stuck with a confirm step forever.
+    key: 'aek-home.confirmPluginDisable', kind: 'toggle', group: 'general',
+    labelKey: 'settings.confirmPluginDisable', hintKey: 'settings.confirmPluginDisableHint',
+    default: true,
+  },
+  {
     key: 'aek-home.keyRetentionDays', kind: 'range', group: 'general',
     labelKey: 'settings.keyRetentionDays', hintKey: 'settings.keyRetentionDaysHint',
     default: 7, min: 1, max: 90, step: 1, unit: 'd',

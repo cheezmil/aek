@@ -2069,6 +2069,30 @@ body {
   height: 16px;
   color: var(--aek-text-muted);
 }
+/* Inline "are you sure" strip under a plugin row. Disabling takes that
+   plugin's routes down immediately, so by default the switch only reveals this
+   and the destructive action waits for a second click (settings can drop the
+   confirmation step). */
+.pluginConfirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--aek-space-2);
+  margin-top: var(--aek-space-2);
+  padding: 8px 10px;
+  border: 1px solid var(--aek-danger-border);
+  border-radius: var(--aek-radius-sm);
+  background: var(--aek-danger-soft);
+}
+.pluginConfirmText {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--aek-text-secondary);
+}
+.pluginConfirmActions { display: flex; gap: var(--aek-space-2); margin-left: auto; }
+.pluginConfirmActions > button { height: 28px; padding: 0 12px; font-size: 12px; }
 .pluginIconButton {
   display: inline-flex;
   align-items: center;

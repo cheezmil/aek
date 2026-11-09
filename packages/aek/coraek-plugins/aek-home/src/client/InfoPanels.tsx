@@ -26,7 +26,7 @@ import { useSettings } from './preferences.tsx'
 import type { PrefValue } from './preferences.tsx'
 import { coerce, SETTINGS_SCHEMA } from './settings-schema.ts'
 import type { SettingField } from './settings-schema.ts'
-import { css } from './styles.ts'
+import { css, cx } from './styles.ts'
 import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner, ToggleSwitch } from './ui-kit.tsx'
 import type { InventoryState } from './useInventory.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
@@ -36,6 +36,8 @@ export type InfoPanelId = 'plugins' | 'settings' | 'about'
 
 /** Host routes. */
 const PLUGIN_ACTION_API = '/api/aek/plugins/action'
+/** Setting that decides whether disabling a plugin needs a second click. */
+const CONFIRM_DISABLE_KEY = 'aek-home.confirmPluginDisable'
 const ACCESS_API = '/api/aek/access'
 const PERMISSIONS_OPEN_API = '/api/aek/permissions/open'
 
@@ -428,9 +430,18 @@ const PLUGIN_ACTIONS: readonly PluginAction[] = [
 function PluginsPanel() {
   const { t, tf } = useI18n()
   const facts = useConsoleFacts()
+  const { prefs } = useSettings()
   const [query, setQuery] = useState('')
   const [notice, setNotice] = useState<string | undefined>(undefined)
   const [pending, setPending] = useState<string | undefined>(undefined)
+  /**
+   * The row whose switch was flipped towards "off" and is waiting for the
+   * second click. Disabling is destructive (the plugin's routes answer 503
+   * immediately), so the switch alone must not do it unless the user turned the
+   * confirmation off in settings.
+   */
+  const [confirming, setConfirming] = useState<string | undefined>(undefined)
+  const confirmDisable = prefs[CONFIRM_DISABLE_KEY] !== false
   const needle = query.trim().toLowerCase()
   const plugins = (facts.facts?.plugins ?? []).filter((plugin) => {
     if (needle.length === 0) return true
@@ -453,6 +464,24 @@ function PluginsPanel() {
         setPending(undefined)
         facts.refresh()
       })
+  }
+
+  /**
+   * The switch's entry point. Turning a plugin OFF is gated by the
+   * `aek-home.confirmPluginDisable` setting: instead of disabling right away it
+   * remembers the row and lets the inline confirmation do the actual work.
+   * Turning a plugin ON is never gated — that direction restores service.
+   * @param id - plugin directory name.
+   * @param next - the state the switch was moved to.
+   */
+  const requestToggle = (id: string, next: boolean): void => {
+    if (next || !confirmDisable) {
+      setConfirming(undefined)
+      toggle(id, next)
+      return
+    }
+    setNotice(undefined)
+    setConfirming(current => (current === id ? undefined : id))
   }
 
   /** @param id - plugin directory name. @param enabled - requested state. */
@@ -513,7 +542,7 @@ function PluginsPanel() {
                   <ToggleSwitch
                     checked={plugin.enabled}
                     locked={plugin.locked}
-                    onChange={next => toggle(plugin.id, next)}
+                    onChange={next => requestToggle(plugin.id, next)}
                     label={plugin.locked ? t('plugins.switch.locked.root') : (plugin.enabled ? t('plugins.switch.on') : t('plugins.switch.off'))}
                   />
                   <span
@@ -538,6 +567,25 @@ function PluginsPanel() {
                 </div>
               </div>
               <CapabilityTags caps={plugin.capabilities} />
+              {confirming === plugin.id
+                ? (
+                  <div className={css.pluginConfirm} role="alertdialog" aria-label={t('plugins.confirm.ok')}>
+                    <span className={css.pluginConfirmText}>{tf('plugins.confirm.text', { name: displayName(plugin.packageName) })}</span>
+                    <span className={css.pluginConfirmActions}>
+                      <button type="button" className={css.secondaryButton} onClick={() => setConfirming(undefined)}>
+                        {t('plugins.confirm.cancel')}
+                      </button>
+                      <button
+                        type="button"
+                        className={cx(css.primaryButton, css.dangerButton)}
+                        onClick={() => { setConfirming(undefined); toggle(plugin.id, false) }}
+                      >
+                        {t('plugins.confirm.ok')}
+                      </button>
+                    </span>
+                  </div>
+                )
+                : null}
             </li>
           ))}
         </ul>
