@@ -24,7 +24,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@cheezmil/coraek/types'
 import { resolveAekHome } from '@cheezmil/coraek/home'
-import { SLOT_NAMES, slotConfig, slotHome } from '@cheezmil/coraek/slots'
+import { SLOT_NAMES, slotConfig, slotHome, webUrl } from '@cheezmil/coraek/slots'
 import { ACCESS_API_PATH, accessGuard, accessView, writeAccess } from './access.ts'
 import type { AccessUpdate } from './access.ts'
 
@@ -300,7 +300,7 @@ function endpoints(): SlotEndpoint[] {
     return {
       slot,
       productName: cfg.productName,
-      url: `http://127.0.0.1:${cfg.webPort}`,
+      url: webUrl(slot),
       webPort: cfg.webPort,
       cdpPort: cfg.cdpPort,
       bundleId: cfg.bundleId,

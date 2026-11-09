@@ -58,6 +58,16 @@ export const SLOTS = {
     // agent-enhance-kit (1680-1689) and stay adjacent, so one slot owns one pair.
     webPort: 1685,
     cdpPort: 1686,
+    // Browser-facing host. A DIFFERENT PORT IS NOT ENOUGH: Chromium keys site
+    // zoom by host (port dropped), so `127.0.0.1:1685` and any other local app
+    // on `127.0.0.1:<port>` share one zoom level — zooming AEK also zoomed the
+    // DeepSeek Harness web UI (verified in Chrome's Preferences →
+    // partition.per_host_zoom_levels, which holds a single "127.0.0.1" entry).
+    // `*.localhost` is resolved to loopback by the OS and by Chromium itself
+    // (RFC 6761) and still counts as a trustworthy origin, so the console keeps
+    // working over plain http while owning its own zoom/storage key. The socket
+    // still binds 127.0.0.1 — only the URL the browser sees differs.
+    webHost: 'aek.localhost',
   },
   next: {
     slot: 'next',
@@ -71,6 +81,9 @@ export const SLOTS = {
     // whole table is contiguous: every slot owns one adjacent pair.
     webPort: 1687,
     cdpPort: 1688,
+    // Same rationale as the `aek` slot's webHost: a distinct host keeps the two
+    // slots — and any other local app — from sharing one Chromium zoom level.
+    webHost: 'aek-next.localhost',
   },
 }
 
@@ -108,6 +121,34 @@ export function resolveSlot(env = process.env) {
 export function slotConfig(slot) {
   if (!isSlot(slot)) throw new Error(`unknown AEK slot: ${String(slot)}`)
   return SLOTS[slot]
+}
+
+/**
+ * Browser-facing base URL of a slot's console.
+ *
+ * Always spell the console URL through this helper instead of building
+ * `http://127.0.0.1:<port>` by hand: the host, not the port, is what keeps
+ * Chromium from sharing one zoom level between every local web UI.
+ * @param {unknown} slot - slot name.
+ * @param {number} [port] - override the table's `webPort` (the launcher may
+ * remap a slot's port before the table is rebuilt).
+ * @returns {string} for example `http://aek.localhost:1685`.
+ */
+export function webUrl(slot, port) {
+  const cfg = slotConfig(slot)
+  return `http://${cfg.webHost}:${String(port ?? cfg.webPort)}`
+}
+
+/**
+ * Host the console socket actually binds to.
+ *
+ * The alias in {@link webUrl} is a browser-side name only; the listener stays
+ * on the loopback literal so the network stack, the loopback access checks in
+ * `aek-websearch` and every probe script keep working unchanged.
+ * @returns {string} the bind address.
+ */
+export function bindHost() {
+  return '127.0.0.1'
 }
 
 /**

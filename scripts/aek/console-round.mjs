@@ -110,6 +110,12 @@ const STEPS = [
     argv: [process.execPath, join('scripts', 'aek', 'verify-console-css.mjs')],
   },
   {
+    id: 'verify-console-host',
+    group: 'gates',
+    label: 'console served on its own host (Chromium zoom is keyed by host, not port)',
+    argv: [process.execPath, join('scripts', 'aek', 'verify-console-host.mjs')],
+  },
+  {
     id: 'verify-web-stack',
     group: 'gates',
     label: 'verify-web-stack',

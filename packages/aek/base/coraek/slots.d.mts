@@ -20,6 +20,15 @@ export interface AekSlot {
   readonly legacyDevAppNames: readonly string[]
   /** Web backend port for this slot. */
   readonly webPort: number
+  /**
+   * Browser-facing host for this slot's console, e.g. `aek.localhost`.
+   *
+   * Distinct from the bind address on purpose: Chromium keys site zoom by HOST
+   * (port excluded), so two local web UIs on `127.0.0.1` share one zoom level.
+   * `*.localhost` still resolves to loopback (RFC 6761) and is a trustworthy
+   * origin.
+   */
+  readonly webHost: string
   /** Remote-debugging (CDP) port for this slot. */
   readonly cdpPort: number
 }
@@ -36,6 +45,12 @@ export declare function resolveSlot(
 ): 'aek' | 'next'
 
 export declare function slotConfig(slot: unknown): AekSlot
+
+/** Browser-facing console URL of a slot, e.g. `http://aek.localhost:1685`. */
+export declare function webUrl(slot: unknown, port?: number): string
+
+/** Host the console socket binds; always the loopback literal. */
+export declare function bindHost(): string
 
 export declare function slotHome(
   slot: unknown,

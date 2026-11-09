@@ -15,6 +15,7 @@
  */
 import type { CSSProperties } from 'react'
 import { useEffect } from 'react'
+import { CanonicalHostRedirect, isLegacyLoopback } from './CanonicalHost.tsx'
 import { I18nProvider } from './i18n.tsx'
 import { InfoPanels } from './InfoPanels.tsx'
 import { PromptsPanel, SkillsPanel } from './ConsolePanels.tsx'
@@ -94,6 +95,11 @@ export function AekHome(_props: AekHomeProps) {
   return (
     <PrefProvider>
       <I18nProvider>
+        {/* A page opened on `127.0.0.1:<port>` hops to the slot's own host, so
+            Chromium does not key its zoom (and storage) together with every
+            other local web UI. Only mounted on the legacy origin, so the
+            canonical path pays no extra request. */}
+        {isLegacyLoopback(window.location.hostname) ? <CanonicalHostRedirect /> : null}
         <Console />
       </I18nProvider>
     </PrefProvider>

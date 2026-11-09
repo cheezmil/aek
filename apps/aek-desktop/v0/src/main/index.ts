@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolveAekHome } from '@cheezmil/coraek/home'
-import { isSlot, resolveSlot, slotConfig } from '@cheezmil/coraek/slots'
+import { bindHost, isSlot, resolveSlot, slotConfig } from '@cheezmil/coraek/slots'
 import { readSlotLock, writeSlotLock, clearSlotLock, isPidAlive } from '@cheezmil/coraek/slot-lock'
 
 const APP_ROOT = join(fileURLToPath(import.meta.url), '../..')
@@ -53,6 +53,31 @@ const SLOT_CFG = slotConfig(SLOT)
 // Ports come from the environment when the launcher started us (dev flow), then
 // from the slot baked into the packaged app, and finally from the slot table.
 const WEB_PORT = Number(process.env.AEK_WEB_PORT ?? packaged?.webPort ?? SLOT_CFG.webPort)
+
+// ── Which URL the window loads ────────────────────────────────────────────────
+// The console answers on the loopback literal, but the window loads the slot's
+// ALIAS host (`aek.localhost`). Chromium keeps site zoom per HOST with the port
+// dropped, so every `127.0.0.1:<port>` web UI in one profile shares a single
+// zoom level — zooming AEK also resized the DeepSeek Harness web UI (verified in
+// Chrome's `partition.per_host_zoom_levels`). A distinct name is the only thing
+// that separates them; a distinct port is not.
+//
+// `*.localhost` resolves to loopback in the OS resolver and inside Chromium
+// (RFC 6761) and still counts as a secure origin, so nothing else changes.
+// `AEK_WEB_HOST` is an escape hatch for diagnostics.
+const WEB_HOST = (process.env.AEK_WEB_HOST ?? '').trim() || SLOT_CFG.webHost
+
+/** What the browser/Dock-facing console URL looks like. */
+const CANONICAL_URL = `http://${WEB_HOST}:${String(WEB_PORT)}`
+/** The literal the socket actually binds; probes and fallbacks use this. */
+const LOOPBACK_URL = `http://${bindHost()}:${String(WEB_PORT)}`
+/**
+ * URL the window currently uses. Starts as the alias; a system whose resolver
+ * cannot answer `*.localhost` falls back to the literal so the app is never
+ * stranded on a blank page, and the backend watcher then keeps reloading the
+ * same one.
+ */
+let shellUrl = CANONICAL_URL
 const CDP_PORT = Number(process.env.AEK_CDP_PORT ?? packaged?.cdpPort ?? SLOT_CFG.cdpPort)
 // Title bar: keep the ORIGINAL native frame (R10) but WITHOUT any text in it
 // (2026-11-09 follow-up). `title: ''` plus blocking `page-title-updated` keeps
@@ -180,7 +205,7 @@ async function backendAlive(): Promise<boolean> {
     const controller = new AbortController()
     const timer = setTimeout(() => { controller.abort() }, 1500)
     try {
-      const response = await fetch(`http://127.0.0.1:${WEB_PORT}/`, {
+      const response = await fetch(`${LOOPBACK_URL}/`, {
         signal: controller.signal,
         headers: { accept: 'text/html' },
       })
@@ -226,7 +251,6 @@ function reconnectingPage(): string {
  * @returns a function that stops the watcher.
  */
 function watchBackend(win: BrowserWindow): () => void {
-  const webUrl = `http://127.0.0.1:${WEB_PORT}`
   let showingReconnect = false
   let stopped = false
   let timer: NodeJS.Timeout | undefined
@@ -240,7 +264,7 @@ function watchBackend(win: BrowserWindow): () => void {
   const showApp = (): void => {
     if (!showingReconnect) return
     showingReconnect = false
-    void win.loadURL(webUrl).catch(() => { /* the window may be gone */ })
+    void win.loadURL(shellUrl).catch(() => { /* the window may be gone */ })
   }
 
   const probe = async (): Promise<void> => {
@@ -395,7 +419,9 @@ function createWindow() {
     return { action: 'deny' }
   })
   win.webContents.on('will-navigate', (event, url) => {
-    if (url.startsWith(`http://127.0.0.1:${String(WEB_PORT)}`)) return
+    // Both names are this same console: the alias (what we load) and the
+    // loopback literal (scripts, old bookmarks, the fallback path).
+    if (url.startsWith(CANONICAL_URL) || url.startsWith(LOOPBACK_URL)) return
     event.preventDefault()
     if (/^https?:\/\//u.test(url)) void shell.openExternal(url)
   })
@@ -406,8 +432,16 @@ function createWindow() {
   }
   const stopWatching = watchBackend(win)
   win.on('closed', stopWatching)
-  const webUrl = `http://127.0.0.1:${WEB_PORT}`
-  win.loadURL(webUrl)
+  // A failed load is usually just "backend not up yet" and the watcher turns it
+  // into the reconnecting page. The one case the watcher cannot fix is a
+  // resolver that does not know `*.localhost`, so retry once on the literal and
+  // remember that choice for every later reload.
+  win.loadURL(shellUrl).catch(() => {
+    if (win.isDestroyed() || shellUrl === LOOPBACK_URL) return
+    shellUrl = LOOPBACK_URL
+    console.log(`[main] ${WEB_HOST} did not resolve, falling back to ${LOOPBACK_URL}`)
+    void win.loadURL(LOOPBACK_URL).catch(() => { /* the watcher retries */ })
+  })
 }
 
 app.whenReady().then(() => {

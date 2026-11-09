@@ -11,7 +11,7 @@ import { existsSync, renameSync, copyFileSync, mkdirSync, writeFileSync, rmSync,
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { resolveAekHome } from '../../packages/aek/base/coraek/home.mjs'
-import { SLOTS, slotConfig, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
+import { SLOTS, slotConfig, slotHome, webUrl } from '../../packages/aek/base/coraek/slots.mjs'
 import { readSlotLock, isPidAlive } from '../../packages/aek/base/coraek/slot-lock.mjs'
 
 // The slot table (identity, ports, data root) lives in @cheezmil/coraek/slots —
@@ -207,6 +207,19 @@ export function listenPids(port) {
  *   parent so it survives the caller exiting (used by the runtime arbiter).
  * @returns the spawned child process.
  */
+/**
+ * Console URL to show for a bound port.
+ *
+ * Ports are mapped back through the slot table; a remapped/unknown port falls
+ * back to the loopback literal so the message is never wrong.
+ * @param port - the port the web server bound.
+ * @returns a browser-openable URL string.
+ */
+export function webUrlForPort(port) {
+  const slot = Object.values(SLOTS).find(entry => entry.webPort === Number(port))
+  return slot === undefined ? `http://127.0.0.1:${port}` : webUrl(slot.slot, Number(port))
+}
+
 export function spawnWebServerWith(home, port, options = {}) {
   const env = {
     ...process.env,
@@ -218,7 +231,11 @@ export function spawnWebServerWith(home, port, options = {}) {
   delete env.NODE_OPTIONS
 
   const webCmd = `DSH_HOME=${home} ${tsxBin()} ${dshBin()} web --no-open --port ${port}`
-  console.error(`[start] web  → http://127.0.0.1:${port} (home ${home})`)
+  // Advertise the slot's alias host, not the loopback literal: Chromium keys
+  // site zoom by host (port ignored), so handing out `127.0.0.1:<port>` is what
+  // made AEK and the dsh web UI share one zoom level.
+  const advertised = webUrlForPort(port)
+  console.error(`[start] web  → ${advertised} (home ${home})`)
   const web = spawn('bash', ['-c', webCmd], {
     cwd: PROJECT_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'], detached: Boolean(options.detached),
   })
