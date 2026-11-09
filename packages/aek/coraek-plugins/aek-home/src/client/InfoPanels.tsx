@@ -9,8 +9,9 @@
  * - Access settings (new): LAN-only by default (loopback + RFC1918 A/B/C),
  *   custom IP / CIDR / host allowlist, and a public mode that FORCES a
  *   username + password before it can be enabled.
- * - 插件管理 actions are larger ICON buttons with `title` + `aria-label`
- *   tooltips, not a row of text buttons.
+ * - 插件管理 uses ONE switch per plugin for enable / disable (a check + cross
+ *   pair always left one button as a no-op) plus a restart icon button.
+ *   `aek-home` and `aek-websearch` are structural and render a locked switch.
  * - About marks `apps/web`, `apps/cli`, `apps/aek-desktop` as ENTRY POINTS.
  * - Every collection is an unordered `<ul>/<li>` (user rule). No progress
  *   bars: refresh states use `Spinner`.
@@ -18,7 +19,7 @@
  * @module @cheezmil/aek-home/src/client/InfoPanels
  */
 import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { useSettings } from './preferences.tsx'
@@ -26,7 +27,7 @@ import type { PrefValue } from './preferences.tsx'
 import { coerce, SETTINGS_SCHEMA } from './settings-schema.ts'
 import type { SettingField } from './settings-schema.ts'
 import { css } from './styles.ts'
-import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner } from './ui-kit.tsx'
+import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner, ToggleSwitch } from './ui-kit.tsx'
 import type { InventoryState } from './useInventory.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
 
@@ -81,15 +82,10 @@ function SettingControl({ field, value, onChange }: {
   if (field.kind === 'toggle') {
     return (
       <>
-        <label className={css.settingToggleRow}>
-          <input
-            type="checkbox"
-            className={css.settingToggle}
-            checked={value === true}
-            onChange={event => onChange(event.target.checked)}
-          />
+        <div className={css.settingToggleRow}>
           <span className={css.settingToggleLabel}>{label}</span>
-        </label>
+          <ToggleSwitch checked={value === true} onChange={onChange} label={label} />
+        </div>
         {hint}
       </>
     )
@@ -97,6 +93,11 @@ function SettingControl({ field, value, onChange }: {
   if (field.kind === 'range') {
     const numeric = typeof value === 'number' ? value : Number(value)
     const unit = field.unit ?? ''
+    const min = field.min ?? 0
+    const max = field.max ?? 100
+    // Track fill: the slider itself is styled from tokens, and the filled
+    // portion needs the real percentage, which CSS cannot compute.
+    const fill = max === min ? 0 : Math.min(100, Math.max(0, ((numeric - min) / (max - min)) * 100))
     return (
       <>
         <div className={css.settingRowHead}>
@@ -107,8 +108,9 @@ function SettingControl({ field, value, onChange }: {
           <input
             type="range"
             className={css.rangeInput}
-            min={field.min ?? 0}
-            max={field.max ?? 100}
+            style={{ '--aek-range-fill': `${String(fill)}%` } as CSSProperties}
+            min={min}
+            max={max}
             step={field.step ?? 1}
             value={numeric}
             aria-label={label}
@@ -117,14 +119,13 @@ function SettingControl({ field, value, onChange }: {
           <input
             type="number"
             className={css.numberBox}
-            min={field.min ?? 0}
-            max={field.max ?? 100}
+            min={min}
+            max={max}
             step={field.step ?? 1}
             value={numeric}
             aria-label={`${label} (${unit})`}
             onChange={event => onChange(coerce(field, event.target.value))}
           />
-          <span className={css.unitLabel}>{unit}</span>
         </div>
         {hint}
       </>
@@ -232,15 +233,10 @@ function AccessSection() {
       <p className={css.hint}>{t('access.defaultHint')}</p>
       <ul className={css.settingList}>
         <li className={css.settingRow}>
-          <label className={css.settingToggleRow}>
-            <input
-              type="checkbox"
-              className={css.settingToggle}
-              checked={publicMode}
-              onChange={event => setPublicMode(event.target.checked)}
-            />
+          <div className={css.settingToggleRow}>
             <span className={css.settingToggleLabel}>{t('access.publicMode')}</span>
-          </label>
+            <ToggleSwitch checked={publicMode} onChange={setPublicMode} label={t('access.publicMode')} />
+          </div>
           <p className={css.hint}>{t('access.publicModeHint')}</p>
         </li>
         <li className={css.settingRow}>
@@ -411,18 +407,21 @@ function SettingsPanel() {
   )
 }
 
-/** One plugin action: icon, i18n label and the host action id. */
+/**
+ * One plugin row action. Enable / disable is NOT in here: the user rejected
+ * the check / cross pair (2026-11-09) because two buttons always meant one of
+ * them was a no-op. A switch shows the state AND offers the single opposite
+ * action, so only `restart` stays an icon button.
+ */
 interface PluginAction {
-  id: 'restart' | 'enable' | 'disable'
-  icon: 'refresh' | 'check' | 'close'
+  id: 'restart'
+  icon: 'refresh'
   labelKey: string
 }
 
-/** The three actions, rendered as ICON buttons with hover tooltips. */
+/** The remaining icon action(s). */
 const PLUGIN_ACTIONS: readonly PluginAction[] = [
   { id: 'restart', icon: 'refresh', labelKey: 'plugins.action.restart' },
-  { id: 'enable', icon: 'check', labelKey: 'plugins.action.enable' },
-  { id: 'disable', icon: 'close', labelKey: 'plugins.action.disable' },
 ]
 
 /** @returns the plugin management page. */
@@ -447,10 +446,33 @@ function PluginsPanel() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id, action }),
     })
-      .then(async response => await response.json() as { status?: string; message?: string })
-      .then(data => setNotice(`${displayName(id)} · ${String(data.status ?? data.message ?? 'ok')}`))
+      .then(async response => await response.json() as { status?: string; message?: string; reason?: string })
+      .then(data => setNotice(`${displayName(id)} · ${String(data.status ?? data.message ?? data.reason ?? 'ok')}`))
       .catch((cause: unknown) => setNotice(cause instanceof Error ? cause.message : String(cause)))
-      .finally(() => setPending(undefined))
+      .finally(() => {
+        setPending(undefined)
+        facts.refresh()
+      })
+  }
+
+  /** @param id - plugin directory name. @param enabled - requested state. */
+  const toggle = (id: string, enabled: boolean): void => {
+    setPending(`${id}:toggle`)
+    setNotice(undefined)
+    void fetch(PLUGIN_ACTION_API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, action: enabled ? 'enable' : 'disable' }),
+    })
+      .then(async response => await response.json() as { status?: string; message?: string; reason?: string })
+      .then((data) => {
+        setNotice(`${displayName(id)} · ${String(data.status ?? data.message ?? data.reason ?? 'ok')}`)
+      })
+      .catch((cause: unknown) => setNotice(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => {
+        setPending(undefined)
+        facts.refresh()
+      })
   }
 
   return (
@@ -483,22 +505,39 @@ function PluginsPanel() {
                   <div className={css.featureTitle}>{displayName(plugin.packageName)}</div>
                   <div className={css.featureText}>{plugin.version} · {plugin.description}</div>
                 </div>
-                <ul className={css.pluginIconActions}>
-                  {PLUGIN_ACTIONS.map(action => (
-                    <li key={action.id}>
-                      <button
-                        type="button"
-                        className={css.pluginIconButton}
-                        disabled={pending !== undefined}
-                        onClick={() => act(plugin.id, action.id)}
-                        title={t(action.labelKey)}
-                        aria-label={`${t(action.labelKey)} · ${displayName(plugin.packageName)}`}
+                <div className={css.pluginActions}>
+                  <ToggleSwitch
+                    checked={plugin.enabled}
+                    locked={plugin.locked}
+                    onChange={next => toggle(plugin.id, next)}
+                    label={plugin.locked
+                      ? t(plugin.lockReason === 'root' ? 'plugins.switch.locked.root' : 'plugins.switch.locked.api')
+                      : (plugin.enabled ? t('plugins.switch.on') : t('plugins.switch.off'))}
+                  />
+                  {plugin.locked
+                    ? (
+                      <span
+                        className={css.pluginLockIcon}
+                        title={t(plugin.lockReason === 'root' ? 'plugins.switch.locked.root' : 'plugins.switch.locked.api')}
                       >
-                        <Icon name={action.icon} size={20} />
-                      </button>
-                    </li>
+                        <Icon name="lock" size={14} />
+                      </span>
+                    )
+                    : null}
+                  {PLUGIN_ACTIONS.map(action => (
+                    <button
+                      key={action.id}
+                      type="button"
+                      className={css.pluginIconButton}
+                      disabled={pending !== undefined}
+                      onClick={() => act(plugin.id, action.id)}
+                      title={t(action.labelKey)}
+                      aria-label={`${t(action.labelKey)} · ${displayName(plugin.packageName)}`}
+                    >
+                      <Icon name={action.icon} size={18} />
+                    </button>
                   ))}
-                </ul>
+                </div>
               </div>
               <CapabilityTags caps={plugin.capabilities} />
             </li>

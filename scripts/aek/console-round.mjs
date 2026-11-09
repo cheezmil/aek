@@ -104,6 +104,12 @@ const STEPS = [
     argv: [process.execPath, join('scripts', 'aek', 'verify-command-namespace.mjs')],
   },
   {
+    id: 'verify-console-css',
+    group: 'gates',
+    label: 'every css.* key has a rule in Home.module.css',
+    argv: [process.execPath, join('scripts', 'aek', 'verify-console-css.mjs')],
+  },
+  {
     id: 'verify-web-stack',
     group: 'gates',
     label: 'verify-web-stack',

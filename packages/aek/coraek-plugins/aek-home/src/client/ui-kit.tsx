@@ -168,6 +168,49 @@ export function PanelCard({ title, subtitle, actions, children }: PanelCardProps
   )
 }
 
+/** Props for {@link ToggleSwitch}. */
+export interface ToggleSwitchProps {
+  /** Current state. */
+  checked: boolean
+  /** Called with the NEXT state when the user flips it. */
+  onChange: (next: boolean) => void
+  /** Accessible label AND hover tooltip (i18n already resolved). */
+  label: string
+  /** Renders locked: the state is shown but cannot be changed. */
+  locked?: boolean
+  /** Extra class names. */
+  className?: string
+}
+
+/**
+ * A real on/off switch.
+ *
+ * The user rejected the old pair of check / cross icon buttons (2026-11-09):
+ * a switch states the CURRENT state and the single action in one control,
+ * instead of offering "enable" and "disable" as two parallel buttons where
+ * one of them is always a no-op. `role="switch"` keeps it keyboard reachable
+ * (Space / Enter) and correctly announced by screen readers.
+ *
+ * @param props - state, change handler, label and the `locked` variant.
+ * @returns the switch.
+ */
+export function ToggleSwitch({ checked, onChange, label, locked = false, className }: ToggleSwitchProps) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      title={label}
+      disabled={locked}
+      className={cx(css.toggleSwitch, checked && css.toggleOn, locked && css.toggleLocked, className)}
+      onClick={() => { if (!locked) onChange(!checked) }}
+    >
+      <span className={css.toggleThumb} aria-hidden="true" />
+    </button>
+  )
+}
+
 /** One capability tag value. */
 export interface Capabilities {
   backend: boolean

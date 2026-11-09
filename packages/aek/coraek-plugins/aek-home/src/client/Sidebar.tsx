@@ -16,7 +16,7 @@
  * @module @cheezmil/aek-home/src/client/Sidebar
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { DragEvent as ReactDragEvent, ReactNode } from 'react'
 import { BrandMark, Icon } from './Icons.tsx'
 import type { BrandVariant, IconName } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
@@ -68,6 +68,12 @@ const GITHUB_REPO_URL = 'https://github.com/cheezmil/agent-enhance-kit'
 const PINNED_KEY = 'aek-home.pinned'
 /** Host preference holding the default drawer expanded state. */
 const DRAWER_KEY = 'aek-home.drawerExpanded'
+/**
+ * Host preference holding the user's manual row order (comma-separated panel
+ * ids). Rows can be dragged inside their drawer; the order is global so a row
+ * keeps its slot when it is pinned / unpinned.
+ */
+const ORDER_KEY = 'aek-home.order'
 
 /** Props for {@link Sidebar}. */
 export interface SidebarProps {
@@ -131,6 +137,17 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot }: Sideba
   const [suppressPeek, setSuppressPeek] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [manualOpen, setManualOpen] = useState<Record<string, boolean>>({})
+  const [dragId, setDragId] = useState<PanelId | undefined>(undefined)
+  /**
+   * The dragged id ALSO lives in a ref: pointer events within one frame are
+   * handled by closures from the SAME render, so state alone leaves `dragId`
+   * stale in `dragover` / `drop` (observed with synthesised events, and a real
+   * fast drag can hit the same window).
+   */
+  const dragIdRef = useRef<PanelId | undefined>(undefined)
+  /** Same reason as {@link dragIdRef}: `drop` runs before the next render. */
+  const dropAtRef = useRef<{ id: PanelId; after: boolean } | undefined>(undefined)
+  const [dropAt, setDropAt] = useState<{ id: PanelId; after: boolean } | undefined>(undefined)
   const localeWrap = useRef<HTMLDivElement>(null)
   const enterTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -139,6 +156,22 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot }: Sideba
   const pinned = useMemo(() => (typeof prefs[PINNED_KEY] === 'string'
     ? String(prefs[PINNED_KEY]).split(',').filter(Boolean)
     : []), [prefs])
+  /**
+   * The complete row order. Stored ids that still exist come first in the
+   * user's sequence; anything added since the order was saved is appended in
+   * the default order, so a new panel never disappears.
+   */
+  const orderIds = useMemo<PanelId[]>(() => {
+    const stored = typeof prefs[ORDER_KEY] === 'string' ? String(prefs[ORDER_KEY]).split(',').filter(Boolean) : []
+    const all = NAV.map(entry => entry.id)
+    const ordered = stored.filter((id): id is PanelId => (all as string[]).includes(id))
+    for (const id of all) if (!ordered.includes(id)) ordered.push(id)
+    return ordered
+  }, [prefs])
+  /** @param id - panel. @returns its position in the manual order. */
+  const rankOf = (id: PanelId): number => orderIds.indexOf(id)
+  /** Sort helper: applies the manual order to any row slice. */
+  const byOrder = (a: NavEntry, b: NavEntry): number => rankOf(a.id) - rankOf(b.id)
   const logoVisible = prefs['aek-home.logoVisible'] !== false
   const brandText = typeof prefs['aek-home.brandText'] === 'string' ? String(prefs['aek-home.brandText']) : 'AEK'
   const logoVariant = logoVariantOf(prefs['aek-home.logoVariant'])
@@ -163,6 +196,8 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot }: Sideba
       clearTimeout(leaveTimer.current)
       leaveTimer.current = undefined
     }
+    // Dragging a row must never expand / collapse the rail under the pointer.
+    if (dragId !== undefined) return
     if (suppressPeek || enterTimer.current !== undefined) return
     enterTimer.current = setTimeout(() => {
       enterTimer.current = undefined
@@ -226,37 +261,101 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot }: Sideba
     setManualOpen(current => ({ ...current, [group]: !isOpen(group) }))
   }
 
-  /** @param entry - one row. @param pinnedNow - whether it is pinned. @returns the row. */
-  const renderRow = (entry: NavEntry, pinnedNow: boolean): ReactNode => (
-    <li key={entry.id} className={css.navRow}>
-      <button
-        type="button"
-        className={cx(css.navItem, active === entry.id && css.navItemActive)}
-        aria-current={active === entry.id ? 'page' : undefined}
-        title={t(entry.labelKey)}
-        onClick={() => onSelect(entry.id)}
-      >
-        <span className={css.navIcon}><Icon name={entry.icon} size={18} /></span>
-        <span className={css.navLabel}>{t(entry.labelKey)}</span>
-        {entry.id === 'websearch' && providerCount !== undefined
-          ? <span className={css.navBadge}>{String(providerCount)}</span>
-          : null}
-      </button>
-      <button
-        type="button"
-        className={cx(css.pinButton, pinnedNow && css.pinActive)}
-        onClick={() => togglePin(entry.id)}
-        title={pinnedNow ? t('nav.unpin') : t('nav.pin')}
-        aria-label={pinnedNow ? t('nav.unpin') : t('nav.pin')}
-      >
-        <Icon name="pin" size={13} />
-      </button>
-    </li>
-  )
+  /** @param id - the row being dragged. */
+  const handleDragStart = (event: ReactDragEvent<HTMLLIElement>, id: PanelId): void => {
+    dragIdRef.current = id
+    setDragId(id)
+    setDropAt(undefined)
+    event.dataTransfer.effectAllowed = 'move'
+    // Some Chromium builds refuse to start a drag without payload data.
+    event.dataTransfer.setData('text/plain', id)
+  }
 
-  const pinnedRows = filtered.filter(entry => pinned.includes(entry.id))
-  const pluginRows = filtered.filter(entry => entry.group === 'plugins' && !pinned.includes(entry.id))
-  const otherRows = filtered.filter(entry => entry.group === 'other' && !pinned.includes(entry.id))
+  /**
+   * Pick the insertion side from the pointer position: the upper half of a row
+   * drops before it, the lower half after it.
+   * @param event - the drag event.
+   * @param id - the row under the pointer.
+   */
+  const handleDragOver = (event: ReactDragEvent<HTMLLIElement>, id: PanelId): void => {
+    const moving = dragIdRef.current
+    if (moving === undefined || moving === id) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    const rect = event.currentTarget.getBoundingClientRect()
+    const after = event.clientY > rect.top + rect.height / 2
+    dropAtRef.current = { id, after }
+    setDropAt(current => (current?.id === id && current.after === after ? current : { id, after }))
+  }
+
+  /**
+   * Commit one move. The list is the GLOBAL order, so the row also keeps its
+   * position when it is later pinned or unpinned into another drawer.
+   * @param event - the drop event.
+   * @param id - the row that was dropped on.
+   */
+  const handleDrop = (event: ReactDragEvent<HTMLLIElement>, id: PanelId): void => {
+    event.preventDefault()
+    const moving = dragIdRef.current ?? dragId
+    const after = dropAtRef.current?.after === true
+    dragIdRef.current = undefined
+    dropAtRef.current = undefined
+    setDragId(undefined)
+    setDropAt(undefined)
+    if (moving === undefined || moving === id) return
+    const next = orderIds.filter(item => item !== moving)
+    const target = next.indexOf(id)
+    const insertAt = target < 0 ? next.length : (after ? target + 1 : target)
+    next.splice(insertAt, 0, moving)
+    set(ORDER_KEY, next.join(','))
+  }
+
+  /** @param entry - one row. @param pinnedNow - whether it is pinned. @returns the row. */
+  const renderRow = (entry: NavEntry, pinnedNow: boolean): ReactNode => {
+    const dropping = dropAt?.id === entry.id && dragId !== undefined && dragId !== entry.id
+    return (
+      <li
+        key={entry.id}
+        className={cx(
+          css.navRow,
+          dragId === entry.id && css.navRowDragging,
+          dropping && (dropAt?.after === true ? css.navRowDropAfter : css.navRowDropBefore),
+        )}
+        draggable
+        onDragStart={event => handleDragStart(event, entry.id)}
+        onDragOver={event => handleDragOver(event, entry.id)}
+        onDrop={event => handleDrop(event, entry.id)}
+        onDragEnd={() => { dragIdRef.current = undefined; dropAtRef.current = undefined; setDragId(undefined); setDropAt(undefined) }}
+      >
+        <button
+          type="button"
+          className={cx(css.navItem, active === entry.id && css.navItemActive)}
+          aria-current={active === entry.id ? 'page' : undefined}
+          title={`${t(entry.labelKey)} · ${t('nav.dragHint')}`}
+          onClick={() => onSelect(entry.id)}
+        >
+          <span className={css.navIcon}><Icon name={entry.icon} size={18} /></span>
+          <span className={css.navLabel}>{t(entry.labelKey)}</span>
+          {entry.id === 'websearch' && providerCount !== undefined
+            ? <span className={css.navBadge}>{String(providerCount)}</span>
+            : null}
+        </button>
+        <button
+          type="button"
+          className={cx(css.pinButton, pinnedNow && css.pinActive)}
+          onClick={() => togglePin(entry.id)}
+          title={pinnedNow ? t('nav.unpin') : t('nav.pin')}
+          aria-label={pinnedNow ? t('nav.unpin') : t('nav.pin')}
+        >
+          <Icon name="pin" size={13} />
+        </button>
+      </li>
+    )
+  }
+
+  const pinnedRows = filtered.filter(entry => pinned.includes(entry.id)).sort(byOrder)
+  const pluginRows = filtered.filter(entry => entry.group === 'plugins' && !pinned.includes(entry.id)).sort(byOrder)
+  const otherRows = filtered.filter(entry => entry.group === 'other' && !pinned.includes(entry.id)).sort(byOrder)
 
   /** @param next - locale chosen in the footer menu. */
   const chooseLocale = (next: Locale): void => {

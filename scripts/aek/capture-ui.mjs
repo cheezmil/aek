@@ -43,6 +43,17 @@ const yes = argv.includes('--yes')
 const panelIndex = argv.indexOf('--panel')
 const PANEL = panelIndex >= 0 ? argv[panelIndex + 1] : undefined
 const scroll = argv.includes('--scroll-bottom')
+// The console keeps its scroll position between captures, so a shot of the TOP
+// of a panel needs an explicit reset; `--scroll-top` is that reset.
+const scrollTop = argv.includes('--scroll-top')
+// After rebuilding a client bundle the open window still runs the old JS, so a
+// fresh reload is needed before the shot means anything.
+const reload = argv.includes('--reload')
+// `--eval <expr>` prints one expression's value and exits without writing a
+// PNG. Handy for checking layout facts (row order, computed styles) instead of
+// eyeballing a screenshot.
+const evalIndex = argv.indexOf('--eval')
+const EVAL = evalIndex >= 0 ? argv[evalIndex + 1] : undefined
 const outIndex = argv.indexOf('--out')
 const OUT = outIndex >= 0 && argv[outIndex + 1] !== undefined
   ? argv[outIndex + 1]
@@ -114,9 +125,29 @@ if (!yes) {
 }
 
 mkdirSync(OUT, { recursive: true })
-const cdp = new Cdp(page.webSocketDebuggerUrl)
+let cdp = new Cdp(page.webSocketDebuggerUrl)
 await cdp.open()
 await cdp.send('Page.enable')
+
+if (EVAL !== undefined) {
+  const result = await cdp.send('Runtime.evaluate', { expression: EVAL, returnByValue: true, awaitPromise: true })
+  process.stdout.write(`${JSON.stringify(result.result?.value ?? null, null, 2)}\n`)
+  cdp.close()
+  process.exit(0)
+}
+
+if (reload) {
+  // `Page.reload` never answers once the renderer is torn down, so trigger the
+  // reload from the page and reconnect a FRESH socket afterwards.
+  await cdp.send('Runtime.evaluate', { expression: 'setTimeout(() => location.reload(), 0)' }).catch(() => {})
+  cdp.close()
+  await new Promise(resolve => setTimeout(resolve, 2500))
+  const targetsAfter = await getJson('/json/list')
+  const pageAfter = targetsAfter.find(item => item.type === 'page' && String(item.url).includes('1685')) ?? page
+  cdp = new Cdp(pageAfter.webSocketDebuggerUrl)
+  await cdp.open()
+  await cdp.send('Page.enable')
+}
 
 // The shell may still be painting right after a restart; wait for the React
 // root before clicking anything, otherwise the panel click lands on nothing.
@@ -144,11 +175,16 @@ if (PANEL !== undefined) {
   process.stdout.write(`[shot] panel ${PANEL} → ${String(result.result?.value)}\n`)
 }
 
+if (scrollTop) {
+  await cdp.send('Runtime.evaluate', {
+    expression: "document.querySelectorAll('main, .content, [class*=content]').forEach(node => { node.scrollTop = 0 }); window.scrollTo(0, 0)",
+  })
+}
 if (scroll) {
   await cdp.send('Runtime.evaluate', { expression: 'window.scrollTo(0, document.body.scrollHeight)' })
 }
 
-const suffix = `${PANEL === undefined ? '' : `-${PANEL}`}${scroll ? '-bottom' : ''}`
+const suffix = `${PANEL === undefined ? '' : `-${PANEL}`}${scroll ? '-bottom' : ''}${scrollTop ? '-top' : ''}`
 await shot(cdp, join(OUT, `console-expanded${suffix}.png`))
 
 // Collapse the sidebar via the brand button, capture, then restore the lock.

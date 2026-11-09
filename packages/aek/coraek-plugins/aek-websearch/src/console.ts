@@ -68,6 +68,16 @@ export interface PluginEntry {
   description: string
   /** Capability tags derived from the manifest, never guessed. */
   capabilities: { backend: boolean; cli: boolean; mcp: boolean }
+  /** Persisted enable flag (`<AEK_HOME>/plugins.json`), true by default. */
+  enabled: boolean
+  /**
+   * True when the plugin cannot be switched off. Two plugins are structural,
+   * and the console must say so instead of offering a control that would
+   * either break the UI or kill the API serving this very response.
+   */
+  locked: boolean
+  /** Why it is locked: `root` (console UI) or `api` (this management API). */
+  lockReason: '' | 'root' | 'api'
 }
 
 /** One slot's reachable endpoints. */
@@ -202,19 +212,73 @@ function capabilitiesOf(manifest: Record<string, unknown>, id: string): { backen
 }
 
 /**
+ * Plugins that can never be switched off, with the reason.
+ *
+ * `aek-home` IS the console: switching it off leaves the window with no UI at
+ * all. `aek-websearch` serves `/api/aek/console/facts` and this very switch
+ * endpoint, so switching it off would delete the control that turned it off.
+ */
+const LOCKED_PLUGINS: Record<string, '' | 'root' | 'api'> = {
+  'aek-home': 'root',
+  'aek-websearch': 'api',
+}
+
+/** @returns the persisted disabled plugin ids (`<AEK_HOME>/plugins.json`). */
+function pluginsStateFile(): string {
+  return join(resolveAekHome(), 'plugins.json')
+}
+
+/**
+ * Read the disabled plugin ids. A missing or malformed file means "every
+ * plugin enabled" — never a reason to fail the whole facts request.
+ * @returns the id set.
+ */
+function readDisabledPlugins(): Set<string> {
+  try {
+    const parsed = JSON.parse(readFileSync(pluginsStateFile(), 'utf-8')) as unknown
+    const list = (parsed as { disabled?: unknown }).disabled
+    return new Set(Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+/**
+ * Persist the disabled plugin ids.
+ * @param ids - the full set to store.
+ * @returns true when the write succeeded.
+ */
+function writeDisabledPlugins(ids: ReadonlySet<string>): boolean {
+  const file = pluginsStateFile()
+  try {
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, `${JSON.stringify({ disabled: [...ids].sort() }, null, 2)}\n`, 'utf-8')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
  * Scan EVERY directory in the coraek plugins folder (not a hardcoded roster).
  * @returns the plugin roster.
  */
 function scanPlugins(): PluginEntry[] {
   const base = join(ROOT, 'packages', 'aek', 'coraek-plugins')
+  const disabled = readDisabledPlugins()
   return childDirectories(base).map((id) => {
     const manifest = readManifest(join(base, id, 'package.json'))
+    const lockReason = LOCKED_PLUGINS[id] ?? ''
     return {
       id,
       packageName: typeof manifest.name === 'string' ? manifest.name : id,
       version: typeof manifest.version === 'string' ? manifest.version : '',
       description: typeof manifest.description === 'string' ? manifest.description : '',
       capabilities: capabilitiesOf(manifest, id),
+      // A locked plugin is always reported as enabled: its flag is meaningless.
+      enabled: lockReason !== '' || !disabled.has(id),
+      locked: lockReason !== '',
+      lockReason,
     }
   })
 }
@@ -456,15 +520,34 @@ export function registerConsole(ctx: Context): void {
       } catch { /* bad-request below */ }
       const id = body.id
       const action = body.action
-      const known = scanPlugins().some(plugin => plugin.id === id)
+      const known = typeof id === 'string' ? scanPlugins().find(plugin => plugin.id === id) : undefined
       const allowed = action === 'restart' || action === 'enable' || action === 'disable'
-      if (typeof id !== 'string' || !known || !allowed) {
-        sendJson(res, 400, { code: 'bad-request', message: 'a known plugin id and a valid action are required' })
+      if (typeof id !== 'string' || known === undefined || !allowed) {
+        sendJson(res, 400, { code: 'bad-request', message: 'a known plugin id and a valid action is required' })
         return
       }
-      // The cordis runtime owns plugin lifecycles; a web host cannot safely
-      // hot-swap another plugin in-process. Actions are QUEUED as durable facts
-      // for the launcher, so the click is never a fake no-op.
+      if (action !== 'restart' && known.locked) {
+        // Structural plugins: say WHY instead of silently ignoring the click.
+        sendJson(res, 409, { code: 'locked', reason: known.lockReason, id })
+        return
+      }
+      if (action === 'enable' || action === 'disable') {
+        // The switch is one control, so the two actions share one state file.
+        // Persisting it here keeps the UI honest across windows and machines;
+        // applying it is the launcher's job at the next host start (a web host
+        // never hot-swaps another plugin in-process).
+        const disabled = readDisabledPlugins()
+        if (action === 'disable') disabled.add(id)
+        else disabled.delete(id)
+        if (!writeDisabledPlugins(disabled)) {
+          sendJson(res, 500, { code: 'state-failed', message: 'could not persist the plugin state' })
+          return
+        }
+        sendJson(res, 200, { ok: true, id, enabled: action === 'enable', status: 'saved' })
+        return
+      }
+      // `restart` stays a queued intent: the cordis runtime owns plugin
+      // lifecycles, so restarting is deferred to the launcher.
       const file = join(resolveAekHome(), 'plugin-actions.json')
       let queue: unknown[] = []
       try {

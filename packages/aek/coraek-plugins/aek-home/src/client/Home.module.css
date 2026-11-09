@@ -471,7 +471,7 @@ body {
 }
 
 .sectionTitle {
-  margin: var(--aek-space-8) 0 var(--aek-space-4);
+  margin: var(--aek-space-6) 0 var(--aek-space-3);
   font-size: 15px;
   font-weight: 650;
 }
@@ -479,6 +479,41 @@ body {
 .sectionTitle:first-child {
   margin-top: 0;
 }
+
+/* A heading followed by a hint line needs no extra gap: the hint belongs to
+   the heading, not to a control. */
+.sectionTitle + .hint {
+  margin-top: 0;
+}
+
+/* Access / permission sections end in a button row. `.accessActions` had NO
+   rule at all, so the save / open-pane buttons were glued to the hint above
+   and to the card edge (spacing complaint, 2026-11-09). */
+.accessActions {
+  display: flex;
+  align-items: center;
+  gap: var(--aek-space-3);
+  margin-top: var(--aek-space-4);
+}
+
+/* `.accessTextarea` was referenced from JSX with no rule at all, so the
+   allowlist box fell back to the browser default: ~140px wide, unstyled. */
+.accessTextarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 88px;
+  padding: 8px 10px;
+  border: 1px solid var(--aek-border-strong);
+  border-radius: 6px;
+  background: var(--aek-surface);
+  color: var(--aek-text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.7;
+  resize: vertical;
+}
+.accessTextarea:focus-visible { outline: 2px solid var(--aek-accent); outline-offset: 1px; }
 
 /* ── Hero ────────────────────────────────────────────────────────────── */
 
@@ -687,8 +722,11 @@ body {
 
 .hint {
   margin: var(--aek-space-4) 0 0;
-  color: var(--aek-text-muted);
+  /* Muted grey at 12px was hard to read on the white card; secondary keeps the
+     hint subordinate without making it look disabled. */
+  color: var(--aek-text-secondary);
   font-size: 12px;
+  line-height: 1.6;
 }
 
 .code {
@@ -1078,16 +1116,47 @@ body {
   display: flex;
   align-items: center;
   gap: var(--aek-space-3);
-  padding: var(--aek-space-2) 0;
+  min-height: 24px;
   cursor: pointer;
 }
 
-.settingToggle {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--aek-accent);
+/* ── Switch ──────────────────────────────────────────────────────────────
+   One control that shows the CURRENT state and the action at once. Replaces
+   the old check / cross icon pair, where one button was always a no-op. */
+.toggleSwitch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--aek-border-strong);
+  border-radius: 999px;
+  background: var(--aek-surface-subtle);
   cursor: pointer;
+  transition: background 180ms var(--aek-ease), border-color 180ms var(--aek-ease), opacity 180ms var(--aek-ease);
 }
+.toggleThumb {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: var(--aek-text-muted);
+  transition: transform 180ms var(--aek-ease), background 180ms var(--aek-ease);
+}
+.toggleOn { background: var(--aek-accent); border-color: var(--aek-accent); }
+.toggleOn .toggleThumb { transform: translateX(16px); background: var(--aek-accent-contrast, #fff); }
+.toggleSwitch:hover:not(:disabled) { border-color: var(--aek-accent); }
+.toggleOn:hover:not(:disabled) { background: var(--aek-accent-hover, var(--aek-accent)); }
+.toggleSwitch:focus-visible { outline: 2px solid var(--aek-accent); outline-offset: 2px; }
+.toggleLocked {
+  /* Locked does NOT mean "off": the plugin is on and stays on, so the accent
+     stays at full strength. Only the cursor and the lock icon say "no". */
+  cursor: not-allowed;
+}
+.toggleLocked .toggleThumb { background: var(--aek-accent-contrast, #fff); }
 
 .settingToggleLabel {
   color: var(--aek-text);
@@ -1528,8 +1597,26 @@ body {
 .drawerHead:hover { color: var(--aek-text-secondary); }
 .drawerCaret { transition: transform 180ms var(--aek-ease); }
 .drawerLabel { flex: 1 1 auto; text-align: left; }
-.navRow { display: flex; align-items: center; gap: 2px; }
+.navRow { display: flex; align-items: center; gap: 2px; position: relative; }
 .navRow > .navItem { flex: 1 1 auto; min-width: 0; }
+/* Rows are press-and-drag reorderable (2026-11-09). The affordance is the
+   cursor plus the insertion line; no grip handle eats label width. */
+.navRow[draggable='true'] { cursor: grab; }
+.navRow[draggable='true']:active { cursor: grabbing; }
+.navRowDragging { opacity: 0.45; }
+.navRowDropBefore::before,
+.navRowDropAfter::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--aek-accent);
+  box-shadow: 0 0 0 3px var(--aek-accent-soft);
+}
+.navRowDropBefore::before { top: -3px; }
+.navRowDropAfter::after { bottom: -3px; }
 .pinButton {
   display: inline-flex;
   align-items: center;
@@ -1711,7 +1798,7 @@ body {
 .heroNote {
   display: flex;
   gap: 10px;
-  margin-top: var(--aek-space-6);
+  margin-top: var(--aek-space-4);
   padding: var(--aek-space-4);
   border: 1px solid var(--aek-accent-border);
   border-radius: var(--aek-radius);
@@ -1733,14 +1820,93 @@ body {
 .pathLabel { flex: 0 0 auto; font-size: 12px; color: var(--aek-text-muted); }
 .pathValue { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--aek-text-secondary); }
 
-/* Generated settings controls: slider + number box stay in sync */
-.settingGroup { margin-bottom: var(--aek-space-5); }
-.settingList { display: flex; flex-direction: column; gap: var(--aek-space-3); }
-.settingRow { padding: 10px 12px; border: 1px solid var(--aek-border); border-radius: var(--aek-radius-sm); background: var(--aek-surface); }
-.settingRowHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.settingValue { font-size: 12px; color: var(--aek-accent-ink); font-variant-numeric: tabular-nums; }
-.rangeRow { display: flex; align-items: center; gap: 10px; }
-.rangeInput { flex: 1 1 auto; min-width: 0; accent-color: var(--aek-accent); }
+/* ── Settings page rhythm ────────────────────────────────────────────────
+   2026-11-09: the page had three different vertical gaps (group headings,
+   row padding and hint margins did not agree) which read as randomly spaced.
+   One scale now: 24px between groups, 8px between rows, 12px inside a row. */
+.settingGroup { margin: 0 0 var(--aek-space-6); }
+.settingGroup:last-child { margin-bottom: 0; }
+.settingList { display: flex; flex-direction: column; gap: var(--aek-space-2); margin: 0; padding: 0; list-style: none; }
+.settingRow {
+  padding: var(--aek-space-3) var(--aek-space-4);
+  border: 1px solid var(--aek-border);
+  border-radius: var(--aek-radius-sm);
+  background: var(--aek-surface);
+}
+.settingRowHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--aek-space-3);
+  min-height: 20px;
+  margin-bottom: var(--aek-space-3);
+}
+.settingValue {
+  flex: 0 0 auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--aek-accent-soft);
+  color: var(--aek-accent-ink);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* The hint belongs to its row, so it must not push the next row away. */
+.settingRow .hint { margin: var(--aek-space-2) 0 0; line-height: 1.6; }
+/* Toggles are a single line: label left, switch right, no wasted block. */
+.settingRow .settingToggleRow { justify-content: space-between; gap: var(--aek-space-4); }
+
+/* Generated settings controls: slider + number box stay in sync.
+   The slider is drawn from tokens instead of `accent-color`: the browser
+   default (a grey track with a system-blue thumb that the accent only tints)
+   looked nothing like the rest of the console. `--aek-range-fill` is written
+   by the component so the filled part of the track follows the value. */
+.rangeRow { display: flex; align-items: center; gap: var(--aek-space-3); }
+.rangeInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+.rangeInput::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      to right,
+      var(--aek-accent) 0,
+      var(--aek-accent) var(--aek-range-fill, 0%),
+      /* The unfilled part must still be visible on a white card: the previous
+         #e7e7ee vanished and the control read as a bare orange line. */
+      var(--aek-range-rest, #d9d9e2) var(--aek-range-fill, 0%),
+      var(--aek-range-rest, #d9d9e2) 100%
+    );
+}
+.rangeInput::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border: 2px solid var(--aek-accent);
+  border-radius: 50%;
+  background: var(--aek-surface);
+  box-shadow: var(--aek-shadow-sm);
+  -webkit-appearance: none;
+  appearance: none;
+  transition: transform 140ms var(--aek-ease), box-shadow 140ms var(--aek-ease);
+}
+.rangeInput:hover::-webkit-slider-thumb { transform: scale(1.1); }
+.rangeInput:active::-webkit-slider-thumb { transform: scale(1.04); box-shadow: 0 0 0 4px var(--aek-accent-soft); }
+.rangeInput:focus-visible { outline: none; }
+.rangeInput:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px var(--aek-accent-soft);
+  transform: scale(1.1);
+}
+.rangeInput:disabled { cursor: default; opacity: 0.5; }
 .numberBox, .textInput, .selectInput {
   padding: 5px 8px;
   border: 1px solid var(--aek-border-strong);
@@ -1764,17 +1930,21 @@ body {
 }
 .pluginHead { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
 .pluginHead > div { flex: 1 1 auto; min-width: 0; }
-/* Plugin actions are ICONS, not a row of text buttons (user request):
-   one horizontal cluster pinned to the right of the header, each 32px with a
-   native tooltip describing the action. */
-.pluginIconActions {
+/* The switch states the plugin's current condition; the restart icon is the
+   only remaining separate action. NOTE: an old `.pluginActions` rule further
+   down this file (`flex-wrap: wrap; margin-top: 10px`, from the text-button
+   era) used to win over this one and pushed the restart icon onto a second
+   line in rows with a long description. It is gone — keep only this rule. */
+.pluginActions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--aek-space-2);
   flex: 0 0 auto;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+}
+.pluginLockIcon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--aek-text-muted);
 }
 .pluginIconButton {
   display: inline-flex;
@@ -1796,8 +1966,6 @@ body {
   background: var(--aek-accent-soft);
 }
 .pluginIconButton:disabled { opacity: 0.45; cursor: default; }
-.pluginActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.pluginActions > .primaryButton { padding: 4px 12px; font-size: 12px; }
 .packageRow, .entryRow, .permRow {
   display: flex;
   align-items: center;

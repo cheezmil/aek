@@ -27,6 +27,12 @@ export interface PluginEntry {
   version: string
   description: string
   capabilities: { backend: boolean; cli: boolean; mcp: boolean }
+  /** Persisted enable flag from `<AEK_HOME>/plugins.json`. */
+  enabled: boolean
+  /** TRUE when the plugin cannot be switched off (console root / this API). */
+  locked: boolean
+  /** Why it is locked; empty for normal plugins. */
+  lockReason: '' | 'root' | 'api'
 }
 
 /** One slot's endpoints. */
