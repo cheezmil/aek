@@ -32,6 +32,8 @@ import {
   rollbackDirForSlot,
   installApp,
   installDevBundle,
+  pruneDistApp,
+  distAppPath,
   killSlot,
   APP_ROOT,
 } from './shared-logic.mjs'
@@ -46,6 +48,8 @@ const USAGE = `AEK Desktop CLI
   desktop.mjs rollback <slot> --yes  restore the stashed previous prod bundle
   desktop.mjs rollback <slot> --dev --yes
                                      restore the stashed previous dev bundle
+  desktop.mjs prune <slot|all> --yes delete leftover dist .app copies so
+                                     Spotlight shows one app per slot
 
 Slots: ${Object.keys(SLOTS).join(' | ')}`
 
@@ -193,6 +197,32 @@ if (command === 'status') {
   const report = status()
   printStatus(report)
   console.log(JSON.stringify(report, null, 2))
+  process.exit(0)
+}
+
+if (command === 'prune') {
+  // Spotlight shows every `<product>.app` on the volume, so a leftover dist
+  // copy appears as a duplicate app next to the installed one. Print the plan
+  // first; only `--yes` actually deletes (default stays read-only).
+  const target = args[0] ?? 'all'
+  const names = target === 'all' ? Object.keys(SLOTS) : [target]
+  if (target !== 'all' && !SLOTS[target]) {
+    console.error(`unknown slot: ${target} — expected one of ${Object.keys(SLOTS).join(', ')}, or "all"`)
+    process.exit(2)
+  }
+  const leftover = names.map(name => ({ name, path: distAppPath(name) })).filter(e => existsSync(e.path))
+  if (leftover.length === 0) {
+    console.log('[prune] no leftover dist .app copies — nothing to do')
+    process.exit(0)
+  }
+  for (const entry of leftover) console.log(`[prune] would delete ${entry.name}: ${entry.path}`)
+  if (!confirmed) {
+    console.error('[prune] pass --yes to delete these build artifacts')
+    process.exit(2)
+  }
+  for (const entry of leftover) {
+    if (pruneDistApp(entry.name)) console.log(`[prune] deleted ${entry.name}: ${entry.path}`)
+  }
   process.exit(0)
 }
 

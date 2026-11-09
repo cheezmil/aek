@@ -1082,19 +1082,56 @@ export function fingerprintPath(slot) {
 }
 
 /**
+ * The packaged (dist) bundle for a slot.
+ * @param {string} slot - 'aek' | 'next'.
+ * @returns {string} path of `dist/<slot>/mac-arm64/<product>.app`.
+ */
+export function distAppPath(slot = 'aek') {
+  return join(APP_ROOT, 'dist', slot, 'mac-arm64', `${slotConfig(slot).productName}.app`)
+}
+
+/**
  * Is the packaged app for this slot up to date?
+ *
+ * "Up to date" needs a WITNESS bundle that really exists: either the freshly
+ * packaged one under `dist/`, or — after `pruneDistApp` removed that copy —
+ * the one already installed in ~/Applications. Without the second witness,
+ * dropping the dist copy (see `pruneDistApp`) would make every launch rebuild
+ * an identical app.
+ *
  * @param {string} slot - 'aek' | 'next'.
  * @returns {boolean} true when the build matches the current sources.
  */
 export function isBuildFresh(slot = 'aek') {
-  const cfg = slotConfig(slot)
-  const app = join(APP_ROOT, 'dist', slot, 'mac-arm64', `${cfg.productName}.app`)
-  if (!existsSync(app)) return false
+  const witnesses = [distAppPath(slot), prodAppDirForSlot(slot)]
+  if (!witnesses.some(p => existsSync(p))) return false
   try {
     return readFileSync(fingerprintPath(slot), 'utf8').trim() === buildFingerprint()
   } catch {
     return false
   }
+}
+
+/**
+ * Delete the packaged bundle under `dist/` once it has been installed.
+ *
+ * Why: a plain `<product>.app` anywhere on the volume is indexed by Spotlight,
+ * so a left-behind dist copy shows up as a SECOND "AEK" / "AEK Next" next to
+ * the installed one. `.metadata_never_index` does NOT help — measured
+ * 2026-11-09: a probe `.app` created inside a flagged folder was still
+ * indexed, mds only honours the flag on a full volume scan. Moving the copy to
+ * the slot's data root does not help either (Spotlight indexes dot-folders).
+ * So the only reliable fix is: the dist bundle is a transient artifact and is
+ * removed right after a verified install.
+ *
+ * @param {string} slot - 'aek' | 'next'.
+ * @returns {boolean} true when a bundle was removed.
+ */
+export function pruneDistApp(slot = 'aek') {
+  const app = distAppPath(slot)
+  if (!existsSync(app)) return false
+  rmSync(app, { recursive: true, force: true })
+  return true
 }
 
 /**

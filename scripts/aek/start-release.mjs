@@ -12,6 +12,7 @@
  * Usage: node scripts/aek/start-release.mjs [aek|next]
  */
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   killSlot,
@@ -20,6 +21,8 @@ import {
   buildTs,
   packageApp,
   installApp,
+  pruneDistApp,
+  distAppPath,
   prodAppDirForSlot,
   isBuildFresh,
   attachCleanup,
@@ -58,9 +61,19 @@ if (isBuildFresh(slot)) {
   packageApp(slot)
 }
 
-if (!installApp(slot)) {
-  console.error('[start] install failed, aborting')
-  process.exit(1)
+// Install only when we actually produced a bundle in this run. A fresh build
+// may also mean "already installed" (the dist copy is pruned after install, see
+// pruneDistApp), in which case re-installing has no source and would abort.
+if (existsSync(distAppPath(slot))) {
+  if (!installApp(slot)) {
+    console.error('[start] install failed, aborting')
+    process.exit(1)
+  }
+  if (pruneDistApp(slot)) {
+    console.log('[start] dist 里的 .app 副本已清理 — Spotlight 只保留 ~/Applications 里的一个')
+  }
+} else {
+  console.log('[start] 没有新的打包产物，沿用 ~/Applications 里已安装的版本')
 }
 
 const web = spawnWebServerForSlot(slot)
