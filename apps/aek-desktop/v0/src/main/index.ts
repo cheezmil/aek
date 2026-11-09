@@ -203,7 +203,7 @@ function reconnectingPage(): string {
     '<body style="font:14px -apple-system,sans-serif;padding:3rem;color:#222;',
     'font-family:-apple-system,BlinkMacSystemFont,sans-serif">',
     '<h2 style="font-size:1.1rem;margin-bottom:.4rem">Reconnecting…</h2>',
-    `<p style="color:#666;margin:0">The AEK ${SLOT_CFG.productName} backend on port ${WEB_PORT} is not responding.`,
+    `<p style="color:#666;margin:0">The ${SLOT_CFG.productName} backend on port ${WEB_PORT} is not responding.`,
     'This window will reload automatically once it is back.</p>',
     '<div id="dot" style="margin-top:1.5rem;width:10px;height:10px;border-radius:50%;',
     'background:#888;animation:p 1s infinite"></div>',

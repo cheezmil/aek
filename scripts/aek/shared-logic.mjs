@@ -65,14 +65,26 @@ export const INSTALL_DIR = join(homedir(), 'Applications')
 
 /**
  * Path to a slot's branded dev bundle.
+ *
+ * It deliberately does NOT live in ~/Applications next to the packaged app:
+ * `devAppName` and `productName` are both "AEK" / "AEK Next", so branding a dev
+ * shell there used to OVERWRITE the packaged bundle with a bare Electron copy
+ * (no `app.asar`) — launching it from Spotlight then showed Electron's
+ * "execute the following on the command line" placeholder instead of AEK.
+ *
+ * The `.bundle` suffix (not `.app`) is what keeps it out of Spotlight: mds only
+ * classifies an item as an application by its extension, so a dev shell can
+ * never show up as a third "AEK". Launching is unaffected because
+ * `start-dev.mjs` spawns `Contents/MacOS/<name>` directly.
+ *
  * @param slot - 'aek' | 'next'.
- * @returns {string} the absolute path of the dev bundle for that slot.
+ * @returns {string} `<data root>/dev/<devAppName>.bundle`.
  */
 export function devAppDirForSlot(slot) {
-  return join(INSTALL_DIR, `${slotConfig(slot).devAppName}.app`)
+  return join(slotHome(slot), 'dev', `${slotConfig(slot).devAppName}.bundle`)
 }
 
-/** Path to the default (AEK) branded dev bundle in ~/Applications */
+/** Path to the default (AEK) branded dev bundle. */
 export const devAppDir = devAppDirForSlot('aek')
 
 /**
@@ -528,6 +540,14 @@ export function brandDevBundle(slot = 'aek') {
   const appName = cfg.devAppName
   const target = devAppDirForSlot(slot)
 
+  // Hard guard: a dev shell must never overwrite the packaged app. If these two
+  // paths ever collide again, abort instead of silently shipping a bare
+  // Electron bundle into ~/Applications.
+  if (target === prodAppDirForSlot(slot)) {
+    console.error(`[brand] refusing to brand ${target} — it is the packaged app location`)
+    return false
+  }
+
   // Ensure source Electron.app exists
   if (!existsSync(srcElectronApp)) {
     console.error('[brand] Electron.app missing, reinstalling …')
@@ -826,6 +846,9 @@ export function smokeTestBundle(appPath) {
 export function performSwap(slot, target, staged) {
   const rollback = rollbackDirForSlot(slot)
   mkdirSync(rollback, { recursive: true })
+  // The dev bundle lives in `<data root>/dev/`, which may not exist yet on a
+  // fresh data root — `mv` does not create parents and the swap would fail.
+  mkdirSync(dirname(target), { recursive: true })
   const base = basename(target)
   const oldPath = join(rollback, `${base}.old`)
   const pendingPath = join(rollback, `${base}.old-pending`)

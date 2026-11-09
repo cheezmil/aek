@@ -19,7 +19,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { SLOTS, slotConfig, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
-import { devAppDirForSlot } from './shared-logic.mjs'
+import { devAppDirForSlot, prodAppDirForSlot } from './shared-logic.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const results = []
@@ -132,21 +132,43 @@ check('access settings view', accessOk, `access=${String(access.status)}`)
 
 check('instance control requires POST', instances.status === 405, `GET /api/aek/instances → ${String(instances.status)}`)
 
-// 3. CDP: the Electron shell is actually alive (no window screenshot needed).
-const cdp = await get(`http://127.0.0.1:${String(aek.cdpPort)}/json/version`)
-check('Electron shell (CDP 1686)', cdp.status === 200, `cdp=${String(cdp.status)}`)
-
-// 4. Only ONE AEK shell process (pgrep is preferred over ps in restricted shells).
-let shellCount = 0
-try {
-  const out = execFileSync('pgrep', ['-f', `^${join(devAppDirForSlot('aek'), 'Contents', 'MacOS', 'AEK')}( |$)`], {
-    encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
-  })
-  shellCount = out.trim().split('\n').filter(Boolean).length
-} catch {
-  shellCount = 0
+// 3. Exactly ONE AEK shell process (pgrep is preferred over ps in restricted
+// shells). Since 2026-11-09 the shell can be either bundle: the DEV shell under
+// `<data root>/dev/` (started by `desktop.mjs dev`) or the packaged app in
+// ~/Applications (started from Spotlight). Both are legal; two at once are not.
+/**
+ * Count running shells of one bundle path.
+ * @param bundlePath - the .app / .bundle directory.
+ * @param exeName - the binary name inside Contents/MacOS.
+ * @returns {number} matching process count.
+ */
+function shellCountFor(bundlePath, exeName) {
+  try {
+    const out = execFileSync('pgrep', ['-f', `^${join(bundlePath, 'Contents', 'MacOS', exeName)}( |$)`], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    return out.trim().split('\n').filter(Boolean).length
+  } catch {
+    return 0
+  }
 }
-check('single AEK instance', shellCount === 1, `shell processes=${String(shellCount)}`)
+const devShells = shellCountFor(devAppDirForSlot('aek'), 'AEK')
+const prodShells = shellCountFor(prodAppDirForSlot('aek'), 'AEK')
+check(
+  'single AEK instance',
+  devShells + prodShells === 1,
+  `shell processes=${String(devShells + prodShells)} (dev=${String(devShells)} prod=${String(prodShells)})`,
+)
+
+// 4. CDP: only the DEV shell enables remote debugging, so this is a check when
+// the dev shell runs and a SKIP for the packaged app (which deliberately keeps
+// no debugging port open).
+if (devShells === 1) {
+  const cdp = await get(`http://127.0.0.1:${String(aek.cdpPort)}/json/version`)
+  check('Electron shell (CDP 1686)', cdp.status === 200, `cdp=${String(cdp.status)}`)
+} else {
+  process.stdout.write('SKIPPED  CDP — the packaged app does not open a debugging port\n')
+}
 
 // 5. R20: startup accessibility registration wrote its result file.
 const permissionsFile = join(slotHome('aek'), 'permissions.json')

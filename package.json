@@ -218,6 +218,7 @@
     "desktop:install": "node scripts/aek/desktop.mjs install",
     "desktop:dev": "node scripts/aek/desktop.mjs dev",
     "spotlight:report": "node scripts/aek/spotlight-report.mjs",
+    "service:status": "node scripts/aek/service.mjs",
     "data-root:status": "node scripts/aek/data-root.mjs status",
     "data-root:plan": "node scripts/aek/data-root.mjs plan",
     "data-root:copy": "node scripts/aek/data-root.mjs copy",
