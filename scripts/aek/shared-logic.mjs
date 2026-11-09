@@ -10,14 +10,14 @@ import { join, dirname, basename } from 'node:path'
 import { existsSync, renameSync, copyFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
-import { resolveAekHome } from '../../packages/aek/base/coraek/home.mjs'
-import { SLOTS, slotConfig, slotHome, webUrl } from '../../packages/aek/base/coraek/slots.mjs'
+import { resolveAekHome, resolveAekRoot } from '../../packages/aek/base/coraek/home.mjs'
+import { SLOTS, slotConfig, slotHome, containerForHome, webUrl } from '../../packages/aek/base/coraek/slots.mjs'
 import { readSlotLock, isPidAlive } from '../../packages/aek/base/coraek/slot-lock.mjs'
 
 // The slot table (identity, ports, data root) lives in @cheezmil/coraek/slots —
 // one source of truth shared by the desktop build, the desktop main process and
 // these scripts. Re-exported here so existing importers keep working.
-export { SLOTS, slotHome, slotConfig }
+export { SLOTS, slotHome, slotConfig, containerForHome, resolveAekRoot }
 
 // ── Root detection ────────────────────────────────────────────────────────────
 // walk up from this file's location until we find pnpm-workspace.yaml (the repo root)
@@ -167,6 +167,10 @@ export function electronEnv(extra = {}) {
   const env = { ...process.env, ...extra }
   delete env.ELECTRON_RUN_AS_NODE
   delete env.NODE_OPTIONS
+  // The shell must know WHERE THE SLOTS LIVE, not only which root it reads:
+  // `~/.aek` is a container, and the console can start / stop the sibling slot.
+  // Derive it from whatever home this child is being pointed at.
+  if (env.AEK_HOME && !env.AEK_ROOT) env.AEK_ROOT = containerForHome(env.AEK_HOME)
   return env
 }
 
@@ -225,6 +229,7 @@ export function spawnWebServerWith(home, port, options = {}) {
     ...process.env,
     DSH_HOME: home,
     AEK_HOME: home,
+    AEK_ROOT: containerForHome(home),
     AEK_WEB_PORT: String(port),
     AEK_MODE: 'dev',
   }

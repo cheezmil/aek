@@ -3,6 +3,12 @@
 export declare const AEK_SLOT_ENV: 'AEK_SLOT'
 export declare const SLOT_NAMES: readonly ['aek', 'next']
 
+/**
+ * Directory name of each slot inside the container (`~/.aek`), e.g.
+ * `{ aek: 'current', next: 'next' }`.
+ */
+export declare const SLOT_DIRS: Readonly<Record<'aek' | 'next', string>>
+
 export interface AekSlot {
   readonly slot: 'aek' | 'next'
   /** electron-builder appId; becomes CFBundleIdentifier on macOS. */

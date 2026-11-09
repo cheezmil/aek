@@ -25,14 +25,34 @@
  * @module @cheezmil/coraek/slots
  */
 
-import { basename, dirname, join } from 'node:path'
-import { resolveAekHome } from './home.mjs'
+import { basename, dirname, join, resolve } from 'node:path'
+import {
+  AEK_DEFAULT_SLOT_DIRNAME,
+  AEK_HOME_ENV,
+  AEK_ROOT_ENV,
+  resolveAekHome,
+  resolveAekRoot,
+} from './home.mjs'
 
 /** Environment variable that names the slot a process belongs to. */
 export const AEK_SLOT_ENV = 'AEK_SLOT'
 
 /** The two slot names, in canonical order. */
 export const SLOT_NAMES = /** @type {const} */ (['aek', 'next'])
+
+/**
+ * Directory name of each slot INSIDE the container (`~/.aek`).
+ *
+ * The container holds one directory per slot and nothing else besides
+ * `backups/`, so a slot's data root is always `join(<container>, SLOT_DIRS[x])`.
+ * `next` keeps its plain name; the default slot is `current` because it is the
+ * only word that pairs with `next` without implying anything about stability
+ * (see `AEK_DEFAULT_SLOT_DIRNAME`).
+ */
+export const SLOT_DIRS = /** @type {const} */ ({
+  aek: AEK_DEFAULT_SLOT_DIRNAME,
+  next: 'next',
+})
 
 /**
  * Slot descriptors. `bundleId` is what macOS sees as the app identity, so the
@@ -99,7 +119,8 @@ export function isSlot(value) {
  *
  * Resolution order (first hit wins):
  *   1. `AEK_SLOT` — set explicitly by the launcher / build scripts.
- *   2. The data root: a root whose name ends in `-next` is the Next slot.
+ *   2. The data root: `<container>/next` is the Next slot, `<container>/current`
+ *      the default one.
  *   3. `aek` — the default single install.
  *
  * @param {Record<string, string | undefined>} [env] - environment override.
@@ -108,8 +129,7 @@ export function isSlot(value) {
 export function resolveSlot(env = process.env) {
   const explicit = (env[AEK_SLOT_ENV] ?? '').trim()
   if (isSlot(explicit)) return explicit
-  const home = resolveAekHome(env)
-  return basename(home).endsWith('-next') ? 'next' : 'aek'
+  return basename(resolveAekHome(env)) === SLOT_DIRS.next ? 'next' : 'aek'
 }
 
 /**
@@ -152,30 +172,59 @@ export function bindHost() {
 }
 
 /**
+ * Resolve the container that holds every slot's data root.
+ *
+ * `AEK_ROOT` wins. Otherwise it is recovered from `AEK_HOME` so a process that
+ * was only handed its own root (the packaged app is launched with `AEK_HOME`
+ * alone) can still address the sibling slot:
+ *   - `<container>/current` or `<container>/next` → the container,
+ *   - `~/.aek` itself → itself (container named by its own path),
+ *   - anything else → treated as the container.
+ * @param {Record<string, string | undefined>} [env] - environment override.
+ * @returns {string} the absolute container path.
+ */
+function aekContainer(env) {
+  const explicitRoot = (env[AEK_ROOT_ENV] || '').trim()
+  if (explicitRoot) return resolve(explicitRoot)
+
+  const raw = (env[AEK_HOME_ENV] || '').trim()
+  if (raw) return containerForHome(raw)
+  return resolveAekRoot(env)
+}
+
+/**
+ * Container that a given data root lives in.
+ *
+ * Used by callers that hold a root VALUE rather than an environment
+ * (`spawnWebServerWith(home, port)`), so the child can still be told where the
+ * sibling slot is.
+ * @param {string} home - an absolute path to some slot's data root.
+ * @returns {string} the container path.
+ */
+export function containerForHome(home) {
+  const abs = resolve(home)
+  const name = basename(abs)
+  if (name === SLOT_DIRS.aek || name === SLOT_DIRS.next) return dirname(abs)
+  return abs
+}
+
+/**
  * Resolve the data root of a slot.
  *
  * The answer must NOT depend on which slot the CALLING process belongs to:
  * both apps share one source tree and one arbiter, so the AEK Next console can
- * start / stop the AEK slot and vice versa. A host running with
- * `AEK_HOME=~/.aek-next` that asks for the `aek` slot must still get `~/.aek`
- * — before this, it got its own root, which put a stray
- * `~/.aek-next/dev/AEK.app` (the OTHER slot's dev bundle, with the wrong
- * bundle id) on disk and could spawn a backend with the wrong home.
+ * start / stop the AEK slot and vice versa. `~/.aek` is a pure container, so
+ * both roots are rebuilt from it as `join(<container>, SLOT_DIRS[slot])`.
  *
- * The base root is therefore recovered by stripping a trailing `-next` suffix,
- * and the sibling is rebuilt from it. Custom roots keep working: whatever base
- * the operator pointed `AEK_HOME` at, its `-next` sibling is the Next root.
+ * Both slot directories are REAL directories. There is deliberately no symlink
+ * compatibility layer: a linked slot would let one app's writes land inside the
+ * other's tree and destroy the isolation the container exists to provide.
  * @param {unknown} slot - slot name.
  * @param {Record<string, string | undefined>} [env] - environment override.
  * @returns {string} the absolute data-root path for that slot.
+ * @throws {Error} when the slot name is unknown.
  */
 export function slotHome(slot, env = process.env) {
-  const raw = resolveAekHome(env)
-  const name = basename(raw)
-  const SUFFIX = '-next'
-  const root = name.endsWith(SUFFIX) && name.length > SUFFIX.length
-    ? join(dirname(raw), name.slice(0, -SUFFIX.length))
-    : raw
-  if (slot !== 'next') return root
-  return join(dirname(root), `${basename(root)}${SUFFIX}`)
+  if (!isSlot(slot)) throw new Error(`unknown AEK slot: ${String(slot)}`)
+  return join(aekContainer(env), SLOT_DIRS[slot])
 }

@@ -38,7 +38,8 @@ const packaged = (ownPackage?.aek ?? null) as PackagedMeta | null
  * 1. `AEK_SLOT` — an explicit operator override.
  * 2. The slot baked into the packaged app (the user double-clicked
  *    "AEK Next.app", so it is Next by definition).
- * 3. The data root — a `…-next` root means the Next slot.
+ * 3. The data root — `<container>/next` (or a legacy `…-next` root) means the
+ *    Next slot; `<container>/current` is the default one.
  */
 function currentSlot(): 'aek' | 'next' {
   const explicit = (process.env.AEK_SLOT ?? '').trim()
@@ -111,7 +112,8 @@ app.setName(SLOT_CFG.productName)
 // ── Per-slot single instance (T4 / T11) ──────────────────────────────────────
 // AEK and AEK Next are two equal instances that share one bundle but must each
 // stay single-instance. Electron's app-id lock would forbid running both, so we
-// key the lock by the data root instead: each slot (`~/.aek` / `~/.aek-next`)
+// key the lock by the data root instead: each slot (`~/.aek/current` /
+// `~/.aek/next`)
 // may have at most one shell, while the two slots coexist. The runtime arbiter
 // stops a slot by freeing its web port; this guard stops a second shell for the
 // same slot from ever opening.
@@ -139,7 +141,7 @@ function slotLockHeld(): boolean {
 function acquireSlotLock(): boolean {
   if (slotLockHeld()) return false
   // The data root may not exist yet on a fresh install (e.g. a brand new
-  // `~/.aek-next`). resolveAekHome() only resolves a path, it does not create
+  // `~/.aek/next`). resolveAekHome() only resolves a path, it does not create
   // it — without this the lock write would throw ENOENT and the app would
   // quit on first launch.
   try { mkdirSync(SLOT_HOME, { recursive: true }) } catch { /* handled below */ }

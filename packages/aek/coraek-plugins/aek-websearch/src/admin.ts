@@ -55,6 +55,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync } from 'node:child_process'
 import { resolveAekHome } from '@cheezmil/coraek/home'
+import { resolveSlot } from '@cheezmil/coraek/slots'
 import { parse, stringify } from 'yaml'
 import { KeyStore } from '@cheezmil/prevent-agent-directly-seeing-key'
 import { PROVIDER_KINDS } from './defaults.ts'
@@ -475,8 +476,10 @@ function isRuntimeMode(mode: unknown): mode is RuntimeMode {
 
 /** @returns the slot this web server process belongs to. */
 function currentSlot(): 'aek' | 'next' {
-  const home = process.env.AEK_HOME ?? resolveAekHome()
-  return home.endsWith('-next') ? 'next' : 'aek'
+  // Delegate to the slot table instead of sniffing a `-next` suffix: the data
+  // root is now `<container>/current` or `<container>/next`, so a suffix test
+  // would label EVERY process `aek` and make the arbiter stop the wrong slot.
+  return resolveSlot()
 }
 
 /**

@@ -8,10 +8,12 @@
  * data-root gate, then forwards to the real entry.
  *
  * Slots (names are fixed; no bundle id is ever swapped):
- *   aek   -> ~/.aek        web 1685 / cdp 1686
- *   next  -> ~/.aek-next   web 1687 / cdp 1688
- * The Next root is derived from the resolved default (`<root>-next`), not
- * hardcoded, so an explicit `AEK_HOME` still produces the right sibling.
+ *   aek   -> ~/.aek/current   web 1685 / cdp 1686
+ *   next  -> ~/.aek/next      web 1687 / cdp 1688
+ * `~/.aek` is a pure container: one directory per slot plus `backups/`. The
+ * container comes from `AEK_ROOT` (default `~/.aek`) and is forwarded to the
+ * child, so a process can address the SIBLING slot without guessing from its
+ * own path.
  *
  * `dev-web` also marks the process `AEK_MODE=dev`: that is what turns on the
  * AEK packages' module hot reload in the host (`@cheezmil/coraek-profile` widens
@@ -35,7 +37,7 @@ import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { resolveAekHome } from '../../packages/aek/base/coraek/home.mjs'
+import { resolveAekHome, resolveAekRoot } from '../../packages/aek/base/coraek/home.mjs'
 import { SLOTS, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -125,11 +127,11 @@ if (!call) {
   process.exit(2)
 }
 
-const base = resolveAekHome()
-const home = slotHome(slot, { ...process.env, AEK_HOME: base })
+// An explicit `AEK_HOME` (operator override or a test harness) wins; otherwise
+// the slot's own directory under the container is the data root.
 const env = { ...process.env }
-env.AEK_HOME = slotExplicit ? home : (env.AEK_HOME ?? home)
-// Pin unconditionally: an inherited DSH_HOME belongs to the outer DSH
+env.AEK_HOME = slotExplicit || !env.AEK_HOME ? slotHome(slot, env) : env.AEK_HOME
+env.AEK_ROOT = resolveAekRoot(env)// Pin unconditionally: an inherited DSH_HOME belongs to the outer DSH
 // product (this fork's upstream shape) and must never steer AEK's spawned
 // runtimes at that home. AEK's data root is AEK_HOME or the default.
 env.DSH_HOME = env.AEK_HOME

@@ -8,9 +8,18 @@
  * a second installation (for example AEK Next with `~/.aek-next`) silently
  * read and write the first installation's data.
  *
+ * Layout: `~/.aek` is a CONTAINER, not a data root. It holds exactly one
+ * directory per app slot (`current/`, `next/`) plus `backups/`. A slot's data
+ * root is `join(<container>, <slot dir>)`, so the two apps stay fully
+ * independent — no shared `skill-manager`, no shared `quick-git` — which is
+ * what makes isolated testing possible.
+ *
  * Resolution order (first non-empty wins):
- *   1. `AEK_HOME` — set by the launcher for a specific app slot.
- *   2. `join(homedir(), '.aek')` — the default for a plain single install.
+ *   1. `AEK_HOME` — the running slot's data root (set by the launcher).
+ *   2. `join(resolveAekRoot(env), 'current')` — the default for a plain
+ *      single install.
+ *
+ * The container itself comes from `AEK_ROOT`, else the default `~/.aek`.
  *
  * `DSH_HOME` is deliberately NOT an input. It is the environment variable of
  * the OUTER DSH product this fork descended from, and an AEK process — most
@@ -40,11 +49,41 @@ import { join, resolve } from 'node:path'
 /** Environment variable set by the AEK launcher for the running app slot. */
 export const AEK_HOME_ENV = 'AEK_HOME'
 
+/**
+ * Environment variable naming the CONTAINER that holds every slot's data root.
+ *
+ * Separate from {@link AEK_HOME_ENV} on purpose: `AEK_HOME` is "where this
+ * process reads its data", while `AEK_ROOT` is "where all slots live". A
+ * process must be able to start or stop a SIBLING slot, which is only possible
+ * when the container is known independently of the caller's own root.
+ */
+export const AEK_ROOT_ENV = 'AEK_ROOT'
+
 /** Environment variable the harness runtime itself reads. */
 export const DSH_HOME_ENV = 'DSH_HOME'
 
-/** Default directory name under the OS home directory. */
+/** Default container directory name under the OS home directory. */
 export const AEK_HOME_DIRNAME = '.aek'
+
+/**
+ * Directory name of the default (`aek`) slot inside the container.
+ *
+ * `current` is chosen for one reason: it is the only word that pairs with
+ * `next` without extra meaning. `stable`/`prod` would wrongly imply the next
+ * slot is unstable, and `aek` would read as `~/.aek/aek/`. The slot table in
+ * `slots.mjs` imports this constant so the name exists exactly once.
+ */
+export const AEK_DEFAULT_SLOT_DIRNAME = 'current'
+
+/**
+ * Resolve the container that holds every slot's data root.
+ * @param {Record<string, string | undefined>} [env] - environment override.
+ * @returns {string} an absolute path to the container.
+ */
+export function resolveAekRoot(env = process.env) {
+  const configured = (env[AEK_ROOT_ENV] || '').trim()
+  return configured ? resolve(configured) : join(homedir(), AEK_HOME_DIRNAME)
+}
 
 /**
  * Resolve the data root for the current process.
@@ -53,7 +92,9 @@ export const AEK_HOME_DIRNAME = '.aek'
  */
 export function resolveAekHome(env = process.env) {
   const configured = (env[AEK_HOME_ENV] || '').trim()
-  return configured ? resolve(configured) : join(homedir(), AEK_HOME_DIRNAME)
+  return configured
+    ? resolve(configured)
+    : join(resolveAekRoot(env), AEK_DEFAULT_SLOT_DIRNAME)
 }
 
 /**
@@ -66,17 +107,20 @@ export function aekHomePath(...segments) {
 }
 
 /**
- * Pin both environment variables to the resolved root. The pin is
- * unconditional: an inherited `DSH_HOME` (for example the outer DSH product's
- * home, when AEK runs inside a coding-agent session) must not leak into
- * spawned children, because children' native runtimes would then read the
- * foreign home. An operator who wants a custom data root sets `AEK_HOME`;
- * that value wins and is what gets pinned. Returns the root actually applied.
+ * Pin the root variables. The pin is unconditional: an inherited `DSH_HOME`
+ * (for example the outer DSH product's home, when AEK runs inside a
+ * coding-agent session) must not leak into spawned children, because children'
+ * native runtimes would then read the foreign home. An operator who wants a
+ * custom data root sets `AEK_HOME`; that value wins and is what gets pinned.
+ * `AEK_ROOT` is pinned alongside it so a child can still address the SIBLING
+ * slot instead of guessing from its own path. Returns the root applied.
  * @param {Record<string, string | undefined>} [env] - environment override.
  * @returns {string} the resolved data root.
  */
 export function applyAekHomeEnvironment(env = process.env) {
   const home = resolveAekHome(env)
+  const root = env[AEK_ROOT_ENV]?.trim() ? resolve(env[AEK_ROOT_ENV]) : resolveAekRoot(env)
+  env[AEK_ROOT_ENV] = root
   env[AEK_HOME_ENV] = home
   env[DSH_HOME_ENV] = home
   return home
