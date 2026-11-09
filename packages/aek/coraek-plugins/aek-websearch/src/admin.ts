@@ -550,7 +550,8 @@ let healthCache: { at: number; payload: Record<string, unknown> } | undefined
  * Build the tiny health payload the instance manager polls.
  *
  * Instead of re-fetching the whole facts/runtime snapshot on a timer, the UI
- * asks for four booleans plus a signature; it re-reads the full status only
+ * asks for the per-slot booleans (plus which build the window is) and a
+ * signature; it re-reads the full status only
  * when that signature changes. The arbiter result itself is cached for 2s so
  * several open windows cannot stampede it.
  * @returns the fingerprint payload.
@@ -559,14 +560,19 @@ function readHealth(): Record<string, unknown> {
   const now = Date.now()
   if (healthCache !== undefined && now - healthCache.at < 2000) return healthCache.payload
   const raw = runArbiter(['status'], true)
-  const source = raw.slots as Record<string, { web?: boolean; shell?: boolean }> | undefined
-  const slots: Record<string, { web: boolean; shell: boolean }> = {}
+  const source = raw.slots as
+    Record<string, { web?: boolean; shell?: boolean; shellKind?: 'dev' | 'prod' | null }> | undefined
+  const slots: Record<string, { web: boolean; shell: boolean; shellKind: 'dev' | 'prod' | null }> = {}
   let signature = ''
   for (const slot of ['aek', 'next']) {
     const web = source?.[slot]?.web === true
     const shell = source?.[slot]?.shell === true
-    slots[slot] = { web, shell }
-    signature += `${web ? '1' : '0'}${shell ? '1' : '0'}`
+    // The kind belongs in the signature: restarting a window from the packaged
+    // app into a dev shell (or back) changes nothing about the two booleans,
+    // and without it the panel would keep showing the stale badge.
+    const kind = shell ? (source?.[slot]?.shellKind ?? null) : null
+    slots[slot] = { web, shell, shellKind: kind }
+    signature += `${web ? '1' : '0'}${shell ? '1' : '0'}${kind === null ? '-' : kind === 'dev' ? 'd' : 'p'}`
   }
   const payload = { ok: true, signature, slots, at: now }
   healthCache = { at: now, payload }

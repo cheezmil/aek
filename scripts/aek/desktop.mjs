@@ -35,6 +35,8 @@ import {
   pruneDistApp,
   distAppPath,
   killSlot,
+  slotShellPids,
+  slotShellKind,
   APP_ROOT,
 } from './shared-logic.mjs'
 
@@ -106,15 +108,19 @@ function portListening(port) {
  * @param {string} slot - the slot name.
  * @returns {{ alive: boolean, pid: number|null }} the shell state.
  */
+/**
+ * Report the slot's window from the PROCESS table, not from a pid file.
+ *
+ * `.aek-runtime.pid` only exists when one of these scripts launched the shell,
+ * so a window opened from the Dock / Spotlight read as "not running" here while
+ * it was plainly on screen. `slotShellPids` is the single detector the console
+ * and the arbiter already use, and it also tells apart dev from packaged.
+ * @param slot - 'aek' | 'next'.
+ * @returns {{alive: boolean, pid: number|null, kind: 'dev'|'prod'|null}} window state.
+ */
 function shellState(slot) {
-  try {
-    const raw = readFileSync(join(slotHome(slot), '.aek-runtime.pid'), 'utf8').trim()
-    const pid = Number(raw)
-    if (!Number.isInteger(pid) || pid <= 0) return { alive: false, pid: null }
-    try { process.kill(pid, 0); return { alive: true, pid } } catch { return { alive: false, pid } }
-  } catch {
-    return { alive: false, pid: null }
-  }
+  const pids = slotShellPids(slot)
+  return { alive: pids.length > 0, pid: pids[0] ?? null, kind: slotShellKind(slot) }
 }
 
 /**
@@ -184,7 +190,8 @@ function printStatus(report) {
     const b = s.build
     console.log(`  build        ${b.exists ? (b.fresh ? 'present, up to date' : 'present, STALE') : 'absent '}  ${b.path}`)
     console.log(`                fingerprint ${b.fingerprint}`)
-    console.log(`  running      web=${s.running.web ? 'yes' : 'no'}  shell=${s.running.shell.alive ? `yes (pid ${s.running.shell.pid})` : 'no'}`)
+    const { shell } = s.running
+    console.log(`  running      web=${s.running.web ? 'yes' : 'no'}  shell=${shell.alive ? `yes (pid ${shell.pid}, ${shell.kind ?? 'unknown'})` : 'no'}`)
   }
   console.log('')
 }

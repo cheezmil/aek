@@ -72,16 +72,19 @@ export const INSTALL_DIR = join(homedir(), 'Applications')
  * (no `app.asar`) — launching it from Spotlight then showed Electron's
  * "execute the following on the command line" placeholder instead of AEK.
  *
- * The `.bundle` suffix (not `.app`) is what keeps it out of Spotlight: mds only
- * classifies an item as an application by its extension, so a dev shell can
- * never show up as a third "AEK". Launching is unaffected because
- * `start-dev.mjs` spawns `Contents/MacOS/<name>` directly.
+ * The `.app` suffix matters for what the user SEES: macOS keys the Dock label
+ * and the tile icon off LaunchServices, and a `.bundle` folder is not an
+ * application bundle — the Dock then falls back to the file name ("AEK
+ * Next.bundle") and the generic grey icon. The place, not the suffix, is what
+ * keeps it out of Spotlight: the slot data root is a dot-directory, and mds
+ * does not index hidden trees (verified with a probe `.app` in `~/.aek-probe`,
+ * which `mdfind` never returned).
  *
  * @param slot - 'aek' | 'next'.
- * @returns {string} `<data root>/dev/<devAppName>.bundle`.
+ * @returns {string} `<data root>/dev/<devAppName>.app`.
  */
 export function devAppDirForSlot(slot) {
-  return join(slotHome(slot), 'dev', `${slotConfig(slot).devAppName}.bundle`)
+  return join(slotHome(slot), 'dev', `${slotConfig(slot).devAppName}.app`)
 }
 
 /** Path to the default (AEK) branded dev bundle. */
@@ -461,14 +464,21 @@ export function slotShellUp(slot) {
 export function slotShellPids(slot) {
   const s = SLOTS[slot]
   if (!s) return []
-  const home = slotHome(slot)
+  // Both layouts must match, because BOTH are legal shells:
+  //   packaged → ~/Applications/AEK Next.app/Contents/MacOS/AEK Next
+  //   dev      → <data root>/dev/AEK Next.app/Contents/MacOS/AEK Next
+  // The old marker `/<productName>/Contents/MacOS/` matched NEITHER (an app
+  // bundle always has the `.app` suffix on the directory), so a window opened
+  // from the Dock read as "桌面窗口 未运行" while it was plainly on screen.
+  const names = [...new Set([s.productName, s.devAppName])]
   const markers = [
     `--remote-debugging-port=${s.cdpPort}`,
-    `/${s.productName}/Contents/MacOS/`,
-    `${home}/`,
+    ...names.flatMap(name => [
+      `/${name}.app/Contents/MacOS/`,
+      `/${name}.bundle/Contents/MacOS/`,
+    ]),
   ]
-  const matches = (cmd) =>
-    markers.some(marker => cmd.includes(marker)) || cmd.trimEnd().endsWith(home)
+  const matches = (cmd) => markers.some(marker => cmd.includes(marker))
   const pids = new Set()
   let listeners = []
   try { listeners = listenPids(s.cdpPort) } catch { /* no listener */ }
@@ -491,6 +501,31 @@ export function slotShellPids(slot) {
   }
   return [...pids]
 }
+
+/**
+ * Which build is behind the slot's running window — 'dev' or 'prod'?
+ *
+ * The console cannot tell the user the truth about "运行中" without this: a dev
+ * shell spawned from the repo and the packaged app look identical in a
+ * screenshot, yet only one of them survives a logout and only the packaged one
+ * is what Spotlight opens.
+ * @param slot - 'aek' | 'next'.
+ * @returns {'dev' | 'prod' | null} null when no shell is running.
+ */
+export function slotShellKind(slot) {
+  const pids = slotShellPids(slot)
+  if (pids.length === 0) return null
+  const devRoot = join(slotHome(slot), 'dev', '')   // trailing sep: keep /devX out
+  for (const pid of pids) {
+    let cmd = ''
+    try {
+      cmd = execFileSync('/bin/ps', ['-p', pid, '-o', 'command='], { encoding: 'utf8' })
+    } catch { continue }
+    if (cmd.includes(devRoot)) return 'dev'
+  }
+  return 'prod'
+}
+
 
 // ── Web readiness poll ────────────────────────────────────────────────────────
 

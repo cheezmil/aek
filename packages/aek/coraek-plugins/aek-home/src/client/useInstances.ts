@@ -2,7 +2,8 @@
  * Instance liveness + control for 运行实例管理.
  *
  * Two channels, on purpose:
- * - `GET /api/aek/console/health` returns four booleans plus a signature. It is
+ * - `GET /api/aek/console/health` returns two booleans + a build kind per slot,
+ *   plus a signature. It is
  *   cheap (host caches the arbiter probe for 2s) and is what the UI polls.
  * - `GET /api/aek/runtime` returns the full snapshot (ports, homes, mode). It is
  *   re-read ONLY when the signature changes, so an idle console costs one tiny
@@ -33,13 +34,15 @@ export interface HalfState {
   web: boolean
   /** Desktop window process is alive. */
   shell: boolean
+  /** Which build the window belongs to (`null` while stopped). */
+  shellKind?: 'dev' | 'prod' | null
 }
 
 /** Health payload. */
 export interface HealthPayload {
   /** Host accepted the probe. */
   ok: boolean
-  /** Four-digit fingerprint: aek.web, aek.shell, next.web, next.shell. */
+  /** Fingerprint: per slot web / shell / kind (`1`,`0`,`d|p|-`). */
   signature: string
   /** Per-slot halves. */
   slots: Record<'aek' | 'next', HalfState>

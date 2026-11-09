@@ -111,20 +111,30 @@ export function slotConfig(slot) {
 }
 
 /**
- * Resolve the data root of a slot. The Next root is the sibling of the base
- * root, so pointing `AEK_HOME` at a custom root keeps the two apart.
+ * Resolve the data root of a slot.
  *
- * The base root may ALREADY be the Next root (the launcher sets
- * `AEK_HOME=~/.aek-next` for the Next slot). Appending `-next` again would
- * point at `~/.aek-next-next`, which nothing else knows about — so a base
- * that already ends in `-next` is returned unchanged.
+ * The answer must NOT depend on which slot the CALLING process belongs to:
+ * both apps share one source tree and one arbiter, so the AEK Next console can
+ * start / stop the AEK slot and vice versa. A host running with
+ * `AEK_HOME=~/.aek-next` that asks for the `aek` slot must still get `~/.aek`
+ * — before this, it got its own root, which put a stray
+ * `~/.aek-next/dev/AEK.app` (the OTHER slot's dev bundle, with the wrong
+ * bundle id) on disk and could spawn a backend with the wrong home.
+ *
+ * The base root is therefore recovered by stripping a trailing `-next` suffix,
+ * and the sibling is rebuilt from it. Custom roots keep working: whatever base
+ * the operator pointed `AEK_HOME` at, its `-next` sibling is the Next root.
  * @param {unknown} slot - slot name.
  * @param {Record<string, string | undefined>} [env] - environment override.
  * @returns {string} the absolute data-root path for that slot.
  */
 export function slotHome(slot, env = process.env) {
-  const base = resolveAekHome(env)
-  if (slot !== 'next') return base
-  if (basename(base).endsWith('-next')) return base
-  return join(dirname(base), `${basename(base)}-next`)
+  const raw = resolveAekHome(env)
+  const name = basename(raw)
+  const SUFFIX = '-next'
+  const root = name.endsWith(SUFFIX) && name.length > SUFFIX.length
+    ? join(dirname(raw), name.slice(0, -SUFFIX.length))
+    : raw
+  if (slot !== 'next') return root
+  return join(dirname(root), `${basename(root)}${SUFFIX}`)
 }

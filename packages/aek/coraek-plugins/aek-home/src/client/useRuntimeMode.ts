@@ -20,6 +20,11 @@ export interface SlotStatus {
   web: boolean
   /** Whether the slot's Electron window is alive (C6). */
   shell: boolean
+  /**
+   * Which build that window belongs to — a dev shell started from the repo or
+   * the packaged app in `~/Applications`. `null` when no window is running.
+   */
+  shellKind?: 'dev' | 'prod' | null
   /** Either half alive: what the user actually sees in the Dock. */
   running: boolean
 }

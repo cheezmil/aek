@@ -36,6 +36,7 @@ import {
   slotWebUp,
   slotShellUp,
   slotShellPids,
+  slotShellKind,
   slotProcesses,
 } from './shared-logic.mjs'
 import {
@@ -113,7 +114,15 @@ function buildStatus() {
   for (const slot of ['aek', 'next']) {
     const web = probe(slot, { allowHttp: inHost ? slot !== here : true })
     const shell = slotShellUp(slot)
-    slots[slot] = { webPort: SLOTS[slot].webPort, web, shell, running: web || shell }
+    slots[slot] = {
+      webPort: SLOTS[slot].webPort,
+      web,
+      shell,
+      // Which build the window belongs to. Without it the console cannot say
+      // whether "运行中" means the packaged app or a shell spawned from the repo.
+      shellKind: shell ? slotShellKind(slot) : null,
+      running: web || shell,
+    }
   }
   let mode = 'none'
   if (slots.aek.running && slots.next.running) mode = 'both'

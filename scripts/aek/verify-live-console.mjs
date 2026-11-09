@@ -115,8 +115,12 @@ let healthOk = false
 if (health.status === 200) {
   try {
     const parsed = JSON.parse(health.body)
-    healthOk = typeof parsed.signature === 'string' && parsed.signature.length === 4
+    // The fingerprint carries web + shell + build kind per slot (6 chars), so a
+    // window restarting from the packaged app into a dev shell invalidates it.
+    const kinds = [parsed.slots?.aek?.shellKind, parsed.slots?.next?.shellKind]
+    healthOk = typeof parsed.signature === 'string' && parsed.signature.length === 6
       && typeof parsed.slots?.aek?.web === 'boolean' && typeof parsed.slots?.aek?.shell === 'boolean'
+      && kinds.every(kind => kind === 'dev' || kind === 'prod' || kind === null)
   } catch { healthOk = false }
 }
 check('instance health fingerprint', healthOk, `health=${String(health.status)}`)

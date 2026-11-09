@@ -62,6 +62,8 @@ interface HalfRowProps {
   label: string
   /** Whether this half is alive. */
   on: boolean
+  /** Optional trailing note (`开发版` / `打包版`), only for a live window. */
+  note?: string | undefined
   /** In-flight key for this half, or undefined. */
   busyKey: string | undefined
   /** This half's own busy prefix (`slot:half`). */
@@ -79,7 +81,7 @@ interface HalfRowProps {
  * @param props - label, liveness and callbacks.
  * @returns a list item.
  */
-function HalfRow({ label, on, busyKey, base, onStart, onStop, onRestart }: HalfRowProps): ReactNode {
+function HalfRow({ label, on, note, busyKey, base, onStart, onStop, onRestart }: HalfRowProps): ReactNode {
   const { tf } = useI18n()
   const busy = busyKey !== undefined && busyKey.startsWith(base)
   const control = (action: HalfAction, icon: 'play' | 'stop' | 'refresh', hint: string, disabled: boolean): ReactNode => (
@@ -101,7 +103,10 @@ function HalfRow({ label, on, busyKey, base, onStart, onStop, onRestart }: HalfR
   return (
     <li className={css.halfRow}>
       <span className={cx(css.halfDot, on ? css.halfDotOn : css.halfDotOff)} aria-hidden="true" />
-      <span className={css.halfLabel}>{label}</span>
+      <span className={css.halfTitle}>
+        <span className={css.halfLabel}>{label}</span>
+        {on && note !== undefined ? <span className={css.halfNote}>{note}</span> : null}
+      </span>
       <span className={css.halfActions}>
         {busy ? <Spinner /> : null}
         {control('start', 'play', tf('runtime.half.start', { label }), on)}
@@ -132,6 +137,20 @@ export function RuntimeModePanel() {
     if (live !== undefined) return half === 'web' ? live.web : live.shell
     const slotStatus = state.status?.slots[slot]
     return half === 'web' ? slotStatus?.web === true : slotStatus?.shell === true
+  }
+
+  /** Which build is behind the window (health-first, then the full snapshot). */
+  const shellKindFor = (slot: Slot): 'dev' | 'prod' | null => {
+    const live = health?.slots[slot]
+    if (live !== undefined) return live.shellKind ?? null
+    return state.status?.slots[slot]?.shellKind ?? null
+  }
+
+  /** Chip text for a live window: dev shell or packaged app. */
+  const shellNote = (slot: Slot): string | undefined => {
+    const kind = shellKindFor(slot)
+    if (kind === null) return undefined
+    return kind === 'dev' ? t('runtime.kind.dev') : t('runtime.kind.prod')
   }
 
   /** Start every half that is currently down. */
@@ -247,6 +266,7 @@ export function RuntimeModePanel() {
                   <HalfRow
                     label={t('runtime.shell')}
                     on={shell}
+                    note={shellNote(slot)}
                     busyKey={state.busy}
                     base={`${slot}:shell`}
                     onStart={() => state.act(slot, 'shell', 'start')}

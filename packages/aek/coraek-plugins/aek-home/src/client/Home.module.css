@@ -1675,6 +1675,8 @@ body {
 .halfList { display: flex; flex-direction: column; gap: 2px; margin: 0 0 10px; padding: 0; list-style: none; }
 .halfRow {
   display: grid;
+  /* dot | title (label + optional build chip) | actions — the chip sits inside
+     the title cell so rows with and without it keep the icons in one column. */
   grid-template-columns: 10px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
@@ -1684,7 +1686,18 @@ body {
 .halfDot { width: 8px; height: 8px; border-radius: 50%; background: var(--aek-border-strong); }
 .halfDotOn { background: var(--aek-success, #2f9e44); box-shadow: 0 0 0 3px var(--aek-success-soft); }
 .halfDotOff { background: var(--aek-text-muted); opacity: 0.45; }
-.halfLabel { color: var(--aek-text-secondary); }
+.halfTitle { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.halfLabel { color: var(--aek-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.halfNote {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--aek-border);
+  border-radius: 999px;
+  color: var(--aek-text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
 .halfActions { display: inline-flex; align-items: center; gap: 2px; }
 .halfButton {
   display: inline-flex;
