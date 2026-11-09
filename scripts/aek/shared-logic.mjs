@@ -479,6 +479,30 @@ export function slotShellUp(slot) {
 }
 
 /**
+ * Process table snapshot (`ps -Ao pid=,command=`), cached for a beat.
+ *
+ * The per-slot shell probe runs once per slot and the arbiter asks for both, so
+ * without this cache a single status call walked the table twice; 800ms is far
+ * below the 2s health TTL and keeps a burst of windows cheap.
+ * @returns the raw table text, or `''` when `ps` could not be read.
+ */
+let psTableCache = { at: 0, text: '' }
+function psTable() {
+  const now = Date.now()
+  if (psTableCache.text !== '' && now - psTableCache.at < 800) return psTableCache.text
+  try {
+    const text = execFileSync('/bin/ps', ['-Ao', 'pid=,command='], {
+      encoding: 'utf8',
+      maxBuffer: 8 * 1024 * 1024,
+    })
+    psTableCache = { at: now, text }
+    return text
+  } catch {
+    return ''
+  }
+}
+
+/**
  * The pids that belong to the slot's Electron shell (see {@link slotShellUp}).
  * @param slot - 'aek' | 'next'.
  * @returns {number[]} shell pids, `[]` when none is alive.
@@ -486,40 +510,66 @@ export function slotShellUp(slot) {
 export function slotShellPids(slot) {
   const s = SLOTS[slot]
   if (!s) return []
+  const names = [...new Set([s.productName, s.devAppName])]
   // Both layouts must match, because BOTH are legal shells:
   //   packaged → ~/Applications/AEK Next.app/Contents/MacOS/AEK Next
-  //   dev      → <data root>/dev/AEK Next.app/Contents/MacOS/AEK Next
+  //   dev      → <data root>/dev/AEK.app/Contents/MacOS/AEK
   // The old marker `/<productName>/Contents/MacOS/` matched NEITHER (an app
   // bundle always has the `.app` suffix on the directory), so a window opened
   // from the Dock read as "桌面窗口 未运行" while it was plainly on screen.
-  const names = [...new Set([s.productName, s.devAppName])]
-  const markers = [
-    `--remote-debugging-port=${s.cdpPort}`,
-    ...names.flatMap(name => [
-      `/${name}.app/Contents/MacOS/`,
-      `/${name}.bundle/Contents/MacOS/`,
-    ]),
-  ]
+  const bundleMarkers = names.flatMap(name => [
+    `/${name}.app/Contents/MacOS/`,
+    `/${name}.bundle/Contents/MacOS/`,
+  ])
+  const markers = [`--remote-debugging-port=${s.cdpPort}`, ...bundleMarkers]
   const matches = (cmd) => markers.some(marker => cmd.includes(marker))
   const pids = new Set()
-  let listeners = []
-  try { listeners = listenPids(s.cdpPort) } catch { /* no listener */ }
-  for (const pid of listeners) {
-    let cmd
-    try {
-      cmd = execFileSync('/bin/ps', ['-p', pid, '-o', 'command='], { encoding: 'utf8' })
-    } catch { continue }
-    if (matches(cmd)) pids.add(Number(pid))
+
+  // 1. Full process-table scan (cached for 800ms).
+  //
+  // This is the ONLY rule that catches the packaged app opened from
+  // Spotlight / the Dock: such a process carries neither
+  // `--remote-debugging-port` (a debug port is a launcher convenience) nor a
+  // slot lock (written by the launcher, not by the .app bundle), so a probe
+  // that starts from the CDP port reports "桌面窗口 未运行" for a window that is
+  // plainly on screen.
+  //
+  // `…/Contents/Frameworks/<name> Helper.app/Contents/MacOS/<name> Helper` does
+  // not contain `/<name>.app/Contents/MacOS/`, so renderer/GPU helpers never
+  // register as the app itself.
+  for (const line of psTable().split('\n')) {
+    const trimmed = line.trim()
+    const space = trimmed.indexOf(' ')
+    if (space < 0) continue
+    const pid = Number(trimmed.slice(0, space))
+    if (!Number.isInteger(pid)) continue
+    const cmd = trimmed.slice(space + 1)
+    if (bundleMarkers.some(marker => cmd.includes(marker))) pids.add(pid)
   }
+
+  // 2. Slot lock: covers a shell whose command line we could not read.
   const lock = readSlotLock(slot)
   if (lock?.shellPid && isPidAlive(lock.shellPid)) {
-    // A `continue` is illegal here (this branch is not inside a loop): keep
-    // an empty command line on failure so `matches` simply reports no match.
     let cmd = ''
     try {
       cmd = execFileSync('/bin/ps', ['-p', lock.shellPid, '-o', 'command='], { encoding: 'utf8' })
     } catch { /* pid vanished mid-scan */ }
     if (matches(cmd)) pids.add(Number(lock.shellPid))
+  }
+
+  // 3. CDP-port listener, ONLY when the table scan found nothing: `lsof` costs
+  //    ~200ms, and every poll would pay it even though step 1 already knows the
+  //    answer. Kept as a fallback for a shell whose argv we cannot parse.
+  if (pids.size === 0) {
+    let listeners = []
+    try { listeners = listenPids(s.cdpPort) } catch { /* no listener */ }
+    for (const pid of listeners) {
+      let cmd
+      try {
+        cmd = execFileSync('/bin/ps', ['-p', pid, '-o', 'command='], { encoding: 'utf8' })
+      } catch { continue }
+      if (matches(cmd)) pids.add(Number(pid))
+    }
   }
   return [...pids]
 }
