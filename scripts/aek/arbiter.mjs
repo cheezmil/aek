@@ -103,16 +103,18 @@ function slotRunning(slot) {
  * @returns the serialisable status object.
  */
 function buildStatus() {
-  const here = currentSlot()
   // C6: when the arbiter runs INSIDE a host (AEK_PROBE_NO_HTTP is set by the
-  // admin route), the current slot's own port is blocked on this very request,
-  // so its HTTP probe would self-deadlock and is skipped. The OTHER slot can
-  // be probed over real HTTP — that is exactly the cross-slot fact the "both
-  // running" judgment used to get wrong.
+  // admin route), no HTTP probe may run at all — see the note below.
   const inHost = process.env.AEK_PROBE_NO_HTTP === '1'
   const slots = {}
   for (const slot of ['aek', 'next']) {
-    const web = probe(slot, { allowHttp: inHost ? slot !== here : true })
+    // Inside a host, NOTHING may be probed over HTTP — not just the caller's
+    // own slot. Both hosts spawn this arbiter synchronously, so probing the
+    // sibling port blocks on the sibling's (blocked) event loop and the two
+    // deadlock until curl times out, which the console then reports as
+    // "未运行". Listener ownership (data root + `--port N`) is what decides
+    // liveness here; the body check only matters for CLI callers.
+    const web = probe(slot, { allowHttp: !inHost })
     const shell = slotShellUp(slot)
     slots[slot] = {
       webPort: SLOTS[slot].webPort,

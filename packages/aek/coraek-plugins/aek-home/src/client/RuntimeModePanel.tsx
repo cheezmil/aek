@@ -6,7 +6,8 @@
  * - each slot's two halves (backend service / desktop window) independently
  *   startable, stoppable and restartable, plus select-all;
  * - restart / stop icons, including stopping the instance serving the console;
- * - URL and port each with its own copy button, aligned in one column;
+ * - the backend and the desktop-debug endpoint each shown as one standard URL
+ *   with a port chip and a single copy button on the right;
  * - a spinner instead of a progress bar;
  * - a low-resource refresh loop (see `useInstances`).
  *
@@ -31,27 +32,24 @@ const SLOTS = ['aek', 'next'] as const
 type Slot = typeof SLOTS[number]
 
 /**
- * Render one endpoint row: label, value, port and their copy buttons in fixed
- * columns so every icon lines up vertically across rows.
- * @param props - label, value, optional port and the copy labels.
+ * Render one endpoint row: label, full URL and a copy button pinned to the
+ * right edge so the icons line up across rows.
+ *
+ * The URL already ends in `:<port>`, so the row carries no separate port chip
+ * and no second copy button — both were noise.
+ * @param props - label, value and the copy label.
  * @returns a list item.
  */
-function EndpointRow({ label, value, port, urlCopy, portCopy }: {
+function EndpointRow({ label, value, copyLabel }: {
   label: string
   value: string
-  port?: number
-  urlCopy: string
-  portCopy: string
+  copyLabel: string
 }): ReactNode {
   return (
     <li className={css.endpointRow}>
       <span className={css.endpointLabel}>{label}</span>
       <span className={css.endpointValue} title={value}>{value}</span>
-      <span className={cx(css.endpointPort, port === undefined && css.endpointPortEmpty)}>
-        {port === undefined ? '—' : String(port)}
-      </span>
-      <CopyButton value={value} label={urlCopy} size={13} />
-      {port === undefined ? <span /> : <CopyButton value={String(port)} label={portCopy} size={13} />}
+      <CopyButton value={value} label={copyLabel} size={13} />
     </li>
   )
 }
@@ -282,22 +280,12 @@ export function RuntimeModePanel() {
                         <EndpointRow
                           label={t('runtime.endpoint.web')}
                           value={endpoint.url}
-                          port={endpoint.webPort}
-                          urlCopy={t('runtime.copyUrl')}
-                          portCopy={t('runtime.copyPort')}
+                          copyLabel={t('runtime.copyUrl')}
                         />
                         <EndpointRow
                           label={t('runtime.endpoint.cdp')}
-                          value="127.0.0.1"
-                          port={endpoint.cdpPort}
-                          urlCopy={t('runtime.copyUrl')}
-                          portCopy={t('runtime.copyPort')}
-                        />
-                        <EndpointRow
-                          label={t('runtime.endpoint.bundle')}
-                          value={endpoint.bundleId}
-                          urlCopy={t('common.copy')}
-                          portCopy={t('common.copy')}
+                          value={`http://127.0.0.1:${String(endpoint.cdpPort)}`}
+                          copyLabel={t('runtime.copyUrl')}
                         />
                       </>
                     )

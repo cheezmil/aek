@@ -422,6 +422,11 @@ export function slotWebUp(slot, options = {}) {
   // on our port", so it must not be flaky: a single curl gets killed at the
   // deadline on a loaded machine, which used to make the probe oscillate
   // between running/stopped. Retry before declaring the slot down.
+  //
+  // NOTE: do NOT probe `/api/aek/console/health` here — that route itself
+  // spawns the arbiter synchronously, so probing it from the arbiter is a
+  // guaranteed self-deadlock. The SPA index is the cheapest route that never
+  // touches the arbiter.
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const result = spawnSync('curl', ['-s', '-m', '3', `http://127.0.0.1:${s.webPort}/`], { encoding: 'utf8' })

@@ -1618,7 +1618,8 @@ body {
 .endpointList { display: flex; flex-direction: column; gap: 4px; }
 .endpointRow {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr) auto 24px 24px;
+  /* label | URL (port included) | copy — one copy button per row, on the right. */
+  grid-template-columns: 88px minmax(0, 1fr) 24px;
   align-items: center;
   gap: 8px;
   padding: 4px 0;
@@ -1627,16 +1628,6 @@ body {
 }
 .endpointLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aek-text-muted); }
 .endpointValue { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aek-text-secondary); }
-.endpointPort {
-  justify-self: end;
-  min-width: 52px;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: var(--aek-surface-hover);
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-.endpointPortEmpty { color: var(--aek-text-muted); background: transparent; }
 .endpointRow > .iconButton { width: 24px; height: 24px; }
 .instanceToolbar {
   display: flex;
