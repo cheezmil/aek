@@ -15,7 +15,20 @@ export declare function resolveAekHome(
   env?: Record<string, string | undefined>,
 ): string
 
+/** Absolute data root of one slot, read from `<container>/aek.yaml`. */
+export declare function resolveDefaultSlotHome(
+  slot: 'aek' | 'next',
+  env?: Record<string, string | undefined>,
+): string
+
+/**
+ * Join segments under the data root. The FIRST segment is looked up in the
+ * manifest `dirs` table, so a renamed folder is followed automatically.
+ */
 export declare function aekHomePath(...segments: string[]): string
+
+/** Absolute path of the container's backups directory. */
+export declare function aekBackupsPath(...segments: string[]): string
 
 export declare function applyAekHomeEnvironment(
   env?: Record<string, string | undefined>,

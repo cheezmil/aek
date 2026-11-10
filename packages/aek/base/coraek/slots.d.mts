@@ -4,8 +4,9 @@ export declare const AEK_SLOT_ENV: 'AEK_SLOT'
 export declare const SLOT_NAMES: readonly ['aek', 'next']
 
 /**
- * Directory name of each slot inside the container (`~/.aek`), e.g.
- * `{ aek: 'current', next: 'next' }`.
+ * DEFAULT directory name of each slot inside the container (`~/.aek`), e.g.
+ * `{ aek: 'current', next: 'next' }`. The real locations come from the path
+ * manifest `<container>/aek.yaml`.
  */
 export declare const SLOT_DIRS: Readonly<Record<'aek' | 'next', string>>
 
@@ -62,3 +63,6 @@ export declare function slotHome(
   slot: unknown,
   env?: Record<string, string | undefined>,
 ): string
+
+/** `slotHome()` restricted to the default container (ignores `AEK_HOME`). */
+export declare function defaultSlotHome(slot: unknown): string

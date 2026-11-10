@@ -41,6 +41,10 @@
     "./slot-lock": {
       "types": "./slot-lock.d.mts",
       "default": "./slot-lock.mjs"
+    },
+    "./paths": {
+      "types": "./paths.d.mts",
+      "default": "./paths.mjs"
     }
   },
   "dsh": {
@@ -77,6 +81,8 @@
     "home.d.mts",
     "slots.mjs",
     "slots.d.mts",
+    "paths.d.mts",
+    "paths.mjs",
     "lib/index.js",
     "lib/client.js",
     "lib/cli.mjs",

@@ -25,14 +25,15 @@
  * @module @cheezmil/coraek/slots
  */
 
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import {
-  AEK_DEFAULT_SLOT_DIRNAME,
   AEK_HOME_ENV,
   AEK_ROOT_ENV,
   resolveAekHome,
   resolveAekRoot,
+  resolveDefaultSlotHome,
 } from './home.mjs'
+import { DEFAULT_SLOT_DIRS, containerOf, findManifestFor, readAekManifest } from './paths.mjs'
 
 /** Environment variable that names the slot a process belongs to. */
 export const AEK_SLOT_ENV = 'AEK_SLOT'
@@ -41,18 +42,15 @@ export const AEK_SLOT_ENV = 'AEK_SLOT'
 export const SLOT_NAMES = /** @type {const} */ (['aek', 'next'])
 
 /**
- * Directory name of each slot INSIDE the container (`~/.aek`).
+ * Directory name of each slot INSIDE the container (`~/.aek`), as a DEFAULT.
  *
- * The container holds one directory per slot and nothing else besides
- * `backups/`, so a slot's data root is always `join(<container>, SLOT_DIRS[x])`.
- * `next` keeps its plain name; the default slot is `current` because it is the
- * only word that pairs with `next` without implying anything about stability
- * (see `AEK_DEFAULT_SLOT_DIRNAME`).
+ * The real locations live in `<container>/aek.yaml` (see `paths.mjs`): a slot
+ * may sit several parent folders deep (`v2/current`) or on another disk, and
+ * that is a manifest edit — never a code change. This table only supplies the
+ * historical names for installs without a manifest, and for the one-off
+ * migration script that has to name the old layout.
  */
-export const SLOT_DIRS = /** @type {const} */ ({
-  aek: AEK_DEFAULT_SLOT_DIRNAME,
-  next: 'next',
-})
+export const SLOT_DIRS = DEFAULT_SLOT_DIRS
 
 /**
  * Slot descriptors. `bundleId` is what macOS sees as the app identity, so the
@@ -129,7 +127,10 @@ export function isSlot(value) {
 export function resolveSlot(env = process.env) {
   const explicit = (env[AEK_SLOT_ENV] ?? '').trim()
   if (isSlot(explicit)) return explicit
-  return basename(resolveAekHome(env)) === SLOT_DIRS.next ? 'next' : 'aek'
+  const home = resolveAekHome(env)
+  const manifest = findManifestFor(home)
+  if (manifest) return manifest.slots.next === home ? 'next' : 'aek'
+  return basename(home) === SLOT_DIRS.next ? 'next' : 'aek'
 }
 
 /**
@@ -174,12 +175,12 @@ export function bindHost() {
 /**
  * Resolve the container that holds every slot's data root.
  *
- * `AEK_ROOT` wins. Otherwise it is recovered from `AEK_HOME` so a process that
- * was only handed its own root (the packaged app is launched with `AEK_HOME`
- * alone) can still address the sibling slot:
- *   - `<container>/current` or `<container>/next` → the container,
- *   - `~/.aek` itself → itself (container named by its own path),
- *   - anything else → treated as the container.
+ * `AEK_ROOT` wins — it names the container directly. Otherwise it is recovered
+ * from `AEK_HOME` so a process that was only handed its own root (the packaged
+ * app is launched with `AEK_HOME` alone) can still address the sibling slot.
+ * Recovery walks up looking for the `aek.yaml` that claims this path, which is
+ * why a nested layout (`<container>/v2/current`) keeps working; the directory
+ * name alone would no longer be enough to tell slot from parent.
  * @param {Record<string, string | undefined>} [env] - environment override.
  * @returns {string} the absolute container path.
  */
@@ -202,10 +203,7 @@ function aekContainer(env) {
  * @returns {string} the container path.
  */
 export function containerForHome(home) {
-  const abs = resolve(home)
-  const name = basename(abs)
-  if (name === SLOT_DIRS.aek || name === SLOT_DIRS.next) return dirname(abs)
-  return abs
+  return containerOf(home)
 }
 
 /**
@@ -213,8 +211,9 @@ export function containerForHome(home) {
  *
  * The answer must NOT depend on which slot the CALLING process belongs to:
  * both apps share one source tree and one arbiter, so the AEK Next console can
- * start / stop the AEK slot and vice versa. `~/.aek` is a pure container, so
- * both roots are rebuilt from it as `join(<container>, SLOT_DIRS[slot])`.
+ * start / stop the AEK slot and vice versa. The container's path manifest
+ * (`<container>/aek.yaml`) is the source of truth; without one, the historical
+ * `join(<container>, SLOT_DIRS[slot])` applies.
  *
  * Both slot directories are REAL directories. There is deliberately no symlink
  * compatibility layer: a linked slot would let one app's writes land inside the
@@ -226,5 +225,19 @@ export function containerForHome(home) {
  */
 export function slotHome(slot, env = process.env) {
   if (!isSlot(slot)) throw new Error(`unknown AEK slot: ${String(slot)}`)
-  return join(aekContainer(env), SLOT_DIRS[slot])
+  const container = aekContainer(env)
+  return readAekManifest(container)?.slots[slot] ?? join(container, SLOT_DIRS[slot])
+}
+
+/**
+ * Same as {@link slotHome}, but resolved from the default container only.
+ *
+ * Kept for callers that have no environment to hand (build-time config) and
+ * must not be affected by an inherited `AEK_HOME`.
+ * @param {unknown} slot - slot name.
+ * @returns {string} the absolute data-root path for that slot.
+ */
+export function defaultSlotHome(slot) {
+  if (!isSlot(slot)) throw new Error(`unknown AEK slot: ${String(slot)}`)
+  return resolveDefaultSlotHome(slot)
 }

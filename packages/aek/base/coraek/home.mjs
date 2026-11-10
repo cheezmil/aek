@@ -8,16 +8,23 @@
  * a second installation (for example AEK Next with `~/.aek-next`) silently
  * read and write the first installation's data.
  *
- * Layout: `~/.aek` is a CONTAINER, not a data root. It holds exactly one
- * directory per app slot (`current/`, `next/`) plus `backups/`. A slot's data
- * root is `join(<container>, <slot dir>)`, so the two apps stay fully
- * independent — no shared `skill-manager`, no shared `quick-git` — which is
- * what makes isolated testing possible.
+ * Layout: `~/.aek` is a CONTAINER, not a data root. It holds one directory per
+ * app slot (`current/`, `next/`), `backups/`, and the path manifest
+ * `aek.yaml`. A slot's data root is declared in that manifest (default
+ * `join(<container>, 'current')`), so the two apps stay fully independent — no
+ * shared `skill-manager`, no shared `quick-git` — which is what makes isolated
+ * testing possible.
+ *
+ * The manifest — not this file — decides where the folders are. Adding a parent
+ * folder (`current/` → `v2/current/`) or moving a slot to another disk is an
+ * edit to `<container>/aek.yaml`, with no code change anywhere. See
+ * `paths.mjs` for the schema.
  *
  * Resolution order (first non-empty wins):
  *   1. `AEK_HOME` — the running slot's data root (set by the launcher).
- *   2. `join(resolveAekRoot(env), 'current')` — the default for a plain
- *      single install.
+ *   2. `<container>/aek.yaml` → `slots.aek` — the path manifest.
+ *   3. `join(resolveAekRoot(env), 'current')` — the historical default, kept
+ *      for installs that predate the manifest.
  *
  * The container itself comes from `AEK_ROOT`, else the default `~/.aek`.
  *
@@ -31,10 +38,12 @@
  * `applyAekHomeEnvironment`), so the native reader still finds the AEK home
  * without us ever reading the inherited variable.
  *
- * This is the ONLY file in the AEK source tree allowed to spell out the
- * default directory name. `scripts/aek/verify-aek-home.mjs` enforces that
- * rule as a compile-time gate. No absolute path is hardcoded: every candidate
- * is derived from the environment or from the OS home directory.
+ * The literal default directory name lives in `paths.mjs` (`DEFAULT_SLOT_DIRS`)
+ * and is re-exported here, so it is spelled exactly once. This file and
+ * `paths.mjs` are the only ones allowed to build the data root;
+ * `scripts/aek/verify-aek-home.mjs` enforces that as a compile-time gate. No
+ * absolute path is hardcoded: every candidate is derived from the environment,
+ * from the manifest, or from the OS home directory.
  *
  * Deliberately dependency-free plain ESM: bin bootstraps and installed
  * tarballs can import the `@cheezmil/coraek/home` subpath without loading the
@@ -45,6 +54,7 @@
 
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { DEFAULT_BACKUPS_DIR, DEFAULT_SLOT_DIRS, manifestFor, readAekManifest, resolveDir } from './paths.mjs'
 
 /** Environment variable set by the AEK launcher for the running app slot. */
 export const AEK_HOME_ENV = 'AEK_HOME'
@@ -70,10 +80,13 @@ export const AEK_HOME_DIRNAME = '.aek'
  *
  * `current` is chosen for one reason: it is the only word that pairs with
  * `next` without extra meaning. `stable`/`prod` would wrongly imply the next
- * slot is unstable, and `aek` would read as `~/.aek/aek/`. The slot table in
- * `slots.mjs` imports this constant so the name exists exactly once.
+ * slot is unstable, and `aek` would read as `~/.aek/aek/`.
+ *
+ * Re-exported from `paths.mjs` (`DEFAULT_SLOT_DIRS`) so the literal spelling of
+ * the default folder name exists exactly once in the tree — and so that the
+ * manifest, not this constant, is what actually decides the location.
  */
-export const AEK_DEFAULT_SLOT_DIRNAME = 'current'
+export const AEK_DEFAULT_SLOT_DIRNAME = DEFAULT_SLOT_DIRS.aek
 
 /**
  * Resolve the container that holds every slot's data root.
@@ -87,23 +100,67 @@ export function resolveAekRoot(env = process.env) {
 
 /**
  * Resolve the data root for the current process.
+ *
+ * `AEK_HOME` wins. Otherwise the container's path manifest (`aek.yaml`, see
+ * `paths.mjs`) decides where the default slot lives; only when there is no
+ * manifest is the historical `<container>/current` used. That indirection is
+ * the whole point: inserting a parent folder (`current/` → `v2/current/`) is a
+ * one-line manifest edit instead of a repository-wide code change.
  * @param {Record<string, string | undefined>} [env] - environment override.
  * @returns {string} an absolute path to the AEK data root.
  */
 export function resolveAekHome(env = process.env) {
   const configured = (env[AEK_HOME_ENV] || '').trim()
-  return configured
-    ? resolve(configured)
-    : join(resolveAekRoot(env), AEK_DEFAULT_SLOT_DIRNAME)
+  if (configured) return resolve(configured)
+  const root = resolveAekRoot(env)
+  return readAekManifest(root)?.slots.aek ?? join(root, AEK_DEFAULT_SLOT_DIRNAME)
+}
+
+/**
+ * Resolve the data root of a slot named by its manifest slot key.
+ *
+ * Lives here (not in `slots.mjs`) so `resolveAekHome()` can answer without the
+ * slot table and without a circular import.
+ * @param {'aek' | 'next'} slot - manifest slot key.
+ * @param {Record<string, string | undefined>} [env] - environment override.
+ * @returns {string} the absolute data root of that slot.
+ */
+export function resolveDefaultSlotHome(slot, env = process.env) {
+  const root = resolveAekRoot(env)
+  const manifest = readAekManifest(root)
+  if (manifest) return manifest.slots[slot]
+  return join(root, slot === 'next' ? 'next' : AEK_DEFAULT_SLOT_DIRNAME)
 }
 
 /**
  * Join path segments under the resolved data root.
+ *
+ * The FIRST segment is looked up in the manifest `dirs` table, so
+ * `aekHomePath('websearch', 'providers.yml')` follows a renamed or relocated
+ * `websearch` folder automatically. This is what makes every existing call site
+ * manifest-aware without being rewritten.
  * @param {...string} segments - path segments below the data root.
  * @returns {string} an absolute path inside the AEK data root.
  */
 export function aekHomePath(...segments) {
-  return join(resolveAekHome(), ...segments)
+  const home = resolveAekHome()
+  if (segments.length === 0) return home
+  const [first, ...rest] = segments
+  if (typeof first === 'string' && /^[A-Za-z0-9._-]+$/u.test(first)) {
+    const manifest = manifestFor(home)
+    if (manifest) return join(resolveDir(manifest.dirs, home, first), ...rest)
+  }
+  return join(home, ...segments)
+}
+
+/**
+ * Absolute path of the container's backups directory.
+ * @param {...string} segments - extra segments inside it.
+ * @returns {string} for example `<container>/backups`.
+ */
+export function aekBackupsPath(...segments) {
+  const backups = manifestFor(resolveAekHome())?.backups ?? join(resolveAekRoot(), DEFAULT_BACKUPS_DIR)
+  return segments.length === 0 ? backups : join(backups, ...segments)
 }
 
 /**
