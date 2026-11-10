@@ -47,7 +47,6 @@
  *   node scripts/aek/migrate-data-root.mjs --yes          # migrate
  *   node scripts/aek/migrate-data-root.mjs --rollback <snapshot-dir> --yes
  */
-import { execFileSync } from 'node:child_process'
 import {
   existsSync,
   lstatSync,
@@ -62,11 +61,11 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { resolveAekRoot } from '../../packages/aek/base/coraek/home.mjs'
 import { SLOT_DIRS, SLOTS, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
 import { manifestFor, resolveDir } from '../../packages/aek/base/coraek/paths.mjs'
 import { DEFAULT_KEEP, pruneBackups } from './backup-retention.mjs'
+import { deviceOf, repairLinks as repairOnce, runningProcesses, stamp } from './slot-ops.mjs'
 
 /** Folder name of the skill hub inside a slot (and inside a flat container). */
 const HUB_DIRNAME = 'skill-manager'
@@ -124,71 +123,18 @@ function isLink(p) {
 function exists(p) { return existsSync(p) }
 
 /**
- * Pids currently listening on a port.
- * @param {number} port @returns {string[]}
- */
-function listenPids(port) {
-  try {
-    return execFileSync('/usr/sbin/lsof',
-      ['-nP', `-iTCP:${String(port)}`, '-sTCP:LISTEN', '-Fp'], { encoding: 'utf8' })
-      .split('\n').filter(l => l.startsWith('p')).map(l => l.slice(1)).filter(Boolean)
-  } catch { return [] }
-}
-
-/**
- * Anything still running for either slot. `lsof` alone is enough: both slots
- * always own a listening web port while they run, and a shell without a web
- * backend is not a working shell.
- * @returns {string[]} human-readable "slot pid port" lines.
- */
-function runningProcesses() {
-  const busy = []
-  for (const slot of Object.keys(SLOTS)) {
-    for (const port of [SLOTS[slot].webPort, SLOTS[slot].cdpPort]) {
-      for (const pid of listenPids(port)) busy.push(`${slot}: pid ${pid} holds port ${port}`)
-    }
-  }
-  return busy
-}
-
-/** @returns {string} timestamp for snapshot directory names. */
-function stamp() {
-  const d = new Date()
-  const p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
-}
-
-/** Where the link repair pass lives — computed from this file, never spelled out. */
-const REPAIR_SCRIPT = fileURLToPath(new URL('./repair-skill-links.mjs', import.meta.url))
-
-/**
  * Run the consumer-link repair pass against THIS container.
  *
  * `AEK_ROOT` is pinned to the container we just migrated: the child must look
  * at the layout this script produced, never at an inherited environment.
+ * Thin wrapper over `slot-ops.repairLinks()` so `relocate.mjs` cannot drift.
  * @param {boolean} apply - false previews (nothing is written), true rewrites.
  * @param {string[]} [assumeGone] - directories to treat as gone even though they
  *   still resolve (the flat hub, during the dry run).
  * @returns {{ ok: boolean, counts: Record<string, number>, output: string }} the child's tally.
  */
 function repairLinks(apply, assumeGone = []) {
-  const args = [REPAIR_SCRIPT, '--json', ...(apply ? ['--yes'] : [])]
-  for (const dir of assumeGone) args.push('--assume-gone', dir)
-  const options = { encoding: 'utf8', env: { ...process.env, AEK_ROOT: ROOT }, stdio: ['ignore', 'pipe', 'pipe'] }
-  try {
-    const out = execFileSync(process.execPath, args, options)
-    return { ok: true, counts: JSON.parse(out).counts ?? {}, output: out }
-  } catch (error) {
-    // A non-zero exit means "some links are still dangling", not "the pass
-    // crashed": keep the tally so the caller can report it instead of guessing.
-    const raw = /** @type {any} */ (error)
-    const out = `${raw.stdout ?? ''}${raw.stderr ?? ''}`
-    try {
-      return { ok: false, counts: JSON.parse(String(raw.stdout ?? '')).counts ?? {}, output: out }
-    } catch {
-      return { ok: false, counts: {}, output: out }
-    }
-  }
+  return repairOnce({ root: ROOT, apply, assumeGone })
 }
 
 /**
@@ -218,11 +164,6 @@ function recordExtras(snapshot, extras) {
   } catch (error) {
     say(`warning: could not update ${file} (${/** @type {Error} */ (error).message})`)
   }
-}
-
-/** @param {string} p @returns {number} st_dev, or -1 */
-function deviceOf(p) {
-  try { return statSync(p).dev } catch { return -1 }
 }
 
 /** Top-level entries that belong INSIDE a slot (everything but the container's own furniture). */

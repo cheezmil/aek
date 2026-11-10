@@ -86,6 +86,7 @@ function show() {
       console.log(`dirs       ${Object.keys(manifest.dirs).length} 项，全部是同名默认值`)
     }
     for (const warning of manifest.warnings) console.log(`warning    ${warning}`)
+    console.log('改 slots 请用 relocate.mjs（改清单 + 搬目录 + 修链接一体）；手改后跑 link-report --stale-only 检查。')
   }
 }
 
@@ -169,6 +170,11 @@ function usage() {
   console.log('  show   打印清单与运行时实际解析结果（默认，只读）')
   console.log('  check  校验清单与磁盘是否一致，有错误时退出码非 0')
   console.log('  init   生成默认 aek.yaml（已存在则不动，--force 覆盖）')
+  console.log('')
+  console.log('搬家（改清单 + 挪目录 + 修 630 条槽外链接 + 失败回滚）用:')
+  console.log('  node scripts/aek/relocate.mjs --slot aek --to v2/current --yes')
+  console.log('手改本文件却忘了修链接的话，下面这条会告诉你:')
+  console.log('  node scripts/aek/link-report.mjs --stale-only')
   return 0
 }
 

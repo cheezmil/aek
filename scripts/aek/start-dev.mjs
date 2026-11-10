@@ -8,7 +8,9 @@
  *
  * Usage: node scripts/aek/start-dev.mjs [aek|next]
  */
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   killSlot,
   spawnWebServerForSlot,
@@ -50,6 +52,25 @@ if (cleared.stuck.length > 0) {
 if (!brandDevBundle(slot)) {
   console.error('[start] branding failed, aborting')
   process.exit(1)
+}
+
+// A hand-edited `aek.yaml` that moved a slot leaves every consumer link
+// (`~/.claude/skills/x` → `../../.aek/current/skill-manager/skills/x`) pointing
+// at a path that no longer exists. The app then starts with zero skills and
+// nothing explains why. Advisory and read-only: `--stale-only` walks only the
+// agent runtime dirs, never the thousands of links inside a slot.
+try {
+  execFileSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'link-report.mjs'), '--stale-only'], {
+    encoding: 'utf8',
+    timeout: 10_000,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+} catch (error) {
+  const raw = /** @type {any} */ (error)
+  // Exit code 1 means "stale links found" and carries the explanation on
+  // stdout; anything else (timeout, missing script) must not block a launch.
+  const message = String(raw.stdout ?? '').trim()
+  if (message) console.warn(`[start] ${message.split('\n').join('\n[start] ')}`)
 }
 
 const web = spawnWebServerForSlot(slot)

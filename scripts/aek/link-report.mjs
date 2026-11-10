@@ -26,6 +26,7 @@
  *   node scripts/aek/link-report.mjs --json         # machine-readable
  *   node scripts/aek/link-report.mjs --slot next    # one slot only
  *   node scripts/aek/link-report.mjs --no-external  # skip the $HOME scan
+ *   node scripts/aek/link-report.mjs --stale-only   # only "manifest moved, links didn't"
  *   node scripts/aek/link-report.mjs --verbose      # list every link
  *
  * @module scripts/aek/link-report
@@ -34,6 +35,7 @@ import { existsSync, readdirSync, readlinkSync, realpathSync, writeSync } from '
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { resolveAekRoot } from '../../packages/aek/base/coraek/home.mjs'
 import { SLOT_NAMES, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -41,6 +43,7 @@ const argv = process.argv.slice(2)
 const JSON_OUT = argv.includes('--json')
 const VERBOSE = argv.includes('--verbose')
 const SKIP_EXTERNAL = argv.includes('--no-external')
+const STALE_ONLY = argv.includes('--stale-only')
 const SLOT_FILTER = (() => {
   const i = argv.indexOf('--slot')
   if (i === -1) return null
@@ -65,6 +68,7 @@ function findSourceRoot(start) {
 
 const SOURCE_ROOT = findSourceRoot(HERE) ? realpathSync(findSourceRoot(HERE)) : null
 const ROOTS = Object.fromEntries(SLOT_NAMES.map(slot => [slot, slotHome(slot)]))
+const CONTAINER = resolveAekRoot(process.env)
 
 /** @param {string} child @param {string} base @returns {boolean} */
 function isInside(child, base) {
@@ -153,7 +157,7 @@ function brokenBucket(rel) {
 }
 
 const rows = []
-for (const slot of SLOT_FILTER ? [SLOT_FILTER] : SLOT_NAMES) {
+for (const slot of STALE_ONLY ? [] : SLOT_FILTER ? [SLOT_FILTER] : SLOT_NAMES) {
   const self = ROOTS[slot]
   const other = ROOTS[slot === 'aek' ? 'next' : 'aek']
   for (const link of collectLinks(self)) {
@@ -174,7 +178,7 @@ for (const slot of SLOT_FILTER ? [SLOT_FILTER] : SLOT_NAMES) {
  * Links OUTSIDE both slots whose target lands inside one. These are the
  * consumers (other agents' skill dirs); they never move with a copy, but a
  * promote changes what they see.
- * @returns {{ file: string, raw: string, to: 'current' | 'next' | 'dead' }[]} the consumer links.
+ * @returns {{ file: string, raw: string, abs: string, to: 'current' | 'next' | 'dead' }[]} the consumer links.
  */
 function externalConsumers() {
   const home = homedir()
@@ -197,10 +201,19 @@ function externalConsumers() {
       if (entry.isSymbolicLink()) {
         const link = readLink(full)
         const hit = slots.find(([, root]) => isInside(link.abs, root))
-        if (!hit) continue
+        if (!hit) {
+          // A link that still spells the CONTAINER but matches neither slot is
+          // the signature of "aek.yaml moved the slot, the links did not
+          // follow" — the failure nobody notices until the app starts empty.
+          if (isInside(link.abs, CONTAINER)) {
+            out.push({ file: relative(home, full), raw: link.raw, abs: link.abs, absolute: isAbsolute(link.raw), to: 'dead' })
+          }
+          continue
+        }
         out.push({
           file: relative(home, full),
           raw: link.raw,
+          abs: link.abs,
           absolute: isAbsolute(link.raw),
           to: link.real === null ? 'dead' : /** @type {'current' | 'next'} */ (hit[0]),
         })
@@ -215,7 +228,12 @@ function externalConsumers() {
 }
 
 const consumers = SKIP_EXTERNAL ? [] : externalConsumers()
-
+// Three populations, three fixes: a `dead` consumer that names a slot directory
+// is repaired by tail lookup; one that names a *vanished* container path means
+// the manifest relocated the slot (`relocate.mjs` fixes it, the tail lookup
+// cannot); anything else is somebody's unrelated dead link.
+const stale = consumers.filter(c => !SLOT_NAMES.some(slot => isInside(c.abs, ROOTS[slot])) && isInside(c.abs, CONTAINER))
+const deadInSlot = consumers.filter(c => c.to === 'dead' && SLOT_NAMES.some(slot => isInside(c.abs, ROOTS[slot])))
 // Same relative path in both slots: an IDENTICAL raw target means the copy is
 // behaviour-preserving (both parse to the same relative location, since the
 // slots sit at the same depth). A differing raw string was generated per slot
@@ -245,12 +263,29 @@ for (const row of rows) {
 if (JSON_OUT) {
   // `writeSync(1, …)`: a piped stdout is async, and `process.exit()` right
   // after a `write()` truncates the JSON mid-string.
-  writeSync(1, JSON.stringify({ sourceRoot: SOURCE_ROOT, roots: ROOTS, summary, identical, differing, consumers, links: rows }, null, 2))
+  writeSync(1, JSON.stringify({
+    sourceRoot: SOURCE_ROOT, container: CONTAINER, roots: ROOTS, summary, identical, differing,
+    consumers, stale, deadInSlot, links: rows,
+  }, null, 2))
   process.exit(0)
 }
 
 const label = slot => (slot === 'aek' ? 'current' : 'next')
 const sample = (list, limit) => (VERBOSE ? list : list.slice(0, limit))
+
+if (STALE_ONLY) {
+  // Cheap mode for the launcher: only asks "did the manifest move without the
+  // links following". Prints one line when clean, the fix when not.
+  if (stale.length === 0) {
+    console.log(`links: 正常（0 条链接指向已不存在的槽位置）`)
+  } else {
+    console.log(`links: ${stale.length} 条槽外链接指向 ${CONTAINER} 下已不存在的路径`)
+    for (const item of sample(stale, 5)) console.log(`  ${item.file} → ${item.raw}`)
+    console.log('  修法: node scripts/aek/repair-skill-links.mjs --yes')
+    console.log('  （若刚手改过 aek.yaml 挪槽，用 relocate.mjs 一次做完搬家 + 改清单 + 修链接）')
+  }
+  process.exit(stale.length === 0 ? 0 : 1)
+}
 
 console.log(`源码 checkout: ${SOURCE_ROOT ?? '(未找到 pnpm-workspace.yaml)'}`)
 for (const slot of SLOT_NAMES) console.log(`  ${label(slot)} → ${ROOTS[slot]}`)
@@ -287,9 +322,8 @@ for (const item of sample(differing, 4)) {
 if (!SKIP_EXTERNAL) {
   const toCurrent = consumers.filter(c => c.to === 'current').length
   const toNext = consumers.filter(c => c.to === 'next').length
-  const dead = consumers.filter(c => c.to === 'dead').length
   console.log('\n── 槽外消费者链接（~/.claude/skills 等指向槽内）──')
-  console.log(`  指向 current: ${toCurrent} · 指向 next: ${toNext} · 已失效: ${dead}`)
+  console.log(`  指向 current: ${toCurrent} · 指向 next: ${toNext} · 已失效: ${deadInSlot.length} · 指向已搬走的位置: ${stale.length}`)
   const absCount = consumers.filter(c => c.absolute).length
   console.log(`  raw 形态：相对 ${consumers.length - absCount} / 绝对 ${absCount}`)
   const byDir = new Map()
@@ -302,23 +336,30 @@ if (!SKIP_EXTERNAL) {
   console.log(`  样例 raw: ${shape}`)
   for (const item of sample(consumers, 8)) console.log(`  ${item.file} → ${item.to}`)
   if (consumers.length > 8 && !VERBOSE) console.log(`  … 其余 ${consumers.length - 8} 条（--verbose 全列）`)
+  if (stale.length > 0) {
+    console.log(`\n  ⚠ ${stale.length} 条指向 ${CONTAINER} 下已不存在的路径 —— 清单把槽挪过，链接没跟上：`)
+    for (const item of sample(stale, 5)) console.log(`    ${item.file} → ${item.raw}`)
+    console.log('    修法: node scripts/aek/repair-skill-links.mjs --yes')
+  }
 }
 
 const crossSlot = rows.filter(row => row.kind === 'cross-slot').length
 const realBroken = rows.filter(row => row.kind === 'broken' && row.bucket === 'other').length
 console.log(
   `\n结论：跨槽链接 ${crossSlot} 条${crossSlot === 0 ? '（两槽未互相焊死）' : '（危险，拷贝前必须处理）'}；` +
-    `有意义的断链 ${realBroken} 条（其余断链是构建产物 / Chromium 锁 / 历史快照，属垃圾）。`,
+    `有意义的断链 ${realBroken} 条（其余断链是构建产物 / Chromium 锁 / 历史快照，属垃圾）；` +
+    `槽外指向已搬走位置的 ${stale.length} 条。`,
 )
 
 // `--assert` turns the report into a gate: a cross-slot link means the two data
-// roots are welded together, and a meaningful dangling link means something is
-// pointing at a path that no longer exists. Both must be zero.
+// roots are welded together, a meaningful dangling link means something points
+// at a path that no longer exists, and a stale consumer link means the manifest
+// moved a slot without the links following. All three must be zero.
 if (argv.includes('--assert')) {
-  if (crossSlot > 0 || realBroken > 0) {
-    console.error(`[link-report] FAIL: cross-slot ${crossSlot} · dangling ${realBroken}`)
+  if (crossSlot > 0 || realBroken > 0 || stale.length > 0) {
+    console.error(`[link-report] FAIL: cross-slot ${crossSlot} · dangling ${realBroken} · stale ${stale.length}`)
     process.exitCode = 1
   } else {
-    console.log('[link-report] PASS: 0 跨槽 · 0 有意义断链')
+    console.log('[link-report] PASS: 0 跨槽 · 0 有意义断链 · 0 过期链接')
   }
 }
