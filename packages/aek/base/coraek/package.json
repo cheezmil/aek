@@ -45,6 +45,14 @@
     "./paths": {
       "types": "./paths.d.mts",
       "default": "./paths.mjs"
+    },
+    "./backups": {
+      "types": "./backups.d.mts",
+      "default": "./backups.mjs"
+    },
+    "./schema": {
+      "types": "./schema.d.mts",
+      "default": "./schema.mjs"
     }
   },
   "dsh": {
@@ -91,7 +99,11 @@
     "lib/types/**/*.d.ts",
     "bin/",
     "slot-lock.mjs",
-    "slot-lock.d.mts"
+    "slot-lock.d.mts",
+    "backups.mjs",
+    "backups.d.mts",
+    "schema.mjs",
+    "schema.d.mts"
   ],
   "oclif": {
     "bin": "aek",

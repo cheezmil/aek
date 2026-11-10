@@ -14,6 +14,7 @@ import { Command } from '@oclif/core'
 import { spawn } from 'node:child_process'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { migrateOnBoot } from '../../schema.mjs'
 import { applyAekEnvironment, resolveRuntime } from '../runtime.ts'
 
 export default class WebCommand extends Command {
@@ -31,6 +32,14 @@ export default class WebCommand extends Command {
     }
 
     applyAekEnvironment()
+
+    // Data-schema migration, before the runtime that READS those files starts.
+    // This is the one hook every install passes through — the packaged app's
+    // launcher and a dev checkout both boot the backend with this command — so
+    // it is the only place that reaches machines with no `scripts/` directory
+    // and no `next` slot. It never throws and never blocks: a failed migration
+    // leaves the version file untouched, so the next boot retries.
+    migrateOnBoot()
 
     const args = [...runtime.prefixArgs, 'web', ...appArgs]
     const child = spawn(runtime.command, args, {

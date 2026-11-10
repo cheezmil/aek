@@ -1,120 +1,33 @@
 #!/usr/bin/env node
 /**
- * Bound `<container>/backups/` to the newest N snapshots (default 10).
+ * CLI over the backups retention policy.
  *
- * Three different scripts write into that folder — `migrate-data-root.mjs`
- * (`<ts>-pre-layout`), `promote.mjs` (`<ts>-pre-promote`) and the stray-shelf
- * cleanups (`<ts>-stray-…`). Each of them only ever ADDS, so the folder grows
- * without bound: a layout move plus a dozen promotions is a dozen trees, and
- * the 1.7 GB copy case makes that expensive rather than merely untidy.
+ * The policy itself is `@cheezmil/coraek/backups`, not a copy here: the RUNTIME
+ * needs the same rule (`schema.mjs` snapshots before it migrates), and a
+ * packaged app cannot import from `scripts/` — which the app does not ship. Two
+ * implementations of "which folders may I delete" is how one of them eventually
+ * deletes the wrong one, so there is exactly one and this file only parses
+ * arguments and prints.
  *
- * Two properties make deleting here safe enough to be automatic:
+ * Snapshots are `<container>/backups/<YYYYMMDD…-what>`; only entries whose name
+ * starts with a date are candidates, so `.DS_Store` and hand-made folders are
+ * never touched. The newest N (default 10) survive, and the newest one is never
+ * a candidate — it is the snapshot the caller just wrote.
  *
- *   - **Name guard.** Only entries whose name starts with `YYYYMMDD` are ever
- *     candidates. `.DS_Store`, a hand-made `my-notes/`, a checkout someone
- *     dropped in — never touched, whatever their position in the sort. The
- *     timestamp prefix is also what proves the entry came from these scripts.
- *   - **Newest wins, and the newest is protected.** Sorting is by mtime, newest
- *     first, so the snapshot a caller just created is at index 0 and is never a
- *     candidate. Callers may additionally pass `protect` (absolute paths) for
- *     the case where an older snapshot is the one they are working on.
- *
- * Default is a read-only preview. `--yes` (or `apply: true`) deletes.
+ * Default is a read-only preview. `--yes` deletes.
  *
  * Usage:
  *   node scripts/aek/backup-retention.mjs                    # preview
  *   node scripts/aek/backup-retention.mjs --keep 5 --yes     # keep 5
  *   node scripts/aek/backup-retention.mjs --json             # machine-readable
  */
-import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { DEFAULT_KEEP, listBackups, pruneBackups } from '../../packages/aek/base/coraek/backups.mjs'
 import { aekBackupsPath } from '../../packages/aek/base/coraek/home.mjs'
 
-/** How many snapshots to keep when a caller does not say. */
-export const DEFAULT_KEEP = 10
-
-/**
- * A snapshot directory this tool is allowed to delete. Both spellings in use:
- * `20261111-031342-pre-layout` (dashed time) and `20261110044913-stray-…`
- * (time glued to the date). The leading `YYYYMMDD` is the provenance marker —
- * everything else in the folder is somebody's business, not ours.
- */
-const SNAPSHOT_NAME = /^\d{8}(\d{6}|-\d{6})?-/
-
-/**
- * Snapshots in `dir`, newest first.
- * @param {string} dir - the backups folder.
- * @returns {{ name: string, path: string, mtimeMs: number }[]} candidates only.
- */
-export function listBackups(dir) {
-  if (!existsSync(dir)) return []
-  /** @type {{ name: string, path: string, mtimeMs: number }[]} */
-  const rows = []
-  for (const name of readdirSync(dir)) {
-    if (!SNAPSHOT_NAME.test(name)) continue
-    const full = join(dir, name)
-    let stat
-    try {
-      stat = statSync(full)
-    } catch {
-      continue
-    }
-    if (!stat.isDirectory()) continue
-    rows.push({ name, path: full, mtimeMs: stat.mtimeMs })
-  }
-  return rows.sort((a, b) => b.mtimeMs - a.mtimeMs)
-}
-
-/**
- * Keep the newest `keep` snapshots, delete the rest.
- *
- * @param {string} dir - the backups folder.
- * @param {object} [options] - behaviour.
- * @param {number} [options.keep] - how many to keep (newest first).
- * @param {string[]} [options.protect] - absolute paths never deleted, even when
- *   they fall outside the newest `keep` (a caller working on an older snapshot).
- * @param {boolean} [options.apply] - false previews, true deletes.
- * @returns {{ dir: string, keep: number, total: number, kept: string[], removed: string[], protected: string[], errors: string[], applied: boolean }}
- */
-export function pruneBackups(dir, options = {}) {
-  const keep = Number.isFinite(options.keep) && /** @type {number} */ (options.keep) >= 0
-    ? /** @type {number} */ (options.keep)
-    : DEFAULT_KEEP
-  const guaranteed = new Set((options.protect ?? []).map(p => resolve(p)))
-  const apply = options.apply === true
-
-  const rows = listBackups(dir)
-  const kept = rows.slice(0, keep)
-  const overflow = rows.slice(keep)
-  const protectedRows = overflow.filter(row => guaranteed.has(resolve(row.path)))
-  const candidates = overflow.filter(row => !guaranteed.has(resolve(row.path)))
-
-  /** @type {string[]} */
-  const errors = []
-  /** @type {string[]} */
-  const removed = []
-  for (const row of candidates) {
-    if (!apply) continue
-    try {
-      rmSync(row.path, { recursive: true, force: true })
-      removed.push(row.path)
-    } catch (error) {
-      errors.push(`${row.path}: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-
-  return {
-    dir,
-    keep,
-    total: rows.length,
-    kept: [...kept, ...protectedRows].map(row => row.path),
-    removed: apply ? removed : candidates.map(row => row.path),
-    protected: protectedRows.map(row => row.path),
-    errors,
-    applied: apply,
-  }
-}
+// Re-exported for the callers that already import them from this path.
+export { DEFAULT_KEEP, listBackups, pruneBackups }
 
 /** @param {string} message */
 function say(message) {
@@ -153,6 +66,6 @@ function main() {
   }
 }
 
-// Only run when invoked directly: migrate/promote import `pruneBackups`.
+// Only run when invoked directly: migrate/promote/relocate import `pruneBackups`.
 const INVOKED = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href === import.meta.url : false
 if (INVOKED) main()
