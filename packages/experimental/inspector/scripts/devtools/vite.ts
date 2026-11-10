@@ -36,7 +36,11 @@ export const LOCAL_FETCH_PATTERN = "data:application/json,{}", REMOTE_FETCH_PATT
       const sourcePath = relative(front, file).split('\\').join('/')
       if (generated.has(sourcePath)) return `${VIRTUAL}${sourcePath}`
       if (sourcePath === 'core/platform/node/node.js') return join(front, 'core/platform/browser/browser.ts')
-      if (file.endsWith('.css.js')) return `${VIRTUAL}css:${file.slice(0, -3)}.mjs`
+      // The virtual id lands verbatim in the emitted bundle as a `//#region`
+      // comment, so it must stay relative to the DevTools frontend root: an
+      // absolute path would ship the build machine's home directory (inside
+      // node_modules) to every user of the published package.
+      if (file.endsWith('.css.js')) return `${VIRTUAL}css:${relative(front, file.slice(0, -3)).split('\\').join('/')}.mjs`
       if (file.endsWith('.js')) {
         const tsFile = file.slice(0, -3) + '.ts'
         try { if ((await stat(tsFile)).isFile()) return tsFile } catch (error) {
@@ -48,7 +52,7 @@ export const LOCAL_FETCH_PATTERN = "data:application/json,{}", REMOTE_FETCH_PATT
     async load(id) {
       if (id === EMPTY) return 'export {};'
       if (id.startsWith(`${VIRTUAL}css:`)) {
-        const path = id.slice(`${VIRTUAL}css:`.length, -4)
+        const path = resolve(front, id.slice(`${VIRTUAL}css:`.length, -4))
         this.addWatchFile(path)
         return cssTextModule(await readFile(path, 'utf8'))
       }

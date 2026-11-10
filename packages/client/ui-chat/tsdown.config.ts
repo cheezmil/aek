@@ -1,4 +1,4 @@
-import { clientBundle } from '../tsdown.client.ts'
+import { clientBundle, clientCssModuleId } from '../tsdown.client.ts'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
@@ -11,7 +11,7 @@ export default ((options) => bundle(options).map(config => ({
   plugins: [...(config.plugins ?? []), {
     name: 'chat-whale-image',
     async transform(code: string, id: string) {
-      if (id.replaceAll('\\', '/') !== `\0dsh-css:${stylesheet}.mjs`) return null
+      if (id.replaceAll('\\', '/') !== clientCssModuleId(stylesheet)) return null
       const imageUrl = './running-whale@2x.png'
       if (!code.includes(imageUrl)) return null
       this.addWatchFile(whaleImage)

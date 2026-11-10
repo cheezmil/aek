@@ -31,11 +31,13 @@
  * Usage:
  *   node scripts/aek/verify-user-paths.mjs            # AEK-owned tree, gate
  *   node scripts/aek/verify-user-paths.mjs --all      # whole repo, advisory
+ *   node scripts/aek/verify-user-paths.mjs --artifacts # also scan built artifacts
  *   node scripts/aek/verify-user-paths.mjs --all --strict
  *   node scripts/aek/verify-user-paths.mjs --json
  *   node scripts/aek/verify-user-paths.mjs --selftest
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -102,6 +104,9 @@ function findProjectRoot(start) {
 }
 
 const ROOT = findProjectRoot(HERE)
+
+/** Build output trees: shipped artifacts must not carry the build machine's home. */
+const ARTIFACT_ROOTS = ['packages', 'apps', 'vendor']
 
 /** AEK-authored trees. Everything here is ours to keep clean. */
 const OWNED_ROOTS = ['packages/aek', 'scripts/aek', 'apps/web', 'apps/aek-desktop']
@@ -214,6 +219,62 @@ function scan(options = {}) {
   return found
 }
 
+/**
+ * Build artifacts that still carry THIS machine's home directory.
+ *
+ * A published bundle must read the same for every user. The bundler used to
+ * inline absolute stylesheet paths into the emitted `//#region` comments, so
+ * every consumer received the build machine's home path.
+ * @returns {{ file: string, line: number, rule: string, text: string }[]}
+ */
+function scanArtifacts() {
+  const home = homedir()
+  if (!/^\/(?:Users|home)\//u.test(home)) return []
+  const found = []
+  const artifactDirs = new Set(['lib', 'dist', 'build', 'out'])
+  const visit = (dir) => {
+    let entries
+    try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return }
+    for (const entry of entries) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name) && !artifactDirs.has(entry.name)) continue
+        visit(full)
+      } else if (entry.isFile()) {
+        const dot = entry.name.lastIndexOf('.')
+        const ext = dot === -1 ? '' : entry.name.slice(dot).toLowerCase()
+        if (!TEXT_EXT.has(ext)) continue
+        let stat
+        try { stat = statSync(full) } catch { continue }
+        if (stat.size > MAX_BYTES) continue
+        let text
+        try { text = readFileSync(full, 'utf8') } catch { continue }
+        if (text.includes('\u0000')) continue
+        text.split(/\r?\n/u).forEach((line, index) => {
+          if (!line.includes(home)) return
+          found.push({
+            file: rel(full),
+            line: index + 1,
+            rule: 'artifact-home-path',
+            text: line.trim().slice(0, 160),
+          })
+        })
+      }
+    }
+  }
+  for (const root of ARTIFACT_ROOTS) {
+    const dir = join(ROOT, root)
+    if (!existsSync(dir)) continue
+    let entries
+    try { entries = readdirSync(dir, { withFileTypes: true }) } catch { continue }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      visit(join(dir, entry.name))
+    }
+  }
+  return found
+}
+
 function selftest() {
   const shouldFail = [
     'const ROOT = "/Users/zhangsan/project"',
@@ -256,12 +317,13 @@ if (args.includes('--selftest')) selftest()
 else {
   const all = args.includes('--all')
   const strict = args.includes('--strict')
-  const violations = scan({ all })
+  const artifacts = args.includes('--artifacts')
+  const violations = [...scan({ all }), ...(artifacts ? scanArtifacts() : [])]
   const failing = all && !strict ? false : violations.length > 0
   if (args.includes('--json')) {
-    console.log(JSON.stringify({ ok: !failing, scope: all ? 'repo' : 'aek', violations }, null, 2))
+    console.log(JSON.stringify({ ok: !failing, scope: all ? 'repo' : 'aek', artifacts, violations }, null, 2))
   } else if (violations.length === 0) {
-    console.log(`verify-user-paths: OK — no real user home directory in the ${all ? 'repo' : 'AEK-owned tree'}.`)
+    console.log(`verify-user-paths: OK — no real user home directory in the ${all ? 'repo' : 'AEK-owned tree'}${artifacts ? ' and no build-machine home path in the artifacts' : ''}.`)
   } else {
     const label = failing ? 'violation(s)' : 'advisory finding(s) (vendored upstream; not failing)'
     console.error(`verify-user-paths: ${violations.length} ${label}`)

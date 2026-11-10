@@ -54,7 +54,8 @@ AEK 一开始从 `deepseek-harness`（简称 dsh）整仓复制而来，削减�
 ## 4. 代码与架构
 
 - **数据目录的位置由清单决定，不由代码推导**：`<容器>/aek.yaml`（默认 `~/.aek/aek.yaml`）记录每个槽的数据根、`backups/` 以及槽内各目录（`dirs`）。要搬家——插一层父文件夹、换外置盘、给某个目录改名——**只改这个文件**。代码里只允许通过 `@cheezmil/coraek/home`（`resolveAekHome` / `aekHomePath` / `aekBackupsPath`）与 `@cheezmil/coraek/slots`（`slotHome`）取路径；`join(..., 'current')` 这类推导一律禁止，`scripts/aek/verify-aek-home.mjs` 会拦。查看/校验/生成清单：`node scripts/aek/paths.mjs [show|check|init]`（默认只读）。
-- **禁止硬编码任何绝对路径**——项目面向全球用户。源码与配置里的路径一律相对仓库根、由运行时解析；本文件同样不写开发者本机的绝对路径（笔记目录、临时目录、clone 目标等一律由使用者当轮提供，不预设）。**同样禁止出现任何真实用户名**：`/Users/<人名>`、`/home/<人名>`、`C:\Users\<人名>` 在代码、注释、文档、测试夹具、生成模板里都不允许——注释会进 fork 和截图，夹具会把作者身份固化进仓库，模板会把作者家目录复制进每个用户的数据目录。占位写 `<user>` / `~` / `$HOME` / `%USERPROFILE%`，测试用 `tester` / `fixture`。`node scripts/aek/verify-user-paths.mjs`（`pnpm verify:user-paths`）会扫 AEK 自有目录，`--all` 可扫全仓做人工复核。
+- **禁止硬编码任何绝对路径**——项目面向全球用户。源码与配置里的路径一律相对仓库根、由运行时解析；本文件同样不写开发者本机的绝对路径（笔记目录、临时目录、clone 目标等一律由使用者当轮提供，不预设）。**同样禁止出现任何真实用户名**：`/Users/<人名>`、`/home/<人名>`、`C:\Users\<人名>` 在代码、注释、文档、测试夹具、生成模板里都不允许——注释会进 fork 和截图，夹具会把作者身份固化进仓库，模板会把作者家目录复制进每个用户的数据目录。占位写 `<user>` / `~` / `$HOME` / `%USERPROFILE%`，测试用 `tester` / `fixture`。`node scripts/aek/verify-user-paths.mjs`（`pnpm verify:user-paths`）会扫 AEK 自有目录，`--all` 可扫全仓做人工复核，`--artifacts`（`pnpm verify:user-paths:artifacts`）再扫一遍构建产物。
+- **模块 id 是会被原样发布的字符串**：bundler 把样式表的**绝对路径**当虚拟模块 id 时，Rolldown 会把 id 写进产物的 `//#region` 注释，等于把打包者本机的家目录发给每个用户。进入模块 id 的路径一律相对化（客户端 CSS 相对仓库根、DevTools CSS 相对前端根），并在 `load()` 里还原成绝对路径；按 id 做后处理匹配的地方（如图片内联）必须复用同一套 id 生成函数。
 - **改 dsh 原来源码，优先通过 `aek-base` 插件（现包名 `@cheezmil/coraek`）扩展**；cordis 插件能做到的都在插件层做，实在解决不了才直接改源码。注意：cordis 插件是**运行时**扩展点，管不到 vitest spec 和 `run-gates` 这类构建期门禁，别硬套。
 - **框架直接装、别 vendor；别人 MIT 产品整只复制后裁剪；只有 AEK 自己的能力自己写。** 例外：已存在的 `vendor/cordis/` 是本次分叉保留的运行时资产，属于 KEEP，不要按「别 vendor」这条去删它。
 - 插件接口分层：**CLI 必须**（`aek{能力名}`，入口 `bin/*.mjs`）、**MCP 只有 `aek-mcp-gateway` 需要**、**REST 可选**。
