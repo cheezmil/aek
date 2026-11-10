@@ -210,6 +210,7 @@
     "verify-provider-data": "node scripts/aek/run.mjs verify-provider-data",
     "verify-product-use": "node scripts/aek/run.mjs verify-product-use",
     "verify:aek-home": "node scripts/aek/verify-aek-home.mjs",
+    "verify:user-paths": "node scripts/aek/verify-user-paths.mjs",
     "verify:web-ui": "node scripts/aek/verify-web-ui.mjs",
     "start:dev": "node scripts/aek/launch.mjs start-dev",
     "start:release": "node scripts/aek/launch.mjs start-release",

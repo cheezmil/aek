@@ -196,4 +196,14 @@ describe('safety', () => {
     expect(manifest?.backups).toBe(join(container, 'backups'))
     expect(renderManifest().startsWith('# AEK 路径清单')).toBe(true)
   })
+
+  it('never embeds a machine-specific path in the generated manifest', () => {
+    // The same text is written on every platform: a `/Users/<someone>` or
+    // `C:\Users\<someone>` comment would ship one developer's account name to
+    // every user, and would lie as soon as the container moves.
+    const text = renderManifest()
+    expect(text).not.toMatch(/\/(?:Users|home)\//u)
+    expect(text).not.toMatch(/[A-Za-z]:[\\/]{1,2}Users/u)
+    expect(text).not.toContain(makeContainer())
+  })
 })

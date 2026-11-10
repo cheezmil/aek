@@ -156,7 +156,7 @@ function init() {
   if (!result.written) {
     console.log(`${pretty(result.file)} 已存在，未改动。要覆盖加 --force。`)
     console.log('（下面是要写入的内容，供对照）')
-    console.log(renderManifest({ container: pretty(container) }))
+    console.log(renderManifest())
     return 0
   }
   console.log(`已写入 ${pretty(result.file)}`)

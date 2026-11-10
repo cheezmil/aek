@@ -399,10 +399,16 @@ export function resolveDir(dirs, home, name) {
  *
  * Kept next to the reader so the writer can never drift from the parser: this
  * output is exactly the subset `parseYamlSubset` accepts.
- * @param {{ container?: string }} [options] - reserved for future templating.
+ *
+ * The template is deliberately path-free: it must never embed the absolute
+ * container path of whichever machine generated the file. Users on every
+ * platform get this file, so a `/Users/<someone>` or `C:\Users\<someone>`
+ * comment would leak one developer's home directory into everyone's install —
+ * and it would be wrong the moment the container is moved or mounted elsewhere.
+ * "Relative to this file" is the only statement that stays true.
  * @returns {string} manifest contents.
  */
-export function renderManifest(options = {}) {
+export function renderManifest() {
   const dirs = Object.keys(DEFAULT_DIRS)
     .sort()
     .map((key) => `  ${key}: ${DEFAULT_DIRS[key]}`)
@@ -410,7 +416,7 @@ export function renderManifest(options = {}) {
   return `# AEK 路径清单 —— 「文件夹到底在哪」的唯一真相
 #
 # 改这个文件即可搬家，不用改任何代码。所有相对路径都以本文件所在目录
-# （${options.container ?? '.'}）为基准；也接受绝对路径和 ~ 开头。
+# 为基准；也接受绝对路径和 ~ 开头。
 #
 # 想插一层父文件夹：把 slots 的值从 current 改成比如 v2/current，
 # 再把目录挪过去就行。想放到外置盘：root 写绝对路径。
@@ -444,7 +450,7 @@ export function writeDefaultManifest(container, options = {}) {
   const file = join(dir, AEK_MANIFEST_FILENAME)
   if (existsSync(file) && options.force !== true) return { file, written: false }
   mkdirSync(dir, { recursive: true })
-  writeFileSync(file, renderManifest({ container: dir }), 'utf8')
+  writeFileSync(file, renderManifest(), 'utf8')
   MANIFEST_CACHE.delete(file)
   return { file, written: true }
 }

@@ -56,8 +56,13 @@ export declare function resolveDir(
   name: string,
 ): string
 
-/** Render the default manifest text. */
-export declare function renderManifest(options?: { container?: string }): string
+/**
+ * Render the default manifest text.
+ *
+ * The output contains no absolute path: it is generated on every platform and
+ * must read identically for every user.
+ */
+export declare function renderManifest(): string
 
 /** Write the default manifest into a container when it is missing. */
 export declare function writeDefaultManifest(

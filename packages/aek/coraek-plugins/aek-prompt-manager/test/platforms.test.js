@@ -27,31 +27,31 @@ function clearEnv(key) {
 // Windows 原生布局的 globalPromptPath：当传入 {os:'win32'} 且 home 是 /mnt/... 时，
 // 应保持正斜杠路径以便 WSL 内 node fs 直接写入。
 test('globalPromptPath supports Windows-native layout via options (WSL /mnt style)', () => {
-  const winRoot = '/mnt/c/Users/xdx';
-  assert.equal(platform('claude-code').globalPromptPath('claude-code', { home: winRoot, os: 'win32' }), '/mnt/c/Users/xdx/.claude/CLAUDE.md');
-  assert.equal(platform('codex').globalPromptPath('codex', { home: winRoot, os: 'win32' }), '/mnt/c/Users/xdx/.codex/AGENTS.md');
+  const winRoot = '/mnt/c/Users/tester';
+  assert.equal(platform('claude-code').globalPromptPath('claude-code', { home: winRoot, os: 'win32' }), '/mnt/c/Users/tester/.claude/CLAUDE.md');
+  assert.equal(platform('codex').globalPromptPath('codex', { home: winRoot, os: 'win32' }), '/mnt/c/Users/tester/.codex/AGENTS.md');
   // opencode 在 win 布局用 LOCALAPPDATA（WSL 风格下还原到 home 下 AppData\Local）
-  setEnv('LOCALAPPDATA', '/mnt/c/Users/xdx/AppData/Local');
+  setEnv('LOCALAPPDATA', '/mnt/c/Users/tester/AppData/Local');
   try {
-    assert.equal(platform('opencode').globalPromptPath('opencode', { home: winRoot, os: 'win32' }), '/mnt/c/Users/xdx/AppData/Local/opencode/AGENTS.md');
+    assert.equal(platform('opencode').globalPromptPath('opencode', { home: winRoot, os: 'win32' }), '/mnt/c/Users/tester/AppData/Local/opencode/AGENTS.md');
   } finally {
     clearEnv('LOCALAPPDATA');
   }
   // hermes 在 win 布局用 %USERPROFILE%\.hermes\（与 unix ~/.hermes 一致，不用 LOCALAPPDATA）
-  assert.equal(platform('hermes').globalPromptPath('hermes', { home: winRoot, os: 'win32' }), '/mnt/c/Users/xdx/.hermes/SOUL.md');
+  assert.equal(platform('hermes').globalPromptPath('hermes', { home: winRoot, os: 'win32' }), '/mnt/c/Users/tester/.hermes/SOUL.md');
 });
 
 // 原生 Windows home（C:\Users\...）仍应走 win32 分隔符。
 test('globalPromptPath native Windows home keeps backslash separators', () => {
   const prevHome = process.env.HOME;
-  process.env.HOME = 'C:\\Users\\xdx';
+  process.env.HOME = 'C:\\Users\\tester';
   try {
-    assert.equal(platform('claude-code').globalPromptPath('claude-code', { header: false, os: 'win32' }), 'C:\\Users\\xdx\\.claude\\CLAUDE.md');
-    assert.equal(platform('hermes').globalPromptPath('hermes', { os: 'win32' }), 'C:\\Users\\xdx\\.hermes\\SOUL.md');
+    assert.equal(platform('claude-code').globalPromptPath('claude-code', { header: false, os: 'win32' }), 'C:\\Users\\tester\\.claude\\CLAUDE.md');
+    assert.equal(platform('hermes').globalPromptPath('hermes', { os: 'win32' }), 'C:\\Users\\tester\\.hermes\\SOUL.md');
     // zcode and trae also use home-based paths
-    assert.equal(platform('zcode').globalPromptPath('zcode', { os: 'win32' }), 'C:\\Users\\xdx\\.zcode\\AGENTS.md');
-    assert.equal(platform('trae').globalPromptPath('trae', { os: 'win32' }), 'C:\\Users\\xdx\\.trae\\AGENTS.md');
-    assert.equal(platform('deepseek-harness').globalPromptPath('deepseek-harness', { os: 'win32' }), 'C:\\Users\\xdx\\.dsh\\AGENTS.md');
+    assert.equal(platform('zcode').globalPromptPath('zcode', { os: 'win32' }), 'C:\\Users\\tester\\.zcode\\AGENTS.md');
+    assert.equal(platform('trae').globalPromptPath('trae', { os: 'win32' }), 'C:\\Users\\tester\\.trae\\AGENTS.md');
+    assert.equal(platform('deepseek-harness').globalPromptPath('deepseek-harness', { os: 'win32' }), 'C:\\Users\\tester\\.dsh\\AGENTS.md');
   } finally {
     process.env.HOME = prevHome;
   }

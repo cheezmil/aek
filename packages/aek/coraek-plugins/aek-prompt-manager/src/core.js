@@ -189,7 +189,7 @@ const PWSH_CANDIDATES = [
 ];
 
 /**
- * 把 Windows 原生路径（如 C:\Users\xdx）转成 WSL 侧可访问的路径（如 /mnt/c/Users/xdx）。
+ * 把 Windows 原生路径（如 C:\Users\<user>）转成 WSL 侧可访问的路径（如 /mnt/c/Users/<user>）。
  * 仅处理盘符反斜杠路径；不匹配时返回 null。
  */
 function winProfileToWsl(winPath) {
@@ -205,7 +205,7 @@ let cachedWinRoot = null;
 let resolvedWinRoot = false;
 
 /**
- * 获取 Windows 原生用户 profile 在 WSL 侧可访问的根路径（如 /mnt/c/Users/xdx）。
+ * 获取 Windows 原生用户 profile 在 WSL 侧可访问的根路径（如 /mnt/c/Users/<user>）。
  *
  * 用户拍板的两条约束：
  *   1. 用 /mnt/c/Users/<user> 直写（简单，依赖 /mnt/c 挂载）

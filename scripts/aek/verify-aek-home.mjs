@@ -41,6 +41,8 @@ const ALLOWED_FILES = new Set([
   'packages/aek/base/coraek/home.d.mts',
   // This gate itself contains the patterns it enforces.
   'scripts/aek/verify-aek-home.mjs',
+  // The user-home gate holds sample paths as self-test fixtures.
+  'scripts/aek/verify-user-paths.mjs',
   // Project-local prompt rules live under <project>/.aek/, derived from cwd —
   // that is a repository layout, not a user data root.
   'packages/aek/coraek-plugins/aek-prompt-manager/src/project-rules.js',
