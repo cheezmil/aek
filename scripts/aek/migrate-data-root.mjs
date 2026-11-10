@@ -8,6 +8,14 @@
  *           ~/.aek/next
  *           ~/.aek/backups/<ts>-pre-layout/   (manifest + rollback record)
  *
+ * The move invalidates every consumer-side skill link: `~/.claude/skills/x`
+ * points at `../../.aek/skill-manager/skills/x`, which no longer exists once
+ * the hub lives at `~/.aek/current/skill-manager`. Those links cannot follow on
+ * their own (a relative link is computed once, and from outside the container
+ * it has to spell every level out), so the migration REPAIRS THEM ITSELF as its
+ * last step — no separate manual pass, no window where other agents see zero
+ * skills. `--no-repair` exists only for debugging.
+ *
  * Both slot directories are REAL directories. No symlink is ever created for
  * the old `~/.aek-next` path: a link would let one slot's writes land inside
  * the other's tree, which is exactly the isolation this layout exists to give.
@@ -31,6 +39,8 @@
  *   - Idempotent: an already-migrated container is detected and left alone.
  *   - Every failure path reports exactly which step failed; the sequence is
  *     ordered so the container is only renamed into place at the very end.
+ *   - `backups/` is capped at {@link DEFAULT_KEEP} snapshots after the move, so
+ *     repeated layout experiments cannot grow it without bound.
  *
  * Usage:
  *   node scripts/aek/migrate-data-root.mjs                # plan, read-only
@@ -43,6 +53,7 @@ import {
   lstatSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   readlinkSync,
   renameSync,
   rmdirSync,
@@ -51,8 +62,14 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { resolveAekRoot } from '../../packages/aek/base/coraek/home.mjs'
 import { SLOT_DIRS, SLOTS, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
+import { manifestFor, resolveDir } from '../../packages/aek/base/coraek/paths.mjs'
+import { DEFAULT_KEEP, pruneBackups } from './backup-retention.mjs'
+
+/** Folder name of the skill hub inside a slot (and inside a flat container). */
+const HUB_DIRNAME = 'skill-manager'
 
 /** Suffix of the pre-container second root (`<container>-next`). */
 const LEGACY_NEXT_SUFFIX = '-next'
@@ -62,10 +79,29 @@ const BACKUP_DIRNAME = 'backups'
 
 const ARGS = process.argv.slice(2)
 const APPLY = ARGS.includes('--yes')
+const NO_REPAIR = ARGS.includes('--no-repair')
+/**
+ * TEST-ONLY escape hatch, mirroring `promote.mjs`. The self-test migrates a
+ * throwaway container while the developer's own apps hold 1685/1687, and the
+ * port guard cannot tell those apart from the fake slot's. Never use it on a
+ * real data root.
+ */
+const SKIP_RUNNING_CHECK = ARGS.includes('--no-running-check')
 const ROLLBACK_AT = ARGS.indexOf('--rollback')
 const ROLLBACK_DIR = ROLLBACK_AT >= 0 ? ARGS[ROLLBACK_AT + 1] : undefined
+const KEEP_AT = ARGS.indexOf('--keep-backups')
+const KEEP_BACKUPS = KEEP_AT >= 0 ? Number(ARGS[KEEP_AT + 1]) : DEFAULT_KEEP
+if (KEEP_AT >= 0 && (!Number.isInteger(KEEP_BACKUPS) || KEEP_BACKUPS < 1)) {
+  console.error(`error: --keep-backups needs an integer ≥ 1, got ${String(ARGS[KEEP_AT + 1])}`)
+  process.exit(1)
+}
 
-const ROOT = resolveAekRoot({})
+/**
+ * `AEK_ROOT` is honoured on purpose: it is the documented "where all slots
+ * live" variable, and without it the migration could not be exercised on a
+ * throwaway container at all. Every step is still dry-run until `--yes`.
+ */
+const ROOT = resolveAekRoot(process.env)
 const LEGACY_NEXT = join(dirname(ROOT), `${basename(ROOT)}${LEGACY_NEXT_SUFFIX}`)
 const CURRENT = join(ROOT, SLOT_DIRS.aek)
 const NEXT = join(ROOT, SLOT_DIRS.next)
@@ -120,6 +156,68 @@ function stamp() {
   const d = new Date()
   const p = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
+}
+
+/** Where the link repair pass lives — computed from this file, never spelled out. */
+const REPAIR_SCRIPT = fileURLToPath(new URL('./repair-skill-links.mjs', import.meta.url))
+
+/**
+ * Run the consumer-link repair pass against THIS container.
+ *
+ * `AEK_ROOT` is pinned to the container we just migrated: the child must look
+ * at the layout this script produced, never at an inherited environment.
+ * @param {boolean} apply - false previews (nothing is written), true rewrites.
+ * @param {string[]} [assumeGone] - directories to treat as gone even though they
+ *   still resolve (the flat hub, during the dry run).
+ * @returns {{ ok: boolean, counts: Record<string, number>, output: string }} the child's tally.
+ */
+function repairLinks(apply, assumeGone = []) {
+  const args = [REPAIR_SCRIPT, '--json', ...(apply ? ['--yes'] : [])]
+  for (const dir of assumeGone) args.push('--assume-gone', dir)
+  const options = { encoding: 'utf8', env: { ...process.env, AEK_ROOT: ROOT }, stdio: ['ignore', 'pipe', 'pipe'] }
+  try {
+    const out = execFileSync(process.execPath, args, options)
+    return { ok: true, counts: JSON.parse(out).counts ?? {}, output: out }
+  } catch (error) {
+    // A non-zero exit means "some links are still dangling", not "the pass
+    // crashed": keep the tally so the caller can report it instead of guessing.
+    const raw = /** @type {any} */ (error)
+    const out = `${raw.stdout ?? ''}${raw.stderr ?? ''}`
+    try {
+      return { ok: false, counts: JSON.parse(String(raw.stdout ?? '')).counts ?? {}, output: out }
+    } catch {
+      return { ok: false, counts: {}, output: out }
+    }
+  }
+}
+
+/**
+ * Where the skill hub sits while the container is still FLAT: directly under the
+ * container, not under a slot. The manifest's `dirs` table is consulted anyway,
+ * so a renamed hub folder is still found.
+ * @returns {string} absolute hub path in the flat layout.
+ */
+function flatHubPath() {
+  const manifest = manifestFor(ROOT)
+  return manifest ? resolveDir(manifest.dirs, ROOT, HUB_DIRNAME) : join(ROOT, HUB_DIRNAME)
+}
+
+/**
+ * Merge extra fields into a snapshot record that already exists.
+ * @param {string} snapshot - snapshot directory.
+ * @param {Record<string, unknown>} extras - fields to add.
+ */
+function recordExtras(snapshot, extras) {
+  const file = join(snapshot, 'manifest.json')
+  let current = {}
+  try {
+    current = JSON.parse(readFileSync(file, 'utf8'))
+  } catch { /* a missing record must not block the repair report */ }
+  try {
+    writeFileSync(file, JSON.stringify({ ...current, ...extras }, null, 2), 'utf8')
+  } catch (error) {
+    say(`warning: could not update ${file} (${/** @type {Error} */ (error).message})`)
+  }
 }
 
 /** @param {string} p @returns {number} st_dev, or -1 */
@@ -178,7 +276,23 @@ function plan() {
   say(`  1. write record  ${join(BACKUPS, '<ts>-pre-layout', 'manifest.json')}`)
   say(`  2. move the entries above into a staging dir, then rename it to ${SLOT_DIRS.aek}/`)
   say(`  3. rename ${LEGACY_NEXT} -> ${SLOT_DIRS.next}/  (a REAL directory, never a symlink)`)
+  say(`  4. re-point consumer skill links at the new hub  (${NO_REPAIR ? 'SKIPPED by --no-repair' : 'automatic'})`)
+  say(`  5. keep the newest ${String(KEEP_BACKUPS)} snapshots in ${BACKUPS}`)
   say('')
+  if (!NO_REPAIR) {
+    // The flat hub still resolves right now, so it has to be declared "about to
+    // be gone" for the preview to see the breakage the move will cause.
+    const preview = repairLinks(false, [flatHubPath()])
+    const counts = preview.counts
+    const atRisk = counts.wouldBreak ?? 0
+    if (counts.broken === undefined) {
+      say('warning: the link preview did not report a tally; the repair step will still run.')
+    } else if (atRisk === 0) {
+      say('links: nothing points at the flat hub — the repair step will have nothing to re-point.')
+    } else {
+      say(`links: ${String(atRisk)} consumer link(s) point at the flat hub and will be re-pointed at ${SLOT_DIRS.aek}/skill-manager right after the move.`)
+    }
+  }
   if (!exists(LEGACY_NEXT)) {
     say('warning: the next root does not exist; step 3 is skipped (only the `aek` slot moves).')
   }
@@ -192,7 +306,7 @@ function migrate() {
   }
   if (!isDir(ROOT)) fail(`container ${ROOT} does not exist; nothing to migrate.`)
 
-  const busy = runningProcesses()
+  const busy = SKIP_RUNNING_CHECK ? [] : runningProcesses()
   if (busy.length > 0) {
     console.error('refusing to migrate while AEK is running:')
     for (const line of busy) console.error(`  - ${line}`)
@@ -223,7 +337,7 @@ function migrate() {
       fail(`${dir} already holds data; refusing to move it aside. Run with --rollback if a migration was interrupted.`)
     }
     renameSync(dir, join(snapshot, label))
-    say(`[0/5] moved pre-built skeleton ${dir} -> ${label}/`)
+    say(`[0/7] moved pre-built skeleton ${dir} -> ${label}/`)
   }
   writeFileSync(join(snapshot, 'manifest.json'), JSON.stringify({
     kind: 'aek-data-root-layout',
@@ -239,7 +353,7 @@ function migrate() {
     }),
     nextRoot: hasLegacyNext ? LEGACY_NEXT : null,
   }, null, 2), 'utf8')
-  say(`[1/5] record  ${snapshot}/manifest.json`)
+  say(`[1/7] record  ${snapshot}/manifest.json`)
 
   const staging = join(snapshot, 'staging')
   mkdirSync(staging)
@@ -250,14 +364,14 @@ function migrate() {
       fail(`move "${name}" failed (${/** @type {Error} */ (error).message}). The staging dir is ${staging}; nothing else was touched.`)
     }
   }
-  say(`[2/5] moved ${String(entries.length)} entries into staging`)
+  say(`[2/7] moved ${String(entries.length)} entries into staging`)
 
   try {
     renameSync(staging, CURRENT)
   } catch (error) {
     fail(`rename staging -> ${CURRENT} failed (${/** @type {Error} */ (error).message}); recover with --rollback ${snapshot}`)
   }
-  say(`[3/5] ${SLOT_DIRS.aek}/ in place`)
+  say(`[3/7] ${SLOT_DIRS.aek}/ in place`)
 
   if (hasLegacyNext) {
     try {
@@ -265,20 +379,50 @@ function migrate() {
     } catch (error) {
       fail(`rename ${LEGACY_NEXT} -> ${NEXT} failed (${/** @type {Error} */ (error).message}); recover with --rollback ${snapshot}`)
     }
-    say(`[4/5] ${LEGACY_NEXT} -> ${SLOT_DIRS.next}/`)
+    say(`[4/7] ${LEGACY_NEXT} -> ${SLOT_DIRS.next}/`)
   } else {
-    say('[4/5] no legacy next root; skipped')
+    say('[4/7] no legacy next root; skipped')
   }
 
   if (exists(LEGACY_NEXT)) {
     // Should be unreachable: the rename above moved it. Never create a link in
     // its place — say so loudly instead of hiding the inconsistency.
-    say(`[5/5] ${LEGACY_NEXT} still exists; left untouched (inspect it manually)`)
+    say(`[5/7] ${LEGACY_NEXT} still exists; left untouched (inspect it manually)`)
   } else {
-    say('[5/5] old flat path removed; both slots are real directories')
+    say('[5/7] old flat path removed; both slots are real directories')
   }
 
   verify()
+
+  // 6. Re-point consumer links. Written as its own step, not "run this later":
+  // until it has run, every other agent (`~/.claude/skills`, `~/.qoder/skills`,
+  // …) sees a hub that does not exist. A failure here is reported, not fatal —
+  // the data is migrated and safe, only the links are still stale.
+  if (NO_REPAIR) {
+    say('[6/7] link repair skipped (--no-repair)')
+    recordExtras(snapshot, { linkRepair: { skipped: true } })
+  } else {
+    const repair = repairLinks(true)
+    const counts = repair.counts
+    say(
+      `[6/7] links: ${String(counts.repointed ?? 0)} re-pointed, ` +
+        `${String(counts.pruned ?? 0)} pruned, ${String(counts.unresolved ?? 0)} unrelated` +
+        `${repair.ok ? '' : '  (some links still dangle — see the repair report)'}`,
+    )
+    if (!repair.ok) console.error(repair.output.trim())
+    recordExtras(snapshot, { linkRepair: { skipped: false, ok: repair.ok, counts } })
+    if (!repair.ok) process.exitCode = 1
+  }
+
+  // 7. Cap `backups/`. The snapshot just written is protected by mtime order,
+  // and passed explicitly so an unexpected clock cannot make it the oldest.
+  const pruned = pruneBackups(BACKUPS, { keep: KEEP_BACKUPS, protect: [snapshot], apply: true })
+  say(
+    `[7/7] backups: ${String(pruned.total)} snapshots, kept ${String(pruned.kept.length)}` +
+      `${pruned.removed.length > 0 ? `, removed ${String(pruned.removed.length)} older` : ''}`,
+  )
+  for (const error of pruned.errors) console.error(`  ! ${error}`)
+
   say('')
   say('done. Restart with:  node scripts/aek/slots.mjs --start-all')
 }
@@ -287,7 +431,7 @@ function rollback(dir) {
   const snapshot = dir ? resolve(dir) : undefined
   if (!snapshot) fail('--rollback needs the snapshot directory printed by the migration.')
   if (!exists(snapshot)) fail(`snapshot not found: ${snapshot}`)
-  const busy = runningProcesses()
+  const busy = SKIP_RUNNING_CHECK ? [] : runningProcesses()
   if (busy.length > 0) {
     console.error('refusing to roll back while AEK is running:')
     for (const line of busy) console.error(`  - ${line}`)
@@ -313,6 +457,19 @@ function rollback(dir) {
   }
   // The manifest stays behind on purpose: backups/ is the container's own
   // furniture and keeping the record costs nothing.
+
+  // Rolling back moves the hub to the flat path, so the links that the
+  // migration re-pointed are stale again — same class of breakage, same fix.
+  if (NO_REPAIR) {
+    say('link repair skipped (--no-repair); consumer links still point at the container layout')
+  } else {
+    const repair = repairLinks(true)
+    const counts = repair.counts
+    say(`links: ${String(counts.repointed ?? 0)} re-pointed back at the flat hub`)
+    if (!repair.ok) console.error(repair.output.trim())
+    recordExtras(snapshot, { rollbackAt: new Date().toISOString(), rollbackLinkRepair: { ok: repair.ok, counts } })
+    if (!repair.ok) process.exitCode = 1
+  }
   say(`rollback complete. Record kept at ${snapshot}`)
 }
 

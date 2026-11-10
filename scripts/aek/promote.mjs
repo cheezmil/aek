@@ -87,6 +87,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { SLOT_NAMES, SLOTS, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
 import { aekBackupsPath } from '../../packages/aek/base/coraek/home.mjs'
 import { manifestFor, resolveDir } from '../../packages/aek/base/coraek/paths.mjs'
+import { DEFAULT_KEEP, pruneBackups } from './backup-retention.mjs'
 
 const FROM = 'next'
 const TO = 'aek'
@@ -134,6 +135,22 @@ const INCLUDE_SECRETS = flag('include-secrets')
  * ports apart from the fake slot's. Never use it on a real data root.
  */
 const SKIP_RUNNING_CHECK = flag('no-running-check')
+
+/**
+ * How many `<ts>-pre-promote/` trees to keep. Every run adds one and each can
+ * be large, so the folder is capped; `backup-retention.mjs` owns the rule and
+ * refuses to touch anything that does not look like a timestamped snapshot.
+ */
+const KEEP_BACKUPS = (() => {
+  const raw = value('keep-backups')
+  if (raw === null) return DEFAULT_KEEP
+  const parsed = Number(raw)
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    process.stderr.write(`[promote] --keep-backups 需要一个 ≥1 的整数，收到 ${raw}\n`)
+    process.exit(1)
+  }
+  return parsed
+})()
 const ROLLBACK_DIR = value('rollback')
 
 const only = (() => {
@@ -518,6 +535,15 @@ if (busy.length > 0) {
 const backupDir = aekBackupsPath(`${stamp()}-pre-promote`)
 mkdirSync(backupDir, { recursive: true })
 process.stdout.write(`\n[promote] 备份目录 = ${backupDir}\n`)
+
+// Keep the backup folder bounded: every promotion adds a tree, and a dozen
+// promotions is a dozen trees. The one just created is at the top of the
+// mtime sort and is protected explicitly besides.
+const retention = pruneBackups(dirname(backupDir), { keep: KEEP_BACKUPS, protect: [backupDir], apply: true })
+if (retention.removed.length > 0) {
+  process.stdout.write(`[promote] 清理旧备份 ${String(retention.removed.length)} 份（保留最新 ${String(retention.keep)} 份）\n`)
+}
+for (const error of retention.errors) process.stderr.write(`[promote] 旧备份删除失败 ${error}\n`)
 
 /** @type {{ op: string, dst: string, backup: string | null, src: string }[]} */
 const applied = []
