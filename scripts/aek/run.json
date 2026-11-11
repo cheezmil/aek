@@ -1,4 +1,8 @@
 {
+  "rebuild": "node scripts/aek/rebuild.mjs",
+  "rebuild:apply": "node scripts/aek/rebuild.mjs --yes",
+  "stop-stale-instances": "node scripts/aek/stop-stale-instances.mjs",
+  "stop-stale-instances:apply": "node scripts/aek/stop-stale-instances.mjs --yes",
   "build": "node scripts/aek/verify-aek-home.mjs && tsx scripts/build.ts",
   "build:artifacts": "node scripts/aek/verify-aek-home.mjs && tsx scripts/build.ts --scope artifacts",
   "build:check": "node scripts/aek/verify-aek-home.mjs && tsx scripts/build.ts --scope check",
