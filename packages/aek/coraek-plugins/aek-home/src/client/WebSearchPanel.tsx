@@ -29,9 +29,16 @@ import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { css, cx } from './styles.ts'
 import { CopyButton, PanelSearch, Spinner } from './ui-kit.tsx'
+import { PREF_KEYS, oneOf, parseBoolean, usePref } from './preferences.tsx'
+import { useWebsearchRanking } from './useWebsearchRanking.ts'
+import type { FreeFilter, ProviderMeta } from './useWebsearchRanking.ts'
 import { useKeyPool } from './useKeyPool.ts'
 import type { DisableReason, KeyPoolEntry, KeyPoolState, RecycleEntry } from './useKeyPool.ts'
-import type { WebsearchState } from './useWebsearchStatus.ts'
+import type { ProviderStatus, WebsearchState } from './useWebsearchStatus.ts'
+
+/** The two legal first-level values, shared by the preference parser. */
+const FREE_TIER_VALUES: readonly FreeFilter[] = ['yes', 'no']
+const parseFreeTier = oneOf(FREE_TIER_VALUES)
 
 /** Props for {@link WebSearchPanel}. */
 export interface WebSearchPanelProps {
@@ -55,7 +62,7 @@ interface Confirmation {
  * @returns the panel.
  */
 export function WebSearchPanel({ state }: WebSearchPanelProps) {
-  const { t, tf } = useI18n()
+  const { t, tf, locale } = useI18n()
   const { status, disabled, error, pending, refresh, toggle } = state
   const loading = status === undefined && error === undefined && !disabled
 
@@ -64,6 +71,14 @@ export function WebSearchPanel({ state }: WebSearchPanelProps) {
   // C4: only ONE provider's pool is open at a time; `undefined` = all closed.
   const [expanded, setExpanded] = useState<string | undefined>(undefined)
   const pool = useKeyPool(expanded)
+
+  // Level 1 is mandatory and exclusive ("yes" by default); level 2 is a
+  // multi-select. All three live in the host data root, never localStorage.
+  const [freeTier, setFreeTier] = usePref<FreeFilter>(PREF_KEYS.websearchFreeTier, 'yes', parseFreeTier)
+  const [reqPhone, setReqPhone] = usePref(PREF_KEYS.websearchPhone, false, parseBoolean)
+  const [reqCard, setReqCard] = usePref(PREF_KEYS.websearchCard, false, parseBoolean)
+  const [filtersOpen, setFiltersOpen] = useState(true)
+  const ranking = useWebsearchRanking({ free: freeTier, phone: reqPhone, card: reqCard })
 
   // Explicitly revealed rows: id → literal. Reset whenever the accordion
   // changes target so nothing lingers across providers.
@@ -177,6 +192,121 @@ export function WebSearchPanel({ state }: WebSearchPanelProps) {
     setConfirmation(undefined)
   }
 
+  // The board is 100% data-driven: tier names, order, membership and rank all
+  // come from the remote file. When it cannot be fetched, `classified` is
+  // false and the provider list stays a single flat, ungrouped <ul>.
+  const classified = ranking.snapshot?.classified === true
+  const metaByKind = new Map<string, ProviderMeta>(
+    (ranking.snapshot?.providers ?? []).map(meta => [meta.kind, meta]),
+  )
+  const statusByKind = new Map<string, ProviderStatus>(providers.map(provider => [provider.kind, provider]))
+  const groups = classified
+    ? (ranking.snapshot?.groups ?? []).map(group => ({
+      ...group,
+      items: group.kinds
+        .map(kind => statusByKind.get(kind))
+        .filter((item): item is ProviderStatus => item !== undefined),
+    }))
+    : []
+  const visibleCount = classified
+    ? groups.reduce((total, group) => total + group.items.length, 0)
+    : providers.length
+  const tierLabel = (label: { zh: string; en: string }): string => locale === 'en-US' ? label.en : label.zh
+  const failureReason = ranking.error
+    || ranking.snapshot?.message
+    || ranking.snapshot?.reason
+    || t('websearch.filter.unknown')
+
+  /** Render one provider row, with optional remote rank/metadata badges. */
+  const renderProvider = (provider: ProviderStatus, rank?: number, meta?: ProviderMeta): ReactNode => {
+    const open = expanded === provider.kind
+    return (
+      <li key={provider.kind} className={cx(css.providerItem, open && css.providerItemOpen)}>
+        <div className={css.providerRow}>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={provider.enabled}
+            aria-label={`${t('websearch.col.enabled')} ${provider.kind}`}
+            className={cx(css.toggle, provider.enabled && css.toggleOn)}
+            disabled={pending === provider.kind}
+            onClick={() => toggle(provider.kind, !provider.enabled)}
+          >
+            <span className={css.toggleKnob} />
+          </button>
+          <span className={css.providerIcon}><Icon name="search" size={16} /></span>
+          <div className={css.providerMain}>
+            <div className={css.providerName} title={meta?.note}>{highlight(provider.kind, needle, css.mark)}</div>
+            <div className={css.providerMeta}>
+              {provider.hasPool ? t('websearch.pool') : t('websearch.noPool')}
+            </div>
+          </div>
+          {rank !== undefined
+            ? <span className={css.rankChip}>{tf('websearch.ranking.rank', { n: rank })}</span>
+            : null}
+          {meta?.freeTier === null
+            ? (
+              <span className={css.unknownChip} title={meta.note || t('websearch.filter.unknownNote')}>
+                {t('websearch.filter.unknown')}
+              </span>
+            )
+            : null}
+          <span className={cx(css.countChip, provider.keyCount === undefined && css.chipOff)}>
+            {provider.keyCount === undefined
+              ? (provider.hasPool ? '—' : t('websearch.noPool'))
+              : String(provider.keyCount)}
+          </span>
+          <span className={cx(css.badge, provider.enabled && css.badgeSuccess)}>
+            <Icon name={provider.enabled ? 'check' : 'alert'} size={12} />
+            {provider.enabled ? t('common.enabled') : t('common.disabled')}
+          </span>
+          <button
+            type="button"
+            className={css.iconButton}
+            onClick={() => toggleExpanded(provider.kind)}
+            aria-expanded={open}
+            title={t('websearch.manageKeys')}
+            aria-label={t('websearch.manageKeys')}
+          >
+            <Icon name="chevronDown" size={16} className={cx(css.chevron, open && css.chevronOpen)} />
+          </button>
+        </div>
+        {open
+          ? (
+            <KeyPoolBody
+              pool={pool}
+              providerKind={provider.kind}
+              needle={needle}
+              newKeys={newKeys}
+              onNewKeys={setNewKeys}
+              onAdd={submitBatch}
+              batchCount={batchCount}
+              editingId={editingId}
+              onEditStart={id => setEditingId(id)}
+              onEditCancel={() => { setEditingId(undefined); setEditValue('') }}
+              editValue={editValue}
+              onEditValue={setEditValue}
+              onEditSave={submitEdit}
+              revealed={revealed}
+              allRevealed={allRevealed}
+              onToggleReveal={toggleReveal}
+              onToggleRevealAll={toggleRevealAll}
+              resolveKey={resolveKey}
+              onAskDelete={entry => setConfirmation({ kind: 'delete', id: entry.id, masked: entry.masked })}
+              onAskPurge={entry => setConfirmation({ kind: 'purge', id: entry.id, masked: entry.masked })}
+              onSetDisabled={(id, disabled) => pool.setDisabled(id, disabled)}
+              onRestore={pool.restore}
+              revealError={revealError}
+              confirmation={confirmation}
+              onCancel={() => setConfirmation(undefined)}
+              onConfirm={confirmWrite}
+            />
+          )
+          : null}
+      </li>
+    )
+  }
+
   return (
     <section className={css.card}>
       <header className={css.cardHeader}>
@@ -196,7 +326,96 @@ export function WebSearchPanel({ state }: WebSearchPanelProps) {
       </header>
 
       <div className={css.cardBody}>
-        <PanelSearch value={query} onChange={setQuery} placeholder={t('websearch.search')} count={providers.length} />
+        <PanelSearch value={query} onChange={setQuery} placeholder={t('websearch.search')} count={visibleCount} />
+
+        {ranking.loading && status !== undefined
+          ? <div className={css.noticeLine}>{t('websearch.ranking.loading')}</div>
+          : null}
+
+        {/* Level 1 is mandatory and exclusive; level 2 is a multi-select. The
+            whole bar disappears when the remote ranking cannot be fetched. */}
+        {classified
+          ? (
+            <div className={css.rankingFilters}>
+              <div className={css.filterHead}>
+                <span className={css.filterTitle}>{t('websearch.filter.title')}</span>
+                <button
+                  type="button"
+                  className={css.actionButton}
+                  onClick={() => setFiltersOpen(open => !open)}
+                  aria-expanded={filtersOpen}
+                >
+                  {filtersOpen ? t('websearch.filter.hide') : t('websearch.filter.show')}
+                </button>
+              </div>
+              {filtersOpen
+                ? (
+                  <>
+                    <div className={css.filterRow}>
+                      <span className={css.filterLabel}>{t('websearch.filter.primary')}</span>
+                      <ul className={css.filterChips}>
+                        <li>
+                          <button type="button" aria-pressed={freeTier === 'yes'} className={cx(css.filterChip, freeTier === 'yes' && css.filterChipActive)} onClick={() => setFreeTier('yes')}>
+                            {t('websearch.filter.freeYes')}
+                          </button>
+                        </li>
+                        <li>
+                          <button type="button" aria-pressed={freeTier === 'no'} className={cx(css.filterChip, freeTier === 'no' && css.filterChipActive)} onClick={() => setFreeTier('no')}>
+                            {t('websearch.filter.freeNo')}
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
+                    <div className={css.filterRow}>
+                      <span className={css.filterLabel}>{t('websearch.filter.secondary')}</span>
+                      <ul className={css.filterChips}>
+                        <li>
+                          <button type="button" aria-pressed={reqPhone} className={cx(css.filterChip, reqPhone && css.filterChipActive)} onClick={() => setReqPhone(current => !current)}>
+                            {t('websearch.filter.phone')}
+                          </button>
+                        </li>
+                        <li>
+                          <button type="button" aria-pressed={reqCard} className={cx(css.filterChip, reqCard && css.filterChipActive)} onClick={() => setReqCard(current => !current)}>
+                            {t('websearch.filter.card')}
+                          </button>
+                        </li>
+                        {reqPhone || reqCard
+                          ? (
+                            <li>
+                              <button type="button" className={css.actionButton} onClick={() => { setReqPhone(false); setReqCard(false) }}>
+                                {t('websearch.filter.reset')}
+                              </button>
+                            </li>
+                          )
+                          : null}
+                      </ul>
+                    </div>
+                    <p className={css.filterHint}>{t('websearch.filter.requiresHint')}</p>
+                    {freeTier === 'no' ? <p className={css.filterHint}>{t('websearch.filter.freeNoHint')}</p> : null}
+                  </>
+                )
+                : null}
+            </div>
+          )
+          : null}
+
+        {!classified && (ranking.snapshot !== undefined || ranking.error !== undefined)
+          ? (
+            <div className={css.rankingNotice}>
+              <Icon name="alert" size={16} />
+              <span>{tf('websearch.ranking.failed', { reason: failureReason })}</span>
+            </div>
+          )
+          : null}
+
+        {classified
+          ? (
+            <p className={css.rankingMeta}>
+              <span>{tf('websearch.ranking.source', { date: ranking.snapshot?.updatedAt ?? '—' })}</span>
+              <span>{tf('websearch.ranking.visible', { n: visibleCount })}</span>
+            </p>
+          )
+          : null}
 
         {disabled
           ? (
@@ -218,93 +437,52 @@ export function WebSearchPanel({ state }: WebSearchPanelProps) {
 
         {loading ? <div className={css.loadingState}><Spinner />{t('websearch.loading')}</div> : null}
 
-        {status !== undefined
+        {/* Six remote groups. Original ranks are displayed as-is, so a filter
+            never renumbers the board. Empty groups still show their header. */}
+        {status !== undefined && classified
+          ? (
+            <>
+              {groups.map(group => (
+                <section key={group.id} className={css.tierGroup} aria-label={tierLabel(group.label)}>
+                  <header className={css.tierHead}>
+                    <span className={css.tierPosition}>{String(group.position)}</span>
+                    <h3 className={css.tierTitle}>{tierLabel(group.label)}</h3>
+                    <span className={css.tierCount}>{tf('websearch.ranking.groupCount', { n: group.items.length })}</span>
+                  </header>
+                  {group.items.length > 0
+                    ? (
+                      <ul className={css.providerList}>
+                        {group.items.map(provider => renderProvider(
+                          provider,
+                          group.ranks[provider.kind],
+                          metaByKind.get(provider.kind),
+                        ))}
+                      </ul>
+                    )
+                    : null}
+                </section>
+              ))}
+            </>
+          )
+          : null}
+
+        {/* GitHub unreachable / invalid payload → no classification at all. */}
+        {status !== undefined && !classified
           ? (
             <ul className={css.providerList}>
-              {providers.map((provider) => {
-                const open = expanded === provider.kind
-                return (
-                  <li key={provider.kind} className={cx(css.providerItem, open && css.providerItemOpen)}>
-                    <div className={css.providerRow}>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={provider.enabled}
-                        aria-label={`${t('websearch.col.enabled')} ${provider.kind}`}
-                        className={cx(css.toggle, provider.enabled && css.toggleOn)}
-                        disabled={pending === provider.kind}
-                        onClick={() => toggle(provider.kind, !provider.enabled)}
-                      >
-                        <span className={css.toggleKnob} />
-                      </button>
-                      <span className={css.providerIcon}><Icon name="search" size={16} /></span>
-                      <div className={css.providerMain}>
-                        <div className={css.providerName}>{highlight(provider.kind, needle, css.mark)}</div>
-                        <div className={css.providerMeta}>
-                          {provider.hasPool ? t('websearch.pool') : t('websearch.noPool')}
-                        </div>
-                      </div>
-                      <span className={cx(css.countChip, provider.keyCount === undefined && css.chipOff)}>
-                        {provider.keyCount === undefined
-                          ? (provider.hasPool ? '—' : t('websearch.noPool'))
-                          : String(provider.keyCount)}
-                      </span>
-                      <span className={cx(css.badge, provider.enabled && css.badgeSuccess)}>
-                        <Icon name={provider.enabled ? 'check' : 'alert'} size={12} />
-                        {provider.enabled ? t('common.enabled') : t('common.disabled')}
-                      </span>
-                      <button
-                        type="button"
-                        className={css.iconButton}
-                        onClick={() => toggleExpanded(provider.kind)}
-                        aria-expanded={open}
-                        title={t('websearch.manageKeys')}
-                        aria-label={t('websearch.manageKeys')}
-                      >
-                        <Icon name="chevronDown" size={16} className={cx(css.chevron, open && css.chevronOpen)} />
-                      </button>
-                    </div>
-                    {open
-                      ? (
-                        <KeyPoolBody
-                          pool={pool}
-                          providerKind={provider.kind}
-                          needle={needle}
-                          newKeys={newKeys}
-                          onNewKeys={setNewKeys}
-                          onAdd={submitBatch}
-                          batchCount={batchCount}
-                          editingId={editingId}
-                          onEditStart={id => setEditingId(id)}
-                          onEditCancel={() => { setEditingId(undefined); setEditValue('') }}
-                          editValue={editValue}
-                          onEditValue={setEditValue}
-                          onEditSave={submitEdit}
-                          revealed={revealed}
-                          allRevealed={allRevealed}
-                          onToggleReveal={toggleReveal}
-                          onToggleRevealAll={toggleRevealAll}
-                          resolveKey={resolveKey}
-                          onAskDelete={entry => setConfirmation({ kind: 'delete', id: entry.id, masked: entry.masked })}
-                          onAskPurge={entry => setConfirmation({ kind: 'purge', id: entry.id, masked: entry.masked })}
-                          onSetDisabled={(id, disabled) => pool.setDisabled(id, disabled)}
-                          onRestore={pool.restore}
-                          revealError={revealError}
-                          confirmation={confirmation}
-                          onCancel={() => setConfirmation(undefined)}
-                          onConfirm={confirmWrite}
-                        />
-                      )
-                      : null}
-                  </li>
-                )
-              })}
+              {providers.map(provider => renderProvider(provider))}
             </ul>
           )
           : null}
 
-        {status !== undefined && providers.length === 0
-          ? <div className={css.emptyState}>{needle.length > 0 ? t('websearch.noMatch') : t('websearch.empty')}</div>
+        {status !== undefined && visibleCount === 0
+          ? (
+            <div className={css.emptyState}>
+              {needle.length > 0
+                ? t('websearch.noMatch')
+                : classified ? t('websearch.ranking.empty') : t('websearch.empty')}
+            </div>
+          )
           : null}
 
         {status !== undefined

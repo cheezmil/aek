@@ -29,6 +29,12 @@ export const PREF_KEYS = {
   /** Clicking the top logo collapses/expands the sidebar (on by default, C10). */
   logoToggle: 'aek-home.logoToggle',
   locale: 'aek-home.locale',
+  /** Web Search: mandatory exclusive first-level display filter (default "yes"). */
+  websearchFreeTier: 'aek-home.websearch.freeTier',
+  /** Web Search: second-level "requires a phone number" (multi-select). */
+  websearchPhone: 'aek-home.websearch.reqPhone',
+  /** Web Search: second-level "requires a credit card" (multi-select). */
+  websearchCard: 'aek-home.websearch.reqCard',
 } as const
 
 /** One storable setting value (JSON primitive, enforced by the host). */

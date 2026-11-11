@@ -9,6 +9,9 @@
  * composition's `webServer`:
  *
  * - `GET  /api/aek/websearch`      → the status snapshot (read-only facts)
+ * - `GET  /api/aek/websearch/ranking` → six-tier groups + free-tier filters,
+ *   fetched at runtime from the GitHub-hosted data file; unreachable GitHub
+ *   degrades to `classified: false` (flat, ungrouped list)
  * - `POST /api/aek/websearch`      → `{ kind, enabled }` toggles one provider
  * - `GET  /api/aek/websearch/keys` → masked key-pool entries for one provider
  * - `POST /api/aek/websearch/keys` → `{ kind, key }` or `{ kind, keys: [] }` (R2 bulk)
@@ -61,6 +64,7 @@ import { KeyStore } from '@cheezmil/prevent-agent-directly-seeing-key'
 import { PROVIDER_KINDS } from './defaults.ts'
 import { registerInventory } from './inventory.ts'
 import { registerPluginConsole } from './plugin-console.ts'
+import { registerRanking } from './ranking.ts'
 import { KeyPool } from './key-pool.ts'
 import type { RecycleEntry } from './key-pool.ts'
 import { readPrefs, registerPreferences } from './preferences.ts'
@@ -716,6 +720,9 @@ export function apply(ctx: Context): void {
   // Prompt Manager / Skill Manager are not mounted in the web profile, so
   // their CLI capabilities are exposed through a whitelisted host bridge.
   registerPluginConsole(ctx)
+  // Tier membership and free-tier metadata come ONLY from the remote data
+  // file. No ranking constant is compiled into this plugin.
+  registerRanking(ctx, blockedWhenOff)
   // R6: enforce the 7-day (configurable) recycle-bin TTL as soon as the host
   // boots, before any browser opens the console.
   purgeExpiredKeys()

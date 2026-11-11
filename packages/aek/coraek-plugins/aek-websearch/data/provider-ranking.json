@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "updatedAt": "2026-11-11",
+  "note": "Ranking and signup metadata for the AEK Web Search console. This file is the ONLY source of tier membership and in-tier rank: the product code contains no provider-to-tier mapping. Fetched at runtime from GitHub raw; if it cannot be fetched, the console degrades to an unclassified flat list.",
+  "tiers": [
+    { "id": "goated", "position": 1, "label": { "zh": "夯", "en": "Goated" } },
+    { "id": "great", "position": 2, "label": { "zh": "顶级", "en": "Great" } },
+    { "id": "mid", "position": 3, "label": { "zh": "人上人", "en": "Mid" } },
+    { "id": "meh", "position": 4, "label": { "zh": "NPC", "en": "Meh" } },
+    { "id": "trash", "position": 5, "label": { "zh": "拉完了", "en": "Trash" } },
+    { "id": "unclassified", "position": 6, "catchAll": true, "label": { "zh": "未分类", "en": "Unclassified" } }
+  ],
+  "providers": {
+    "anysearch": {
+      "freeTier": null,
+      "phone": null,
+      "card": null,
+      "note": "Signup requirements not verified",
+      "verifiedAt": null,
+      "source": null
+    },
+    "tinyfish": {
+      "freeTier": null,
+      "phone": null,
+      "card": null,
+      "note": "Signup requirements not verified",
+      "verifiedAt": null,
+      "source": null
+    },
+    "tavily": {
+      "tier": "goated",
+      "rank": 1,
+      "freeTier": true,
+      "phone": null,
+      "card": false,
+      "note": "1,000 credits/month, no credit card required",
+      "verifiedAt": "2026-11-11",
+      "source": "aek websearch: Tavily pricing / free plan"
+    },
+    "brave": {
+      "freeTier": true,
+      "phone": null,
+      "card": true,
+      "note": "$5/month free credit; new signup requires a credit card (prepay can be set to 0)",
+      "verifiedAt": "2026-11-11",
+      "source": "aek websearch: Brave Search API free credits / anti-fraud card requirement"
+    },
+    "exa": {
+      "tier": "goated",
+      "rank": 2,
+      "freeTier": true,
+      "phone": null,
+      "card": false,
+      "note": "$10/month free credits, no payment method required",
+      "verifiedAt": "2026-11-11",
+      "source": "aek websearch: Exa pricing / free tier"
+    },
+    "firecrawl": {
+      "freeTier": true,
+      "phone": null,
+      "card": false,
+      "note": "1,000 credits/month, no credit card required",
+      "verifiedAt": "2026-11-11",
+      "source": "aek websearch: Firecrawl pricing / free plan"
+    },
+    "jina": {
+      "freeTier": null,
+      "phone": null,
+      "card": null,
+      "note": "Signup requirements not verified",
+      "verifiedAt": null,
+      "source": null
+    },
+    "serpapi": {
+      "freeTier": null,
+      "phone": null,
+      "card": null,
+      "note": "Signup requirements not verified",
+      "verifiedAt": null,
+      "source": null
+    },
+    "serper": {
+      "tier": "goated",
+      "rank": 3,
+      "freeTier": true,
+      "phone": null,
+      "card": false,
+      "note": "2,500 free queries, no credit card required",
+      "verifiedAt": "2026-11-11",
+      "source": "aek websearch: Serper.dev pricing / free queries"
+    }
+  }
+}
