@@ -25,9 +25,11 @@ afterEach(() => {
 
 describe('dsh path helpers', () => {
   it('owns the shared default DSH home directory name', () => {
-    expect(DSH_HOME_DIR_NAME).toBe('.dsh')
-    expect(DEFAULT_DSH_HOME_DISPLAY).toBe('~/.dsh')
-    expect(defaultDshHome()).toBe(join(homedir(), '.dsh'))
+    expect(DSH_HOME_DIR_NAME).toBe('.aek')
+    expect(DEFAULT_DSH_HOME_DISPLAY).toBe('~/.aek/current')
+    // The default resolves through @cheezmil/coraek/home (AEK manifest-driven),
+    // not a literal join under the OS home.
+    expect(defaultDshHome()).toBe(resolve(join(homedir(), '.aek', 'current')))
   })
 
   it('expands tilde paths without changing non-tilde paths', () => {
@@ -58,7 +60,7 @@ describe('dsh path helpers', () => {
   })
 
   it('labels a resolved home by whether it is the default root', () => {
-    expect(dshHomeDisplay(resolve(defaultDshHome()))).toBe('~/.dsh')
+    expect(dshHomeDisplay(resolve(defaultDshHome()))).toBe('~/.aek/current')
     expect(dshHomeDisplay('/some/other/root')).toBe('$DSH_HOME')
   })
 
@@ -87,9 +89,9 @@ describe('dsh path helpers', () => {
   })
 
   it.each([
-    [undefined, join(homedir(), '.dsh')],
-    ['', join(homedir(), '.dsh')],
-    ['   ', join(homedir(), '.dsh')],
+    [undefined, resolve(join(homedir(), '.aek', 'current'))],
+    ['', resolve(join(homedir(), '.aek', 'current'))],
+    ['   ', resolve(join(homedir(), '.aek', 'current'))],
     ['~/env-dsh', join(homedir(), 'env-dsh')],
     ['./relative-dsh', resolve('./relative-dsh')],
   ] as const)('resolves cache paths with DSH_HOME=%j', (home, expectedHome) => {

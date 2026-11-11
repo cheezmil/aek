@@ -26,9 +26,9 @@
     "distribution": "A1"
   },
   "dependencies": {
-    "@cheezmil/aek-home": "0.0.4",
-    "@cheezmil/aek-websearch": "1.1.15",
-    "@cheezmil/coraek": "1.0.1"
+    "@cheezmil/aek-home": "workspace:*",
+    "@cheezmil/aek-websearch": "workspace:*",
+    "@cheezmil/coraek": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.0"

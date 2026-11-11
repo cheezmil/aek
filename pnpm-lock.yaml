@@ -388,6 +388,10 @@ importers:
         version: 4.4.3
 
   apps/aek-desktop/v0:
+    dependencies:
+      '@cheezmil/coraek':
+        specifier: workspace:*
+        version: link:../../../packages/aek/base/coraek
     devDependencies:
       '@types/node':
         specifier: 22.20.1
@@ -1079,19 +1083,6 @@ importers:
         specifier: workspace:*
         version: link:../../interaction/user-approval
 
-  packages/aek/base/coraek-profile:
-    dependencies:
-      '@cheezmil/aek-home':
-        specifier: ^0.0.3
-        version: 0.0.3(@cheezmil/aek-base@1.0.5(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/cosmokit@1.8.6))(@deepseek-ai/cordis@4.0.5)
-      '@cheezmil/coraek':
-        specifier: ^1.0.1
-        version: 1.0.1(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/cosmokit@1.8.6)
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: ^4.0.5
-        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
-
   packages/aek/base/coraek:
     dependencies:
       '@oclif/core':
@@ -1126,6 +1117,22 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
 
+  packages/aek/base/coraek-profile:
+    dependencies:
+      '@cheezmil/aek-home':
+        specifier: workspace:*
+        version: link:../../coraek-plugins/aek-home
+      '@cheezmil/aek-websearch':
+        specifier: workspace:*
+        version: link:../../coraek-plugins/aek-websearch
+      '@cheezmil/coraek':
+        specifier: workspace:*
+        version: link:../coraek
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: ^4.0.5
+        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
+
   packages/aek/coraek-plugins/aek-home:
     devDependencies:
       '@cheezmil/coraek':
@@ -1150,8 +1157,8 @@ importers:
   packages/aek/coraek-plugins/aek-prompt-manager:
     dependencies:
       '@cheezmil/coraek':
-        specifier: ^1.0.1
-        version: 1.0.1(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/cosmokit@1.8.6)
+        specifier: workspace:*
+        version: link:../../base/coraek
       '@deepseek-ai/schemastery':
         specifier: workspace:~
         version: link:../../../../vendor/schemastery
@@ -1171,8 +1178,8 @@ importers:
   packages/aek/coraek-plugins/aek-skill-manager:
     dependencies:
       '@cheezmil/coraek':
-        specifier: ^1.0.1
-        version: 1.0.1(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/cosmokit@1.8.6)
+        specifier: workspace:*
+        version: link:../../base/coraek
       '@deepseek-ai/schemastery':
         specifier: workspace:~
         version: link:../../../../vendor/schemastery
@@ -1196,11 +1203,11 @@ importers:
   packages/aek/coraek-plugins/aek-websearch:
     dependencies:
       '@cheezmil/coraek':
-        specifier: ^1.0.1
-        version: 1.0.1(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/cosmokit@vendor+cosmokit)
+        specifier: workspace:*
+        version: link:../../base/coraek
       '@cheezmil/prevent-agent-directly-seeing-key':
-        specifier: ^0.1.3
-        version: 0.1.3
+        specifier: workspace:*
+        version: link:../../public/prevent-agent-directly-seeing-key
       '@deepseek-ai/cosmokit':
         specifier: workspace:~
         version: link:../../../../vendor/cosmokit
@@ -1232,6 +1239,9 @@ importers:
 
   packages/aek/public/prevent-agent-directly-seeing-key:
     dependencies:
+      '@cheezmil/coraek':
+        specifier: workspace:*
+        version: link:../../base/coraek
       better-sqlite3-multiple-ciphers:
         specifier: ^13.0.3
         version: 13.0.3
@@ -15058,6 +15068,10 @@ importers:
         version: link:../../../vendor/cordis
 
   packages/util/home-paths:
+    dependencies:
+      '@cheezmil/coraek':
+        specifier: workspace:~
+        version: link:../../aek/base/coraek
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
@@ -16425,18 +16439,6 @@ packages:
   '@browserbasehq/stagehand@4.1.0':
     resolution: {integrity: sha512-PJikMBVoaCRh6TFD7GcmeISmsMq4IwUu1BD5FOsGUVDUxrVqZomWa6W6dF+a/zu4xRZu2Z2xX1nXVMDaCuZWsw==}
     engines: {node: '>=22.18.0'}
-
-  '@cheezmil/aek-base@1.0.5':
-    resolution: {integrity: sha512-UX0FmrsD7edT+dECP2kE0RLqiWrAUdeHnVQRgfYWQA4u/ZixgGTS5KybdgOZYXimXRWxgzKUaQGYkNmcOoeECw==}
-    peerDependencies:
-      '@deepseek-ai/cordis': '>=4.0.0'
-      '@deepseek-ai/cosmokit': '>=1.8.0'
-
-  '@cheezmil/aek-home@0.0.3':
-    resolution: {integrity: sha512-m4hH6dT91BD7R4QEVhyvbKHzNz68AZekoOCeu/yIAXm36cdMJgf9pWzgDVuonIsPABA/adc4Bi4Up7eJb1MT0g==}
-    peerDependencies:
-      '@cheezmil/aek-base': ^1.0.0
-      '@deepseek-ai/cordis': '>=4.0.0'
 
   '@cheezmil/aek-websearch@1.1.7':
     resolution: {integrity: sha512-3idTYxEvgnaHvHcTYwlUyv4T/do9uTYSecaDjP5GuVC5/rRutbAR8R4ARxZ4KI1rEipDGdjHDoRwwzUWT6r2pA==}
@@ -24579,17 +24581,6 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  '@cheezmil/aek-base@1.0.5(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/cosmokit@1.8.6)':
-    dependencies:
-      '@deepseek-ai/cordis': 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
-      '@deepseek-ai/cosmokit': 1.8.6
-      '@oclif/core': 5.1.11
-
-  '@cheezmil/aek-home@0.0.3(@cheezmil/aek-base@1.0.5(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/cosmokit@1.8.6))(@deepseek-ai/cordis@4.0.5)':
-    dependencies:
-      '@cheezmil/aek-base': 1.0.5(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/cosmokit@1.8.6)
-      '@deepseek-ai/cordis': 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
-
   '@cheezmil/aek-websearch@1.1.7(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/cosmokit@1.8.6)':
     dependencies:
       '@cheezmil/coraek': 1.0.1(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/cosmokit@1.8.6)
@@ -24604,12 +24595,6 @@ snapshots:
     dependencies:
       '@deepseek-ai/cordis': 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
       '@deepseek-ai/cosmokit': 1.8.6
-      '@oclif/core': 5.1.11
-
-  '@cheezmil/coraek@1.0.1(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/cosmokit@vendor+cosmokit)':
-    dependencies:
-      '@deepseek-ai/cordis': 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
-      '@deepseek-ai/cosmokit': link:vendor/cosmokit
       '@oclif/core': 5.1.11
 
   '@cheezmil/prevent-agent-directly-seeing-key@0.1.3':
