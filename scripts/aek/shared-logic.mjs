@@ -13,6 +13,8 @@ import { homedir } from 'node:os'
 import { resolveAekHome, resolveAekRoot } from '../../packages/aek/base/coraek/home.mjs'
 import { SLOTS, slotConfig, slotHome, containerForHome, webUrl } from '../../packages/aek/base/coraek/slots.mjs'
 import { readSlotLock, isPidAlive } from '../../packages/aek/base/coraek/slot-lock.mjs'
+import { assertBuildIdentity } from './signing-identity.mjs'
+import { assertBuildRules } from './verify-build-rules.mjs'
 
 // The slot table (identity, ports, data root) lives in @cheezmil/coraek/slots —
 // one source of truth shared by the desktop build, the desktop main process and
@@ -767,6 +769,9 @@ export function buildTs() {
  * @returns {boolean} true when the packaging succeeded.
  */
 export function packageApp(slot = 'aek') {
+  // Compile-time rules: every AEK package declares A1/A2, no A2 in a publish
+  // roster, and macOS uses a self-signed dev identity (never adhoc).
+  assertBuildRules()
   const cfg = slotConfig(slot)
   const maxAttempts = 3
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -805,12 +810,19 @@ export function packageApp(slot = 'aek') {
  * @returns {boolean} true when the bundle signed and verified.
  */
 export function signApp(appPath) {
-  console.error('[start] signing with Cheezmil Dev…')
-  const sign = 'codesign --force --deep --sign "Cheezmil Dev" --options runtime'
-  const ent  = join(APP_ROOT, 'entitlements.plist')
+  // The identity is a SELF-SIGNED DEVELOPMENT identity discovered from the
+  // local keychain (or pinned via AEK_SIGN_IDENTITY). Never a hardcoded name
+  // — every developer has their own certificate — and never adhoc:
+  // assertBuildIdentity() fails the build with a friendly setup guide.
+  const identity = assertBuildIdentity().identity
+  console.error(`[start] signing with ${identity} (self-signed development identity, never adhoc)…`)
+  const ent = join(APP_ROOT, 'entitlements.plist')
 
   try {
-    execSync(`${sign} --entitlements "${ent}" "${appPath}"`, { stdio: 'inherit' })
+    execFileSync('codesign', [
+      '--force', '--deep', '--sign', identity, '--options', 'runtime',
+      '--entitlements', ent, appPath,
+    ], { stdio: 'inherit' })
   } catch (err) {
     console.error(`[start] signing failed: ${err.message}`)
     return false
@@ -867,7 +879,7 @@ export function bundleExecutable(appPath) {
 
 /**
  * Hard gate before a bundle may replace the installed one: it must carry a
- * VALID Cheezmil signature (deep-strict verified, never adhoc). An adhoc or
+ * VALID custom development signature (deep-strict verified, never adhoc). An adhoc or
  * unverifiable bundle is exactly what makes macOS refuse to open the app
  * ("App is damaged, you should move it to the Trash").
  * @param {string} appPath - the .app bundle.
@@ -893,9 +905,13 @@ export function verifySignedBundle(appPath) {
     console.error('[install] bundle is ADHOC-signed — refusing (project requires the Cheezmil certificate)')
     return false
   }
+  // Require a NAMED identity. An unnamed/adhoc signature is what macOS
+  // rejects with "App is damaged, you should move it to the Trash". The exact
+  // name is developer-specific (a self-signed dev certificate), so it is not
+  // hardcoded here — the build-time gate already decided which one is valid.
   const authority = out.match(/^Authority=(.*)$/m)?.[1]?.trim() ?? ''
-  if (!/cheezmil/iu.test(authority)) {
-    console.error(`[install] signed by '${authority || 'unknown'}' — expected the Cheezmil certificate`)
+  if (authority.length === 0) {
+    console.error('[install] signature has no named authority — refusing (an unnamed identity is adhoc-like)')
     return false
   }
   console.error(`[install] signature OK (${authority})`)

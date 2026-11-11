@@ -60,6 +60,7 @@ import { parse, stringify } from 'yaml'
 import { KeyStore } from '@cheezmil/prevent-agent-directly-seeing-key'
 import { PROVIDER_KINDS } from './defaults.ts'
 import { registerInventory } from './inventory.ts'
+import { registerPluginConsole } from './plugin-console.ts'
 import { KeyPool } from './key-pool.ts'
 import type { RecycleEntry } from './key-pool.ts'
 import { readPrefs, registerPreferences } from './preferences.ts'
@@ -712,6 +713,9 @@ export function apply(ctx: Context): void {
   registerInstanceControl(ctx)
   registerPreferences(ctx)
   registerConsole(ctx)
+  // Prompt Manager / Skill Manager are not mounted in the web profile, so
+  // their CLI capabilities are exposed through a whitelisted host bridge.
+  registerPluginConsole(ctx)
   // R6: enforce the 7-day (configurable) recycle-bin TTL as soon as the host
   // boots, before any browser opens the console.
   purgeExpiredKeys()

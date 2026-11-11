@@ -53,6 +53,10 @@
     "./schema": {
       "types": "./schema.d.mts",
       "default": "./schema.mjs"
+    },
+    "./plugin-meta": {
+      "types": "./plugin-meta.d.mts",
+      "default": "./plugin-meta.mjs"
     }
   },
   "dsh": {
@@ -103,7 +107,9 @@
     "backups.mjs",
     "backups.d.mts",
     "schema.mjs",
-    "schema.d.mts"
+    "schema.d.mts",
+    "plugin-meta.d.mts",
+    "plugin-meta.mjs"
   ],
   "oclif": {
     "bin": "aek",
@@ -114,7 +120,8 @@
   },
   "aek": {
     "type": "dsh-plugin",
-    "description": "AEK identity layer: re-exports Context/Volatile/ClientContext types and prints the aek web: readiness line"
+    "description": "AEK identity layer: re-exports Context/Volatile/ClientContext types and prints the aek web: readiness line",
+    "distribution": "A1"
   },
   "dependencies": {
     "@oclif/core": "^5.1.11"

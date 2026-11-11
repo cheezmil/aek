@@ -19,7 +19,8 @@
   "license": "Apache-2.0",
   "aek": {
     "type": "dsh-bundle",
-    "description": "DSh bundle: install once to give the profile access to all AEK plugins"
+    "description": "DSh bundle: install once to give the profile access to all AEK plugins",
+    "distribution": "A1"
   },
   "dependencies": {
     "@cheezmil/coraek": "^1.0.1",

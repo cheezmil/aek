@@ -26,6 +26,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, rmSync, symlinkSync, existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
+import { readPluginMeta } from '../../packages/aek/base/coraek/plugin-meta.mjs'
 
 // ── repo discovery (no hardcoded layout) ─────────────────────────────────
 function findRepoRoot(start) {
@@ -164,7 +165,14 @@ const stages = {
     }
     const binDir = (spawnSync(PNPM_BIN, ['config', 'get', 'global-bin-dir'], { encoding: 'utf8', cwd: REPO_ROOT }).stdout ?? '').trim().split('\n')[0]
     if (!binDir || binDir.includes('undefined')) throw new Error('cannot resolve the pnpm global bin dir')
-    const installable = Object.values(PKGS).filter((p) => p.publishedCli)
+    // A2 (local-only) plugins are excluded from the npm-install roster even
+    // if someone later flips publishedCli for one. The class is the authority.
+    const publishable = new Set(
+      readPluginMeta(REPO_ROOT, { languages: false })
+        .filter((pkg) => pkg.distribution.value === 'A1' && !pkg.private)
+        .map((pkg) => pkg.packageName),
+    )
+    const installable = Object.values(PKGS).filter((p) => p.publishedCli && publishable.has(p.npm))
     for (const p of installable) {
       const spec = `${p.npm}@${localVersion(p)}`
       // Fresh publishes can lag the registry for a few minutes; retry.

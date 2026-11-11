@@ -39,7 +39,8 @@
     },
     "cordis": true,
     "dsh": false,
-    "description": "Standalone skill-hub CLI (aeksm) + optional Cordis plugin for the aek web profile. CLI is the primary interface; the webui is the auxiliary face."
+    "description": "Standalone skill-hub CLI (aeksm) + optional Cordis plugin for the aek web profile. CLI is the primary interface; the webui is the auxiliary face.",
+    "distribution": "A1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.0"

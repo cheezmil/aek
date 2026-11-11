@@ -46,6 +46,13 @@ function verifyPublishable(members: readonly ReleaseMember[]): void {
   if (priv.length > 0) {
     throw new Error(`publishing requires removing "private": true from:\n${priv.map(member => member.directory).join('\n')}`)
   }
+  // Defensive: families.ts already drops A2 packages. If a caller hand-builds
+  // a member list, a local-only plugin must still never reach npm.
+  const localOnly = members.filter(member =>
+    ((member.manifest.aek ?? {}) as Record<string, unknown>).distribution === 'A2')
+  if (localOnly.length > 0) {
+    throw new Error(`A2 local-only plugins must never be published:\n${localOnly.map(member => member.directory).join('\n')}`)
+  }
 }
 
 /**

@@ -50,6 +50,7 @@
   ],
   "aek": {
     "type": "dsh-plugin",
-    "description": "AEK home surface — client-side UI root that replaces the dsh shell"
+    "description": "AEK home surface — client-side UI root that replaces the dsh shell",
+    "distribution": "A1"
   }
 }

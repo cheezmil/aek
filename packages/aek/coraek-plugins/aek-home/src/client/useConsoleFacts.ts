@@ -33,6 +33,12 @@ export interface PluginEntry {
   locked: boolean
   /** Why it is locked; empty for normal plugins. */
   lockReason: '' | 'root' | 'api'
+  /** Declared audience: A1 (public) / A2 (local only), empty when invalid. */
+  distribution: 'A1' | 'A2' | ''
+  /** Detected implementation languages, most source files first. */
+  languages: string[]
+  /** Main implementation language. */
+  primaryLanguage: string
 }
 
 /** One slot's endpoints. */

@@ -3,6 +3,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir, platform } from 'node:os'
 import { resolveSlot, slotConfig } from '@cheezmil/coraek/slots'
+import { assertBuildIdentity } from '../../../scripts/aek/signing-identity.mjs'
 
 const APP_ROOT = dirname(fileURLToPath(import.meta.url))
 const packageJson = JSON.parse(readFileSync(join(APP_ROOT, 'package.json'), 'utf8'))
@@ -72,6 +73,9 @@ function findCachedElectronArchive() {
  * @returns {import('electron-builder').Configuration} the configuration.
  */
 export function createElectronBuilderConfig(slot = resolveSlot()) {
+  // Refuse adhoc signing at CONFIGURATION time — before electron-builder
+  // writes a single byte. Throws a friendly certificate-setup guide.
+  const buildIdentity = assertBuildIdentity()
   const s = slotConfig(slot)
   const cachedElectron = findCachedElectronArchive()
   if (cachedElectron) {
@@ -102,7 +106,10 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
       hardenedRuntime: true,
       entitlements: 'entitlements.plist',
       entitlementsInherit: 'entitlements.plist',
-      identity: 'E2D1D599D3BEF29FCEE0B4539EE45BF0A4F4FE81',
+      // Resolved at build time from the local keychain. NEVER a hardcoded
+      // fingerprint (that would only work on one developer's machine), and
+      // NEVER adhoc: assertBuildIdentity() fails the build with a setup guide.
+      identity: buildIdentity.identity,
       forceCodeSigning: true,
       target: {
         target: 'dmg',

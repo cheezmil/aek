@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url'
 import type { Context } from '@cheezmil/coraek/types'
 import { resolveAekHome } from '@cheezmil/coraek/home'
 import { SLOT_NAMES, slotConfig, slotHome, webUrl } from '@cheezmil/coraek/slots'
+import { readPluginMeta } from '@cheezmil/coraek/plugin-meta'
 import { ACCESS_API_PATH, accessGuard, accessView, writeAccess } from './access.ts'
 import type { AccessUpdate } from './access.ts'
 
@@ -78,6 +79,12 @@ export interface PluginEntry {
   locked: boolean
   /** Why it is locked: `root` means "this plugin IS the console UI". */
   lockReason: '' | 'root'
+  /** Declared audience: A1 (public) / A2 (local only), empty when invalid. */
+  distribution: 'A1' | 'A2' | ''
+  /** Detected implementation languages, most source files first. */
+  languages: string[]
+  /** Main implementation language. */
+  primaryLanguage: string
 }
 
 /** One slot's reachable endpoints. */
@@ -273,12 +280,18 @@ function writeDisabledPlugins(ids: ReadonlySet<string>): boolean {
 function scanPlugins(): PluginEntry[] {
   const base = join(ROOT, 'packages', 'aek', 'coraek-plugins')
   const disabled = readDisabledPlugins()
+  // One bounded, cached scan (directory entries + file extensions only, no
+  // source file is ever opened) supplies the audience class and languages for
+  // the About page. See @cheezmil/coraek/plugin-meta.
+  const metaByName = new Map(readPluginMeta(ROOT).map(meta => [meta.packageName, meta]))
   return childDirectories(base).map((id) => {
     const manifest = readManifest(join(base, id, 'package.json'))
     const lockReason = LOCKED_PLUGINS[id] ?? ''
+    const name = typeof manifest.name === 'string' ? manifest.name : id
+    const meta = metaByName.get(name)
     return {
       id,
-      packageName: typeof manifest.name === 'string' ? manifest.name : id,
+      packageName: name,
       version: typeof manifest.version === 'string' ? manifest.version : '',
       description: typeof manifest.description === 'string' ? manifest.description : '',
       capabilities: capabilitiesOf(manifest, id),
@@ -286,6 +299,9 @@ function scanPlugins(): PluginEntry[] {
       enabled: lockReason !== '' || !disabled.has(id),
       locked: lockReason !== '',
       lockReason,
+      distribution: meta?.distribution.ok ? (meta.distribution.value === 'A2' ? 'A2' : 'A1') : '',
+      languages: meta?.languages.languages ?? [],
+      primaryLanguage: meta?.languages.primary ?? 'unknown',
     }
   })
 }

@@ -38,6 +38,7 @@ import { spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveAekHome, resolveAekRoot } from '../../packages/aek/base/coraek/home.mjs'
+import { assertBuildRules } from './verify-build-rules.mjs'
 import { SLOTS, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -154,6 +155,10 @@ if (checkOnly) {
   console.log('dry run: nothing executed, no files changed.')
   process.exit(0)
 }
+
+// A plugin without a declared A1/A2 class must never reach a running host.
+// `--check` exits above, so this stays a true dry run with zero side effects.
+assertBuildRules({ only: 'classes' })
 
 const gate = spawnSync(NODE, [GATE], { cwd: ROOT, encoding: 'utf8' })
 if (gate.status !== 0) {

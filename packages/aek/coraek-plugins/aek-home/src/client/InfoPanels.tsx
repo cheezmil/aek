@@ -606,6 +606,11 @@ function AboutPanel({ inventory }: { inventory: InventoryState }) {
     cli: t('about.entry.cli'),
     'aek-desktop': t('about.entry.desktop'),
   }
+  // Classification + languages are scanned on the host (never hardcoded in
+  // the client bundle); match them onto the inventory rows by package name.
+  const stackByPackage = new Map(
+    (facts.facts?.plugins ?? []).map(plugin => [plugin.packageName, plugin]),
+  )
 
   return (
     <PanelCard
@@ -620,6 +625,20 @@ function AboutPanel({ inventory }: { inventory: InventoryState }) {
           ? <div className={css.loadingState}>{t('about.loading')}</div>
           : null}
 
+        {/* INSTALLATION FIRST. The user explicitly asked for this block at the
+            very top instead of sandwiched between entries and package lists. */}
+        <ul className={css.infoList}>
+          <li className={css.infoRow}>
+            <span className={css.infoLabel}>{t('about.install')}</span>
+            <span className={css.infoValue}>{snapshot?.installKind === 'dev' ? t('about.dev') : t('about.npm')}</span>
+          </li>
+          <li className={css.infoRow}>
+            <span className={css.infoLabel}>{t('about.source')}</span>
+            <span className={css.infoValue}>{snapshot?.source ?? '—'}</span>
+          </li>
+        </ul>
+
+        <div className={css.divider} />
         <h3 className={css.sectionTitle}>{t('about.entries')}</h3>
         <ul className={css.entryList}>
           {(facts.facts?.entries ?? []).map(entry => (
@@ -633,27 +652,26 @@ function AboutPanel({ inventory }: { inventory: InventoryState }) {
         </ul>
 
         <div className={css.divider} />
-        <ul className={css.infoList}>
-          <li className={css.infoRow}>
-            <span className={css.infoLabel}>{t('about.install')}</span>
-            <span className={css.infoValue}>{snapshot?.installKind === 'dev' ? t('about.dev') : t('about.npm')}</span>
-          </li>
-          <li className={css.infoRow}>
-            <span className={css.infoLabel}>{t('about.source')}</span>
-            <span className={css.infoValue}>{snapshot?.source ?? '—'}</span>
-          </li>
-        </ul>
-
-        <div className={css.divider} />
         <h3 className={css.sectionTitle}>{t('about.group.plugin')}</h3>
+        <div className={css.hint}>{t('about.stackHint')}</div>
         <ul className={css.packageList}>
-          {plugins.map(pkg => (
-            <li key={pkg.name} className={css.packageRow}>
-              <span className={css.providerName}>{displayName(pkg.name)}</span>
-              <span className={css.countChip}>{pkg.version}</span>
-              <span className={css.badge}>{pkg.kind === 'dev' ? t('about.dev') : t('about.npm')}</span>
-            </li>
-          ))}
+          {plugins.map((pkg) => {
+            const meta = stackByPackage.get(pkg.name)
+            const languages = meta?.languages ?? []
+            return (
+              <li key={pkg.name} className={css.packageRow}>
+                <span className={css.providerName}>{displayName(pkg.name)}</span>
+                <span className={css.countChip}>{pkg.version}</span>
+                {meta?.distribution
+                  ? <span className={css.stackChip}>{meta.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
+                  : null}
+                {languages.length > 0
+                  ? <span className={css.stackText} title={languages.join(' · ')}>{languages.join(' · ')}</span>
+                  : null}
+                <span className={css.badge}>{pkg.kind === 'dev' ? t('about.dev') : t('about.npm')}</span>
+              </li>
+            )
+          })}
         </ul>
         {plugins.length === 0 ? <div className={css.emptyState}>{t('about.empty')}</div> : null}
 

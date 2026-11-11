@@ -130,6 +130,11 @@ export abstract class ReleaseFamily {
       const normalized = manifestPath.replaceAll('\\', '/')
       const manifest = readManifest(resolve(root, manifestPath))
       if (manifest.private === true) continue
+      // A2 = local-only AEK plugin. It must never be published to the
+      // internet, so it is excluded from the family at discovery time —
+      // before bump / verify / pack / publish ever see it.
+      const aekAudience = (manifest.aek ?? {}) as Record<string, unknown>
+      if (aekAudience.distribution === 'A2') continue
       const name = requireString(manifest, 'name', normalized)
       const version = requireString(manifest, 'version', normalized)
       if (name === WORKSPACE_ROOT_PACKAGE) throw new Error(`${normalized} selected the workspace root`)

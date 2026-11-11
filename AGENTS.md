@@ -59,6 +59,8 @@ AEK 一开始从 `deepseek-harness`（简称 dsh）整仓复制而来，削减�
 - **改 dsh 原来源码，优先通过 `aek-base` 插件（现包名 `@cheezmil/coraek`）扩展**；cordis 插件能做到的都在插件层做，实在解决不了才直接改源码。注意：cordis 插件是**运行时**扩展点，管不到 vitest spec 和 `run-gates` 这类构建期门禁，别硬套。
 - **框架直接装、别 vendor；别人 MIT 产品整只复制后裁剪；只有 AEK 自己的能力自己写。** 例外：已存在的 `vendor/cordis/` 是本次分叉保留的运行时资产，属于 KEEP，不要按「别 vendor」这条去删它。
 - 插件接口分层：**CLI 必须**（`aek{能力名}`，入口 `bin/*.mjs`）、**MCP 只有 `aek-mcp-gateway` 需要**、**REST 可选**。
+- **插件受众分类（A1 / A2，硬规则）**：每个 `packages/aek/**` 的包都必须在 `package.json` 声明 `aek.distribution` —— `A1` = 将来发布到互联网给全球使用；`A2` = 完全本地使用。**只有这两类，没有第三类、没有默认值、没有兜底**：未声明或非法值直接**编译不通过**（`verify-build-rules.mjs`），`launch.mjs` 在启动期也拒绝加载并给出提醒。
+- **A2 绝不发布**：`scripts/release/families.ts`、`scripts/release/verify.ts`、`scripts/aek/cicd.mjs` 与 `plugin-class.mjs publish-list` 都会把 A2 完全排除出 npm / release；`private: true` 是第二道独立保险。A1 ↔ A2 的变更**必须先询问用户、未经允许不得更改**；唯一写入口是 `node scripts/aek/plugin-class.mjs set <pkg> <A1|A2> --reason "..." --confirm`，每次变更写入槽内审计日志。
 - 插件从 `@cheezmil/coraek` 的类型入口导入 `Context` / `Volatile` / `ClientContext`，**不直接 import cordis**。
 - `aek-for-dsh` 是 `cordis.patch.yml` **bundle**（一次注册所有 aek 插件），不是插件，不承担 `apply(ctx)`。
 - 不凭空造 `aek-core` 之类中间包；`aek-base`/coraek 只做身份层与类型 re-export，不放业务逻辑。
@@ -67,7 +69,7 @@ AEK 一开始从 `deepseek-harness`（简称 dsh）整仓复制而来，削减�
 ## 5. Electron / 桌面
 
 - 成品必须在 **Spotlight 和 Finder 里显示为 `AEK.app`**，不能是默认的「Electron」。
-- 本地 macOS 开发用 **cheezmil 签名**，**禁止 adhoc 签名**；打开时不能出现「无法打开，你应该将它移到废纸篓」。
+- 本地 macOS 开发只准用 **自签名开发证书 / 自定义开发签名身份（self-signed development identity）**——在钥匙串里自己创建，可用 `AEK_SIGN_IDENTITY` 指定名字或 SHA-1；未指定时从 `security find-identity -v -p codesigning` 自动发现自定义身份（Apple 签发的 `Apple Development` / `Developer ID` 会被跳过）。**禁止 adhoc「临时匿名」签名**：`node scripts/aek/verify-build-rules.mjs` 在编译期（tsc / electron-builder / host 启动）就拦下，并返回友好提示引导开发者在本地创建自签名开发证书（`node scripts/aek/signing-identity.mjs guide`）。**证书名与指纹绝不写进源码**——每个开发者一张，项目面向全球用户。打开时不能出现「无法打开，你应该将它移到废纸篓」。
 - **只能有一个 AEK.app 实例**：开发测试启动新实例前必须先终止旧实例，不允许出现多个并排 / 重复。
 - 启动、重启、验证优先写 **`.mjs` 脚本**，不要每次手敲长命令。
 - macOS 一律 **arm64** 原生，不用 Intel/x86 转译（除非该依赖确实只有 x86 版本）。
@@ -78,6 +80,15 @@ AEK 一开始从 `deepseek-harness`（简称 dsh）整仓复制而来，削减�
 - **提交/推送一律用 `cqg`，禁止裸 `git`**（会绕过 token 注入与 exclude 校验）。非交互提交：`cqg acp --all -m "..."`；只推不提交 `cqg push-only`；其它 git 操作 `cqg git <args> --platform <name>`。
 - 脚本 **不带参数默认必须是安全的只读 / dry-run，零副作用**；`--prune` / `--copy` 之类改变状态的操作必须显式 `--yes` 才生效。dry-run 要逐行确认没有漏网的真实执行点。
 - 改动用户级 / 系统级配置文件（shell 启动文件、工具配置目录、系统配置等）前**先留 `<原文件名>.bak.<时间戳>-pre-edit` 备份**；同类提权操作合并成一次授权，需要 sudo 就直接 sudo。
+
+### 双槽开发循环（硬规则，2026-11-11 确立）
+
+- **开发 / 验收一律先在 `next` 槽做**（`node scripts/aek/launch.mjs --slot next dev-web`），不要直接在 `current` 上试改动。
+- 验收通过后执行收尾：`node scripts/aek/dev-cycle.mjs`（默认只读出计划）→ 确认后 `node scripts/aek/dev-cycle.mjs run --yes`。
+- 收尾的四步顺序**不可换**：先备份并卸载两槽 LaunchAgent（`KeepAlive=true` 会把刚停掉的后端拉回来）→ `slots.mjs --stop-all --yes` 让端口空闲 → `promote.mjs --yes` 把 next 的新配置同步进 current → `slots.mjs --only aek --yes` 只起 current，再把 current 的 LaunchAgent 装回自启动。
+- **最终状态只允许一个实例：`current`**。禁止长期双实例；开发期临时双开用 `slots.mjs --both --yes`，收尾时必须恢复。
+- `node scripts/aek/dev-cycle.mjs verify` 是只读门禁：检查双实例、next 自启动残留、current 是否在跑，以及全部编译期规则；开发期用 `verify --dev` 豁免双开。
+- 文字规则写在 AGENTS.md，**机器可执行的那一半在 `scripts/aek/verify-build-rules.mjs`**：`build.mjs`、`packageApp()`、`launch.mjs` 都会调用它；文档改了而脚本没改，等于规则没立。
 - 需要提权的注册类操作（如 launchd bootstrap）在沙箱内会失败，需在沙箱外执行并自检。
 - **已知上游缺陷**：`packages/experimental/ptc-runtime-python` 的 CPython worker 在 macOS 上会因宿主被硬杀变成孤儿并吃满一核（dsh 上游 Discussion #6661，2026-09 起 open 未修；父死后 Node 侧的 `dispose()` / 进程组信号全部不执行）。主防线是 `py/bootstrap.py` 的 `_start_orphan_watchdog()`（父 pid 变化即退出），**不要删、不要绕过**；它是独立 Python 子进程，cordis 插件层在架构上管不到，属于「实在解决不了才直接改源码」的例外。
 - 长时间 / 全量测试收尾执行 `node scripts/aek/process-guard.mjs --check` 做只读巡检；发现残留用 `--kill --yes`（SIGTERM 优雅退出，不自动升级 SIGKILL）。改动 Python 引导逻辑后必须跑 `--selftest`（含对照组）确认看门狗仍有效。

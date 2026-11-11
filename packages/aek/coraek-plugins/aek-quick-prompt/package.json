@@ -1,0 +1,21 @@
+{
+  "name": "@cheezmil/aek-quick-prompt",
+  "description": "Local-only quick-prompt plugin scaffold (A2). Never published to npm or a release.",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "aek": {
+    "type": "dual",
+    "distribution": "A2",
+    "localOnly": true,
+    "cordis": true,
+    "dsh": false,
+    "description": "A2 local-only plugin. It is deliberately excluded from every npm / release publish path; do not change its class without the user's explicit permission."
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf lib"
+  }
+}

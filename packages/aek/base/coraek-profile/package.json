@@ -22,7 +22,8 @@
   },
   "aek": {
     "type": "dsh-bundle",
-    "description": "coraek profile layer: declares which AEK plugins a web profile mounts; contains no runtime code"
+    "description": "coraek profile layer: declares which AEK plugins a web profile mounts; contains no runtime code",
+    "distribution": "A1"
   },
   "dependencies": {
     "@cheezmil/aek-home": "0.0.4",
