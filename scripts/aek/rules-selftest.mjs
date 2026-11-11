@@ -13,6 +13,8 @@
  *   - AEK_SIGN_IDENTITY=- (adhoc) → signing gate fails
  *   - assertBuildRules() throws a friendly certificate-setup guide
  *   - `plugin-class.mjs set` without --confirm stays a dry run
+ *   - `aek.external` wrapper with an in-process entry / missing spdx /
+ *     off-whitelist attach.kind → external gate fails; legal wrapper passes
  *
  * Usage: node scripts/aek/rules-selftest.mjs [--json]
  *
@@ -32,7 +34,7 @@ const NODE = process.execPath
 
 /**
  * Build a fake repository with one plugin and (optionally) a publish roster.
- * @param {{ distribution?: string | null, roster?: boolean }} options - shape.
+ * @param {{ distribution?: string | null, roster?: boolean, external?: Record<string, unknown>, main?: string, exports?: Record<string, unknown> }} options - shape.
  * @returns {string} the throwaway root.
  */
 function fakeRepo(options) {
@@ -42,9 +44,11 @@ function fakeRepo(options) {
   const aek = options.distribution === null || options.distribution === undefined
     ? {}
     : { distribution: options.distribution }
-  writeFileSync(join(dir, 'package.json'), JSON.stringify({
-    name: '@cheezmil/fake', version: '0.0.1', aek,
-  }, null, 2))
+  if (options.external !== undefined) aek.external = options.external
+  const manifest = { name: '@cheezmil/fake', version: '0.0.1', aek }
+  if (options.main !== undefined) manifest.main = options.main
+  if (options.exports !== undefined) manifest.exports = options.exports
+  writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest, null, 2))
   if (options.roster === true) {
     mkdirSync(join(root, 'scripts', 'aek'), { recursive: true })
     writeFileSync(join(root, 'scripts', 'aek', 'cicd.mjs'),
@@ -141,6 +145,75 @@ function run() {
     const dry = String(result.stdout).includes('DRY RUN') && before === after
     record('set without --confirm is a dry run', dry,
       dry ? 'class unchanged (still A2)' : 'FILE WAS MODIFIED')
+  }
+
+  // 8. A legal external wrapper (out-of-process only) passes the gate.
+  {
+    const root = fakeRepo({
+      distribution: 'A1',
+      external: {
+        spdx: 'AGPL-3.0-or-later',
+        attach: { kind: 'mcp-stdio', command: 'fake-provider', args: ['mcp'] },
+      },
+    })
+    try {
+      const result = verifyBuildRules({ root, only: 'external' })
+      record('legal external wrapper passes', result.ok, result.gates[0]?.problems.join(' ') ?? '')
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  }
+
+  // 9. An in-process `main` entry is a structural violation.
+  {
+    const root = fakeRepo({
+      distribution: 'A1',
+      main: './index.js',
+      external: { spdx: 'AGPL-3.0-or-later', attach: { kind: 'mcp-stdio', command: 'fake-provider' } },
+    })
+    try {
+      const result = verifyBuildRules({ root, only: 'external' })
+      const problem = result.gates[0]?.problems.join(' ') ?? ''
+      record('external with main fails', !result.ok && problem.includes('main'), problem.slice(0, 120))
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  }
+
+  // 10. Missing provider license is a violation.
+  {
+    const root = fakeRepo({
+      distribution: 'A1',
+      external: { attach: { kind: 'mcp-stdio', command: 'fake-provider' } },
+    })
+    try {
+      const result = verifyBuildRules({ root, only: 'external' })
+      const problem = result.gates[0]?.problems.join(' ') ?? ''
+      record('external missing spdx fails', !result.ok && problem.includes('spdx'), problem.slice(0, 120))
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  }
+
+  // 11. An off-whitelist attach kind (shared memory / custom IPC) is rejected.
+  {
+    const root = fakeRepo({
+      distribution: 'A1',
+      external: { spdx: 'AGPL-3.0-or-later', attach: { kind: 'shared-memory', command: 'fake-provider' } },
+    })
+    try {
+      const result = verifyBuildRules({ root, only: 'external' })
+      const problem = result.gates[0]?.problems.join(' ') ?? ''
+      record('off-whitelist attach kind fails', !result.ok && problem.includes('attach.kind'), problem.slice(0, 120))
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  }
+
+  // 12. An in-process `exports["."]` runtime entry is a violation.
+  {
+    const root = fakeRepo({
+      distribution: 'A1',
+      exports: { '.': { types: './lib/types/index.d.ts', default: './lib/index.js' } },
+      external: { spdx: 'AGPL-3.0-or-later', attach: { kind: 'jsonrpc-stdio', command: 'fake-provider' } },
+    })
+    try {
+      const result = verifyBuildRules({ root, only: 'external' })
+      const problem = result.gates[0]?.problems.join(' ') ?? ''
+      record('external with exports["."] fails', !result.ok && problem.includes('exports["."]'), problem.slice(0, 120))
+    } finally { rmSync(root, { recursive: true, force: true }) }
   }
 }
 

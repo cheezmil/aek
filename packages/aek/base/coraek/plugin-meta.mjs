@@ -24,6 +24,7 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { basename, join, relative, sep } from 'node:path'
+import { ATTACH_KINDS, isSafeArgvToken, isSafeCommand, isSpdxExpression } from './external.mjs'
 
 /** The only two legal audience classes. */
 export const PLUGIN_CLASSES = /** @type {const} */ (['A1', 'A2'])
@@ -119,6 +120,128 @@ export function classViolationMessage(result, packageName) {
 }
 
 /**
+ * @typedef {object} ExternalMeta
+ * @property {boolean} ok - whether the block is absent or fully legal.
+ * @property {Record<string, unknown> | null} value - the block, null when absent.
+ * @property {string[]} problems - deterministic, human-readable.
+ */
+
+/**
+ * Read and validate the `aek.external` block, the marker that a package is a
+ * THIN WRAPPER around an external capability provider.
+ *
+ * Wrappers may only talk to their provider out-of-process (spawn / connect
+ * per `attach`), so the marker enforces the structural half of the license
+ * boundary in the manifest itself:
+ *   - `spdx` (provider license, e.g. `AGPL-3.0-or-later`) is REQUIRED;
+ *   - `attach.kind` must be a whitelisted protocol (the ATTACH_KINDS table);
+ *   - argv material is shell-free and the command name is never absolute;
+ *   - the package must expose NO in-process entry point: no `main` field and
+ *     no `exports["."]` runtime entry (a `bin` CLI face stays allowed — it is
+ *     launched, never imported, by the host).
+ *
+ * The block is optional: ordinary plugins without it are untouched.
+ * @param {Record<string, unknown>} manifest - parsed package.json.
+ * @returns {ExternalMeta}
+ */
+export function externalMetaOf(manifest) {
+  const aek = manifest.aek
+  const block = aek !== null && typeof aek === 'object' && !Array.isArray(aek)
+    ? /** @type {Record<string, unknown>} */ (aek).external
+    : undefined
+  if (block === undefined || block === null) {
+    return { ok: true, value: null, problems: [] }
+  }
+  if (typeof block !== 'object' || Array.isArray(block)) {
+    return { ok: false, value: null, problems: ['aek.external must be an object'] }
+  }
+  /** @type {string[]} */
+  const problems = []
+
+  const spdx = block.spdx
+  if (typeof spdx !== 'string' || spdx.length === 0) {
+    problems.push('aek.external.spdx is required (the provider license, e.g. "AGPL-3.0-or-later")')
+  } else if (!isSpdxExpression(spdx)) {
+    problems.push(`aek.external.spdx is not a valid SPDX expression (got '${spdx}')`)
+  }
+
+  if (block.source !== undefined) {
+    let url
+    try { url = new URL(block.source) } catch { url = null }
+    if (url === null || (url.protocol !== 'http:' && url.protocol !== 'https:')) {
+      problems.push(`aek.external.source must be an http(s) URL (got ${JSON.stringify(block.source)})`)
+    }
+  }
+
+  const attach = block.attach
+  if (attach === null || typeof attach !== 'object' || Array.isArray(attach)) {
+    problems.push('aek.external.attach is required (an object)')
+  } else {
+    const a = /** @type {Record<string, unknown>} */ (attach)
+    if (!ATTACH_KINDS.includes(/** @type {string} */ (a.kind))) {
+      problems.push(`aek.external.attach.kind must be one of ${JSON.stringify(ATTACH_KINDS)} (got ${JSON.stringify(a.kind)})`)
+    }
+    if (a.command !== undefined && !isSafeCommand(a.command)) {
+      problems.push(`aek.external.attach.command must be a relative, shell-free executable name (got ${JSON.stringify(a.command)})`)
+    }
+    if (a.args !== undefined) {
+      if (!Array.isArray(a.args)) {
+        problems.push('aek.external.attach.args must be an array')
+      } else {
+        a.args.forEach((arg, i) => {
+          if (!isSafeArgvToken(arg)) {
+            problems.push(`aek.external.attach.args[${i}] must be a non-empty, shell-free token`)
+          }
+        })
+      }
+    }
+  }
+
+  // The structural heart: no in-process entry point, so the host can never
+  // import provider code. `bin` is allowed and encouraged (operator face).
+  if (manifest.main !== undefined && manifest.main !== '') {
+    problems.push('aek.external packages must not declare a `main` field (the host must not be able to import them)')
+  }
+  const exportsField = manifest.exports
+  if (exportsField !== undefined && exportsField !== null && typeof exportsField === 'object' && !Array.isArray(exportsField)) {
+    const root = /** @type {Record<string, unknown>} */ (exportsField)['.']
+    if (root !== undefined && root !== null && typeof root === 'object' && !Array.isArray(root)) {
+      const runtimeKeys = Object.keys(/** @type {Record<string, unknown>} */ (root)).filter(k => !k.startsWith('.'))
+      if (runtimeKeys.length > 0) {
+        problems.push('aek.external packages must not expose an in-process `exports["."]` runtime entry (use `bin` for the operator face)')
+      }
+    }
+  }
+
+  if (problems.length > 0) return { ok: false, value: block, problems }
+  return { ok: true, value: block, problems: [] }
+}
+
+/**
+ * Explain a bad `aek.external` declaration in a way a developer can act on.
+ * @param {ExternalMeta} result - result of `externalMetaOf`.
+ * @param {string} packageName - package name for the message.
+ * @returns {string[]} one line per problem.
+ */
+export function externalViolationMessages(result, packageName) {
+  const where = `${packageName}: package.json → aek.external`
+  return result.problems.map(problem => `${where} — ${problem}`)
+}
+
+/**
+ * Assert the external-wrapper rule for the whole tree.
+ * @param {string} repoRoot - absolute repository root.
+ * @returns {{ ok: boolean, violations: string[], packages: PluginMeta[] }} result.
+ */
+export function checkExternalPackages(repoRoot) {
+  const packages = readPluginMeta(repoRoot, { languages: false })
+  const violations = packages
+    .filter(pkg => pkg.external !== undefined && !pkg.external.ok)
+    .flatMap(pkg => externalViolationMessages(pkg.external, pkg.packageName))
+  return { ok: violations.length === 0, violations, packages }
+}
+
+/**
  * Detect a package's implementation languages without opening any file.
  *
  * @param {string} packageDir - absolute path of one package.
@@ -192,6 +315,7 @@ export function clearLanguageCache() {
  * @property {string} version - version from package.json.
  * @property {boolean} private - the npm `private` flag.
  * @property {PluginClass} distribution - declared class and validity.
+ * @property {ExternalMeta} [external] - the `aek.external` block, absent when undeclared.
  * @property {LanguageScan} languages - detected implementation languages.
  * @property {string} description - package description.
  */
@@ -236,7 +360,8 @@ export function readPluginMeta(repoRoot, options = {}) {
     const scan = options.languages === false
       ? { languages: [], primary: 'unknown', files: 0, truncated: false }
       : scanLanguages(abs, options)
-    return {
+    const external = externalMetaOf(manifest)
+    const meta = {
       id: basename(dir),
       dir,
       packageName: typeof manifest.name === 'string' ? manifest.name : basename(dir),
@@ -246,6 +371,8 @@ export function readPluginMeta(repoRoot, options = {}) {
       languages: scan,
       description: typeof manifest.description === 'string' ? manifest.description : '',
     }
+    if (external.value !== null) meta.external = external
+    return meta
   })
 }
 

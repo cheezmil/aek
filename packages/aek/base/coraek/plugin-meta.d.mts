@@ -35,8 +35,26 @@ export interface PluginMeta {
   version: string
   private: boolean
   distribution: PluginClass
+  /** The `aek.external` block; absent when the package declares none. */
+  external?: ExternalMeta
   languages: LanguageScan
   description: string
+}
+
+/**
+ * Validated view of an `aek.external` block: a package marked as a thin
+ * wrapper around an EXTERNAL capability provider. Wrappers may only reach
+ * their provider out-of-process, so the block enforces the structural half
+ * of the license boundary in the manifest (required `spdx`, whitelisted
+ * `attach.kind`, no in-process `main` / `exports["."]` entries).
+ */
+export interface ExternalMeta {
+  /** Absent block, or a fully legal block. */
+  ok: boolean
+  /** The block, `null` when absent. */
+  value: Record<string, unknown> | null
+  /** Deterministic, human-readable problems. */
+  problems: string[]
 }
 
 /** Read `aek.distribution` from a parsed package.json. */
@@ -44,6 +62,19 @@ export declare function pluginClassOf(manifest: Record<string, unknown>): Plugin
 
 /** Friendly, actionable explanation of a bad declaration. */
 export declare function classViolationMessage(result: PluginClass, packageName: string): string
+
+/** Read and validate the `aek.external` block (optional marker). */
+export declare function externalMetaOf(manifest: Record<string, unknown>): ExternalMeta
+
+/** One actionable line per problem of a bad `aek.external` block. */
+export declare function externalViolationMessages(result: ExternalMeta, packageName: string): string[]
+
+/** Assert the external-wrapper rule for the whole tree. */
+export declare function checkExternalPackages(repoRoot: string): {
+  ok: boolean
+  violations: string[]
+  packages: PluginMeta[]
+}
 
 /**
  * Detect implementation languages by directory entries and extensions only.

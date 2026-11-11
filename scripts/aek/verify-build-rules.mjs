@@ -12,6 +12,9 @@
  *   - signing   macOS build uses a self-signed development identity, never
  *               adhoc; missing certificate = build failure + setup guide
  *   - publish   no A2 package appears in any publish / installable roster
+ *   - external  every `aek.external` wrapper is structurally out-of-process:
+ *               required provider license (`spdx`), whitelisted `attach.kind`,
+ *               and NO in-process entry point (`main` / `exports["."]`)
  *
  * SAFETY: no arguments = read-only check. `--json` for CI. `--only <gate>`
  * narrows the run. `--skip-signing` is ONLY for pure source compiles that
@@ -27,7 +30,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readPluginMeta } from '../../packages/aek/base/coraek/plugin-meta.mjs'
+import { checkExternalPackages, readPluginMeta } from '../../packages/aek/base/coraek/plugin-meta.mjs'
 import { runCheck, repoRoot } from './plugin-class.mjs'
 import { resolveSigningIdentity, setupGuide } from './signing-identity.mjs'
 
@@ -64,6 +67,18 @@ export function checkPublishScope(root = repoRoot()) {
  */
 
 /**
+ * Structural half of the external-capability license boundary: every
+ * `aek.external` wrapper must keep its provider out-of-process. Reuses the
+ * shared validator in `plugin-meta.mjs` so there is one source of truth.
+ * @param {string} root - repository root.
+ * @returns {{ ok: boolean, problems: string[] }} result.
+ */
+export function checkExternalGate(root = repoRoot()) {
+  const result = checkExternalPackages(root)
+  return { ok: result.ok, problems: result.violations }
+}
+
+/**
  * Run the gates. This is the function the build entry points call.
  * @param {{ root?: string, only?: string, skipSigning?: boolean }} [options] - controls.
  * @returns {GateResult} result.
@@ -71,7 +86,7 @@ export function checkPublishScope(root = repoRoot()) {
 export function verifyBuildRules(options = {}) {
   const root = options.root ?? repoRoot()
   const requested = options.only === undefined
-    ? ['classes', 'signing', 'publish']
+    ? ['classes', 'signing', 'publish', 'external']
     : [options.only]
   /** @type {{ name: string, ok: boolean, problems: string[] }[]} */
   const gates = []
@@ -87,6 +102,10 @@ export function verifyBuildRules(options = {}) {
   if (requested.includes('publish')) {
     const result = checkPublishScope(root)
     gates.push({ name: 'publish', ok: result.ok, problems: result.problems })
+  }
+  if (requested.includes('external')) {
+    const result = checkExternalGate(root)
+    gates.push({ name: 'external', ok: result.ok, problems: result.problems })
   }
   return { ok: gates.every(gate => gate.ok), gates, root }
 }
@@ -117,6 +136,13 @@ export function assertBuildRules(options = {}) {
     }
     if (gate.name === 'signing') {
       lines.push('', ...setupGuide().split('\n').map(line => `  ${line}`))
+    }
+    if (gate.name === 'external') {
+      lines.push('', '  外部能力包（aek.external）必须保持「只出进程」的结构：')
+      lines.push('    · 必填 aek.external.spdx（provider 许可证，如 "AGPL-3.0-or-later"）；')
+      lines.push('    · attach.kind 限白名单（mcp-stdio / jsonrpc-stdio / http / cli）；')
+      lines.push('    · 不得声明 main 或 exports["."] 运行时入口（host 永远不能 import 到 provider 代码）。')
+      lines.push('  详见 packages/aek/base/coraek/external-supervisor.mjs 的模块说明。')
     }
   }
   lines.push('', '  单独复查（只读）：node scripts/aek/verify-build-rules.mjs', '')

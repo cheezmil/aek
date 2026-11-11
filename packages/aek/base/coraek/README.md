@@ -15,9 +15,15 @@ profile so they read as AEK instead of DeepSeek Harness:
   replacing the dsh web-app bundle's own `dsh web:` line (which the web profile
   suppresses with `printUrl: false`).
 
+It also owns the **external capability provider** layer: a generic protocol, a
+process supervisor, a host API and an operator CLI that let third-party
+capability providers (including strongly-copyleft ones) attach as *separate
+processes* without the host ever knowing their internals. See
+[External capability providers](#external-capability-providers).
+
 The document title is rebranded separately through the `DSH_CLIENT_TITLE` build
-environment value, which `AppFrame` already reads. This package has no runtime
-state and does not affect model requests.
+environment value, which `AppFrame` already reads. The identity half has no
+runtime state and does not affect model requests.
 
 ## Use this package
 
@@ -44,6 +50,56 @@ The host half (`src/index.ts`) injects the `connection` service and prints
 line. The client half (`src/client/index.ts`) injects the `slots` service and
 registers the AEK mark and name into the sidebar brand slots as one
 declaration-aware set, the same pattern as `@deepseek-ai/dsh-client-ui-brand-official`.
+
+The host half also calls `registerCapabilityApi` (see
+[External capability providers](#external-capability-providers)), which mounts
+two routes on the `webServer` seam and owns one `CapabilitySupervisor` per
+composition root.
+
+## External capability providers
+
+coraek is the host side of a **process boundary**: a capability provider that
+ships its own code (for example a strongly-copyleft / AGPL binary) attaches as
+a *separate process* and talks to AEK through one small protocol. The host
+never imports, links, or distributes the provider's code — that arm's-length
+boundary keeps the host process clean and leaves the license obligation on the
+provider's own distribution channel.
+
+- **Protocol `aek-capability/1`** (`external.mjs`). A provider *self-describes*
+  with a flat JSON descriptor: `name`, `version`, `spdx` (the provider's own
+  license), `source`, `capabilities`, and an `attach` block saying how to reach
+  it (`mcp-stdio` / `jsonrpc-stdio` / `http` / `cli`). `validateDescriptor` is
+  strict and total: unknown fields, off-whitelist attach kinds, absolute or
+  shell-metacharacter commands, and off-whitelist SPDX are all rejected. Two
+  wire framings are supported for stdio JSON-RPC — LSP `Content-Length`
+  headers and bare newline-delimited JSON — with `JsonRpcStream` auto-detecting
+  either from the first byte.
+- **Supervisor** (`external-supervisor.mjs`). One `CapabilitySupervisor` owns
+  the state store at `<AEK_HOME>/capabilities.json`, spawns stdio providers as
+  `execFile`-style children (no shell), and enforces the safety rules:
+  **single instance** (a live recorded pid is *adopted*, never re-spawned),
+  **attached instances are never killed** (stop is report-only), and graceful
+  shutdown is `SIGTERM` with a bounded 5 s grace, **never escalated to
+  `SIGKILL`**. On disposal it signals every child it spawned so no orphan
+  survives a host shutdown.
+- **Manifest gate** (`aek.external` in `package.json` + the `external` build
+  gate in `verify-build-rules.mjs`). A wrapper package declares the block:
+  `spdx` (asserts the provider's license) and `attach` (the process boundary).
+  It **forbids an in-process runtime entry** — no `main` and no `exports["."]`
+  (a `bin` field is allowed, it stays out of the host's module graph). This is
+  the machine-enforced half of the "no code transfer" rule.
+- **Host API** (`src/capability-api.ts`). `GET /api/aek/capabilities` returns
+  the registry with live-corrected state and a host-rendered compliance line;
+  `POST /api/aek/capabilities/stop` stops a provider and requires
+  `confirm: true` (428 otherwise). The compliance line is a *fixed host
+  template* filled with provider-asserted data — the host never hardcodes
+  upstream facts. The aek-home About panel renders the section only when at
+  least one provider is registered.
+- **Operator CLI** (`aek external`, `src/commands/external.ts`). Read-only
+  actions (`list`, `status`, `describe`) need no confirmation; mutating
+  actions (`stop`, `register`) require `--confirm`. The host API is
+  intentionally thin: install / download / start are operator actions, not
+  host actions.
 
 ## Model Experience
 

@@ -33,7 +33,7 @@ export default defineConfig([
   {
     // commands: oclif command modules, discovered relative to the CLI runner
     // (oclif's `commands` option points at lib/commands).
-    entry: { web: 'src/commands/web.ts' },
+    entry: { web: 'src/commands/web.ts', external: 'src/commands/external.ts' },
     outDir: 'lib/commands',
     format: ['esm'],
     platform: 'node',

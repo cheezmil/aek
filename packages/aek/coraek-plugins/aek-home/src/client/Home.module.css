@@ -2124,6 +2124,16 @@ body {
   font-size: 12px;
 }
 .packageRow > .providerName { flex: 1 1 auto; min-width: 0; }
+/* EXTERNAL capability provider row (About): a chip cluster plus the
+   host-rendered compliance sentence beneath it. The client carries no
+   upstream facts — only what the host projected. */
+.capabilityRow { display: grid; grid-template-rows: auto auto; gap: 4px; }
+.capabilityLine {
+  padding: 0 4px;
+  color: var(--aek-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
 .entryIcon { display: inline-flex; color: var(--aek-accent); }
 .entryName { font-weight: 700; color: var(--aek-text); }
 .entryTag {

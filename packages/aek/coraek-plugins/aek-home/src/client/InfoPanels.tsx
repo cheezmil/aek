@@ -30,6 +30,7 @@ import { css, cx } from './styles.ts'
 import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner, ToggleSwitch } from './ui-kit.tsx'
 import type { InventoryState } from './useInventory.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
+import { useCapabilities } from './useCapabilities.ts'
 
 /** Panels handled here. */
 export type InfoPanelId = 'plugins' | 'settings' | 'about'
@@ -598,6 +599,8 @@ function PluginsPanel() {
 function AboutPanel({ inventory }: { inventory: InventoryState }) {
   const { t, tf } = useI18n()
   const facts = useConsoleFacts()
+  const caps = useCapabilities()
+  const providers = caps.facts?.providers ?? []
   const snapshot = inventory.snapshot
   const plugins = snapshot?.packages.filter(pkg => pkg.group === 'plugin') ?? []
   const base = snapshot?.packages.filter(pkg => pkg.group === 'base') ?? []
@@ -687,6 +690,31 @@ function AboutPanel({ inventory }: { inventory: InventoryState }) {
           ))}
         </ul>
         {base.length === 0 ? <div className={css.emptyState}>{t('about.empty')}</div> : null}
+
+        {/* EXTERNAL capability providers: shown only when the host reports at
+            least one. The compliance line is host-rendered from the provider's
+            own self-description — the client bundle carries no upstream facts. */}
+        {providers.length > 0 ? (
+          <>
+            <div className={css.divider} />
+            <h3 className={css.sectionTitle}>{t('about.external.title')}</h3>
+            <div className={css.hint}>{t('about.external.hint')}</div>
+            <ul className={css.packageList}>
+              {providers.map(provider => (
+                <li key={provider.id} className={css.capabilityRow}>
+                  <div className={css.packageRow}>
+                    <span className={css.providerName}>{displayName(provider.name)}</span>
+                    <span className={css.countChip}>{provider.state}</span>
+                    {provider.spdx !== null
+                      ? <span className={css.stackChip} title={provider.spdx}>{provider.spdx}</span>
+                      : null}
+                  </div>
+                  <div className={css.capabilityLine}>{provider.compliance}</div>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
       </div>
     </PanelCard>
   )

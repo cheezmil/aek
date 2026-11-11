@@ -57,6 +57,14 @@
     "./plugin-meta": {
       "types": "./plugin-meta.d.mts",
       "default": "./plugin-meta.mjs"
+    },
+    "./external": {
+      "types": "./external.d.mts",
+      "default": "./external.mjs"
+    },
+    "./external-supervisor": {
+      "types": "./external-supervisor.d.mts",
+      "default": "./external-supervisor.mjs"
     }
   },
   "dsh": {
@@ -109,7 +117,11 @@
     "schema.mjs",
     "schema.d.mts",
     "plugin-meta.d.mts",
-    "plugin-meta.mjs"
+    "plugin-meta.mjs",
+    "external.mjs",
+    "external.d.mts",
+    "external-supervisor.mjs",
+    "external-supervisor.d.mts"
   ],
   "oclif": {
     "bin": "aek",

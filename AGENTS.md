@@ -61,6 +61,7 @@ AEK 一开始从 `deepseek-harness`（简称 dsh）整仓复制而来，削减�
 - 插件接口分层：**CLI 必须**（`aek{能力名}`，入口 `bin/*.mjs`）、**MCP 只有 `aek-mcp-gateway` 需要**、**REST 可选**。
 - **插件受众分类（A1 / A2，硬规则）**：每个 `packages/aek/**` 的包都必须在 `package.json` 声明 `aek.distribution` —— `A1` = 将来发布到互联网给全球使用；`A2` = 完全本地使用。**只有这两类，没有第三类、没有默认值、没有兜底**：未声明或非法值直接**编译不通过**（`verify-build-rules.mjs`），`launch.mjs` 在启动期也拒绝加载并给出提醒。
 - **A2 绝不发布**：`scripts/release/families.ts`、`scripts/release/verify.ts`、`scripts/aek/cicd.mjs` 与 `plugin-class.mjs publish-list` 都会把 A2 完全排除出 npm / release；`private: true` 是第二道独立保险。A1 ↔ A2 的变更**必须先询问用户、未经允许不得更改**；唯一写入口是 `node scripts/aek/plugin-class.mjs set <pkg> <A1|A2> --reason "..." --confirm`，每次变更写入槽内审计日志。
+- **外部能力提供者一律走「独立进程 + 通法」，宿主不写任何具体上游**：第三方（含 AGPL 等强 copyleft）能力只以独立进程接入，宿主经 `aek-capability/1` 描述符 + `@cheezmil/coraek` 的 `external-supervisor`（单例采纳、SIGTERM 不升级、attach 实例绝杀）管理，**不搬对方代码、不分发对方二进制进宿主进程**。接入包在 `package.json` 声明 `aek.external` 块（`spdx` 自报许可 + `attach` 进程边界），**禁止带 `main` / `exports["."]` 的进程内运行时入口**（允许 `bin`）；`verify-build-rules.mjs` 的第四道门禁 `external` 会拦下违规。宿主渲染合规文案用「固定模板 + provider 自描述数据」，不把上游事实硬编码进前端。任何新增 AGPL 项目先做本通法、后加数据。
 - 插件从 `@cheezmil/coraek` 的类型入口导入 `Context` / `Volatile` / `ClientContext`，**不直接 import cordis**。
 - `aek-for-dsh` 是 `cordis.patch.yml` **bundle**（一次注册所有 aek 插件），不是插件，不承担 `apply(ctx)`。
 - 不凭空造 `aek-core` 之类中间包；`aek-base`/coraek 只做身份层与类型 re-export，不放业务逻辑。

@@ -4,9 +4,11 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
+  checkExternalPackages,
   checkPluginClasses,
   classViolationMessage,
   clearLanguageCache,
+  externalMetaOf,
   findAekPackageDirs,
   pluginClassOf,
   publishablePlugins,
@@ -127,5 +129,74 @@ describe('cheap language scan', () => {
     expect(quick?.distribution.value).toBe('A2')
     expect(quick?.private).toBe(true)
     expect(quick?.languages.primary).toBe('TypeScript')
+  })
+})
+
+describe('external capability wrapper block', () => {
+  const LEGAL_EXTERNAL = {
+    spdx: 'AGPL-3.0-or-later',
+    attach: { kind: 'mcp-stdio', command: 'fake-provider', args: ['mcp'] },
+  }
+
+  it('accepts a legal out-of-process wrapper', () => {
+    const result = externalMetaOf({ aek: { distribution: 'A1', external: LEGAL_EXTERNAL } })
+    expect(result.ok).toBe(true)
+    expect(result.problems).toEqual([])
+  })
+
+  it('is a no-op when the block is absent', () => {
+    expect(externalMetaOf({ aek: { distribution: 'A1' } })).toEqual({ ok: true, value: null, problems: [] })
+    expect(externalMetaOf({}).value).toBeNull()
+  })
+
+  it('requires the provider license (spdx)', () => {
+    const result = externalMetaOf({ aek: { external: { attach: LEGAL_EXTERNAL.attach } } })
+    expect(result.ok).toBe(false)
+    expect(result.problems.join(' ')).toContain('spdx')
+  })
+
+  it('rejects an off-whitelist attach kind', () => {
+    const result = externalMetaOf({
+      aek: { external: { spdx: 'AGPL-3.0-or-later', attach: { kind: 'shared-memory' } } },
+    })
+    expect(result.ok).toBe(false)
+    expect(result.problems.join(' ')).toContain('attach.kind')
+  })
+
+  it('rejects an in-process `main` entry', () => {
+    const result = externalMetaOf({ main: './index.js', aek: { external: LEGAL_EXTERNAL } })
+    expect(result.ok).toBe(false)
+    expect(result.problems.join(' ')).toContain('main')
+  })
+
+  it('rejects an in-process exports["."] runtime entry but allows bin-only', () => {
+    const withRoot = externalMetaOf({
+      exports: { '.': { types: './lib/types/index.d.ts', default: './lib/index.js' } },
+      aek: { external: LEGAL_EXTERNAL },
+    })
+    expect(withRoot.ok).toBe(false)
+    expect(withRoot.problems.join(' ')).toContain('exports["."]')
+
+    const binOnly = externalMetaOf({
+      bin: { fake: './bin/fake.mjs' },
+      aek: { external: LEGAL_EXTERNAL },
+    })
+    expect(binOnly.ok).toBe(true)
+  })
+
+  it('flags violations across the tree via checkExternalPackages', () => {
+    const root = scratch()
+    const pkgDir = join(root, 'packages', 'aek', 'coraek-plugins', 'wraps')
+    mkdirSync(pkgDir, { recursive: true })
+    writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({
+      name: '@cheezmil/wraps',
+      version: '0.0.1',
+      main: './index.js',
+      aek: { distribution: 'A1', external: LEGAL_EXTERNAL },
+    }))
+    const result = checkExternalPackages(root)
+    expect(result.ok).toBe(false)
+    expect(result.violations.join(' ')).toContain('main')
+    rmSync(root, { recursive: true, force: true })
   })
 })

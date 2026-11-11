@@ -20,6 +20,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import { registerCapabilityApi } from './capability-api.ts'
 
 // Re-export AEK framework types so plugins don't import cordis/cosmokit directly.
 export type { Context } from '@deepseek-ai/cordis'
@@ -34,10 +35,16 @@ export const inject = ['webServer']
 const ANNOUNCED_ROOTS = new WeakSet<Context>()
 
 /**
- * Print the `aek web:` readiness line once the connection service mounts.
+ * Print the `aek web:` readiness line once the connection service mounts, and
+ * mount the generic external-capability provider API on the web server seam.
+ *
+ * The capability API is protocol-generic (descriptors + supervisor); it never
+ * knows a specific upstream. In a headless composition the seam is absent and
+ * the registration is a no-op.
  * @param ctx - plugin context carrying the webServer service.
  */
 export function apply(ctx: Context): void {
+  registerCapabilityApi(ctx)
   ctx.inject(['connection'], (connectionCtx) => {
     if (ANNOUNCED_ROOTS.has(connectionCtx.root)) return
     const url = connectionCtx.connection.authenticatedUrl(ctx.webServer.getOrigin())
