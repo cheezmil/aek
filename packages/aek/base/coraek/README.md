@@ -16,9 +16,12 @@ profile so they read as AEK instead of DeepSeek Harness:
   suppresses with `printUrl: false`).
 
 It also owns the **external capability provider** layer: a generic protocol, a
-process supervisor, a host API and an operator CLI that let third-party
-capability providers (including strongly-copyleft ones) attach as *separate
-processes* without the host ever knowing their internals. See
+process supervisor, a host API and an operator CLI that let *separate-process*
+capabilities — strongly-copyleft providers (license isolation) and native-language
+(Go / Rust) capabilities (runtime incompatibility) — attach without the host ever
+knowing their internals. (Our own TS/JS AEK plugins are a different class: they
+run *in-process* on the shared coraek Node runtime, optionally shared to reduce
+resident memory; they are not managed by this layer.) See
 [External capability providers](#external-capability-providers).
 
 The document title is rebranded separately through the `DSH_CLIENT_TITLE` build
@@ -64,6 +67,19 @@ a *separate process* and talks to AEK through one small protocol. The host
 never imports, links, or distributes the provider's code — that arm's-length
 boundary keeps the host process clean and leaves the license obligation on the
 provider's own distribution channel.
+
+**Which capabilities use this layer** (the boundary is *separate process*, not
+"all external code"):
+
+| class | runtime relationship | why |
+|---|---|---|
+| our own TS/JS AEK plugins | **in-process**, on the shared coraek Node runtime; the user can selectively share it to reduce resident memory | same language/runtime; memory efficiency |
+| strongly-copyleft providers (AGPL / GPL) | **separate process + this protocol** | license isolation — no code transfer into the host |
+| native-language capabilities (Go / Rust) | **separate process instance each** | their runtime cannot be shared with the JS runtime, architecturally |
+
+This section and the `aek.external` manifest gate govern only the two
+*separate-process* rows. The in-process TS/JS row is ordinary coraek plugin
+loading (bundle + `apply(ctx)`), which this layer must never intercept.
 
 - **Protocol `aek-capability/1`** (`external.mjs`). A provider *self-describes*
   with a flat JSON descriptor: `name`, `version`, `spdx` (the provider's own
