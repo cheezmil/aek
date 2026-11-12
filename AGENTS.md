@@ -1,8 +1,8 @@
 # AGENTS.md — Agent Enhance Kit (AEK)
 
-> 本仓库的最高优先级协作约定。任何 AI agent / 开发者动手前先读。
+> 本仓库的最高优先级协作约定。任何 AI agent 动手前先读。
 >
-> **事实冲突时的优先级：源码现状 > 本文件 > `scripts/aek/upstream/scope.mjs` > 项目笔记。**
+> **事实冲突时的优先级：源码现状 > 本文件 > `scripts/aek/upstream/scope.mjs` > 用户本地自定义的项目笔记。**
 >
 > 笔记是历史记录、会过时；发现不一致一律以源码为准，并顺手把过时笔记标注或清掉，不要照着旧笔记继续干。
 
@@ -10,11 +10,11 @@
 
 ## 1. 这个项目是什么（先搞清楚目的）
 
-AEK 一开始从 `deepseek-harness`（简称 dsh）整仓复制而来，削减了很多不需要的东西，**是一次性分叉，不是 dsh 的长期下游**：
+AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 cordis 运行时架构 ，是一次性分叉，不是 dsh 的长期下游 ：
 
 - 保留 dsh 的 **cordis 运行时架构**（coraek 建立在它之上，这部分一个都不能少）
-- 自己改了 **web** 和 **desktop**
-- 自己加了 **aek 插件体系** 和 **coraek 架构**
+- 改了 **web** 和 **desktop**，更节省运行内存，让webui和desktop能同时运行。
+- 加了 **aek 插件体系** 和 **coraek 架构**，相较于ztools这类插件工具，最大的区别就是能够极大程度地节约运行时内存，能够在浏览器中运行以便给服务器使用，避免成千上万个插件都多一份nodejs运行时。
 
 不需要「追平上游」，不需要把 dsh 的全套 CI / 文档站 / 双语规范 / 发版史搬回来。**目标是让 aek 自己写的代码能跑、能测、能发版。**
 
@@ -24,7 +24,7 @@ AEK 一开始从 `deepseek-harness`（简称 dsh）整仓复制而来，削减�
 - **cordis 运行时架构必须完整保留**：`vendor/**`、`packages/typert/**`、4 个 `cordis-*` 扩展、`packages/aek/base/coraek/**`、cordis 契约脚本与测试。
 - **唯一真源**：`scripts/aek/upstream/scope.mjs`（`KEEP` / `DROP` / `DOC_GATES` 三张表）。改边界先改它，再跑 `node scripts/aek/upstream/scope.mjs --check`。
 - 已裁决：`.github/` **不恢复**（aek 没有 GitHub Actions）；`docs/` 治理层已删 251 文件 / 4.7MB，只剩 2 个文件。
-- **禁止为了让复制过来的 dsh 门禁变绿，而搬回 dsh 的文档 / CI / 测试夹具。** 这是本项目反复踩过的坑。
+- **禁止为了让保留下来的 dsh 门禁变绿，而搬回 dsh 的文档 / CI / 测试夹具。** 这是本项目反复踩过的坑。
 - `docs/cordis-api/inherited.md` 不是文档站页面，是 typert 测试逐字节比对的 **cordis 契约快照**，必须保留。
 
 ### 2.5 命令面（硬规则，2026-11-12 用户立规——写给读仓的每一个 AI）
@@ -40,7 +40,7 @@ AEK 一开始从 `deepseek-harness`（简称 dsh）整仓复制而来，削减�
 
 ## 3. 测试与门禁：哪些要管、哪些不用管（AI 自行判定，别把技术取舍抛给用户）
 
-**实测现状**：全仓 1670 个 `*.spec.ts`（`packages/` 1503、`scripts/` 145、`apps/` 22），**全部是从 dsh 复制过来的**；aek 自有代码 `packages/aek/` + `apps/aek-desktop/` 共 304 个源文件，**0 个自有 spec**。所以「全绿」不是本项目的目标，也不要拿 dsh 的失败数当项目健康度。
+**实测现状**：全仓 1670 个 `*.spec.ts`（`packages/` 1503、`scripts/` 145、`apps/` 22），**全部是随 dsh 分叉保留下来的**（dsh 治理层、非关键面）；aek 自有代码 `packages/aek/` + `apps/aek-desktop/` 共 304 个源文件，**0 个自有 spec**。所以「全绿」不是本项目的目标，也不要拿 dsh 的失败数当项目健康度。
 
 **判定口径：这个测试/门禁验证的是不是「AEK 自己写的代码」或「cordis 运行时契约」？**
 
@@ -68,7 +68,7 @@ AEK 一开始从 `deepseek-harness`（简称 dsh）整仓复制而来，削减�
 - **禁止硬编码任何绝对路径**——项目面向全球用户。源码与配置里的路径一律相对仓库根、由运行时解析；本文件同样不写开发者本机的绝对路径（笔记目录、临时目录、clone 目标等一律由使用者当轮提供，不预设）。**同样禁止出现任何真实用户名**：`/Users/<人名>`、`/home/<人名>`、`C:\Users\<人名>` 在代码、注释、文档、测试夹具、生成模板里都不允许——注释会进 fork 和截图，夹具会把作者身份固化进仓库，模板会把作者家目录复制进每个用户的数据目录。占位写 `<user>` / `~` / `$HOME` / `%USERPROFILE%`，测试用 `tester` / `fixture`。`node scripts/aek/verify-user-paths.mjs`（`pnpm verify:user-paths`）会扫 AEK 自有目录，`--all` 可扫全仓做人工复核，`--artifacts`（`pnpm verify:user-paths:artifacts`）再扫一遍构建产物。
 - **模块 id 是会被原样发布的字符串**：bundler 把样式表的**绝对路径**当虚拟模块 id 时，Rolldown 会把 id 写进产物的 `//#region` 注释，等于把打包者本机的家目录发给每个用户。进入模块 id 的路径一律相对化（客户端 CSS 相对仓库根、DevTools CSS 相对前端根），并在 `load()` 里还原成绝对路径；按 id 做后处理匹配的地方（如图片内联）必须复用同一套 id 生成函数。
 - **改 dsh 原来源码，优先通过 `aek-base` 插件（现包名 `@cheezmil/coraek`）扩展**；cordis 插件能做到的都在插件层做，实在解决不了才直接改源码。注意：cordis 插件是**运行时**扩展点，管不到 vitest spec 和 `run-gates` 这类构建期门禁，别硬套。
-- **框架直接装、别 vendor；别人 MIT 产品整只复制后裁剪；只有 AEK 自己的能力自己写。** 例外：已存在的 `vendor/cordis/` 是本次分叉保留的运行时资产，属于 KEEP，不要按「别 vendor」这条去删它。
+- **框架直接装、别 vendor；别人 MIT 产品整体致敬（原样采纳其代码）后裁剪；只有 AEK 自己的能力自己写。** 例外：已存在的 `vendor/cordis/` 是本次分叉保留的运行时资产（dsh 优秀 cordis 架构的载体），属于 KEEP，不要按「别 vendor」这条去删它。
 - 插件接口分层：**CLI 必须**（`aek{能力名}`，入口 `bin/*.mjs`）、**MCP 只有 `aek-mcp-gateway` 需要**、**REST 可选**。
 - **插件受众分类（A1 / A2，硬规则）**：每个 `packages/aek/**` 的包都必须在 `package.json` 声明 `aek.distribution` —— `A1` = 将来发布到互联网给全球使用；`A2` = 完全本地使用。**只有这两类，没有第三类、没有默认值、没有兜底**：未声明或非法值直接**编译不通过**（`verify-build-rules.mjs`），`launch.mjs` 在启动期也拒绝加载并给出提醒。
 - **A2 绝不发布**：`scripts/release/families.ts`、`scripts/release/verify.ts`、`scripts/aek/cicd.mjs` 与 `plugin-class.mjs publish-list` 都会把 A2 完全排除出 npm / release；`private: true` 是第二道独立保险。A1 ↔ A2 的变更**必须先询问用户、未经允许不得更改**；唯一写入口是 `node scripts/aek/plugin-class.mjs set <pkg> <A1|A2> --reason "..." --confirm`，每次变更写入槽内审计日志。
@@ -124,7 +124,7 @@ AEK 一开始从 `deepseek-harness`（简称 dsh）整仓复制而来，削减�
 ## 8. 调研与工具
 
 - **上网搜索只用 aek websearch skill**（`aekws`），且要**多次搜索交叉确认**；**禁止 `| head` 截断结果**；未经用户允许不用其它工具联网搜索。可配合 `gh` CLI。
-- **遇到不会的先上网搜**，棘手问题主动找解决办法和开源项目借鉴，**不要全部自己写**。
+- **遇到不会的先上网搜**，棘手问题主动找解决办法，开源项目致敬（参考其方案），**不要全部自己写**。
 - 找 GitHub 仓库就 clone 下来看（必须 `--filter=blob:none`）；clone 到哪个目录由使用者当轮指定（不同操作系统位置不同，不预设）；有 release 就用 release，不要擅自编译；总结时写清编程语言、技术栈、star 数。
 - 下载二进制优先 `aria2`，GitHub 资源用 `gh` CLI；装软件默认 Homebrew。
 - 推荐跨平台开源工具时，按**网友评价推荐度 → 热度**综合排序，写明编程语言与真实依据（star / 仓库路径 / 日期），**不要凭印象编造**；默认偏好免费 + 开源 + 原生实现，避开付费墙。
