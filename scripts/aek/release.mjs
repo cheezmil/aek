@@ -52,11 +52,11 @@
  * @module scripts/aek/release
  */
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { get as httpGet } from 'node:http'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { listenPids, SLOTS, slotHome } from './shared-logic.mjs'
+import { listenPids, SLOTS, slotHome, dualTreeLayout } from './shared-logic.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NODE = process.execPath
@@ -99,49 +99,15 @@ function findRepoRoot(start) {
 // ── Layout (dev / stable trees, derived — never hardcoded) ─────────────────
 
 const THIS_ROOT = findRepoRoot(HERE)
-const THIS_DOTGIT = join(THIS_ROOT, '.git')
+const layout = dualTreeLayout(THIS_ROOT) // main worktree = dev; detached linked worktree = stable
 
-/**
- * A MAIN worktree's .git is a directory; a LINKED worktree's .git is a FILE
- * (`gitdir: <main>/.git/worktrees/<name>`). This is the version-independent
- * discriminator (porcelain `gitdir:` lines vary by git version).
- */
-const IS_LINKED = existsSync(THIS_DOTGIT) && !statSync(THIS_DOTGIT).isDirectory()
-
-/** @returns {string} the main (dev) worktree path, from either tree. */
-function mainWorktreePath() {
-  if (IS_LINKED) {
-    // .git file → "gitdir: <main>/.git/worktrees/<name>"
-    const gd = readFileSync(THIS_DOTGIT, 'utf8').trim().replace(/^gitdir:\s*/, '')
-    const mainGit = gd.replace(/(?:\/|\\)worktrees(?:\/|\\)[^/\\]+$/, '')
-    return dirname(mainGit)
-  }
-  return THIS_ROOT
-}
-
-/** @returns {string[]} linked (stable) worktree paths, from the main tree. */
-function linkedWorktreePaths() {
-  const out = execFileSync('git', ['worktree', 'list', '--porcelain'], {
-    cwd: THIS_ROOT, encoding: 'utf8',
-  })
-  const dirs = []
-  for (const block of out.split('\n\n').filter(Boolean)) {
-    const lines = block.split('\n')
-    const path = lines[0].replace(/^worktree /, '')
-    // main worktree entries carry a `branch` line; linked stable pins are `detached`.
-    if (lines.some((l) => l === 'detached')) dirs.push(path)
-  }
-  return dirs
-}
-
-const DEV_DIR = resolve(DEV_DIR_ARG ?? process.env.AEK_DEV_TREE ?? mainWorktreePath())
-const STABLE_CANDIDATES = IS_LINKED ? [THIS_ROOT] : linkedWorktreePaths()
+const DEV_DIR = resolve(DEV_DIR_ARG ?? process.env.AEK_DEV_TREE ?? layout.dev)
 const STABLE_DIR = resolve(
-  STABLE_DIR_ARG ?? process.env.AEK_STABLE_TREE ?? (STABLE_CANDIDATES.length === 1 ? STABLE_CANDIDATES[0] : ''),
+  STABLE_DIR_ARG ?? process.env.AEK_STABLE_TREE ?? (layout.stable ?? ''),
 )
 
 if (!DEV_DIR || !existsSync(join(DEV_DIR, 'pnpm-workspace.yaml'))) fail(`无法确定 dev 树（--dev-dir / $AEK_DEV_TREE 可覆盖）：${DEV_DIR}`)
-if (!STABLE_DIR || !existsSync(join(STABLE_DIR, 'pnpm-workspace.yaml'))) fail(`无法确定 stable 树：${IS_LINKED ? '本树是 linked worktree，应可直接用' : `仓内 detached linked worktree 数 ≠ 1（${String(STABLE_CANDIDATES.length)}）`}；请用 --stable-dir / $AEK_STABLE_TREE 显式指定`)
+if (!STABLE_DIR || !existsSync(join(STABLE_DIR, 'pnpm-workspace.yaml'))) fail(`无法确定 stable 树：本仓 detached linked worktree 数 ≠ 1（或布局异常）；请用 --stable-dir / $AEK_STABLE_TREE 显式指定`)
 if (DEV_DIR === STABLE_DIR) fail('dev 与 stable 解析到同一棵树，布局异常：请显式 --dev-dir / --stable-dir')
 
 // ── Git helpers ──────────────────────────────────────────────────────────────

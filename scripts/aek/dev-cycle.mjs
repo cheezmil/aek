@@ -34,7 +34,7 @@
  * @module scripts/aek/dev-cycle
  */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -42,6 +42,7 @@ import { aekBackupsPath } from '../../packages/aek/base/coraek/home.mjs'
 import { SLOTS, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
 import { listenPids } from './slot-ops.mjs'
 import { verifyBuildRules } from './verify-build-rules.mjs'
+import { dualTreeLayout } from './shared-logic.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = (() => {
@@ -234,6 +235,89 @@ function verify(devMode, json) {
       ok: surface.status === 0,
       detail: surface.status === 0 ? detail : `${detail}\n${(surface.stdout ?? '').trim().split('\n').slice(1).join('\n')}`,
     })
+  }
+
+  // ── Dual-tree rules (S round): current must be crash-proof against dev edits.
+  // The stable tree is the detached linked worktree; when it is not resolvable
+  // (pre-migration single-tree layout) the rules skip with a note.
+  {
+    const layout = dualTreeLayout(ROOT)
+    const stableDir = process.env.AEK_STABLE_TREE ?? layout.stable
+    if (stableDir && existsSync(join(stableDir, 'pnpm-workspace.yaml'))) {
+      const tracked = execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], {
+        cwd: stableDir, encoding: 'utf8',
+      }).trim()
+      checks.push({
+        rule: 'stable-tracked-clean',
+        ok: tracked === '',
+        detail: tracked === ''
+          ? 'stable 树 tracked 干净（未跟踪的构建产物不算）'
+          : `stable 树 tracked 漂移 ${String(tracked.split('\n').length)} 条——冻结树被手改了`,
+      })
+      let pin = ''
+      try {
+        pin = execFileSync('git', ['describe', '--tags', '--exact-match', 'HEAD'], {
+          cwd: stableDir, encoding: 'utf8',
+        }).trim()
+      } catch { /* HEAD is not exactly on a tag */ }
+      checks.push({
+        rule: 'stable-pinned-to-tag',
+        ok: Boolean(pin),
+        detail: pin ? `stable HEAD = tag ${pin}` : 'stable HEAD 不在 tag 上（S 轮要求钉已验收 tag）',
+      })
+      // current must execute from the stable tree: the slot's LaunchAgent
+      // plist (static) and/or the live web pid's cwd (dynamic).
+      const evidences = []
+      if (process.platform === 'darwin' && existsSync(plistFor('aek'))) {
+        const out = execFileSync('plutil', ['-p', plistFor('aek')], { encoding: 'utf8' })
+        const mjsArgs = out.match(/"([^"]+\.mjs)"/g) ?? []
+        evidences.push({
+          label: 'aek LaunchAgent plist',
+          ok: mjsArgs.length > 0 && mjsArgs.every((a) => a.replace(/^"/, '').startsWith(stableDir)),
+        })
+      }
+      const pidFile = join(slotHome('aek'), '.aek-runtime.pid')
+      if (existsSync(pidFile)) {
+        const pid = Number(readFileSync(pidFile, 'utf8').trim())
+        let alive = false
+        try { process.kill(pid, 0); alive = true } catch { /* stale */ }
+        if (alive) {
+          let cwd = null
+          if (process.platform === 'darwin') {
+            try {
+              const out = execFileSync('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], { encoding: 'utf8' })
+              cwd = out.split('\n').map((l) => l.slice(1)).find((l) => l.length > 0) ?? null
+            } catch { /* lsof unavailable */ }
+          }
+          if (cwd) evidences.push({ label: `current web pid ${String(pid)} cwd`, ok: cwd.startsWith(stableDir) })
+        }
+      }
+      checks.push({
+        rule: 'current-exe-in-stable',
+        ok: evidences.length > 0 && evidences.every((e) => e.ok),
+        detail: evidences.length === 0
+          ? '无证据（aek plist 与 pid 文件都不在）——current 可能由人工方式启动'
+          : evidences.map((e) => `${e.label}: ${e.ok ? '指向 stable 树' : '指向开发树！current 会在 dev 编辑下变脆'}`).join('；'),
+      })
+      // dev mode: if the next slot's agent is registered it must point at
+      // THIS tree (the dev tree), never at the stable one.
+      if (devMode && state.next.plist && process.platform === 'darwin') {
+        const out = execFileSync('plutil', ['-p', plistFor('next')], { encoding: 'utf8' })
+        const mjsArgs = out.match(/"([^"]+\.mjs)"/g) ?? []
+        const ok = mjsArgs.length > 0 && mjsArgs.every((a) => a.replace(/^"/, '').startsWith(ROOT))
+        checks.push({
+          rule: 'next-plist-points-dev',
+          ok,
+          detail: ok ? 'next LaunchAgent 指向开发树' : 'next LaunchAgent 指向的不是开发树（开发改动会经自启动落进 current 侧）',
+        })
+      }
+    } else {
+      checks.push({
+        rule: 'dual-tree-layout',
+        ok: true,
+        detail: '单树布局（S1 迁移未执行或 >1 个 detached worktree，双树规则不生效；AEK_STABLE_TREE 可显式指定）',
+      })
+    }
   }
   const ok = checks.every(check => check.ok)
   if (json) {

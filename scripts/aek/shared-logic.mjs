@@ -43,6 +43,41 @@ import { readFileSync } from 'node:fs'
 const PROJECT_ROOT = findProjectRoot()
 export const APP_ROOT = join(PROJECT_ROOT, 'apps', 'aek-desktop', 'v0')
 
+// ── Dual-tree layout (S round) ───────────────────────────────────────────────
+/**
+ * Derive the dev/stable tree pair from the git worktree structure — zero
+ * hardcoding. The main worktree's .git is a DIRECTORY; a linked worktree's
+ * .git is a FILE (`gitdir: <main>/.git/worktrees/<name>`). The stable tree
+ * is the detached-HEAD linked worktree pinned to a release tag; the dev tree
+ * is the main worktree.
+ * @param {string} root - the tree the caller operates from.
+ * @returns {{ dev: string, stable: string | null, operating: 'dev' | 'stable' }}
+ *   `stable` is null when the layout is not dual-tree (single tree, or more
+ *   than one detached linked worktree — pass an explicit override then).
+ */
+export function dualTreeLayout(root) {
+  const dotgit = join(root, '.git')
+  if (existsSync(dotgit) && !statSync(dotgit).isDirectory()) {
+    // linked worktree: this tree is the stable one; the main worktree's path
+    // is derivable from the .git gitdir file.
+    const gd = readFileSync(dotgit, 'utf8').trim().replace(/^gitdir:\s*/, '')
+    const mainGit = gd.replace(/(?:\/|\\)worktrees(?:\/|\\)[^/\\]+$/, '')
+    return { dev: dirname(mainGit), stable: root, operating: 'stable' }
+  }
+  // main worktree: linked worktrees are the `detached` entries of `worktree list`.
+  let stable = null
+  try {
+    const out = execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8' })
+    const linked = []
+    for (const block of out.split('\n\n').filter(Boolean)) {
+      const lines = block.split('\n')
+      if (lines.some((l) => l === 'detached')) linked.push(lines[0].replace(/^worktree /, ''))
+    }
+    if (linked.length === 1) stable = linked[0]
+  } catch { /* not a git worktree layout */ }
+  return { dev: root, stable, operating: 'dev' }
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 // Ports are injected per slot by scripts/aek/launch.mjs (AEK 1685/1686, Next
 // 1687/1688). When the env is unset (direct invocation / packaged app opened
