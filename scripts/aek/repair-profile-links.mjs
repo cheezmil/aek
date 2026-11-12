@@ -2,7 +2,7 @@
 /**
  * Repair profile package links after the data root gained a container level.
  *
- * A dsh profile is a tiny pnpm workspace under `<data root>/profiles/<name>/`.
+ * An AEK profile is a tiny pnpm workspace under `<data root>/profiles/<name>/`.
  * Its `package.json` points at this checkout with `link:` specs and its
  * `node_modules/@cheezmil/*` entries are RELATIVE symlinks. Both were written
  * for `~/.aek/profiles/web/…`; once the root moved to `~/.aek/current/`, every

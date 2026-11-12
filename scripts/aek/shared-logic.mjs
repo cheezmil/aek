@@ -136,7 +136,7 @@ export function tsxBin() {
   return join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx')
 }
 
-/** dsh CLI entry (compiled JS) */
+/** Shell CLI entry (compiled JS); the dsh fork's launcher, invoked as a module, not a command. */
 export function dshBin() {
   return join(PROJECT_ROOT, 'apps', 'cli', 'lib', 'bin.js')
 }
@@ -240,7 +240,7 @@ export function spawnWebServerWith(home, port, options = {}) {
   const webCmd = `DSH_HOME=${home} ${tsxBin()} ${dshBin()} web --no-open --port ${port}`
   // Advertise the slot's alias host, not the loopback literal: Chromium keys
   // site zoom by host (port ignored), so handing out `127.0.0.1:<port>` is what
-  // made AEK and the dsh web UI share one zoom level.
+  // made AEK and the shell web UI share one zoom level.
   const advertised = webUrlForPort(port)
   console.error(`[start] web  → ${advertised} (home ${home})`)
   const web = spawn('bash', ['-c', webCmd], {

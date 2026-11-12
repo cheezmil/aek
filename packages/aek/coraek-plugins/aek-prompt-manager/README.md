@@ -38,7 +38,7 @@ operation:
 ## Coraek host half (auxiliary face)
 
 The package also ships a **function plugin** (`main` → `lib/index.js`) that
-registers the in-process `ctx.promptManager` service on a dsh web profile
+registers the in-process `ctx.promptManager` service on an AEK web profile
 host (via `@cheezmil/aek-for-dsh`). The service is the host face of the
 SAME plain-JS engine the CLI drives — no process spawning, no second
 implementation:

@@ -51,6 +51,93 @@ const ALLOWED_LEGACY_UPSTREAM_BINS = new Set([
   'dsh-pack-vfs-image', // @deepseek-ai/dsh-experimental-webworker-packer (upstream copy)
 ])
 
+/**
+ * Command-surface (prose) face: shell-form `dsh <word>` in the AEK-owned docs
+ * and script text that an AI reading this repository would copy from. The
+ * upstream assets (python/, snapshots/, .agents/) are intentionally NOT in
+ * this set — their `dsh` wording belongs to the real DeepSeek Harness docs.
+ * The root AGENTS.md must carry the command-surface section; it is excluded
+ * from the prose scan because it legally quotes the forbidden form.
+ */
+const SURFACE_MARKER = '### 2.5 命令面'
+/** Follow-on words that make `dsh <word>` read as a shell command, not prose. */
+const SHELL_COMMAND_WORDS = new Set([
+  'web', 'plugin', 'acp', 'profile', 'run', 'start', 'stop', 'serve', 'ui',
+  'sdk', 'desktop', 'tui', 'inspect', 'build', 'test', 'lint', 'docs',
+  'help', 'version', 'install', 'update', 'release', 'publish', 'exec',
+  'sh', 'node', 'npm', 'pnpm', 'git', 'ci', 'status', 'list', 'set',
+  'get', 'doctor', 'search',
+])
+/** `dsh` preceded by a word char, `@` or `/` is an identifier or package name, not a command. */
+const SURFACE_PROSE = /(^|[^\w@/])dsh\s+([a-z][a-z0-9-]*)/gu
+/**
+ * Surfaces that must name the forbidden form and are exempt from the prose
+ * scan: the namespace-rule module and its spec (their job is to spell the
+ * prefixes out), and the real-DSH target extension, whose docs legitimately
+ * describe mounting AEK plugins into the real DeepSeek Harness software.
+ */
+const SURFACE_EXEMPT_BASES = new Set([
+  'command-namespace.mjs',
+  'command-namespace.ts',
+  'command-namespace.spec.ts',
+])
+const SURFACE_EXEMPT_SUBTREE = join('packages', 'aek', 'target-extensions', 'deepseek-harness')
+
+/**
+ * Scan one AEK-owned text file for shell-form `dsh` command wording.
+ * @param {string} relPath @param {string} text
+ * @returns {string[]} violation lines
+ */
+export function scanSurfaceText(relPath, text) {
+  const hits = []
+  for (const [index, line] of text.split('\n').entries()) {
+    SURFACE_PROSE.lastIndex = 0
+    let match
+    while ((match = SURFACE_PROSE.exec(line)) !== null) {
+      const word = match[2]
+      if (!SHELL_COMMAND_WORDS.has(word)) continue
+      hits.push(`${relPath}:${index + 1}: shell-form \`dsh ${word}\` wording in an AEK-owned surface; the operator surface is the \`aek\` command family (AGENTS.md §2.5)`)
+    }
+  }
+  return hits
+}
+
+/**
+ * Scan the AEK-owned command surface: the root README, the dev-web script
+ * header, every source/doc file under scripts/aek and packages/aek, plus the
+ * AGENTS.md command-surface section marker.
+ * @param {string} root
+ * @returns {{ violations: string[], legacy: string[], stats: { surfaceDocs: number } }}
+ */
+export function scanCommandSurface(root) {
+  const violations = []
+  const agents = join(root, 'AGENTS.md')
+  const agentsText = existsSync(agents) ? readFileSync(agents, 'utf8') : ''
+  if (!agentsText.includes(SURFACE_MARKER)) {
+    violations.push('AGENTS.md: the command-surface section (### 2.5 命令面) is missing; restore it so every reader learns the aek/dsh boundary')
+  }
+  let surfaceDocs = 0
+  const visit = (file) => {
+    if (file === SELF) return
+    const rel = relative(root, file)
+    if (SURFACE_EXEMPT_BASES.has(basename(file)) || rel === SURFACE_EXEMPT_SUBTREE || rel.startsWith(`${SURFACE_EXEMPT_SUBTREE}/`)) return
+    const base = basename(file)
+    const isDoc = base === 'README.md' || base === 'AGENTS.md'
+    if (!isDoc && !SOURCE_EXT.test(file)) return
+    surfaceDocs++
+    violations.push(...scanSurfaceText(rel, readFileSync(file, 'utf8')))
+  }
+  const rootReadme = join(root, 'README.md')
+  if (existsSync(rootReadme)) visit(rootReadme)
+  const devWeb = join(root, 'scripts', 'dev-web.ts')
+  if (existsSync(devWeb)) visit(devWeb)
+  for (const sourceRoot of [join(root, 'scripts', 'aek'), join(root, 'packages', 'aek')]) {
+    if (!existsSync(sourceRoot)) continue
+    walk(sourceRoot, visit)
+  }
+  return { violations, legacy: [], stats: { surfaceDocs } }
+}
+
 /** @param {string} start @returns {string} */
 function findProjectRoot(start) {
   let dir = start
@@ -235,6 +322,18 @@ function selftest() {
   if (source.violations.length === 0) {
     failures.push('synthetic dsh launcher call must be rejected')
   }
+  const surfaceCases = [
+    ['docs/readme.md', 'Run `dsh web` to start the host.', 1],
+    ['docs/readme.md', 'The @deepseek-ai/dsh package owns the fork.', 0],
+    ['docs/readme.md', 'Copied from the dsh fork once; no upstream sync.', 0],
+    ['scripts/aek/x.mjs', "// serve through `dsh web`", 1],
+    ['scripts/aek/x.mjs', "const label = 'aek web'", 0],
+  ]
+  for (const [relPath, text, expected] of surfaceCases) {
+    if (scanSurfaceText(relPath, text).length !== expected) {
+      failures.push(`scanSurfaceText(${JSON.stringify(text)}) != ${expected} violation(s)`)
+    }
+  }
   return failures
 }
 
@@ -254,14 +353,16 @@ function main() {
 
   const root = findProjectRoot(HERE)
   const { violations, legacy, stats } = scanRepository(root)
+  const surface = scanCommandSurface(root)
+  violations.push(...surface.violations)
   const ok = violations.length === 0
 
   if (asJson) {
-    console.log(JSON.stringify({ ok, violations, legacy, stats }, null, 2))
+    console.log(JSON.stringify({ ok, violations, legacy, stats: { ...stats, ...surface.stats } }, null, 2))
   } else {
     console.log(`aek command namespace: ${ok ? 'OK' : 'FAIL'}`)
     console.log(
-      `  scanned ${stats.packageManifests} package manifests, ${stats.rootScripts} root scripts, ${stats.sourceFiles} AEK source files`,
+      `  scanned ${stats.packageManifests} package manifests, ${stats.rootScripts} root scripts, ${stats.sourceFiles} AEK source files, ${surface.stats.surfaceDocs} command-surface docs`,
     )
     console.log(`  legal prefix: ${JSON.stringify(AEK_COMMAND_PREFIX)}; forbidden: ${FORBIDDEN_COMMAND_PREFIXES.join(', ')}`)
     for (const line of legacy) console.log(`  legacy (reported, not a violation): ${line}`)

@@ -1,6 +1,6 @@
 /**
  * AEK base identity layer, host half. Prints the `aek web:` readiness line.
- * The dsh web-app bundle's own `dsh web:` line is suppressed via
+ * The AEK web-app bundle's legacy `dsh`-prefixed readiness line is suppressed via
  * `printUrl: false` in the web profile's cordis patch, so AEK surfaces the
  * AEK-prefixed URL instead. Set `DSH_CLIENT_TITLE` at build time to rebrand
  * the document title; this host half owns the process-stdout announcement.

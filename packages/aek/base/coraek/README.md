@@ -1,18 +1,18 @@
 ---
-description: "AEK base identity layer — rebrands the dsh web UI sidebar and startup announcement for AEK deployments."
+description: "AEK base identity layer — rebrands the AEK web UI sidebar and startup announcement for AEK deployments."
 kind: "package-reference"
 ---
 
 # @cheezmil/coraek
 
-The AEK base identity layer. It rebrands two user-visible surfaces of a dsh web
+The AEK base identity layer. It rebrands two user-visible surfaces of an AEK web
 profile so they read as AEK instead of DeepSeek Harness:
 
 - the **sidebar brand** — fills the `sidebar.brand.mark` and `sidebar.brand.name`
   slots with the AEK orange-slice mark and the `AEK` name, replacing the shell's
   fish-mark and `brand.localBuild` fallback;
 - the **startup announcement** — prints the `aek web: <url>` readiness line,
-  replacing the dsh web-app bundle's own `dsh web:` line (which the web profile
+  replacing the AEK web-app bundle's legacy `dsh`-prefixed readiness line (which the web profile
   suppresses with `printUrl: false`).
 
 It also owns the **external capability provider** layer: a generic protocol, a
@@ -30,7 +30,7 @@ runtime state and does not affect model requests.
 
 ## Use this package
 
-Install it into a dsh web profile and register it in the profile's coraek patch:
+Install it into an AEK web profile and register it in the profile's coraek patch:
 
 ```yaml
 - id: coraek

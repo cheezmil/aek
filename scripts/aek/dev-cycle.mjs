@@ -224,6 +224,17 @@ function verify(devMode, json) {
   for (const gate of verifyBuildRules().gates) {
     checks.push({ rule: `build-rule:${gate.name}`, ok: gate.ok, detail: gate.problems.join(' / ') || 'passed' })
   }
+  {
+    const surface = spawnSync(NODE, [join(HERE, 'verify-command-namespace.mjs')], {
+      cwd: ROOT, encoding: 'utf8', timeout: 120_000,
+    })
+    const detail = (surface.stdout ?? '').trim().split('\n')[0] ?? ''
+    checks.push({
+      rule: 'command-surface',
+      ok: surface.status === 0,
+      detail: surface.status === 0 ? detail : `${detail}\n${(surface.stdout ?? '').trim().split('\n').slice(1).join('\n')}`,
+    })
+  }
   const ok = checks.every(check => check.ok)
   if (json) {
     console.log(JSON.stringify({ ok, devMode, state, checks }, null, 2))

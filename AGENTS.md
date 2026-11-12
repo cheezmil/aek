@@ -27,6 +27,17 @@ AEK 一开始从 `deepseek-harness`（简称 dsh）整仓复制而来，削减�
 - **禁止为了让复制过来的 dsh 门禁变绿，而搬回 dsh 的文档 / CI / 测试夹具。** 这是本项目反复踩过的坑。
 - `docs/cordis-api/inherited.md` 不是文档站页面，是 typert 测试逐字节比对的 **cordis 契约快照**，必须保留。
 
+### 2.5 命令面（硬规则，2026-11-12 用户立规——写给读仓的每一个 AI）
+
+本仓的命令命名空间是**机械强制**的（`scripts/aek/verify-command-namespace.mjs` + `dev-cycle verify` 内嵌），读仓先记住四条口径：
+
+1. **本仓唯一的操作员命令是 `aek`**（`@cheezmil/coraek` 的 bin：`aek web` / `aek runtime` / `aek external` …）。能力 CLI 均为 `aek*` 前缀：`aekws`（web 搜索）、`aekpm` / `aek-prompt-manager`（提示注入）、`aeksm`（skill 管理）。
+2. **本仓永不发、不链、不调用任何 `dsh` 前缀命令**。`dsh` 是**真 DeepSeek Harness 软件**的命令（用户机器上与本仓共存，是另一个产品）；仓里出现 `dsh web` 之类 shell 命令一律视为**上游分叉时代的过时措辞**，实际动作面 = `aek` 命令族或 `node scripts/aek/launch.mjs`。
+3. `@deepseek-ai/dsh-*`（含 `apps/cli` = `@deepseek-ai/dsh`）只是**分叉壳的内部包名**（历史 fork 产物），不构成命令面；壳包已摘掉全局 bin（不再向 PATH 发任何命令）。
+4. `python/`、`snapshots/` 等**上游资产**文档里的 `dsh` 命令措辞 = 真 DSH 软件的合法上游描述，**不**强改；但 aek 活面（本文件、根 README、`scripts/aek/**`、`packages/aek/**` 的 README/AGENTS）**禁止**出现 shell 命令形态的 `dsh` 前缀。发现即改，并跑 `node scripts/aek/verify-command-namespace.mjs`（只读）确认。
+
+> 命名面漂移检测 = 该脚本的 `command-surface` 面（断言本注释节存在 + 扫 aek 活面的 `dsh <命令>` 形态），已内嵌 `dev-cycle verify`。
+
 ## 3. 测试与门禁：哪些要管、哪些不用管（AI 自行判定，别把技术取舍抛给用户）
 
 **实测现状**：全仓 1670 个 `*.spec.ts`（`packages/` 1503、`scripts/` 145、`apps/` 22），**全部是从 dsh 复制过来的**；aek 自有代码 `packages/aek/` + `apps/aek-desktop/` 共 304 个源文件，**0 个自有 spec**。所以「全绿」不是本项目的目标，也不要拿 dsh 的失败数当项目健康度。

@@ -2,7 +2,7 @@
 /**
  * Recompile the whole AEK checkout and re-anchor the installed profiles.
  *
- * Why this exists: a dsh profile is a tiny pnpm workspace under the AEK data
+ * Why this exists: an AEK profile (the web host profile) is a tiny pnpm workspace under the AEK data
  * root. Its `package.json` and `node_modules/@cheezmil/*` symlinks are RELATIVE
  * links back into this checkout. Renaming (or relocating) the repository folder
  * leaves every one of those links pointing at the old directory: the web shell
