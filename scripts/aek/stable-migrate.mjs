@@ -197,10 +197,15 @@ async function waitForPort(port, timeoutMs) {
 async function smokeWeb(root) {
   const bin = join(root, 'packages', 'aek', 'base', 'coraek', 'bin', 'aek.mjs')
   const home = slotHome('aek')
+  // `detached` makes the child its own process-group leader so teardown can
+  // kill the WHOLE tree: the candidate web spawns a nested host that is the
+  // process actually owning SMOKE_PORT — a plain SIGTERM to the direct child
+  // leaks it and blocks the next release/rollback.
   const child = spawn(NODE, [bin, 'web', '--port', String(SMOKE_PORT), '--no-open'], {
     cwd: root,
     env: { ...process.env, AEK_HOME: home, DSH_HOME: home },
     stdio: 'ignore',
+    detached: true,
   })
   // Attach the exit/error listener BEFORE the child can die — a lost 'exit'
   // event leaves the teardown promise unsettled and Node exits with an
@@ -229,8 +234,18 @@ async function smokeWeb(root) {
       req.end()
     }, 2_000)
   })
-  child.kill('SIGTERM')
+  // Kill the whole process group (detached child is a group leader), with a
+  // SIGTERM → SIGKILL escalation, so the nested web host that owns
+  // SMOKE_PORT cannot leak and block the next release/rollback.
+  const killGroup = (sig) => {
+    try { process.kill(-child.pid, sig) } catch { /* already gone */ }
+  }
+  killGroup('SIGTERM')
   await Promise.race([exited, new Promise((r) => setTimeout(r, 5_000))])
+  if (child.exitCode === null && child.signalCode === null) {
+    killGroup('SIGKILL')
+    await Promise.race([exited, new Promise((r) => setTimeout(r, 5_000))])
+  }
   return ok
 }
 
