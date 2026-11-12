@@ -32,7 +32,9 @@
  *      core.hooksPath (absolute <gitdir>/dsh-hooks) in both trees; the
  *      postinstall refuses to overwrite it, so clear both and re-anchor
  *   5  stable: pnpm install --frozen-lockfile, then fresh-tree bootstrap
- *      (generate-typert + the AEK-owned package builds) + pnpm run build:artifacts
+ *      (generate-typert + the AEK-owned package builds + lib/types backfill
+ *      for packages whose tsdown entries their root tsc program never emits)
+ *      + pnpm run build:artifacts
  *   6  smoke: candidate web on port 1689, probe /, kill immediately
  *   7  stable: slots.mjs --only aek --yes + service.mjs install aek --yes
  *      (the agent is installed FROM the stable tree, so its plist points at
@@ -349,7 +351,7 @@ if (YES) {
   console.log(`  2  mv ${basename(STABLE_ROOT)} → ${DEV_TARGET}（同卷 rename，秒级）`)
   console.log(`  3  git worktree add --detach ${STABLE_ROOT} ${pin.ref}`)
   console.log('  4  重锚 lefthook（清两树过期的 worktree core.hooksPath）')
-  console.log(`  5  stable 树 pnpm install --frozen-lockfile` + (checks().some(c => c.detail.startsWith('根 package.json 有')) ? ' + 冷树引导（generate-typert + AEK 包 build）+ pnpm run build:artifacts' : ''))
+  console.log(`  5  stable 树 pnpm install --frozen-lockfile` + (checks().some(c => c.detail.startsWith('根 package.json 有')) ? ' + 冷树引导（generate-typert + AEK 包 build + lib/types 补发）+ pnpm run build:artifacts' : ''))
   console.log(`  6  冒烟：候选 web ${SMOKE_PORT} 探针 ${SKIP_SMOKE ? '（已 --skip-smoke，注意门禁被削弱）' : ''}`)
   console.log('  7  起 current（stable 树 slots.mjs --only aek + service.mjs install aek）并等 1685')
 } else {
@@ -409,6 +411,38 @@ if (!pnpmRun(STABLE_ROOT, ['install', '--frozen-lockfile'])) fail('stable 树 pn
 // Both steps are idempotent on an already-built tree.
 if (!pnpmRun(STABLE_ROOT, ['exec', 'tsx', 'scripts/generate-typert.ts'])) fail('stable 树 typert 产物生成失败；回滚：node scripts/aek/stable-migrate.mjs --rollback --yes')
 if (!pnpmRun(STABLE_ROOT, ['-r', '--filter', './packages/aek/**', 'run', 'build'])) fail('stable 树 AEK 包构建失败（需 pnpm-workspace.yaml 的 ignoreWorkspaceCycles）；回滚：node scripts/aek/stable-migrate.mjs --rollback --yes')
+
+// lib/types backfill. Some tsdown host entries are `lib/types/*.js` emitted by
+// a PACKAGE-LEVEL host tsconfig that no root tsc program references (observed:
+// packages/client/shortcuts — its client sub-config excludes src/index.ts and
+// nothing references its host sub-config). A warm tree hides the gap; a cold
+// tree deadlocks the tsdown host gate. Discovery: for every package whose
+// tsdown config declares lib/types entry files, build the package-level host
+// tsconfig for each entry that is still missing. Idempotent on warm trees.
+{
+  const cfgFiles = spawnSync('sh', [
+    '-c', 'grep -rl --include=tsdown.config.ts "lib/types/" packages apps 2>/dev/null || true',
+  ], { cwd: STABLE_ROOT, encoding: 'utf8' })
+  const pkgDirs = [...new Set(
+    (cfgFiles.stdout || '').trim().split('\n').filter(Boolean)
+      .map((f) => f.slice(0, f.length - '/tsdown.config.ts'.length)),
+  )]
+  const missingByPkg = []
+  for (const dir of pkgDirs) {
+    const cfgText = readFileSync(join(STABLE_ROOT, dir, 'tsdown.config.ts'), 'utf8')
+    const missing = [...new Set(cfgText.match(/lib\/types\/[\w./-]+\.js/g) ?? [])]
+      .filter((entry) => !existsSync(join(STABLE_ROOT, dir, entry)))
+    if (missing.length === 0) continue
+    if (!existsSync(join(STABLE_ROOT, dir, 'tsconfig.host.json'))) {
+      fail(`${dir} 的 tsdown 入口缺 ${missing.join(', ')} 且无包级 tsconfig.host.json 可补发；需人工修复`)
+    }
+    missingByPkg.push(dir)
+  }
+  if (missingByPkg.length > 0 &&
+    !pnpmRun(STABLE_ROOT, ['exec', 'tsc', '-b', ...missingByPkg.map((d) => join(d, 'tsconfig.host.json'))])) {
+    fail('lib/types 补发（包级 host tsc）失败；回滚：node scripts/aek/stable-migrate.mjs --rollback --yes')
+  }
+}
 
 let buildScript = true
 try { buildScript = Boolean(JSON.parse(readFileSync(join(STABLE_ROOT, 'package.json'), 'utf8')).scripts?.['build:artifacts']) } catch { /* no root pkg */ }
