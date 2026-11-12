@@ -27,7 +27,7 @@ import type { TextStore } from '../src/client/store.ts'
 import type { DocumentPreviewProps } from '../src/client/document/contract.ts'
 import { TextBody } from '../src/client/text/TextBody.tsx'
 import { textBodyDefinition } from '../src/client/text/index.ts'
-import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
+import type { PaneId, TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 
 type BodySlot = PropsRenderSlots<'sidebar.right.tab.document'>['renderSlot']
 
@@ -153,7 +153,7 @@ export function harness(script: Record<number, RemoteResult<WorkspaceFileText>> 
   const props = (navigation: { params?: unknown; revision: number } = { revision: 1 }) => ({
     useTabInfo: () => ({
       sidebar: { expanded: true, fullscreen: false },
-      panel: { id: 'pane-1', isFloating: false },
+      panel: { id: 'pane-1' as unknown as PaneId, isFloating: false },
       tab: {
         id: tabId, kind: 'text', contentId: ADDRESS, title: 'notes.md', visible: true,
         navigation: { address: ADDRESS, params: navigation.params, revision: navigation.revision },
@@ -174,7 +174,7 @@ export function harness(script: Record<number, RemoteResult<WorkspaceFileText>> 
     renderSlot,
     renderFactorySlot: (key: string) => createElement('div', { 'data-navigator-factory': key }),
     t,
-  }) as TextPreviewProps
+  }) as unknown as TextPreviewProps
   return {
     instance,
     face,

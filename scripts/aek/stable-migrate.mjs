@@ -28,7 +28,11 @@
  *   2  slots.mjs --stop-all --yes        (both slots quiet)
  *   3  rename stable root -> dev target  (same sibling volume: instant)
  *   4  git -C <dev> worktree add --detach <stable root> <tag>
- *   5  stable: pnpm install --frozen-lockfile + pnpm run build:artifacts
+ *   4b re-anchor lefthook: the move leaves a stale worktree-scoped
+ *      core.hooksPath (absolute <gitdir>/dsh-hooks) in both trees; the
+ *      postinstall refuses to overwrite it, so clear both and re-anchor
+ *   5  stable: pnpm install --frozen-lockfile, then fresh-tree bootstrap
+ *      (generate-typert + the AEK-owned package builds) + pnpm run build:artifacts
  *   6  smoke: candidate web on port 1689, probe /, kill immediately
  *   7  stable: slots.mjs --only aek --yes + service.mjs install aek --yes
  *      (the agent is installed FROM the stable tree, so its plist points at
@@ -344,9 +348,10 @@ if (YES) {
   console.log('  1  停两槽：service.mjs uninstall all → slots.mjs --stop-all（dev-cycle 顺序，先卸 KeepAlive）')
   console.log(`  2  mv ${basename(STABLE_ROOT)} → ${DEV_TARGET}（同卷 rename，秒级）`)
   console.log(`  3  git worktree add --detach ${STABLE_ROOT} ${pin.ref}`)
-  console.log('  4  stable 树 pnpm install --frozen-lockfile' + (checks().some(c => c.detail.startsWith('根 package.json 有')) ? ' + pnpm run build:artifacts' : ''))
-  console.log(`  5  冒烟：候选 web ${SMOKE_PORT} 探针 ${SKIP_SMOKE ? '（已 --skip-smoke，注意门禁被削弱）' : ''}`)
-  console.log('  6  起 current（stable 树 slots.mjs --only aek + service.mjs install aek）并等 1685')
+  console.log('  4  重锚 lefthook（清两树过期的 worktree core.hooksPath）')
+  console.log(`  5  stable 树 pnpm install --frozen-lockfile` + (checks().some(c => c.detail.startsWith('根 package.json 有')) ? ' + 冷树引导（generate-typert + AEK 包 build）+ pnpm run build:artifacts' : ''))
+  console.log(`  6  冒烟：候选 web ${SMOKE_PORT} 探针 ${SKIP_SMOKE ? '（已 --skip-smoke，注意门禁被削弱）' : ''}`)
+  console.log('  7  起 current（stable 树 slots.mjs --only aek + service.mjs install aek）并等 1685')
 } else {
   console.log('[stable-migrate] 真正执行：node scripts/aek/stable-migrate.mjs --yes')
   console.log('[stable-migrate] 回滚：node scripts/aek/stable-migrate.mjs --rollback --yes')
@@ -372,7 +377,39 @@ console.log(`[stable-migrate] 树已移动：${STABLE_ROOT} → ${DEV_TARGET}`)
 git(['worktree', 'add', '--detach', STABLE_ROOT, pin.ref], DEV_TARGET)
 console.log(`[stable-migrate] stable worktree 已建于 ${STABLE_ROOT}（钉 ${pin.ref}）`)
 
+// Lefthook re-anchor. install-lefthook.mjs records a worktree-scoped
+// core.hooksPath as an ABSOLUTE <gitdir>/dsh-hooks path. The move leaves
+// both trees holding the stale value (the new worktree's config inherits
+// it), and the postinstall refuses to overwrite a worktree-scoped custom
+// path — that is what fails a plain pnpm install on the stable tree. Clear
+// both, re-anchor the dev tree directly, and let the stable tree's
+// postinstall anchor its own worktree-local dir.
+for (const root of [DEV_TARGET, STABLE_ROOT]) {
+  try {
+    execFileSync('git', ['config', '--worktree', '--unset', 'core.hooksPath'], {
+      cwd: root, stdio: 'ignore',
+    })
+  } catch { /* key not set = nothing to clear */ }
+}
+const reanchor = spawnSync(NODE, [join(DEV_TARGET, 'scripts', 'install-lefthook.mjs')], {
+  cwd: DEV_TARGET, stdio: 'inherit', timeout: 120_000,
+})
+if (reanchor.status !== 0) console.warn('[stable-migrate] 警告：dev 树 lefthook 重锚失败（下次 pnpm install 会再试）')
+
 if (!pnpmRun(STABLE_ROOT, ['install', '--frozen-lockfile'])) fail('stable 树 pnpm install 失败；回滚：node scripts/aek/stable-migrate.mjs --rollback --yes')
+
+// Fresh-tree bootstrap. build:artifacts assumes a warm tree; on a clean
+// checkout two things are missing and deadlock the tsc gate:
+//   (a) typert artifacts (lib/typert.*.js/.d.ts) — the api packages'
+//       "./remote" exports resolve to them, but they are normally only
+//       produced by the Host tsdown pass that runs later in the pipeline;
+//   (b) AEK-owned packages with their own `build` script (plain tsc or
+//       tsdown, e.g. prevent-agent-directly-seeing-key) — the root pipeline
+//       does not build them.
+// Both steps are idempotent on an already-built tree.
+if (!pnpmRun(STABLE_ROOT, ['exec', 'tsx', 'scripts/generate-typert.ts'])) fail('stable 树 typert 产物生成失败；回滚：node scripts/aek/stable-migrate.mjs --rollback --yes')
+if (!pnpmRun(STABLE_ROOT, ['-r', '--filter', './packages/aek/**', 'run', 'build'])) fail('stable 树 AEK 包构建失败（需 pnpm-workspace.yaml 的 ignoreWorkspaceCycles）；回滚：node scripts/aek/stable-migrate.mjs --rollback --yes')
+
 let buildScript = true
 try { buildScript = Boolean(JSON.parse(readFileSync(join(STABLE_ROOT, 'package.json'), 'utf8')).scripts?.['build:artifacts']) } catch { /* no root pkg */ }
 if (buildScript && !pnpmRun(STABLE_ROOT, ['run', 'build:artifacts'])) fail('stable 树构建失败；回滚：node scripts/aek/stable-migrate.mjs --rollback --yes')

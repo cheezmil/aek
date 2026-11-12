@@ -19,6 +19,11 @@ packages:
   # AEK (cheezmil) package family. ** covers any nesting depth, so bucket
   # reorganization under packages/aek/ needs no workspace changes.
   - packages/aek/**
+# The coraek (aek-base) and aek-home packages reference each other at the
+# package level (types-only, erased at build time), which pnpm's -r task
+# graph reports as a cycle. Their build tasks are independent (each bundles
+# from source), so run them in arbitrary order instead of failing.
+ignoreWorkspaceCycles: true
 allowBuilds:
   # @google/genai (via @earendil-works/pi-ai, vendor/timer): the published
   # tarball ships no `scripts/prepare.js` (its `prepare` entry is publish-only),

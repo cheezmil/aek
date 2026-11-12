@@ -17,6 +17,7 @@ import type { OwnerOf } from '@deepseek-ai/dsh-client-ui-slots'
 import { TextPreview } from '../src/client/TextPreview.tsx'
 import type { TextPreviewProps } from '../src/client/TextPreview.tsx'
 import { CodeBody } from '../src/client/code/CodeBody.tsx'
+import type { CodeBodyProps } from '../src/client/code/CodeBody.tsx'
 import type { DocumentPreviewDefinition } from '../src/client/document/registry.ts'
 import { TextBody } from '../src/client/text/TextBody.tsx'
 import { PLAIN_BODY_ID } from '../src/client/text/index.ts'
@@ -88,7 +89,7 @@ function codeProps(h: ReturnType<typeof harness>, navigation: { params?: unknown
   return {
     ...props,
     useDocumentPreviews: selector => selector([definition]),
-    renderSlot: documentSlots((_key, owner) => <CodeBody {...props} {...owner} t={key => key} />),
+    renderSlot: documentSlots((_key, input) => <CodeBody {...props} {...(input as unknown as CodeBodyProps)} t={key => key} />),
   }
 }
 

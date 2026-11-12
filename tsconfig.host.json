@@ -225,7 +225,17 @@
     "scripts/*.client.spec.ts",
     "scripts/client-bundle-css.spec.ts",
     "packages/typert/generator/tests/fixtures/**",
-    "scripts/client-bundle-purity.spec.ts"
+    "scripts/client-bundle-purity.spec.ts",
+    // dsh governance-layer tests whose referenced sources/fixtures the aek fork
+    // dropped (apps/desktop was not carried over; headless fixture driver, webworker
+    // vfs example, and two drifted client specs are absent or stale). They cannot
+    // type-check in this fork; per AGENTS.md §3 they are excluded, not deleted.
+    "apps/web/tests/desktop-onboarding.e2e.ts",
+    "apps/web/tests/shortcuts-desktop.e2e.ts",
+    "apps/web/tests/preview-boot.e2e.ts",
+    "apps/cli/tests/profiles/headless/tests/source-tool.built.e2e.ts",
+    "packages/client/shortcuts/tests/config.host.spec.ts",
+    "packages/client/connection/tests/browser-auth.host.spec.ts"
   ],
   "references": [
     { "path": "./packages/experimental/client-ui-cot-translation/tsconfig.host.json" },

@@ -6,6 +6,7 @@ import { TextPreview } from '../src/client/TextPreview.tsx'
 import type { TextPreviewProps } from '../src/client/TextPreview.tsx'
 import type { DocumentPreviewDefinition } from '../src/client/document/registry.ts'
 import { CodeBody } from '../src/client/code/CodeBody.tsx'
+import type { CodeBodyProps } from '../src/client/code/CodeBody.tsx'
 import { textBodyDefinition, PLAIN_BODY_ID } from '../src/client/text/index.ts'
 import { pdfBodyDefinition } from '../src/client/pdf/index.ts'
 import { imageBodyDefinition } from '../src/client/image/index.ts'
@@ -26,7 +27,7 @@ function codeProps(h: ReturnType<typeof harness>): TextPreviewProps {
   return {
     ...props,
     useDocumentPreviews: selector => selector([definition]),
-    renderSlot: documentSlots((_key, owner) => <CodeBody {...props} {...owner} t={key => key} />),
+    renderSlot: documentSlots((_key, input) => <CodeBody {...props} {...(input as unknown as CodeBodyProps)} t={key => key} />),
   }
 }
 
