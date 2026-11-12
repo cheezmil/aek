@@ -11,9 +11,6 @@
     "directory": "apps/cli"
   },
   "type": "module",
-  "bin": {
-    "aek": "lib/bin.js"
-  },
   "files": [
     "lib/*.js",
     "lib/types/*.d.ts"
