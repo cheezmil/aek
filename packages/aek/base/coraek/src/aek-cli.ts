@@ -16,7 +16,7 @@
  * resolves that runtime and hands it the profile arguments.
  */
 
-import { run } from '@oclif/core'
+import { Errors, run } from '@oclif/core'
 import { readFileSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -53,4 +53,6 @@ function findPkgRoot(start: string): string {
   }
 }
 
-await run(argv, import.meta.url)
+// Same contract as the aekws runner: oclif v5's `run()` re-throws command
+// errors; catch them into the clean usage-formatted message + exit code.
+await run(argv, import.meta.url).catch(Errors.handle)

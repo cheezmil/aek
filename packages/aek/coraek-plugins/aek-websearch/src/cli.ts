@@ -6,7 +6,7 @@
  *   aekws search <query> [flags] — explicit subcommand form
  *   aekws doctor / status / pool / use ...
  */
-import { run } from '@oclif/core'
+import { Errors, run } from '@oclif/core'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -39,4 +39,8 @@ if (firstNonFlag && !KNOWN_COMMANDS.has(firstNonFlag)) {
 // Otherwise (no query, or first non-flag is a known command) pass through so
 // oclif handles flag validation and displays help / errors.
 
-await run(process.argv.slice(2), import.meta.url)
+// Oclif v5's programmatic `run()` RE-THROWS command errors (a required-arg
+// miss, an unknown command, a load failure). Without a catch they surface as
+// raw Node crash dumps. `Errors.handle` turns every one of them into the
+// clean one-line message + exit code oclif's bin wrapper would produce.
+await run(process.argv.slice(2), import.meta.url).catch(Errors.handle)
