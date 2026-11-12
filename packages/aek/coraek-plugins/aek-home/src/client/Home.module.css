@@ -1750,6 +1750,12 @@ body {
 }
 .panelSearchWrap { display: flex; align-items: center; gap: 8px; margin-bottom: var(--aek-space-4); }
 .panelSearchWrap > .navSearchWrap { flex: 1 1 auto; margin: 0; }
+/* The panel search box spans the whole content column, but it reuses the
+   sidebar's `.navSearchInput`, which is capped at 200px — so the input filled
+   only the left slice of a full-width box and the count chip sat detached in
+   the middle ("间距不好看"). Let the input stretch to the box in this context;
+   the 200px cap still applies in the sidebar, where the box is narrow. */
+.panelSearchWrap .navSearchInput { max-width: none; }
 .panelSearchCount {
   min-width: 24px;
   padding: 2px 6px;

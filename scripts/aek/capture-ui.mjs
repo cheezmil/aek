@@ -14,7 +14,10 @@
  * Usage:
  *   node scripts/aek/capture-ui.mjs                        # list targets
  *   node scripts/aek/capture-ui.mjs --yes                  # expanded + collapsed
+ *   node scripts/aek/capture-ui.mjs --slot next --yes      # the NEXT slot's shell (CDP 1688)
  *   node scripts/aek/capture-ui.mjs --yes --panel 设置     # open a panel first
+ *   node scripts/aek/capture-ui.mjs --yes --clip 0,600,280,400,2
+ *                                                          # zoomed viewport clip (x,y,w,h[,scale])
  *   node scripts/aek/capture-ui.mjs --yes --no-collapse    # only the current state
  *   node scripts/aek/capture-ui.mjs --yes --motion         # emulate a motion-ok viewer
  *   node scripts/aek/capture-ui.mjs --yes --scroll-top     # top of the panel
@@ -32,7 +35,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { slotHome } from './shared-logic.mjs'
+import { slotHome, SLOTS } from './shared-logic.mjs'
 
 /** Walk up from this script until `pnpm-workspace.yaml` is found. */
 function findRoot(start) {
@@ -48,8 +51,18 @@ function findRoot(start) {
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = findRoot(HERE)
-const CDP_PORT = Number(process.env.AEK_CDP_PORT ?? 1686)
 const argv = process.argv.slice(2)
+// `--slot next` targets the sibling slot's dev shell (CDP 1688, console page on
+// 1687). Default stays `aek` so every pre-existing invocation is unchanged.
+// `AEK_CDP_PORT` (the launcher's env convention) still wins when set.
+const slotIndex = argv.indexOf('--slot')
+const slotName = slotIndex >= 0 ? argv[slotIndex + 1] : 'aek'
+const slotCfg = SLOTS[slotName]
+if (slotCfg === undefined) {
+  process.stderr.write(`unknown --slot ${String(slotName)} — expected ${Object.keys(SLOTS).join(' | ')}\n`)
+  process.exit(2)
+}
+const CDP_PORT = Number(process.env.AEK_CDP_PORT ?? slotCfg.cdpPort)
 const yes = argv.includes('--yes')
 const panelIndex = argv.indexOf('--panel')
 const PANEL = panelIndex >= 0 ? argv[panelIndex + 1] : undefined
@@ -73,13 +86,38 @@ const EVAL = evalIndex >= 0 ? argv[evalIndex + 1] : undefined
 const outIndex = argv.indexOf('--out')
 const OUT = outIndex >= 0 && argv[outIndex + 1] !== undefined
   ? argv[outIndex + 1]
-  : join(slotHome('aek'), 'shots')
+  : join(slotHome(slotCfg.slot), 'shots')
+// `--clip <x,y,w,h[,scale]>` captures ONE zoomed viewport region and exits:
+// the layout-eyeballing zoom shot (a full-frame PNG of a dense 2560px console
+// loses the spacing detail). Implemented as `Page.captureScreenshot` with a
+// `clip`, so no image library is needed — the renderer does the crop.
+const clipIndex = argv.indexOf('--clip')
+const CLIP = clipIndex >= 0 ? argv[clipIndex + 1] : undefined
 
-/** @param path @returns {Promise<any>} */
+/**
+ * GET one CDP HTTP path with a per-request timeout and a short retry.
+ *
+ * The Chromium DevTools HTTP server can accept the TCP connect and then sit
+ * quiet for a while (the renderer is busy, e.g. right after a panel click).
+ * A bare `fetch` would hang forever; this bounds each attempt and retries a
+ * couple of times before giving up.
+ * @param path - the CDP HTTP path, e.g. `/json/list`.
+ * @returns {Promise<any>} the parsed JSON body.
+ */
 async function getJson(path) {
-  const response = await fetch(`http://127.0.0.1:${String(CDP_PORT)}${path}`)
-  if (!response.ok) throw new Error(`CDP HTTP ${String(response.status)} for ${path}`)
-  return await response.json()
+  const url = `http://127.0.0.1:${String(CDP_PORT)}${path}`
+  let last
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(3000) })
+      if (!response.ok) throw new Error(`CDP HTTP ${String(response.status)} for ${path}`)
+      return await response.json()
+    } catch (error) {
+      last = error
+      await new Promise(resolve => setTimeout(resolve, 400))
+    }
+  }
+  throw last
 }
 
 /** Minimal CDP client over the global WebSocket. */
@@ -95,8 +133,11 @@ class Cdp {
   async open() {
     this.ws = new WebSocket(this.url)
     await new Promise((resolve, reject) => {
-      this.ws.addEventListener('open', () => resolve(), { once: true })
-      this.ws.addEventListener('error', () => reject(new Error('CDP socket failed')), { once: true })
+      // Same stall mode as the HTTP endpoint: bound it, or this script wedges
+      // the whole screenshot loop.
+      const bail = setTimeout(() => reject(new Error('CDP socket open timed out')), 10000)
+      this.ws.addEventListener('open', () => { clearTimeout(bail); resolve() }, { once: true })
+      this.ws.addEventListener('error', () => { clearTimeout(bail); reject(new Error('CDP socket failed')) }, { once: true })
     })
     this.ws.addEventListener('message', (event) => {
       const payload = JSON.parse(String(event.data))
@@ -108,11 +149,52 @@ class Cdp {
     })
   }
 
-  /** @param method @param params @returns {Promise<any>} */
-  send(method, params = {}) {
-    const id = ++this.id
-    this.ws.send(JSON.stringify({ id, method, params }))
-    return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }) })
+  /**
+   * One CDP call with a response timeout and one automatic session rebuild.
+   *
+   * On this machine a CDP session can WEDGE: the target keeps answering every
+   * fresh session but stops answering the one we hold (observed: mid
+   * collapse/restore, the session's next RPC never comes back while a second
+   * session evaluates in 3ms). Retrying on the SAME socket cannot recover;
+   * opening a fresh session can. The rebuild RE-FETCHES the current page
+   * target, because a page reload orphans the old target's WS url.
+   * @param method - CDP method name.
+   * @param params - CDP parameters.
+   * @param options - `{ timeoutMs }`, default 15s.
+   * @returns {Promise<any>} the method result.
+   */
+  async send(method, params = {}, options = {}) {
+    const timeoutMs = options.timeoutMs ?? 15000
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const id = ++this.id
+      const reply = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          this.pending.delete(id)
+          reject(new Error(`CDP ${method} timed out after ${String(timeoutMs)}ms`))
+        }, timeoutMs)
+        timer.unref?.()
+        this.pending.set(id, { resolve, reject })
+      })
+      this.ws.send(JSON.stringify({ id, method, params }))
+      try {
+        return await reply
+      } catch (error) {
+        if (attempt === 0) {
+          // Abandon the wedged session entirely (its pending replies can
+          // never come) and retry the call on a fresh socket pointed at the
+          // CURRENT page target.
+          this.pending.clear()
+          this.close()
+          const fresh = await getJson('/json/list')
+          const live = fresh.find(item => item.type === 'page' && String(item.url).includes(String(slotCfg.webPort)))
+          this.url = (live ?? fresh.find(item => item.type === 'page'))?.webSocketDebuggerUrl ?? this.url
+          await this.open()
+          continue
+        }
+        throw error
+      }
+    }
+    throw new Error(`CDP ${method} failed twice (see above)`)
   }
 
   close() {
@@ -137,9 +219,9 @@ try {
   process.stdout.write(`SKIPPED  no CDP endpoint on ${String(CDP_PORT)} — only the dev shell opens it\n`)
   process.exit(0)
 }
-const page = targets.find(item => item.type === 'page' && String(item.url).includes('1685'))
+const page = targets.find(item => item.type === 'page' && String(item.url).includes(String(slotCfg.webPort)))
 if (page === undefined) {
-  process.stdout.write('SKIPPED  no console page on CDP 1686 — is AEK.app running?\n')
+  process.stdout.write(`SKIPPED  no console page on CDP ${String(CDP_PORT)} — is the ${slotCfg.productName} dev shell running?\n`)
   process.exit(0)
 }
 process.stdout.write(`[cdp] ${String(page.title)} → ${String(page.url)}\n`)
@@ -149,6 +231,13 @@ if (!yes) {
 }
 
 mkdirSync(OUT, { recursive: true })
+// Never let one wedged CDP session park the whole screenshot loop: a hard
+// global stop makes the caller's retry (fresh shell half if needed) kick in.
+const globalWatchdog = setTimeout(() => {
+  process.stderr.write('[shot] global timeout — CDP wedged; exiting so the caller can retry\n')
+  process.exit(1)
+}, 90000)
+globalWatchdog.unref?.()
 let cdp = new Cdp(page.webSocketDebuggerUrl)
 await cdp.open()
 await cdp.send('Page.enable')
@@ -172,16 +261,62 @@ for (let i = 0; i < 40; i++) {
 }
 process.stdout.write(`[shot] console ready=${String(ready)}\n`)
 
+// `--clip` is a standalone zoomed capture: grab the requested viewport region
+// (the renderer crops it, no image library) and exit. It runs AFTER the ready
+// wait so the renderer is up, but BEFORE any panel click (the region is what
+// is on screen now).
+if (CLIP !== undefined) {
+  const parts = String(CLIP).split(',').map(s => s.trim())
+  const clip = {
+    x: Number(parts[0] ?? 0),
+    y: Number(parts[1] ?? 0),
+    width: Number(parts[2] ?? 200),
+    height: Number(parts[3] ?? 200),
+    scale: Number(parts[4] ?? 2),
+  }
+  // x / y may be 0 (the top-left corner); width / height / scale must be > 0.
+  if (!Number.isFinite(clip.x) || !Number.isFinite(clip.y) || clip.x < 0 || clip.y < 0 ||
+    clip.width <= 0 || clip.height <= 0 || clip.scale <= 0) {
+    process.stderr.write(`invalid --clip "${CLIP}" (expected x,y,w,h[,scale]; x,y >= 0; w,h,scale > 0)\n`)
+    process.exit(2)
+  }
+  await new Promise(resolve => setTimeout(resolve, 200))
+  const result = await cdp.send('Page.captureScreenshot', { format: 'png', clip })
+  const clipPath = join(OUT, `clip-${String(clip.x)}-${String(clip.y)}-${String(clip.width)}x${String(clip.height)}@${String(clip.scale)}.png`)
+  writeFileSync(clipPath, Buffer.from(result.data, 'base64'))
+  process.stdout.write(`[clip] ${clipPath}\n`)
+  cdp.close()
+  process.exit(0)
+}
+
 // Optionally open one sidebar panel by its visible label before the first shot.
+// Rows live in `li[data-panel]`; the drawer GROUP headers are plain buttons
+// whose labels (「插件」/「其他」) would otherwise intercept a substring click
+// and just toggle the drawer. A COLLAPSED drawer keeps its rows out of the DOM
+// entirely, so expand every closed drawer group first, then click the row.
 if (PANEL !== undefined) {
-  const click = `(() => {
-    const rows = [...document.querySelectorAll('aside nav button')]
-    const hit = rows.find(item => (item.textContent ?? '').includes(${JSON.stringify(PANEL)}))
+  const click = `(async () => {
+    const heads = [...document.querySelectorAll('aside nav button[aria-expanded]')]
+      .filter(b => (b.parentElement?.className ?? '').includes('drawerGroup'))
+    heads.filter(b => b.getAttribute('aria-expanded') === 'false').forEach(b => b.click())
+    await new Promise(r => setTimeout(r, 80))
+    const rows = [...document.querySelectorAll('aside nav li[data-panel]')]
+    const hit = rows.find(item => ((item.querySelector('button')?.textContent ?? '')).includes(${JSON.stringify(PANEL)}))
     if (hit === undefined) return 'not-found'
-    hit.click()
-    return 'clicked'
+    hit.querySelector('button').click()
+    // Let the panel's async content settle: sample the main text twice, 250ms
+    // apart, and consider it loaded when it stops changing (cold loads fetch
+    // from the API and would otherwise be shot mid-fetch).
+    let prev = ''
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 250))
+      const now = document.querySelector('main')?.innerText ?? document.body.innerText ?? ''
+      if (now === prev && now.length > 0) break
+      prev = now
+    }
+    return hit.dataset.panel
   })()`
-  const result = await cdp.send('Runtime.evaluate', { expression: click, returnByValue: true })
+  const result = await cdp.send('Runtime.evaluate', { expression: click, returnByValue: true, awaitPromise: true })
   process.stdout.write(`[shot] panel ${PANEL} → ${String(result.result?.value)}\n`)
 }
 
