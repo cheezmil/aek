@@ -10,8 +10,8 @@
  *
  * @module @cheezmil/aek-home/src/client/ui-kit
  */
-import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { ReactNode, UIEvent } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { css, cx } from './styles.ts'
@@ -31,7 +31,7 @@ export interface CopyButtonProps {
   /** Icon size. */
   size?: number
   /** Extra class names. */
-  className?: string
+  className?: string | undefined
 }
 
 /**
@@ -138,34 +138,144 @@ export function PanelSearch({ value, onChange, placeholder, count }: PanelSearch
 
 /** Props for {@link PanelCard}. */
 export interface PanelCardProps {
-  /** Card heading. */
-  title: string
-  /** Optional subtitle. */
-  subtitle?: string
-  /** Optional header actions (refresh, copy, ...). */
-  actions?: ReactNode
-  /** Card content. */
+  /** Card content. The header (title / subtitle / refresh row) was removed in
+      the Q round: the user called it "没有任何用处", and the page refresh now
+      lives on the sidebar row's refresh icon instead. */
   children: ReactNode
+  /** Extra class names. */
+  className?: string
 }
 
 /**
  * A consistent surface for every management panel.
- * @param props - headings, actions and content.
+ *
+ * Q round (2026-11-12): the card no longer renders a `cardHeader`
+ * (title / subtitle / refresh row). Pages now lead straight into their
+ * searchable / actionable body; the refresh affordance moved to the sidebar
+ * row icons.
+ *
+ * @param props - content and optional class.
  * @returns the card.
  */
-export function PanelCard({ title, subtitle, actions, children }: PanelCardProps) {
+export function PanelCard({ children, className }: PanelCardProps) {
+  return <section className={cx(css.card, className)}>{children}</section>
+}
+
+/** Props for {@link OutputView}. */
+export interface OutputViewProps {
+  /** The full (untruncated) output text. */
+  text: string
+  /** Whether the command that produced it exited non-zero. */
+  failed?: boolean
+  /** Extra class names. */
+  className?: string
+}
+
+/**
+ * A virtualized `<pre>` for command output.
+ *
+ * Q round (2026-11-12): the host no longer truncates (the `plugin-console`
+ * return limit was removed), so a single command can return a LOT of lines.
+ * Rendering all of them into the DOM would freeze the page. This view keeps
+ * the FULL text in memory but only materializes the lines that are visible
+ * in the viewport (plus a small overscan) as `<div>` rows, and positions the
+ * whole window with a single `transform: translateY`. The visible height is
+ * kept honest with two absolutely-positioned spacers (above / below the
+ * window), so the scrollbar and the "where am I" feel stay correct even at
+ * 10^6+ lines.
+ *
+ * It is a fixed-row-height windowing list (the same technique the user asked
+ * to "borrow", not reinvent): no external virtualization library.
+ *
+ * @param props - text and flags.
+ * @returns the virtualized output box.
+ */
+export function OutputView({ text, failed = false, className }: OutputViewProps) {
+  // Split into lines ONLY when the text itself changes. Scrolling re-renders
+  // this component on every frame, and re-splitting a multi-megabyte string
+  // per frame would defeat the whole virtualization — so the split is
+  // memoized on the text value (the host only grows it, never rewrites it
+  // in place).
+  const linesRef = useRef<{ text: string; lines: string[] }>({ text: '', lines: [] })
+  if (linesRef.current.text !== text) {
+    linesRef.current = { text, lines: splitLines(text) }
+  }
+  const lines = linesRef.current.lines
+  const count = lines.length
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewHeight, setViewHeight] = useState(0)
+  const scrollerRef = useRef<HTMLDivElement | null>(null)
+  // Auto-follow the tail unless the user scrolled away (re-armed at bottom).
+  const stickRef = useRef(true)
+
+  const lineH = 21 // px, must match --aek-output-line-height in Home.module.css
+  const overscan = 14 // rows rendered above/below the viewport
+  const start = Math.max(0, Math.floor(scrollTop / lineH) - overscan)
+  const visible = viewHeight > 0 ? Math.ceil(viewHeight / lineH) + 2 * overscan : 200
+  const end = Math.min(count, start + visible)
+  const window = lines.slice(start, end)
+  const totalHeight = Math.max(count * lineH, viewHeight)
+  const aboveHeight = start * lineH
+
+  const onScroll = (event: UIEvent<HTMLDivElement>): void => {
+    const el = event.currentTarget
+    setScrollTop(el.scrollTop)
+    if (el.clientHeight !== 0) setViewHeight(el.clientHeight)
+    // Stick-to-tail: once the user scrolls away from the very bottom we stop
+    // auto-following; scrolling back to the bottom re-arms it.
+    stickRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 4
+  }
+
+  // Keep the viewport size honest when the container resizes.
+  useEffect(() => {
+    const el = scrollerRef.current
+    if (el === null) return
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (entry !== undefined) setViewHeight(entry.contentRect.height)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // Follow the tail while new output arrives (the common "log" case): if the
+  // user was already at the bottom, keep them pinned to it.
+  useEffect(() => {
+    const el = scrollerRef.current
+    if (el === null || !stickRef.current) return
+    el.scrollTop = el.scrollHeight
+  }, [count])
+
+  // Structure: a SCROLLER (the fixed-height viewport) wraps a TRACK whose
+  // height is the FULL line count (this is what the scrollbar is based on),
+  // which in turn carries the absolutely-positioned WINDOW of visible rows,
+  // moved with one `transform: translateY`. Only the window's rows exist in
+  // the DOM, so the cost is O(viewport), never O(total).
   return (
-    <section className={css.card}>
-      <header className={css.cardHeader}>
-        <div>
-          <h2 className={css.cardTitle}>{title}</h2>
-          {subtitle !== undefined ? <p className={css.cardSubtitle}>{subtitle}</p> : null}
+    <div
+      ref={scrollerRef}
+      onScroll={onScroll}
+      className={cx(css.outputView, failed && css.outputViewFailed, className)}
+    >
+      <div className={css.outputTrack} style={{ height: totalHeight }}>
+        <div className={css.outputWindow} style={{ transform: `translateY(${aboveHeight}px)` }}>
+          {window.map((line, at) => (
+            <div key={start + at} className={css.outputLine} style={{ height: lineH }}>
+              {line === '' ? '\u00A0' : line}
+            </div>
+          ))}
         </div>
-        {actions !== undefined ? <div className={css.cardActions}>{actions}</div> : null}
-      </header>
-      {children}
-    </section>
+      </div>
+    </div>
   )
+}
+
+/**
+ * Split text into lines.
+ * @param text - the raw output. @returns the lines (an empty input gives []).
+ */
+function splitLines(text: string): string[] {
+  return text.length === 0 ? [] : text.replace(/\r\n/g, '\n').split('\n')
 }
 
 /** Props for {@link ToggleSwitch}. */

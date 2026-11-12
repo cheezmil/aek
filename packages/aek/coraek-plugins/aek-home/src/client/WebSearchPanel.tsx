@@ -24,9 +24,10 @@
  * @module @cheezmil/aek-home/src/client/WebSearchPanel
  */
 import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
+import { formatDisplayPath, parsePathStyle } from './paths.ts'
 import { css, cx } from './styles.ts'
 import { CopyButton, PanelSearch, Spinner } from './ui-kit.tsx'
 import { PREF_KEYS, oneOf, parseBoolean, usePref } from './preferences.tsx'
@@ -35,15 +36,33 @@ import type { FreeFilter, ProviderMeta } from './useWebsearchRanking.ts'
 import { useKeyPool } from './useKeyPool.ts'
 import type { DisableReason, KeyPoolEntry, KeyPoolState, RecycleEntry } from './useKeyPool.ts'
 import type { ProviderStatus, WebsearchState } from './useWebsearchStatus.ts'
+import type { ConsoleFactsState } from './useConsoleFacts.ts'
 
 /** The two legal first-level values, shared by the preference parser. */
 const FREE_TIER_VALUES: readonly FreeFilter[] = ['yes', 'no']
 const parseFreeTier = oneOf(FREE_TIER_VALUES)
 
+/**
+ * Parse + clamp the ranking TTL setting (hours, 1–168).
+ * @param raw - untrusted host value. @returns a valid hour count, or undefined.
+ */
+function parseTtlHours(raw: unknown): number | undefined {
+  const numeric = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(numeric)) return undefined
+  return Math.min(168, Math.max(1, Math.round(numeric)))
+}
+
 /** Props for {@link WebSearchPanel}. */
 export interface WebSearchPanelProps {
   /** Shared live host state. */
   state: WebsearchState
+  /**
+   * Q round: how many sidebar "refresh this page" clicks are pending.
+   * `> 0` forces a fresh status read AND a forced ranking re-fetch.
+   */
+  refreshSignal: number
+  /** Host facts (home dir + platform) for the path display-style setting. */
+  facts: ConsoleFactsState
 }
 
 /** One pending confirmation (soft delete or permanent purge). */
@@ -61,7 +80,7 @@ interface Confirmation {
  * @param props - shared host state.
  * @returns the panel.
  */
-export function WebSearchPanel({ state }: WebSearchPanelProps) {
+export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelProps) {
   const { t, tf, locale } = useI18n()
   const { status, disabled, error, pending, refresh, toggle } = state
   const loading = status === undefined && error === undefined && !disabled
@@ -78,7 +97,20 @@ export function WebSearchPanel({ state }: WebSearchPanelProps) {
   const [reqPhone, setReqPhone] = usePref(PREF_KEYS.websearchPhone, false, parseBoolean)
   const [reqCard, setReqCard] = usePref(PREF_KEYS.websearchCard, false, parseBoolean)
   const [filtersOpen, setFiltersOpen] = useState(true)
-  const ranking = useWebsearchRanking({ free: freeTier, phone: reqPhone, card: reqCard })
+  // Q round: the refresh interval is a user setting (default 24 h), and the
+  // sidebar refresh icon forces a fresh read (`force=1` bypasses caches).
+  const [rankingTtlHours] = usePref(PREF_KEYS.websearchRankingTtlHours, 24, parseTtlHours)
+  const [pathStyle] = usePref(PREF_KEYS.pathStyle, 'abbreviated', parsePathStyle)
+  const ranking = useWebsearchRanking(
+    { free: freeTier, phone: reqPhone, card: reqCard },
+    { ttlHours: rankingTtlHours, forceSignal: refreshSignal },
+  )
+
+  // Sidebar-row refresh (Q round): re-read the status; the ranking part is
+  // driven by the force signal above.
+  useEffect(() => {
+    if (refreshSignal > 0) refresh()
+  }, [refreshSignal, refresh])
 
   // Explicitly revealed rows: id → literal. Reset whenever the accordion
   // changes target so nothing lingers across providers.
@@ -307,32 +339,32 @@ export function WebSearchPanel({ state }: WebSearchPanelProps) {
     )
   }
 
+  /**
+   * The providers-file line, Q round: the path is rendered in the user's
+   * chosen display style (`~/…` · `%USERPROFILE%\…` · full) and a copy
+   * button sits right after it — the copy ALWAYS carries the raw absolute
+   * path, never the display form.
+   */
+  const providersFile = status?.providersFile
+  const providersFileDisplay = providersFile !== undefined
+    ? formatDisplayPath(providersFile, facts.facts?.home, facts.facts?.platform, pathStyle)
+    : ''
+
   return (
     <section className={css.card}>
-      <header className={css.cardHeader}>
-        <div>
-          <h2 className={css.cardTitle}>{t('websearch.title')}</h2>
-          <p className={css.cardSubtitle}>{t('websearch.subtitle')}</p>
-        </div>
-        <button
-          type="button"
-          className={css.iconButton}
-          onClick={refresh}
-          title={t('common.refresh')}
-          aria-label={t('common.refresh')}
-        >
-          <Icon name="refresh" size={16} className={loading ? css.spinning : undefined} />
-        </button>
-      </header>
-
       <div className={css.cardBody}>
         <PanelSearch value={query} onChange={setQuery} placeholder={t('websearch.search')} count={visibleCount} />
 
-        {ranking.loading && status !== undefined
-          ? <div className={css.noticeLine}>{t('websearch.ranking.loading')}</div>
+        {/* Q round: while the FIRST read of the board is in flight, render a
+            FIXED-SHAPE skeleton (same groups, rows and heights as the real
+            board, with a shimmer sweep) so the layout is stable from the
+            first paint — no jump when the data lands. */}
+        {status !== undefined && !classified && ranking.loading && ranking.snapshot === undefined
+          ? <RankingSkeleton filtersOpen={filtersOpen} />
           : null}
 
-        {/* Level 1 is mandatory and exclusive; level 2 is a multi-select. The
+        {/* Level 1 is mandatory and exclusive; level 2 is a multi-select
+            that NESTS under level 1 (they are related, not disjoint). The
             whole bar disappears when the remote ranking cannot be fetched. */}
         {classified
           ? (
@@ -351,44 +383,50 @@ export function WebSearchPanel({ state }: WebSearchPanelProps) {
               {filtersOpen
                 ? (
                   <>
-                    <div className={css.filterRow}>
-                      <span className={css.filterLabel}>{t('websearch.filter.primary')}</span>
-                      <ul className={css.filterChips}>
-                        <li>
-                          <button type="button" aria-pressed={freeTier === 'yes'} className={cx(css.filterChip, freeTier === 'yes' && css.filterChipActive)} onClick={() => setFreeTier('yes')}>
-                            {t('websearch.filter.freeYes')}
-                          </button>
-                        </li>
-                        <li>
-                          <button type="button" aria-pressed={freeTier === 'no'} className={cx(css.filterChip, freeTier === 'no' && css.filterChipActive)} onClick={() => setFreeTier('no')}>
-                            {t('websearch.filter.freeNo')}
-                          </button>
-                        </li>
-                      </ul>
-                    </div>
-                    <div className={css.filterRow}>
-                      <span className={css.filterLabel}>{t('websearch.filter.secondary')}</span>
-                      <ul className={css.filterChips}>
-                        <li>
-                          <button type="button" aria-pressed={reqPhone} className={cx(css.filterChip, reqPhone && css.filterChipActive)} onClick={() => setReqPhone(current => !current)}>
-                            {t('websearch.filter.phone')}
-                          </button>
-                        </li>
-                        <li>
-                          <button type="button" aria-pressed={reqCard} className={cx(css.filterChip, reqCard && css.filterChipActive)} onClick={() => setReqCard(current => !current)}>
-                            {t('websearch.filter.card')}
-                          </button>
-                        </li>
-                        {reqPhone || reqCard
-                          ? (
-                            <li>
-                              <button type="button" className={css.actionButton} onClick={() => { setReqPhone(false); setReqCard(false) }}>
-                                {t('websearch.filter.reset')}
-                              </button>
-                            </li>
-                          )
-                          : null}
-                      </ul>
+                    <div className={css.filterBlock}>
+                      {/* Level 1: one mandatory choice. */}
+                      <div className={css.filterRow}>
+                        <span className={css.filterLabel}>{t('websearch.filter.primary')}</span>
+                        <ul className={css.filterChips}>
+                          <li>
+                            <button type="button" aria-pressed={freeTier === 'yes'} className={cx(css.filterChip, freeTier === 'yes' && css.filterChipActive)} onClick={() => setFreeTier('yes')}>
+                              {t('websearch.filter.freeYes')}
+                            </button>
+                          </li>
+                          <li>
+                            <button type="button" aria-pressed={freeTier === 'no'} className={cx(css.filterChip, freeTier === 'no' && css.filterChipActive)} onClick={() => setFreeTier('no')}>
+                              {t('websearch.filter.freeNo')}
+                            </button>
+                          </li>
+                        </ul>
+                      </div>
+                      {/* Level 2: optional multi-select, indented + connected
+                          under level 1 so the hierarchy reads as ONE
+                          structure instead of two disconnected bars. */}
+                      <div className={css.filterRowSecondary}>
+                        <span className={css.filterLabel}>{t('websearch.filter.secondary')}</span>
+                        <ul className={css.filterChips}>
+                          <li>
+                            <button type="button" aria-pressed={reqPhone} className={cx(css.filterChip, reqPhone && css.filterChipActive)} onClick={() => setReqPhone(current => !current)}>
+                              {t('websearch.filter.phone')}
+                            </button>
+                          </li>
+                          <li>
+                            <button type="button" aria-pressed={reqCard} className={cx(css.filterChip, reqCard && css.filterChipActive)} onClick={() => setReqCard(current => !current)}>
+                              {t('websearch.filter.card')}
+                            </button>
+                          </li>
+                          {reqPhone || reqCard
+                            ? (
+                              <li>
+                                <button type="button" className={css.actionButton} onClick={() => { setReqPhone(false); setReqCard(false) }}>
+                                  {t('websearch.filter.reset')}
+                                </button>
+                              </li>
+                            )
+                            : null}
+                        </ul>
+                      </div>
                     </div>
                     <p className={css.filterHint}>{t('websearch.filter.requiresHint')}</p>
                     {freeTier === 'no' ? <p className={css.filterHint}>{t('websearch.filter.freeNoHint')}</p> : null}
@@ -438,14 +476,21 @@ export function WebSearchPanel({ state }: WebSearchPanelProps) {
         {loading ? <div className={css.loadingState}><Spinner />{t('websearch.loading')}</div> : null}
 
         {/* Six remote groups. Original ranks are displayed as-is, so a filter
-            never renumbers the board. Empty groups still show their header. */}
+            never renumbers the board. Empty groups still show their header.
+            Q round: groups fade/slide in with a small stagger (the
+            "blingbling" entrance the user asked for) and carry a `--i`
+            index for the delay. */}
         {status !== undefined && classified
           ? (
             <>
-              {groups.map(group => (
-                <section key={group.id} className={css.tierGroup} aria-label={tierLabel(group.label)}>
+              {groups.map((group, at) => (
+                <section
+                  key={group.id}
+                  className={cx(css.tierGroup, css.tierGroupIn)}
+                  style={{ '--i': at } as CSSProperties}
+                  aria-label={tierLabel(group.label)}
+                >
                   <header className={css.tierHead}>
-                    <span className={css.tierPosition}>{String(group.position)}</span>
                     <h3 className={css.tierTitle}>{tierLabel(group.label)}</h3>
                     <span className={css.tierCount}>{tf('websearch.ranking.groupCount', { n: group.items.length })}</span>
                   </header>
@@ -488,7 +533,11 @@ export function WebSearchPanel({ state }: WebSearchPanelProps) {
         {status !== undefined
           ? (
             <p className={css.hint}>
-              {t('websearch.config')} <span className={css.code}>{status.providersFile}</span>
+              <span>{t('websearch.config')}</span>
+              <code className={css.code} title={providersFile}>{providersFileDisplay}</code>
+              {/* Q round: copy icon right after the path; copies the RAW
+                  absolute path regardless of the display style. */}
+              <CopyButton value={providersFile ?? ''} label={t('common.copy')} size={13} className={css.pathCopy} />
             </p>
           )
           : null}
@@ -786,6 +835,53 @@ function KeyPoolBody({
           </div>
         )
         : null}
+    </div>
+  )
+}
+
+/**
+ * Fixed-shape skeleton of the ranking board (Q round).
+ *
+ * It renders the SAME block sequence the real board will have — the filter
+ * box, then six tier groups with a typical row shape — using fixed heights
+ * that match the real CSS. The first paint already occupies the final
+ * layout, so when the data lands there is no jump, only a shimmer→content
+ * cross-fade. The shimmer itself is a pure CSS gradient sweep
+ * (`@keyframes` + `background-position`, the standard skeleton pattern
+ * borrowed from MUI / react-loading-skeleton / HeroUI).
+ * @param props.filtersOpen - mirror of the filter box state.
+ * @returns the skeleton board.
+ */
+function RankingSkeleton({ filtersOpen }: { filtersOpen: boolean }): ReactNode {
+  // A typical remote board has six tiers; this shape approximates it.
+  const shapes = [4, 3, 3, 3, 2, 2]
+  return (
+    <div className={css.boardSkeleton} aria-hidden="true">
+      <div className={css.rankingFilters}>
+        <div className={cx(css.skel, css.skelHead)} />
+        {filtersOpen
+          ? (
+            <div className={css.filterBlock}>
+              <div className={css.filterRow}>
+                <div className={cx(css.skel, css.skelLabel)} />
+                <div className={cx(css.skel, css.skelChips)} />
+              </div>
+              <div className={css.filterRowSecondary}>
+                <div className={cx(css.skel, css.skelLabel)} />
+                <div className={cx(css.skel, css.skelChips)} />
+              </div>
+            </div>
+          )
+          : null}
+      </div>
+      {shapes.map((rows, at) => (
+        <section key={at} className={css.tierGroup}>
+          <div className={cx(css.skel, css.skelGroupHead)} />
+          {Array.from({ length: rows }, (_, row) => (
+            <div key={row} className={cx(css.skel, css.skelRow)} />
+          ))}
+        </section>
+      ))}
     </div>
   )
 }

@@ -20,6 +20,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs'
 import { spawn } from 'node:child_process'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@cheezmil/coraek/types'
@@ -109,6 +110,11 @@ export interface ConsoleFacts {
   platform: string
   /** CPU architecture. */
   arch: string
+  /**
+   * The host user's home directory (`os.homedir()`), so the client can render
+   * paths in its chosen display style (`~/…` vs `%USERPROFILE%\…` vs full).
+   */
+  home: string
   /** The three entry-point apps. */
   entries: AppEntry[]
   /** Everything inside the coraek plugins directory. */
@@ -361,6 +367,7 @@ export function readConsoleFacts(): ConsoleFacts {
   return {
     platform: process.platform,
     arch: process.arch,
+    home: homedir(),
     entries: scanEntries(),
     plugins: scanPlugins(),
     pluginsDir: join(ROOT, 'packages', 'aek', 'coraek-plugins'),

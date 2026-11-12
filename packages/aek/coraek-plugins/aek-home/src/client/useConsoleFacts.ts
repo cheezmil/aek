@@ -55,6 +55,8 @@ export interface SlotEndpoint {
 export interface ConsoleFacts {
   platform: string
   arch: string
+  /** The host user's home directory, for the path display-style setting. */
+  home: string
   entries: AppEntry[]
   plugins: PluginEntry[]
   /** Absolute plugin directory path resolved on the host (copyable). */

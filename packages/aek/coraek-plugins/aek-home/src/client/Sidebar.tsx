@@ -30,7 +30,7 @@ const HOVER_ENTER_DELAY = 120
 const HOVER_LEAVE_DELAY = 200
 
 /** Every surface the console can show. */
-export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'settings' | 'about'
+export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'websearchSettings' | 'settings' | 'about'
 
 /** The two drawer groups the user asked for (plus the pinned bucket). */
 export type NavGroup = 'plugins' | 'other'
@@ -55,9 +55,16 @@ const NAV: readonly NavEntry[] = [
   // Web Search is a real AEK plugin, so it belongs in the 插件 drawer, not 其他.
   { id: 'websearch', labelKey: 'panel.websearch', icon: 'search', group: 'plugins', keywords: ['search', 'keys', 'api key', 'provider', '密钥'] },
   { id: 'plugins', labelKey: 'panel.plugins', icon: 'plugins', group: 'plugins', keywords: ['plugin', 'package', 'inventory', '插件管理'] },
-  { id: 'skills', labelKey: 'panel.skills', icon: 'book', group: 'plugins', keywords: ['skill', 'manager', '技能'] },
-  { id: 'prompts', labelKey: 'panel.prompts', icon: 'sparkles', group: 'plugins', keywords: ['prompt', 'manager', '提示词'] },
-  { id: 'settings', labelKey: 'panel.settings', icon: 'settings', group: 'other', keywords: ['preferences', 'options', 'sidebar', '设置'] },
+  // Q round: "book" read as docs and "sparkles" as AI magic — neither says
+  // "manager". A skill is a pluggable capability block (puzzle); a prompt
+  // manager manages plain text blocks (type).
+  { id: 'skills', labelKey: 'panel.skills', icon: 'puzzle', group: 'plugins', keywords: ['skill', 'manager', '技能'] },
+  { id: 'prompts', labelKey: 'panel.prompts', icon: 'type', group: 'plugins', keywords: ['prompt', 'manager', '提示词'] },
+  // Q round: every plugin with user-facing settings gets its own settings
+  // page instead of one giant Settings page. Web Search owns the ranking
+  // refresh interval; the base "Settings" page was renamed 基础设置.
+  { id: 'websearchSettings', labelKey: 'panel.websearchSettings', icon: 'settings', group: 'plugins', keywords: ['websearch', 'search', 'ranking', '排行', '设置'] },
+  { id: 'settings', labelKey: 'panel.settings', icon: 'settings', group: 'other', keywords: ['preferences', 'options', 'sidebar', '基础设置', '设置'] },
   { id: 'about', labelKey: 'panel.about', icon: 'about', group: 'other', keywords: ['version', 'info', 'entry', '关于'] },
 ]
 
@@ -99,6 +106,13 @@ export interface SidebarProps {
   providerCount: number | undefined
   /** Which slot serves this console (C9). */
   currentSlot: 'aek' | 'next' | undefined
+  /**
+   * Q round: fire a refresh of ONE panel's data. Each nav row carries a small
+   * refresh icon (left of the pin) meaning "refresh THAT page"; the target
+   * panel re-reads its data when it is activated, or immediately when it is
+   * already the active one.
+   */
+  onRefresh: (id: PanelId) => void
 }
 
 /** @param raw - untrusted pref value. @returns a valid logo variant. */
@@ -140,7 +154,7 @@ function DrawerGroup({ label, open, onToggle, children }: {
  * @param props - selection only; everything else comes from host settings.
  * @returns the sidebar.
  */
-export function Sidebar({ active, onSelect, providerCount, currentSlot }: SidebarProps) {
+export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefresh }: SidebarProps) {
   const { t, locale, setLocale } = useI18n()
   const { prefs, set } = useSettings()
   const [collapsed, setCollapsed] = usePref<boolean>(PREF_KEYS.collapsed, false, parseBoolean)
@@ -405,6 +419,17 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot }: Sideba
           {entry.id === 'websearch' && providerCount !== undefined
             ? <span className={css.navBadge}>{String(providerCount)}</span>
             : null}
+        </button>
+        {/* Q round: the refresh icon sits LEFT of the pin and refreshes the
+            page THIS row opens — even when that page is not active yet. */}
+        <button
+          type="button"
+          className={css.rowRefresh}
+          onClick={() => onRefresh(entry.id)}
+          title={t('nav.refresh')}
+          aria-label={t('nav.refresh')}
+        >
+          <Icon name="refresh" size={13} />
         </button>
         <button
           type="button"

@@ -24,7 +24,7 @@ import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { useSettings } from './preferences.tsx'
 import type { PrefValue } from './preferences.tsx'
-import { coerce, SETTINGS_SCHEMA } from './settings-schema.ts'
+import { allSettingFields, coerce, SETTINGS_SCHEMA, WEBSEARCH_SETTINGS_SCHEMA } from './settings-schema.ts'
 import type { SettingField } from './settings-schema.ts'
 import { css, cx } from './styles.ts'
 import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner, ToggleSwitch } from './ui-kit.tsx'
@@ -33,7 +33,7 @@ import { useConsoleFacts } from './useConsoleFacts.ts'
 import { useCapabilities } from './useCapabilities.ts'
 
 /** Panels handled here. */
-export type InfoPanelId = 'plugins' | 'settings' | 'about'
+export type InfoPanelId = 'plugins' | 'settings' | 'websearchSettings' | 'about'
 
 /** Host routes. */
 const PLUGIN_ACTION_API = '/api/aek/plugins/action'
@@ -41,6 +41,9 @@ const PLUGIN_ACTION_API = '/api/aek/plugins/action'
 const CONFIRM_DISABLE_KEY = 'aek-home.confirmPluginDisable'
 const ACCESS_API = '/api/aek/access'
 const PERMISSIONS_OPEN_API = '/api/aek/permissions/open'
+/** Q round: the settings backup / undo pair (aek-websearch host routes). */
+const PREFERENCES_BACKUP_API = '/api/aek/preferences/backup'
+const PREFERENCES_RESTORE_API = '/api/aek/preferences/restore'
 
 /** The API-safe access settings view (never contains a password hash). */
 interface AccessView {
@@ -66,6 +69,11 @@ export interface InfoPanelsProps {
   panel: InfoPanelId
   /** Live host package inventory. */
   inventory: InventoryState
+  /**
+   * Q round: how many refresh requests the sidebar has recorded for THIS
+   * surface since it was last opened. `> 0` consumes one re-read.
+   */
+  refreshSignal: number
 }
 
 /**
@@ -354,11 +362,27 @@ function PermissionsSection() {
   )
 }
 
-/** @returns the schema-driven settings page with permissions + access groups. */
-function SettingsPanel() {
+/** The undo banner's state machine for the "restore defaults" flow. */
+type RestoreState =
+  | { phase: 'idle' }
+  | { phase: 'busy' }
+  | { phase: 'backedUp' }
+  | { phase: 'restored' }
+  | { phase: 'noBackup' }
+  | { phase: 'backupFailed' }
+  | { phase: 'restoreFailed' }
+
+/**
+ * The 基础设置 (basic settings) page, Q round. The giant catch-all Settings
+ * page was split: this page keeps the host-wide groups (sidebar / navigation /
+ * general / access / permissions) plus the "restore defaults" flow; plugin
+ * specific settings live on the plugin's own page ({@link WebSearchSettingsPanel}).
+ */
+function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   const { t } = useI18n()
-  const { prefs, set, setMany } = useSettings()
+  const { prefs, set, setMany, reload, adopt } = useSettings()
   const [query, setQuery] = useState('')
+  const [restore, setRestore] = useState<RestoreState>({ phase: 'idle' })
   const needle = query.trim().toLowerCase()
   const visible = SETTINGS_SCHEMA.filter((field) => {
     if (needle.length === 0) return true
@@ -367,17 +391,54 @@ function SettingsPanel() {
   const groups: readonly SettingField['group'][] = ['sidebar', 'navigation', 'general']
   const matches = (keys: readonly string[]): boolean => needle.length === 0 || keys.join(' ').toLowerCase().includes(needle)
 
-  /** Restore every schema default in ONE host write. */
-  const resetAll = (): void => {
-    setMany(Object.fromEntries(SETTINGS_SCHEMA.map(field => [field.key, field.default])))
+  // Sidebar-row refresh (Q round): re-read the authoritative settings map.
+  useEffect(() => {
+    if (refreshSignal > 0) reload()
+  }, [refreshSignal, reload])
+
+  /**
+   * The Q-round restore-defaults flow: (1) back up the current settings file
+   * on the host, (2) only THEN write every schema default, (3) keep the undo
+   * button live until the user undoes or manually edits a setting.
+   */
+  const restoreDefaults = async (): Promise<void> => {
+    setRestore({ phase: 'busy' })
+    try {
+      const backup = await fetch(PREFERENCES_BACKUP_API, { method: 'POST' })
+      if (!backup.ok) throw new Error(`HTTP ${String(backup.status)}`)
+      setMany(Object.fromEntries(allSettingFields().map(field => [field.key, field.default])))
+      setRestore({ phase: 'backedUp' })
+    } catch {
+      setRestore({ phase: 'backupFailed' })
+    }
+  }
+
+  /** Put the backup snapshot back over the live file (undo). */
+  const undoRestore = async (): Promise<void> => {
+    setRestore({ phase: 'busy' })
+    try {
+      const response = await fetch(PREFERENCES_RESTORE_API, { method: 'POST' })
+      if (!response.ok) {
+        setRestore({ phase: response.status === 404 ? 'noBackup' : 'restoreFailed' })
+        return
+      }
+      const data = await response.json() as Record<string, PrefValue>
+      adopt(data)
+      setRestore({ phase: 'restored' })
+    } catch {
+      setRestore({ phase: 'restoreFailed' })
+    }
+  }
+
+  /** Any manual edit dismisses the undo banner (the backup is no longer the
+      "previous state" the user is looking at). */
+  const setSafe = (key: string, next: PrefValue): void => {
+    set(key, next)
+    setRestore(state => (state.phase === 'backedUp' ? { phase: 'idle' } : state))
   }
 
   return (
-    <PanelCard
-      title={t('settings.title')}
-      subtitle={t('settings.subtitle')}
-      actions={<button type="button" className={css.iconButton} onClick={resetAll} title={t('settings.reset')} aria-label={t('settings.reset')}><Icon name="restore" size={16} /></button>}
-    >
+    <PanelCard>
       <div className={css.cardBody}>
         <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} />
         {groups.map((group) => {
@@ -392,7 +453,7 @@ function SettingsPanel() {
                     <SettingControl
                       field={field}
                       value={coerce(field, prefs[field.key] ?? field.default)}
-                      onChange={next => set(field.key, next)}
+                      onChange={next => setSafe(field.key, next)}
                     />
                   </li>
                 ))}
@@ -402,9 +463,111 @@ function SettingsPanel() {
         })}
         {matches(['access', 'lan', 'ip', 'cidr', 'basic auth', t('settings.group.access')]) ? <AccessSection /> : null}
         {matches(['permission', 'tcc', 'accessibility', t('settings.group.permissions')]) ? <PermissionsSection /> : null}
+        {matches(['default', t('settings.group.defaults'), t('settings.restoreDefaults')])
+          ? (
+            <section className={css.settingGroup}>
+              <h3 className={css.sectionTitle}>{t('settings.group.defaults')}</h3>
+              <ul className={css.settingList}>
+                <li className={css.settingRow}>
+                  <div className={css.settingRowHead}>
+                    <span className={css.settingToggleLabel}>{t('settings.restoreDefaults')}</span>
+                  </div>
+                  <p className={css.hint}>{t('settings.restoreDefaultsHint')}</p>
+                  <div className={css.accessActions}>
+                    <button
+                      type="button"
+                      className={css.secondaryButton}
+                      disabled={restore.phase === 'busy'}
+                      onClick={() => { void restoreDefaults() }}
+                    >
+                      {restore.phase === 'busy' ? <Spinner /> : <Icon name="restore" size={14} />}
+                      {t('settings.restoreDefaults')}
+                    </button>
+                    {restore.phase === 'backedUp'
+                      ? (
+                        <button
+                          type="button"
+                          className={css.primaryButton}
+                          onClick={() => { void undoRestore() }}
+                        >
+                          {t('settings.undoRestore')}
+                        </button>
+                      )
+                      : null}
+                  </div>
+                  {restore.phase === 'backedUp'
+                    ? <p className={css.noticeLine}><Icon name="check" size={14} />{t('settings.backupDone')}</p>
+                    : null}
+                  {restore.phase === 'restored'
+                    ? <p className={css.noticeLine}><Icon name="check" size={14} />{t('settings.restored')}</p>
+                    : null}
+                  {restore.phase === 'noBackup'
+                    ? <p className={css.errorBanner}><Icon name="alert" size={16} /><span>{t('settings.noBackup')}</span></p>
+                    : null}
+                  {restore.phase === 'backupFailed'
+                    ? <p className={css.errorBanner}><Icon name="alert" size={16} /><span>{t('settings.backupFailed')}</span></p>
+                    : null}
+                  {restore.phase === 'restoreFailed'
+                    ? <p className={css.errorBanner}><Icon name="alert" size={16} /><span>{t('settings.restoreFailed')}</span></p>
+                    : null}
+                </li>
+              </ul>
+            </section>
+          )
+          : null}
         {visible.length === 0 && needle.length > 0
           ? <div className={css.emptyState}>{t('common.noMatch')}</div>
           : null}
+      </div>
+    </PanelCard>
+  )
+}
+
+/**
+ * The Web Search plugin's own settings page (Q round 14: "each plugin should
+ * have its own settings page, not one giant Settings page"). Only plugins
+ * that actually have user-facing settings get a page; this one owns the
+ * ranking refresh interval. The display filters stay on the search page
+ * itself.
+ */
+function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
+  const { t } = useI18n()
+  const { prefs, set, reload } = useSettings()
+  const [query, setQuery] = useState('')
+  const needle = query.trim().toLowerCase()
+  const visible = WEBSEARCH_SETTINGS_SCHEMA.filter((field) => {
+    if (needle.length === 0) return true
+    return [t(field.labelKey), field.key, field.group].join(' ').toLowerCase().includes(needle)
+  })
+
+  useEffect(() => {
+    if (refreshSignal > 0) reload()
+  }, [refreshSignal, reload])
+
+  return (
+    <PanelCard>
+      <div className={css.cardBody}>
+        <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} />
+        {visible.length > 0
+          ? (
+            <section className={css.settingGroup}>
+              <h3 className={css.sectionTitle}>{t('settings.group.websearch')}</h3>
+              <ul className={css.settingList}>
+                {visible.map(field => (
+                  <li key={field.key} className={css.settingRow}>
+                    <SettingControl
+                      field={field}
+                      value={coerce(field, prefs[field.key] ?? field.default)}
+                      onChange={next => set(field.key, next)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+          : (
+            <div className={css.emptyState}>{t('common.noMatch')}</div>
+          )}
       </div>
     </PanelCard>
   )
@@ -428,9 +591,14 @@ const PLUGIN_ACTIONS: readonly PluginAction[] = [
 ]
 
 /** @returns the plugin management page. */
-function PluginsPanel() {
+function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   const { t, tf } = useI18n()
   const facts = useConsoleFacts()
+
+  // Sidebar-row refresh (Q round): re-scan the plugin directory.
+  useEffect(() => {
+    if (refreshSignal > 0) facts.refresh()
+  }, [refreshSignal, facts.refresh])
   const { prefs } = useSettings()
   const [query, setQuery] = useState('')
   const [notice, setNotice] = useState<string | undefined>(undefined)
@@ -506,16 +674,7 @@ function PluginsPanel() {
   }
 
   return (
-    <PanelCard
-      title={t('plugins.title')}
-      subtitle={t('plugins.subtitle')}
-      actions={(
-        <>
-          {facts.loading ? <Spinner /> : null}
-          <button type="button" className={css.iconButton} onClick={facts.refresh} title={t('common.refresh')} aria-label={t('common.refresh')}><Icon name="refresh" size={16} /></button>
-        </>
-      )}
-    >
+    <PanelCard>
       <div className={css.cardBody}>
         <PanelSearch value={query} onChange={setQuery} placeholder={t('plugins.search')} count={facts.loading ? undefined : plugins.length} />
         {notice !== undefined ? <p className={css.noticeLine}>{notice}</p> : null}
@@ -596,9 +755,17 @@ function PluginsPanel() {
 }
 
 /** @returns the About page with the three entry points marked. */
-function AboutPanel({ inventory }: { inventory: InventoryState }) {
+function AboutPanel({ inventory, refreshSignal }: { inventory: InventoryState; refreshSignal: number }) {
   const { t, tf } = useI18n()
   const facts = useConsoleFacts()
+
+  // Sidebar-row refresh (Q round): re-read both the inventory and the facts.
+  useEffect(() => {
+    if (refreshSignal > 0) {
+      facts.refresh()
+      inventory.refresh()
+    }
+  }, [refreshSignal, facts.refresh, inventory.refresh])
   const caps = useCapabilities()
   const providers = caps.facts?.providers ?? []
   // Selective class-① runtime-mode choices (id → 'share' | 'isolate'); the
@@ -622,10 +789,7 @@ function AboutPanel({ inventory }: { inventory: InventoryState }) {
   )
 
   return (
-    <PanelCard
-      title={t('about.title')}
-      actions={<button type="button" className={css.iconButton} onClick={inventory.refresh} title={t('common.refresh')} aria-label={t('common.refresh')}><Icon name="refresh" size={16} /></button>}
-    >
+    <PanelCard>
       <div className={css.cardBody}>
         {inventory.error !== undefined
           ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{tf('about.error', { message: inventory.error })}</span></div>
@@ -740,8 +904,9 @@ function AboutPanel({ inventory }: { inventory: InventoryState }) {
  * @param props - panel id and inventory.
  * @returns the selected surface.
  */
-export function InfoPanels({ panel, inventory }: InfoPanelsProps) {
-  if (panel === 'plugins') return <PluginsPanel />
-  if (panel === 'settings') return <SettingsPanel />
-  return <AboutPanel inventory={inventory} />
+export function InfoPanels({ panel, inventory, refreshSignal }: InfoPanelsProps) {
+  if (panel === 'plugins') return <PluginsPanel refreshSignal={refreshSignal} />
+  if (panel === 'settings') return <SettingsPanel refreshSignal={refreshSignal} />
+  if (panel === 'websearchSettings') return <WebSearchSettingsPanel refreshSignal={refreshSignal} />
+  return <AboutPanel inventory={inventory} refreshSignal={refreshSignal} />
 }

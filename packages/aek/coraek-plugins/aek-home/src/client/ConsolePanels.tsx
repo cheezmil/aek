@@ -16,28 +16,39 @@
  *
  * @module @cheezmil/aek-home/src/client/ConsolePanels
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { css } from './styles.ts'
-import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner } from './ui-kit.tsx'
-import { displayName } from './InfoPanels.tsx'
-import { useConsoleFacts } from './useConsoleFacts.ts'
+import { CopyButton, OutputView, PanelCard, PanelSearch, Spinner } from './ui-kit.tsx'
 import { usePluginConsole } from './usePluginConsole.ts'
 import type { ConsoleCommand } from './usePluginConsole.ts'
 
 /** Number of one-click read-only buttons shown at the top. */
 const QUICK_LIMIT = 8
 
-/** @returns the shared command console for one manager plugin. */
-function ManagerPanel({ pluginId, titleKey, subtitleKey }: {
+/**
+ * @returns the shared command console for one manager plugin.
+ *
+ * Q round (2026-11-12): the `managerBar` (CLI / version / A1 / 基础语言) was
+ * cut — the user called it noise — and so was the "工作区插件目录" roster,
+ * which is the About page's job. The card header (title / subtitle / refresh
+ * row) is gone as well: the refresh now lives on the sidebar row icon.
+ * Output is rendered through the virtualized {@link OutputView}, so the host
+ * no longer has to truncate it.
+ */
+function ManagerPanel({ pluginId, refreshSignal }: {
   pluginId: string
-  titleKey: string
-  subtitleKey: string
+  /** How many sidebar refresh clicks are pending for this page. */
+  refreshSignal: number
 }) {
   const { t } = useI18n()
-  const facts = useConsoleFacts()
   const state = usePluginConsole()
+
+  // Sidebar-row refresh (Q round): re-read the command catalogue.
+  useEffect(() => {
+    if (refreshSignal > 0) state.refresh()
+  }, [refreshSignal, state.refresh])
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<ConsoleCommand | undefined>(undefined)
   const [commandLine, setCommandLine] = useState('')
@@ -51,7 +62,6 @@ function ManagerPanel({ pluginId, titleKey, subtitleKey }: {
     ? commands
     : commands.filter(command => `${command.name} ${command.label}`.toLowerCase().includes(needle))
   const quick = commands.filter(command => !command.mutating).slice(0, QUICK_LIMIT)
-  const roster = facts.facts?.plugins ?? []
 
   const pick = (command: ConsoleCommand) => {
     setSelected(command)
@@ -79,16 +89,7 @@ function ManagerPanel({ pluginId, titleKey, subtitleKey }: {
     : `${plugin?.cli ?? ''} ${state.result.command.join(' ')}`
 
   return (
-    <PanelCard
-      title={t(titleKey)}
-      subtitle={t(subtitleKey)}
-      actions={(
-        <>
-          {state.loading || state.running ? <Spinner /> : null}
-          <button type="button" className={css.iconButton} onClick={state.refresh} title={t('common.refresh')} aria-label={t('common.refresh')}><Icon name="refresh" size={16} /></button>
-        </>
-      )}
-    >
+    <PanelCard>
       <div className={css.cardBody}>
         {state.error !== undefined
           ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{state.error}</span></div>
@@ -96,16 +97,7 @@ function ManagerPanel({ pluginId, titleKey, subtitleKey }: {
         {notice !== ''
           ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{notice}</span></div>
           : null}
-
-        <div className={css.managerBar}>
-          <span className={css.managerMeta}>{t('managers.cli')} <strong>{plugin?.cli ?? '—'}</strong></span>
-          <span className={css.managerMeta}>{t('managers.version')} {plugin?.version ?? '—'}</span>
-          <span className={css.managerMeta}>{plugin?.distribution ?? '—'}</span>
-          <span className={css.managerMeta}>{t('managers.stack')} {(plugin?.languages ?? []).join(' · ') || '—'}</span>
-          {plugin?.available === false
-            ? <span className={css.managerWarn}>{t('managers.unavailable')}</span>
-            : null}
-        </div>
+        {state.loading ? <div className={css.loadingState}><Spinner />{t('common.loading')}</div> : null}
 
         <h3 className={css.sectionTitle}>{t('managers.quick')}</h3>
         <div className={css.managerActions}>
@@ -188,8 +180,8 @@ function ManagerPanel({ pluginId, titleKey, subtitleKey }: {
           <h3 className={css.sectionTitle}>{t('managers.output')}</h3>
           {state.result !== undefined
             ? <>
-              <span className={css.managerMeta}>{t('managers.exit')} {state.result.exitCode}</span>
-              <span className={css.managerMeta}>{t('managers.duration')} {state.result.durationMs} ms</span>
+              <span className={css.outputMeta}>{t('managers.exit')} {state.result.exitCode}</span>
+              <span className={css.outputMeta}>{t('managers.duration')} {state.result.durationMs} ms</span>
               <CopyButton value={output} label={t('managers.copy')} />
               <button type="button" className={css.iconButton} onClick={state.clear}>{t('managers.clear')}</button>
             </>
@@ -197,35 +189,23 @@ function ManagerPanel({ pluginId, titleKey, subtitleKey }: {
         </div>
         {state.result === undefined
           ? <div className={css.emptyState}>{t('managers.noOutput')}</div>
-          : <pre className={css.outputPre}>{outputLabel}{'\n'}{output || '(no output)'}</pre>}
-
-        <div className={css.divider} />
-        <h3 className={css.sectionTitle}>{t('managers.roster')}</h3>
-        <ul className={css.pluginList}>
-          {roster.map(entry => (
-            <li key={entry.id} className={css.pluginItem}>
-              <div className={css.pluginHead}>
-                <span className={css.featureIcon}><Icon name="book" size={18} /></span>
-                <div className={css.pluginText}>
-                  <div className={css.featureTitle}>{displayName(entry.packageName)}</div>
-                  <div className={css.featureText}>{t('managers.version')} {entry.version} · {entry.description}</div>
-                </div>
-              </div>
-              <CapabilityTags caps={entry.capabilities} />
-            </li>
-          ))}
-        </ul>
+          : (
+            <OutputView
+              text={outputLabel + '\n' + (output || '(no output)')}
+              failed={state.result.exitCode !== 0}
+            />
+          )}
       </div>
     </PanelCard>
   )
 }
 
 /** @returns the Skill Manager command console. */
-export function SkillsPanel() {
-  return <ManagerPanel pluginId="aek-skill-manager" titleKey="skills.title" subtitleKey="skills.subtitle" />
+export function SkillsPanel({ refreshSignal }: { refreshSignal: number }) {
+  return <ManagerPanel pluginId="aek-skill-manager" refreshSignal={refreshSignal} />
 }
 
 /** @returns the Prompt Manager command console. */
-export function PromptsPanel() {
-  return <ManagerPanel pluginId="aek-prompt-manager" titleKey="prompts.title" subtitleKey="prompts.subtitle" />
+export function PromptsPanel({ refreshSignal }: { refreshSignal: number }) {
+  return <ManagerPanel pluginId="aek-prompt-manager" refreshSignal={refreshSignal} />
 }

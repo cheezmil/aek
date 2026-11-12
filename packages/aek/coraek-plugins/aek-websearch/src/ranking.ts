@@ -146,13 +146,24 @@ export interface RankingOptions {
   fetcher?: RankingFetcher
   /** Override the clock (tests). */
   now?: () => number
-  /** Override the success TTL (tests). */
+  /** Override the success TTL (tests / the `ttl` query parameter, in hours). */
   ttlMs?: number
   /** Override the failure TTL (tests). */
   failureTtlMs?: number
   /** The filter to apply to the fetched ranking. */
   filter?: Partial<RankingFilter>
+  /** Bypass the success cache and fetch a fresh payload (the `force` query parameter). */
+  force?: boolean
 }
+
+/**
+ * The refresh interval the console uses, in hours. The board is remote data,
+ * not a live stream: the host caches successful fetches for this window and
+ * only talks to GitHub again when it expires (or when `force` says so).
+ */
+export const RANKING_TTL_MIN_HOURS = 1
+export const RANKING_TTL_MAX_HOURS = 168
+export const RANKING_TTL_DEFAULT_HOURS = 24
 
 /** A guard supplied by `admin.ts` so a switched-off plugin answers 503. */
 export type RankingGuard = (res: ServerResponse) => boolean
@@ -401,8 +412,11 @@ export async function loadRanking(options: RankingOptions = {}): Promise<Ranking
     fetchedAt: new Date(now()).toISOString(),
   }
   const cached = cache?.url === url ? cache : undefined
-  if (cached !== undefined && now() - cached.at < (cached.data === undefined ? failureTtl : ttl)) {
-    return snapshotFrom(cached, base, filter)
+  // `force` (the manual refresh button) bypasses the whole cache — the user
+  // asked for a fresh answer, even after a recent failure.
+  if (options.force !== true) {
+    const freshEnough = cached !== undefined && now() - cached.at < (cached.data === undefined ? failureTtl : ttl)
+    if (freshEnough) return snapshotFrom(cached, base, filter)
   }
 
   let entry: CacheEntry
@@ -470,7 +484,11 @@ function snapshotFrom(entry: CacheEntry, base: {
   filter: RankingFilter
   fetchedAt: string
 }, filter: RankingFilter): RankingSnapshot {
-  const snapshot = snapshotBase(base)
+  // `fetchedAt` must reflect WHEN THE DATA WAS ACTUALLY PULLED from GitHub
+  // (the cache entry's write time), not the moment this snapshot object was
+  // built. Without this, every cache hit would stamp "now" and the client's
+  // "榜单更新于 …" line would lie about freshness.
+  const snapshot = snapshotBase({ ...base, fetchedAt: new Date(entry.at).toISOString() })
   if (entry.data === undefined) {
     snapshot.reason = entry.failure
     snapshot.message = entry.message
@@ -502,6 +520,30 @@ export function filterFromQuery(url: string | undefined): RankingFilter {
 }
 
 /**
+ * The refresh interval the client asked for, in MILLISECONDS.
+ * `?ttl=<hours>` is clamped to 1–168; absent or malformed values fall back to
+ * the caller-supplied TTL (the 5-minute default for pre-Q-round clients).
+ * @param url - a request URL. @param fallbackMs - TTL used when the query says nothing.
+ * @returns the success-cache TTL in milliseconds.
+ */
+export function ttlMsFromQuery(url: string | undefined, fallbackMs: number = RANKING_TTL_MS): number {
+  const query = url === undefined ? new URLSearchParams() : new URL(url, 'http://localhost').searchParams
+  const raw = query.get('ttl')
+  if (raw === null) return fallbackMs
+  const hours = Number(raw)
+  if (!Number.isFinite(hours)) return fallbackMs
+  const clamped = Math.min(RANKING_TTL_MAX_HOURS, Math.max(RANKING_TTL_MIN_HOURS, hours))
+  return Math.round(clamped * 3_600_000)
+}
+
+/** @param url - a request URL. @returns whether a fresh fetch was requested. */
+export function forceFromQuery(url: string | undefined): boolean {
+  const query = url === undefined ? new URLSearchParams() : new URL(url, 'http://localhost').searchParams
+  const value = query.get('force')
+  return value === '1' || value === 'true'
+}
+
+/**
  * Register `GET /api/aek/websearch/ranking` on the composition's web server.
  * @param ctx - the plugin context.
  * @param guard - the plugin's switched-off guard (returns true after replying).
@@ -519,7 +561,11 @@ export function registerRanking(ctx: Context, guard: RankingGuard): void {
         send(res, 405, { code: 'method-not-allowed', message: 'use GET' })
         return
       }
-      const snapshot = await loadRanking({ filter: filterFromQuery(req.url) })
+      const snapshot = await loadRanking({
+        filter: filterFromQuery(req.url),
+        ttlMs: ttlMsFromQuery(req.url),
+        force: forceFromQuery(req.url),
+      })
       send(res, 200, snapshot)
     },
   }), 'aek-websearch: remote provider ranking')

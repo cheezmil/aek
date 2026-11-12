@@ -14,7 +14,7 @@
  * @module @cheezmil/aek-home/src/client/Home
  */
 import type { CSSProperties } from 'react'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { CanonicalHostRedirect, isLegacyLoopback } from './CanonicalHost.tsx'
 import { I18nProvider } from './i18n.tsx'
 import { InfoPanels } from './InfoPanels.tsx'
@@ -27,12 +27,13 @@ import { sidebarCssVars } from './settings-schema.ts'
 import { css } from './styles.ts'
 import { useInventory } from './useInventory.ts'
 import { useCurrentSlot } from './useRuntimeMode.ts'
+import { useConsoleFacts } from './useConsoleFacts.ts'
 import { WebSearchPanel } from './WebSearchPanel.tsx'
 import { useWebsearchStatus } from './useWebsearchStatus.ts'
 
 /** All valid panel ids, used to validate a persisted value. */
 const PANEL_IDS: readonly PanelId[] = [
-  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'settings', 'about',
+  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'websearchSettings', 'settings', 'about',
 ]
 
 /** Props kept for API compatibility with earlier aek-home releases. */
@@ -48,6 +49,10 @@ function Console() {
   const state = useWebsearchStatus()
   const inventory = useInventory()
   const currentSlot = useCurrentSlot()
+  // Host facts lifted to the root: the Web Search page needs them for the
+  // path display-style setting, and this keeps one shared fetch for every
+  // surface instead of one per panel mount.
+  const facts = useConsoleFacts()
   // The status hook lives at the app root, so it does not remount when the user
   // leaves and re-enters the panel. Reading it again on entry is what makes a
   // plugin switched off *from the plugin page* show up here as a banner instead
@@ -57,10 +62,21 @@ function Console() {
     if (panel === 'websearch') refreshWebsearch()
   }, [panel, refreshWebsearch])
 
+  // Q round: the sidebar row's refresh icon records ONE pending refresh for
+  // the clicked page. If that page is open it fires immediately (each panel
+  // consumes `refreshSignal` in an effect); if it is closed the tick is kept
+  // here and consumed the next time the page opens — "refresh THAT page".
+  const [refreshTicks, setRefreshTicks] = useState<Partial<Record<PanelId, number>>>({})
+  const requestRefresh = useCallback((id: PanelId): void => {
+    setRefreshTicks(previous => ({ ...previous, [id]: (previous[id] ?? 0) + 1 }))
+  }, [])
+
   // Schema-driven CSS: every numeric sidebar setting lands here. The cast is
   // needed because React's CSSProperties type does not enumerate custom
   // properties, even though the DOM accepts them.
   const style = sidebarCssVars(prefs) as CSSProperties
+
+  const signalFor = (id: PanelId): number => refreshTicks[id] ?? 0
 
   return (
     <div className={css.app} style={style}>
@@ -69,17 +85,18 @@ function Console() {
         onSelect={setPanel}
         providerCount={state.status?.providers.length}
         currentSlot={currentSlot}
+        onRefresh={requestRefresh}
       />
 
       <div className={css.main}>
         <main className={css.content}>
-          {panel === 'runtime' ? <RuntimeModePanel /> : null}
-          {panel === 'websearch' ? <WebSearchPanel state={state} /> : null}
-          {panel === 'plugins' || panel === 'settings' || panel === 'about'
-            ? <InfoPanels panel={panel} inventory={inventory} />
+          {panel === 'runtime' ? <RuntimeModePanel refreshSignal={signalFor('runtime')} /> : null}
+          {panel === 'websearch' ? <WebSearchPanel state={state} refreshSignal={signalFor('websearch')} facts={facts} /> : null}
+          {panel === 'plugins' || panel === 'settings' || panel === 'websearchSettings' || panel === 'about'
+            ? <InfoPanels panel={panel} inventory={inventory} refreshSignal={signalFor(panel)} />
             : null}
-          {panel === 'skills' ? <SkillsPanel /> : null}
-          {panel === 'prompts' ? <PromptsPanel /> : null}
+          {panel === 'skills' ? <SkillsPanel refreshSignal={signalFor('skills')} /> : null}
+          {panel === 'prompts' ? <PromptsPanel refreshSignal={signalFor('prompts')} /> : null}
         </main>
       </div>
     </div>

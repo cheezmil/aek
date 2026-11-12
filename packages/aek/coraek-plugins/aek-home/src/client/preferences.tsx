@@ -35,6 +35,17 @@ export const PREF_KEYS = {
   websearchPhone: 'aek-home.websearch.reqPhone',
   /** Web Search: second-level "requires a credit card" (multi-select). */
   websearchCard: 'aek-home.websearch.reqCard',
+  /**
+   * Web Search plugin setting (Q round): how often the remote ranking board is
+   * re-fetched, in hours (default 24). Manual refresh always bypasses it.
+   */
+  websearchRankingTtlHours: 'aek-home.websearch.rankingTtlHours',
+  /**
+   * Path display style (Q round): `abbreviated` shows `~/…` (posix) or
+   * `%USERPROFILE%\…` (Windows, backslashes); `full` shows the raw absolute
+   * path. Copy buttons always copy the raw path, never the display form.
+   */
+  pathStyle: 'aek-home.pathStyle',
 } as const
 
 /** One storable setting value (JSON primitive, enforced by the host). */
@@ -47,6 +58,13 @@ interface PrefContextValue {
   set: (key: string, next: PrefValue | ((current: unknown) => PrefValue)) => void
   /** Update several settings in ONE host request (presets / group reset). */
   setMany: (values: Record<string, PrefValue>) => void
+  /** Re-read the whole settings map from the host (settings-page refresh). */
+  reload: () => void
+  /**
+   * Merge a host-answered settings map INTO the local state (undo-restore,
+   * Q round: the "restore defaults" flow gets the authoritative file back).
+   */
+  adopt: (values: Record<string, PrefValue>) => void
 }
 
 const PrefContext = createContext<PrefContextValue | undefined>(undefined)
@@ -99,7 +117,30 @@ export function PrefProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  return <PrefContext.Provider value={{ prefs, set, setMany }}>{children}</PrefContext.Provider>
+  /** Re-read the authoritative map from the host (settings-page refresh). */
+  const reload = useCallback((): void => {
+    let cancelled = false
+    void fetch(PREFS_API, { headers: { accept: 'application/json' } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+        return await response.json() as Record<string, PrefValue>
+      })
+      .then((data) => { if (!cancelled) setPrefs(data) })
+      .catch(() => { /* host unreachable: keep the local values */ })
+  }, [])
+
+  /**
+   * Merge a host-answered map into the local state — used by the
+   * "undo restore defaults" flow, where the RESTORE route hands back the
+   * whole authoritative file and the UI must stop showing the optimistic
+   * defaults it just wrote.
+   * @param values - the settings map the host read back.
+   */
+  const adopt = useCallback((values: Record<string, PrefValue>): void => {
+    setPrefs(prev => ({ ...(prev ?? {}), ...values }))
+  }, [])
+
+  return <PrefContext.Provider value={{ prefs, set, setMany, reload, adopt }}>{children}</PrefContext.Provider>
 }
 
 /**
@@ -111,12 +152,18 @@ export function useSettings(): {
   prefs: Record<string, PrefValue>
   set: (key: string, next: PrefValue) => void
   setMany: (values: Record<string, PrefValue>) => void
+  /** Re-read the authoritative map from the host. */
+  reload: () => void
+  /** Merge a host-answered map back in (undo-restore flow). */
+  adopt: (values: Record<string, PrefValue>) => void
 } {
-  const { prefs, set, setMany } = usePrefContext()
+  const { prefs, set, setMany, reload, adopt } = usePrefContext()
   return {
     prefs: prefs ?? {},
     set: (key, next) => set(key, next),
     setMany,
+    reload,
+    adopt,
   }
 }
 

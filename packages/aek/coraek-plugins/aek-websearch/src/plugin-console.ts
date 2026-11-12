@@ -16,7 +16,8 @@
  *   with an argument ARRAY), and shell metacharacters are rejected.
  * - Commands that change local data require an explicit `confirm: true` from
  *   the browser (the UI shows a second confirmation step).
- * - Bounded argv, 30s timeout, 1 MiB buffer, 64 KiB of returned text.
+ * - Bounded argv, 30s timeout, 256 MiB stdio guardrail, UNTRUNCATED output
+ *   (the console viewer virtualizes it; see 2026-11-12 Q round).
  *
  * The command catalogue is a complete static roster (so every capability is
  * visible even when the CLI cannot be spawned) PLUS top-level commands parsed
@@ -45,8 +46,15 @@ export const PLUGIN_CONSOLE_RUN_API_PATH = '/api/aek/plugin-console/run'
 const MAX_ARGS = 12
 const MAX_ARG_LEN = 128
 const TIMEOUT_MS = 30_000
-const MAX_BUFFER = 1024 * 1024
-const RETURN_LIMIT = 64 * 1024
+/**
+ * Captured-stdio cap per invocation (user rule 2026-11-12: the output must
+ * NOT be truncated — the viewer virtualizes it instead). 256 MiB is the OOM
+ * guardrail for a runaway command; realistic `aeksm` / `aekpm` output is far
+ * below it. When the cap is exceeded `execFile` itself fails, and the handler
+ * below still returns whatever partial stdout/stderr the child managed to
+ * produce.
+ */
+const MAX_BUFFER = 256 * 1024 * 1024
 
 /** Commands that only read state; everything else needs a confirmation. */
 const READ_ONLY = new Set([
@@ -423,16 +431,13 @@ export function registerPluginConsole(ctx: Context): void {
           cwd: workspaceRoot() ?? process.cwd(),
           env: { ...process.env },
         })
-        const clip = (value: string) => value.length > RETURN_LIMIT
-          ? `${value.slice(0, RETURN_LIMIT)}\n… (truncated)`
-          : value
         sendJson(res, 200, {
           plugin: plugin.id,
           command: check.args,
           mutating: check.mutating,
           exitCode: 0,
-          stdout: clip(String(stdout ?? '')),
-          stderr: clip(String(stderr ?? '')),
+          stdout: String(stdout ?? ''),
+          stderr: String(stderr ?? ''),
           durationMs: Date.now() - started,
           bin: cli.bin,
         })
@@ -443,8 +448,10 @@ export function registerPluginConsole(ctx: Context): void {
           command: check.args,
           mutating: check.mutating,
           exitCode: typeof failure.code === 'number' ? failure.code : 1,
-          stdout: String(failure.stdout ?? '').slice(0, RETURN_LIMIT),
-          stderr: String(failure.stderr ?? failure.message ?? 'command failed').slice(0, RETURN_LIMIT),
+          // Keep ANY partial output the child produced before dying — no
+          // truncation of the user's result, ever.
+          stdout: String(failure.stdout ?? ''),
+          stderr: String(failure.stderr ?? failure.message ?? 'command failed'),
           timedOut: failure.killed === true,
           durationMs: Date.now() - started,
           bin: cli.bin,

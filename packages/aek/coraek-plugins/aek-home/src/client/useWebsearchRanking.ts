@@ -8,6 +8,13 @@
  * comes from the GitHub-hosted file. When the host reports
  * `classified: false`, the caller renders a flat, ungrouped list.
  *
+ * Q round (2026-11-12): the board is INTERVAL-driven, not visit-driven. A
+ * module-level cache renders the last snapshot instantly on panel remount
+ * (no re-request, no layout shift, no skeleton flash), a background timer
+ * re-reads only after the configured TTL (default 24 h, the Web Search
+ * plugin setting), and the sidebar refresh button forces a fresh read via
+ * `force=1`.
+ *
  * @module @cheezmil/aek-home/src/client/useWebsearchRanking
  */
 import { useCallback, useEffect, useState } from 'react'
@@ -83,56 +90,137 @@ export interface RankingState {
   refresh: () => void
 }
 
-/** @param filter - the filter to send. @returns the request URL. */
-export function rankingQuery(filter: RankingFilter): string {
+/** Options controlling one read of the ranking board. */
+export interface RankingReadOptions {
+  /** Refresh interval in hours (the Web Search plugin setting, default 24). */
+  ttlHours?: number | undefined
+  /** Manual refresh: bypass the host cache entirely. */
+  force?: boolean | undefined
+  /**
+   * The external force signal (the sidebar refresh button, or the panel's
+   * own refresh). `> 0` forces a fresh read on that tick.
+   */
+  forceSignal?: number | undefined
+}
+
+/** @param filter - the filter to send. @param options - TTL / force. @returns the request URL. */
+export function rankingQuery(filter: RankingFilter, options: RankingReadOptions = {}): string {
   const query = new URLSearchParams({ free: filter.free })
   if (filter.phone) query.set('phone', '1')
   if (filter.card) query.set('card', '1')
+  if (options.ttlHours !== undefined) query.set('ttl', String(options.ttlHours))
+  if (options.force === true) query.set('force', '1')
   return `${RANKING_API}?${query.toString()}`
 }
+
+/**
+ * Module-level ranking cache (Q round): switching away from the Web Search
+ * page remounts the panel, and every remount used to re-request the board —
+ * which, after the host's 5-minute TTL, re-fetched GitHub every visit. The
+ * board is interval-driven now: the cached snapshot renders instantly on
+ * remount, and a background timer re-reads only once the TTL passes.
+ */
+interface CacheEntry {
+  snapshot: RankingSnapshot
+  /** When THIS client read succeeded (ms), not the host fetch time. */
+  readAtMs: number
+}
+const rankingCache = new Map<string, CacheEntry>()
+/** Key: the same filter values two mounts share. */
+function cacheKey(filter: RankingFilter): string {
+  return `${filter.free}:${filter.phone ? 1 : 0}:${filter.card ? 1 : 0}`
+}
+/** The interval a background re-read is allowed to idle before it runs. */
+const STALENESS_CHECK_MS = 60_000
 
 /** @param cause - unknown thrown value. @returns a displayable message. */
 function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
 }
 
+/** Default refresh interval in hours (the Web Search plugin setting default). */
+export const RANKING_TTL_DEFAULT_HOURS = 24
+
 /**
- * Read the remote ranking whenever the filter changes.
+ * Read the remote ranking with interval semantics (Q round).
+ *
+ * - A cache hit for the current filter renders INSTANTLY on mount: switching
+ *   back to the Web Search page never re-fetches, so the board neither flickers
+ *   nor causes a layout shift (skeletons show only on the very first read).
+ * - The host re-fetches GitHub at most every `ttlHours` (default 24) — the
+ *   `ttl` query parameter tells it the interval; the background timer below
+ *   only ever RE-READS the host route once that window has passed.
+ * - `forceSignal` (the sidebar refresh button) bumps on every user click and
+ *   triggers a `force=1` read that bypasses every cache.
+ *
  * @param filter - host-persisted filter (see `preferences.tsx`).
+ * @param options - TTL hours and the external force signal.
  * @returns the live ranking state.
  */
-export function useWebsearchRanking(filter: RankingFilter): RankingState {
-  const [snapshot, setSnapshot] = useState<RankingSnapshot | undefined>(undefined)
-  const [loading, setLoading] = useState(true)
+export function useWebsearchRanking(filter: RankingFilter, options: RankingReadOptions = {}): RankingState {
+  const [snapshot, setSnapshot] = useState<RankingSnapshot | undefined>(
+    () => rankingCache.get(cacheKey(filter))?.snapshot,
+  )
+  const [loading, setLoading] = useState<boolean>(
+    () => rankingCache.get(cacheKey(filter)) === undefined,
+  )
   const [error, setError] = useState<string | undefined>(undefined)
-  const [revision, setRevision] = useState(0)
+  const [manualTick, setManualTick] = useState(0)
   const { free, phone, card } = filter
+  const key = cacheKey({ free, phone, card })
+  const ttlHours = options.ttlHours
+  const forceSignal = options.forceSignal ?? 0
 
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true)
-    void fetch(rankingQuery({ free, phone, card }), {
-      headers: { accept: 'application/json' },
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
-        return await response.json() as RankingSnapshot
+    const ttlMs = (ttlHours ?? RANKING_TTL_DEFAULT_HOURS) * 3_600_000
+    const doRead = (opts: { force: boolean; silent: boolean }): void => {
+      if (!opts.silent) setLoading(true)
+      void fetch(rankingQuery({ free, phone, card }, { ttlHours, force: opts.force }), {
+        headers: { accept: 'application/json' },
+        signal: controller.signal,
       })
-      .then((data) => {
-        if (controller.signal.aborted) return
-        setSnapshot(data)
-        setError(undefined)
-        setLoading(false)
-      })
-      .catch((cause: unknown) => {
-        if (controller.signal.aborted) return
-        setError(messageOf(cause))
-        setLoading(false)
-      })
-    return () => { controller.abort() }
-  }, [free, phone, card, revision])
+        .then(async (response) => {
+          if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+          return await response.json() as RankingSnapshot
+        })
+        .then((data) => {
+          if (controller.signal.aborted) return
+          rankingCache.set(key, { snapshot: data, readAtMs: Date.now() })
+          setSnapshot(data)
+          setError(undefined)
+          if (!opts.silent) setLoading(false)
+        })
+        .catch((cause: unknown) => {
+          if (controller.signal.aborted) return
+          if (!opts.silent) {
+            setError(messageOf(cause))
+            setLoading(false)
+          }
+        })
+    }
+    const cached = rankingCache.get(key)
+    const forced = forceSignal > 0 || manualTick > 0
+    if (cached === undefined || forced) {
+      // First read ever, or the user's manual refresh (force bypasses even
+      // the host cache). A filter change is a cache MISS by key, so a plain
+      // read is enough there.
+      doRead({ force: forced, silent: forced && cached !== undefined })
+    }
+    // Background sweep: once the TTL window has passed, re-read SILENTLY —
+    // the visible board stays put until the fresh answer lands.
+    const timer = setInterval(() => {
+      const entry = rankingCache.get(key)
+      if (entry === undefined || Date.now() - entry.readAtMs < ttlMs) return
+      doRead({ force: true, silent: true })
+    }, STALENESS_CHECK_MS)
+    return () => {
+      controller.abort()
+      clearInterval(timer)
+    }
+  }, [free, phone, card, key, ttlHours, forceSignal, manualTick])
 
-  const refresh = useCallback(() => setRevision(value => value + 1), [])
+  /** Manual force read (kept for API compatibility with earlier panels). */
+  const refresh = useCallback(() => setManualTick(value => value + 1), [])
   return { snapshot, loading, error, refresh }
 }

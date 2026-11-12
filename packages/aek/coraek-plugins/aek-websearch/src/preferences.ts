@@ -10,6 +10,9 @@
  *
  * - `GET  /api/aek/preferences` → `{ [key]: value }` (all known settings)
  * - `POST /api/aek/preferences` → `{ key, value }` upserts ONE setting
+ * - `POST /api/aek/preferences/backup`  → snapshots the settings file before
+ *   a destructive "restore defaults" (2026-11-12 Q round)
+ * - `POST /api/aek/preferences/restore` → puts that snapshot back (undo)
  *
  * The value type is restricted to JSON primitives (string / number /
  * boolean): nested structures would invite schema drift nobody owns.
@@ -17,13 +20,17 @@
  * @module aek-websearch/preferences
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Context } from '@cheezmil/coraek/types'
 import { resolveAekHome } from '@cheezmil/coraek/home'
 
 /** The settings route the console talks to. */
 export const PREFERENCES_API_PATH = '/api/aek/preferences'
+/** Copies the current settings file before a destructive "restore defaults". */
+export const PREFERENCES_BACKUP_API_PATH = '/api/aek/preferences/backup'
+/** Puts the backup back over the settings file (undo the restore). */
+export const PREFERENCES_RESTORE_API_PATH = '/api/aek/preferences/restore'
 /** One stored setting value. */
 export type PrefValue = string | number | boolean
 
@@ -101,6 +108,44 @@ export function writePrefs(values: Record<string, PrefValue>): string {
   for (const [key, value] of Object.entries(values)) current[key] = value
   writeFileSync(file, JSON.stringify(current, null, 2) + '\n', 'utf-8')
   return file
+}
+
+/**
+ * The snapshot the "restore defaults" flow keeps next to the live file, so
+ * the user can undo the reset (user rule 2026-11-12: backup BEFORE reset,
+ * and the reset must be undoable).
+ * @returns the backup file path.
+ */
+export function backupPrefsFile(): string {
+  return `${prefsFile()}.backup`
+}
+
+/**
+ * Copy the live settings file to the backup snapshot. A missing live file is
+ * the normal first-run state: nothing to back up, and the call still succeeds.
+ * @returns whether a snapshot was written.
+ */
+export function backupPrefs(): boolean {
+  const target = backupPrefsFile()
+  mkdirSync(dirname(target), { recursive: true })
+  const current = readPrefs()
+  writeFileSync(target, JSON.stringify(current, null, 2) + '\n', 'utf-8')
+  return true
+}
+
+/**
+ * Put the backup snapshot back over the live settings file.
+ * @returns the restored settings map, or `undefined` when no snapshot exists.
+ */
+export function restorePrefs(): Record<string, PrefValue> | undefined {
+  const source = backupPrefsFile()
+  if (!existsSync(source)) return undefined
+  const parsed = JSON.parse(readFileSync(source, 'utf-8')) as unknown
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+  const file = prefsFile()
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, JSON.stringify(parsed, null, 2) + '\n', 'utf-8')
+  return readPrefs()
 }
 
 /**
@@ -191,4 +236,45 @@ export function registerPreferences(ctx: Context): void {
       send(res, 200, readPrefs())
     },
   }), 'aek-websearch: preferences API')
+  ctx.effect(() => server.register({
+    kind: 'exact',
+    path: PREFERENCES_BACKUP_API_PATH,
+    handler: (req, res) => {
+      if (req.method !== 'POST') {
+        res.setHeader('allow', 'POST')
+        send(res, 405, { code: 'method-not-allowed', message: 'use POST' })
+        return
+      }
+      try {
+        backupPrefs()
+      } catch {
+        // A disk failure means the backup cannot be promised; say so instead
+        // of silently continuing with the destructive default reset.
+        send(res, 500, { code: 'backup-failed', message: 'could not write the settings backup' })
+        return
+      }
+      send(res, 200, { ok: true })
+    },
+  }), 'aek-websearch: settings backup')
+  ctx.effect(() => server.register({
+    kind: 'exact',
+    path: PREFERENCES_RESTORE_API_PATH,
+    handler: (req, res) => {
+      if (req.method !== 'POST') {
+        res.setHeader('allow', 'POST')
+        send(res, 405, { code: 'method-not-allowed', message: 'use POST' })
+        return
+      }
+      try {
+        const restored = restorePrefs()
+        if (restored === undefined) {
+          send(res, 404, { code: 'no-backup', message: 'there is no settings backup to restore' })
+          return
+        }
+        send(res, 200, restored)
+      } catch {
+        send(res, 500, { code: 'restore-failed', message: 'could not restore the settings backup' })
+      }
+    },
+  }), 'aek-websearch: settings restore')
 }

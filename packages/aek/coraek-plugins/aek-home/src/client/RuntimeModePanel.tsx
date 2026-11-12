@@ -15,9 +15,12 @@
  *
  * @module @cheezmil/aek-home/src/client/RuntimeModePanel
  */
+import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
+import { formatDisplayPath, parsePathStyle } from './paths.ts'
+import { PREF_KEYS, usePref } from './preferences.tsx'
 import { css, cx } from './styles.ts'
 import { CopyButton, PanelCard, Spinner } from './ui-kit.tsx'
 import type { SlotEndpoint } from './useConsoleFacts.ts'
@@ -119,12 +122,21 @@ function HalfRow({ label, on, note, busyKey, base, onStart, onStop, onRestart }:
  * Render the instance manager.
  * @returns the panel surface.
  */
-export function RuntimeModePanel() {
+export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
   const { t, tf } = useI18n()
   const state = useInstances()
   const facts = useConsoleFacts()
+  // Q round: path display style (abbreviated ~/ · %USERPROFILE%\ vs full).
+  const [pathStyle] = usePref(PREF_KEYS.pathStyle, 'abbreviated', parsePathStyle)
+
+  // Sidebar-row refresh (Q round): re-read the instances and the facts.
+  useEffect(() => {
+    if (refreshSignal > 0) {
+      state.refresh()
+      facts.refresh()
+    }
+  }, [refreshSignal, state.refresh, facts.refresh])
   const current = state.status?.current.slot
-  const loading = state.status === undefined
   const health = state.health
 
   const endpointFor = (slot: Slot): SlotEndpoint | undefined => facts.facts?.endpoints.find(item => item.slot === slot)
@@ -183,24 +195,7 @@ export function RuntimeModePanel() {
   }
 
   return (
-    <PanelCard
-      title={t('runtime.title')}
-      subtitle={t('runtime.subtitle')}
-      actions={(
-        <>
-          {loading || state.busy !== undefined ? <Spinner /> : null}
-          <button
-            type="button"
-            className={css.iconButton}
-            onClick={() => { state.refresh(); facts.refresh() }}
-            title={t('common.refresh')}
-            aria-label={t('common.refresh')}
-          >
-            <Icon name="refresh" size={16} />
-          </button>
-        </>
-      )}
-    >
+    <PanelCard>
       <div className={css.cardBody}>
         <div className={css.instanceToolbar}>
           <span className={css.instanceDefault}>
@@ -307,9 +302,16 @@ export function RuntimeModePanel() {
 
         <div className={css.pathBox}>
           <span className={css.pathLabel}>{t('runtime.skillPath')}</span>
-          <code className={css.pathValue} title={facts.facts?.skillPath ?? ''}>
-            {facts.facts?.skillPath ?? t('common.loading')}
+          <code
+            className={css.pathValue}
+            title={facts.facts?.skillPath ?? ''}
+          >
+            {facts.facts?.skillPath !== undefined
+              ? formatDisplayPath(facts.facts.skillPath, facts.facts?.home, facts.facts?.platform, pathStyle)
+              : t('common.loading')}
           </code>
+          {/* Q round: the copy button ALWAYS copies the raw absolute path,
+              never the display form. */}
           <CopyButton value={facts.facts?.skillPath ?? ''} label={t('runtime.copyPath')} />
         </div>
       </div>

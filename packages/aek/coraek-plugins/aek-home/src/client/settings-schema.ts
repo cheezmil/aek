@@ -35,7 +35,7 @@ export interface SettingField {
   /** Which control to render. */
   kind: SettingKind
   /** Group id, used only for headings + in-page search. */
-  group: 'sidebar' | 'navigation' | 'general'
+  group: 'sidebar' | 'navigation' | 'general' | 'websearch'
   /** i18n key of the visible label. */
   labelKey: string
   /** i18n key of the hint under the control. */
@@ -143,7 +143,45 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     labelKey: 'settings.keyRetentionDays', hintKey: 'settings.keyRetentionDaysHint',
     default: 7, min: 1, max: 90, step: 1, unit: 'd',
   },
+  {
+    // Path display style (Q round): the console shows host-absolute paths
+    // (providers.yml, plugin dirs, …). The default shortens the home prefix to
+    // `~/` (posix) or `%USERPROFILE%\` (Windows, backslashes); "full" keeps the
+    // raw absolute path. Copy buttons always copy the RAW path.
+    key: 'aek-home.pathStyle', kind: 'select', group: 'general',
+    labelKey: 'settings.pathStyle', hintKey: 'settings.pathStyleHint',
+    default: 'abbreviated',
+    options: [
+      { value: 'abbreviated', labelKey: 'settings.pathStyle.abbreviated' },
+      { value: 'full', labelKey: 'settings.pathStyle.full' },
+    ],
+  },
 ]
+
+/**
+ * Plugin-owned setting rows (Q round: "each plugin gets its own settings
+ * page, not one giant Settings page"). A page appears only when a plugin
+ * actually has user-facing settings — no empty shells. The Web Search plugin
+ * owns the ranking refresh interval; its display filters stay on the search
+ * page itself.
+ */
+export const WEBSEARCH_SETTINGS_SCHEMA: readonly SettingField[] = [
+  {
+    key: 'aek-home.websearch.rankingTtlHours', kind: 'range', group: 'websearch',
+    labelKey: 'settings.websearchRankingTtl', hintKey: 'settings.websearchRankingTtlHint',
+    default: 24, min: 1, max: 168, step: 1, unit: 'h',
+  },
+]
+
+/**
+ * Every schema row that participates in "restore defaults" (Q round: the
+ * reset backs up the live settings file first, then writes these defaults;
+ * the undo banner calls the host restore route).
+ * @returns the combined base + plugin rows.
+ */
+export function allSettingFields(): readonly SettingField[] {
+  return [...SETTINGS_SCHEMA, ...WEBSEARCH_SETTINGS_SCHEMA]
+}
 
 /**
  * Clamp and round one raw value to a field's declared range.
