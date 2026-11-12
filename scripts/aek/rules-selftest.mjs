@@ -15,6 +15,9 @@
  *   - `plugin-class.mjs set` without --confirm stays a dry run
  *   - `aek.external` wrapper with an in-process entry / missing spdx /
  *     off-whitelist attach.kind → external gate fails; legal wrapper passes
+ *   - `aek.runtime` block: legal share+isolate passes; missing isolate.bin /
+ *     absolute-or-shell bin / combined with aek.external / share without an
+ *     in-process entry → external gate (runtime face) fails
  *
  * Usage: node scripts/aek/rules-selftest.mjs [--json]
  *
@@ -34,7 +37,7 @@ const NODE = process.execPath
 
 /**
  * Build a fake repository with one plugin and (optionally) a publish roster.
- * @param {{ distribution?: string | null, roster?: boolean, external?: Record<string, unknown>, main?: string, exports?: Record<string, unknown> }} options - shape.
+ * @param {{ distribution?: string | null, roster?: boolean, external?: Record<string, unknown>, main?: string, exports?: Record<string, unknown>, runtime?: Record<string, unknown> }} options - shape.
  * @returns {string} the throwaway root.
  */
 function fakeRepo(options) {
@@ -45,6 +48,7 @@ function fakeRepo(options) {
     ? {}
     : { distribution: options.distribution }
   if (options.external !== undefined) aek.external = options.external
+  if (options.runtime !== undefined) aek.runtime = options.runtime
   const manifest = { name: '@cheezmil/fake', version: '0.0.1', aek }
   if (options.main !== undefined) manifest.main = options.main
   if (options.exports !== undefined) manifest.exports = options.exports
@@ -213,6 +217,75 @@ function run() {
       const result = verifyBuildRules({ root, only: 'external' })
       const problem = result.gates[0]?.problems.join(' ') ?? ''
       record('external with exports["."] fails', !result.ok && problem.includes('exports["."]'), problem.slice(0, 120))
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  }
+
+  // 13. A legal aek.runtime block (share + spawnable isolate bin, in-process
+  //     entry present) passes the gate (runtime face of the external gate).
+  {
+    const root = fakeRepo({
+      distribution: 'A1',
+      main: './lib/index.js',
+      runtime: { share: true, isolate: { bin: 'bin/aekws.mjs', spdx: 'MIT' } },
+    })
+    try {
+      const result = verifyBuildRules({ root, only: 'external' })
+      record('legal aek.runtime passes', result.ok, result.gates[0]?.problems.join(' ') ?? '')
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  }
+
+  // 14. An isolate topology without a spawnable bin is a violation.
+  {
+    const root = fakeRepo({
+      distribution: 'A1',
+      main: './lib/index.js',
+      runtime: { isolate: { spdx: 'MIT' } },
+    })
+    try {
+      const result = verifyBuildRules({ root, only: 'external' })
+      const problem = result.gates[0]?.problems.join(' ') ?? ''
+      record('runtime isolate missing bin fails', !result.ok && problem.includes('bin'), problem.slice(0, 120))
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  }
+
+  // 15. share with no in-process entry is a violation (share needs main/exports).
+  {
+    const root = fakeRepo({
+      distribution: 'A1',
+      runtime: { isolate: { bin: 'bin/aekws.mjs' } },
+    })
+    try {
+      const result = verifyBuildRules({ root, only: 'external' })
+      const problem = result.gates[0]?.problems.join(' ') ?? ''
+      record('runtime share without entry fails', !result.ok && problem.includes('in-process entry'), problem.slice(0, 120))
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  }
+
+  // 16. aek.runtime must not ride on an aek.external wrapper.
+  {
+    const root = fakeRepo({
+      distribution: 'A1',
+      external: { spdx: 'AGPL-3.0-or-later', attach: { kind: 'mcp-stdio', command: 'fake-provider' } },
+      runtime: { share: false, isolate: { bin: 'bin/fake.mjs' } },
+    })
+    try {
+      const result = verifyBuildRules({ root, only: 'external' })
+      const problem = result.gates[0]?.problems.join(' ') ?? ''
+      record('runtime on external wrapper fails', !result.ok && problem.includes('aek.external'), problem.slice(0, 120))
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  }
+
+  // 17. An absolute / shell-bearing isolate bin is rejected.
+  {
+    const root = fakeRepo({
+      distribution: 'A1',
+      main: './lib/index.js',
+      runtime: { isolate: { bin: '/usr/local/bin/aekws' } },
+    })
+    try {
+      const result = verifyBuildRules({ root, only: 'external' })
+      const problem = result.gates[0]?.problems.join(' ') ?? ''
+      record('absolute runtime bin fails', !result.ok && problem.includes('relative'), problem.slice(0, 120))
     } finally { rmSync(root, { recursive: true, force: true }) }
   }
 }

@@ -37,6 +37,8 @@ export interface PluginMeta {
   distribution: PluginClass
   /** The `aek.external` block; absent when the package declares none. */
   external?: ExternalMeta
+  /** The `aek.runtime` block; absent when the package declares none. */
+  runtime?: RuntimeMeta
   languages: LanguageScan
   description: string
 }
@@ -68,6 +70,34 @@ export declare function externalMetaOf(manifest: Record<string, unknown>): Exter
 
 /** One actionable line per problem of a bad `aek.external` block. */
 export declare function externalViolationMessages(result: ExternalMeta, packageName: string): string[]
+
+/**
+ * Validated view of an `aek.runtime` block: a TS/JS AEK capability (class ①)
+ * that MAY also run as a separate process. `share` stays the in-process,
+ * memory-lean default; `isolate` declares a spawnable `bin` entry that speaks
+ * `aek-capability/1` under the external supervisor.
+ */
+export interface RuntimeMeta {
+  /** Absent block, or a fully legal block. */
+  ok: boolean
+  /** The block, `null` when absent. */
+  value: Record<string, unknown> | null
+  /** Deterministic, human-readable problems. */
+  problems: string[]
+}
+
+/** Read and validate the `aek.runtime` block (optional marker). */
+export declare function runtimeMetaOf(manifest: Record<string, unknown>): RuntimeMeta
+
+/** One actionable line per problem of a bad `aek.runtime` block. */
+export declare function runtimeViolationMessages(result: RuntimeMeta, packageName: string): string[]
+
+/** Assert the runtime-marker rule for the whole tree. */
+export declare function checkRuntimePackages(repoRoot: string): {
+  ok: boolean
+  violations: string[]
+  packages: PluginMeta[]
+}
 
 /** Assert the external-wrapper rule for the whole tree. */
 export declare function checkExternalPackages(repoRoot: string): {

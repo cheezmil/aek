@@ -601,6 +601,12 @@ function AboutPanel({ inventory }: { inventory: InventoryState }) {
   const facts = useConsoleFacts()
   const caps = useCapabilities()
   const providers = caps.facts?.providers ?? []
+  // Selective class-① runtime-mode choices (id → 'share' | 'isolate'); the
+  // host serves them with the capability registry, older hosts send none.
+  const runtimeChoices = Object.values(caps.facts?.runtime?.choices ?? {})
+  const sharedCount = runtimeChoices.filter(mode => mode === 'share').length
+  const isolatedCount = runtimeChoices.length - sharedCount
+  const showExternalSection = providers.length > 0 || runtimeChoices.length > 0
   const snapshot = inventory.snapshot
   const plugins = snapshot?.packages.filter(pkg => pkg.group === 'plugin') ?? []
   const base = snapshot?.packages.filter(pkg => pkg.group === 'base') ?? []
@@ -691,28 +697,37 @@ function AboutPanel({ inventory }: { inventory: InventoryState }) {
         </ul>
         {base.length === 0 ? <div className={css.emptyState}>{t('about.empty')}</div> : null}
 
-        {/* EXTERNAL capability providers: shown only when the host reports at
-            least one. The compliance line is host-rendered from the provider's
+        {/* EXTERNAL capability providers: shown when the host reports at least
+            one provider, or when the operator has selective runtime-mode
+            choices. The compliance line is host-rendered from the provider's
             own self-description — the client bundle carries no upstream facts. */}
-        {providers.length > 0 ? (
+        {showExternalSection ? (
           <>
             <div className={css.divider} />
             <h3 className={css.sectionTitle}>{t('about.external.title')}</h3>
             <div className={css.hint}>{t('about.external.hint')}</div>
-            <ul className={css.packageList}>
-              {providers.map(provider => (
-                <li key={provider.id} className={css.capabilityRow}>
-                  <div className={css.packageRow}>
-                    <span className={css.providerName}>{displayName(provider.name)}</span>
-                    <span className={css.countChip}>{provider.state}</span>
-                    {provider.spdx !== null
-                      ? <span className={css.stackChip} title={provider.spdx}>{provider.spdx}</span>
-                      : null}
-                  </div>
-                  <div className={css.capabilityLine}>{provider.compliance}</div>
-                </li>
-              ))}
-            </ul>
+            {runtimeChoices.length > 0
+              ? <div className={css.hint}>{tf('about.external.runtimeChoices', { shared: sharedCount, isolated: isolatedCount })}</div>
+              : null}
+            {providers.length > 0 ? (
+              <ul className={css.packageList}>
+                {providers.map(provider => (
+                  <li key={provider.id} className={css.capabilityRow}>
+                    <div className={css.packageRow}>
+                      <span className={css.providerName}>{displayName(provider.name)}</span>
+                      <span className={css.countChip}>{provider.state}</span>
+                      {provider.spdx !== null
+                        ? <span className={css.stackChip} title={provider.spdx}>{provider.spdx}</span>
+                        : null}
+                      {provider.runtime !== undefined
+                        ? <span className={css.countChip} title={t('about.external.runtimeIsolated')}>{provider.runtime.reason}</span>
+                        : null}
+                    </div>
+                    <div className={css.capabilityLine}>{provider.compliance}</div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </>
         ) : null}
       </div>

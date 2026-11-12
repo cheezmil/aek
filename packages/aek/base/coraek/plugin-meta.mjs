@@ -127,6 +127,13 @@ export function classViolationMessage(result, packageName) {
  */
 
 /**
+ * @typedef {object} RuntimeMeta
+ * @property {boolean} ok - whether the block is absent or fully legal.
+ * @property {Record<string, unknown> | null} value - the block, null when absent.
+ * @property {string[]} problems - deterministic, human-readable.
+ */
+
+/**
  * Read and validate the `aek.external` block, the marker that a package is a
  * THIN WRAPPER around an external capability provider.
  *
@@ -228,6 +235,110 @@ export function externalViolationMessages(result, packageName) {
   return result.problems.map(problem => `${where} — ${problem}`)
 }
 
+/** Whether the manifest exposes an in-process runtime entry. */
+function hasInProcessEntry(manifest) {
+  if (typeof manifest.main === 'string' && manifest.main.length > 0) return true
+  const ex = manifest.exports
+  if (typeof ex === 'string' && ex.length > 0) return true
+  if (ex !== undefined && ex !== null && typeof ex === 'object' && !Array.isArray(ex)) {
+    const root = ex['.']
+    if (typeof root === 'string' && root.length > 0) return true
+    if (root !== undefined && root !== null && typeof root === 'object' && !Array.isArray(root)) {
+      return Object.keys(root).some(key => !key.startsWith('.'))
+    }
+  }
+  return false
+}
+
+/**
+ * Read and validate the `aek.runtime` block, the marker that a TS/JS AEK
+ * capability (class ①) MAY also run as a separate process.
+ *
+ * `share` (default true) keeps the capability in-process on the shared coraek
+ * Node runtime — the memory-lean default. `isolate` declares that the
+ * capability can ALSO be spawned as its own process (the `isolate` bin),
+ * speaking `aek-capability/1` under the external supervisor. A capability
+ * offers `isolate` only when it ships that `bin`.
+ *
+ * The block is optional: ordinary in-process plugins without it are untouched.
+ * A package that already carries `aek.external` (a thin out-of-process wrapper)
+ * must NOT also declare `aek.runtime` — it is isolated by construction.
+ * @param {Record<string, unknown>} manifest - parsed package.json.
+ * @returns {RuntimeMeta}
+ */
+export function runtimeMetaOf(manifest) {
+  const aek = manifest.aek
+  const block = aek !== null && typeof aek === 'object' && !Array.isArray(aek)
+    ? /** @type {Record<string, unknown>} */ (aek).runtime
+    : undefined
+  if (block === undefined || block === null) {
+    return { ok: true, value: null, problems: [] }
+  }
+  if (typeof block !== 'object' || Array.isArray(block)) {
+    return { ok: false, value: block, problems: ['aek.runtime must be an object'] }
+  }
+  /** @type {string[]} */
+  const problems = []
+
+  if (externalMetaOf(manifest).value !== null) {
+    problems.push('aek.runtime must not be declared on aek.external wrapper packages (out-of-process by construction; drop the block)')
+  }
+
+  if (block.share !== undefined && typeof block.share !== 'boolean') {
+    problems.push(`aek.runtime.share must be a boolean (got ${JSON.stringify(block.share)})`)
+  }
+
+  const isolate = block.isolate
+  if (isolate !== undefined) {
+    if (isolate === null || typeof isolate !== 'object' || Array.isArray(isolate)) {
+      problems.push('aek.runtime.isolate must be an object')
+    } else {
+      const bin = isolate.bin
+      if (typeof bin !== 'string' || bin.length === 0) {
+        problems.push('aek.runtime.isolate.bin is required (the process entry the host spawns, e.g. "bin/aekws.mjs")')
+      } else if (!isSafeCommand(bin)) {
+        problems.push(`aek.runtime.isolate.bin must be a relative, shell-free path (got '${bin}')`)
+      }
+      if (isolate.spdx !== undefined && !isSpdxExpression(isolate.spdx)) {
+        problems.push(`aek.runtime.isolate.spdx is not a valid SPDX expression (got '${isolate.spdx}')`)
+      }
+    }
+  }
+
+  // share is on by default (undefined means "still shareable"), so an
+  // in-process entry must exist unless it is explicitly turned off.
+  if (block.share !== false && !hasInProcessEntry(manifest)) {
+    problems.push('aek.runtime.share packages must expose an in-process entry (`main` or an `exports["."]` runtime entry)')
+  }
+
+  if (problems.length > 0) return { ok: false, value: block, problems }
+  return { ok: true, value: block, problems: [] }
+}
+
+/**
+ * Explain a bad `aek.runtime` declaration in a way a developer can act on.
+ * @param {RuntimeMeta} result - result of `runtimeMetaOf`.
+ * @param {string} packageName - package name for the message.
+ * @returns {string[]} one line per problem.
+ */
+export function runtimeViolationMessages(result, packageName) {
+  const where = `${packageName}: package.json → aek.runtime`
+  return result.problems.map(problem => `${where} — ${problem}`)
+}
+
+/**
+ * Assert the runtime-marker rule for the whole tree.
+ * @param {string} repoRoot - absolute repository root.
+ * @returns {{ ok: boolean, violations: string[], packages: PluginMeta[] }} result.
+ */
+export function checkRuntimePackages(repoRoot) {
+  const packages = readPluginMeta(repoRoot, { languages: false })
+  const violations = packages
+    .filter(pkg => pkg.runtime !== undefined && !pkg.runtime.ok)
+    .flatMap(pkg => runtimeViolationMessages(pkg.runtime, pkg.packageName))
+  return { ok: violations.length === 0, violations, packages }
+}
+
 /**
  * Assert the external-wrapper rule for the whole tree.
  * @param {string} repoRoot - absolute repository root.
@@ -316,6 +427,7 @@ export function clearLanguageCache() {
  * @property {boolean} private - the npm `private` flag.
  * @property {PluginClass} distribution - declared class and validity.
  * @property {ExternalMeta} [external] - the `aek.external` block, absent when undeclared.
+ * @property {RuntimeMeta} [runtime] - the `aek.runtime` block, absent when undeclared.
  * @property {LanguageScan} languages - detected implementation languages.
  * @property {string} description - package description.
  */
@@ -361,6 +473,7 @@ export function readPluginMeta(repoRoot, options = {}) {
       ? { languages: [], primary: 'unknown', files: 0, truncated: false }
       : scanLanguages(abs, options)
     const external = externalMetaOf(manifest)
+    const runtime = runtimeMetaOf(manifest)
     const meta = {
       id: basename(dir),
       dir,
@@ -372,6 +485,7 @@ export function readPluginMeta(repoRoot, options = {}) {
       description: typeof manifest.description === 'string' ? manifest.description : '',
     }
     if (external.value !== null) meta.external = external
+    if (runtime.value !== null) meta.runtime = runtime
     return meta
   })
 }

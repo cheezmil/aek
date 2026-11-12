@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { CAPABILITIES_API_PATH, CAPABILITIES_STOP_API_PATH, registerCapabilityApi } from '../src/capability-api.ts'
 import { CapabilitySupervisor } from '../external-supervisor.mjs'
+import { writeRuntimeMode } from '../runtime.mjs'
 
 /**
  * Route-level composition test: the real route module, the real supervisor,
@@ -115,7 +116,7 @@ describe('capability api routes', () => {
   it('GET /api/aek/capabilities lists the registry with compliance lines', async () => {
     const harness = fakeCtx()
     const supervisor = new CapabilitySupervisor({ aekHome })
-    registerCapabilityApi(harness.ctx as never, { supervisor })
+    registerCapabilityApi(harness.ctx as never, { supervisor, aekHome })
     await supervisor.register('fury-like', {
       protocol: 'aek-capability/1',
       name: 'fury-like',
@@ -132,7 +133,15 @@ describe('capability api routes', () => {
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(String(res.ended)) as {
       protocol: string
-      providers: { id: string; state: string; spdx: string | null; compliance: string; installPolicy: string | null }[]
+      runtime: { defaultMode: string; choices: Record<string, string> }
+      providers: {
+        id: string
+        state: string
+        spdx: string | null
+        compliance: string
+        installPolicy: string | null
+        runtime?: { mode: string; reason: string }
+      }[]
     }
     expect(body.protocol).toBe('aek-capability/1')
     expect(body.providers).toHaveLength(1)
@@ -142,6 +151,27 @@ describe('capability api routes', () => {
     expect(body.providers[0].compliance).toContain('separate process')
     expect(body.providers[0].compliance).toContain('AGPL-3.0-or-later')
     expect(body.providers[0].compliance).toContain('not part of the AEK host process')
+    // A registered provider is always out-of-process, and a strong-copyleft
+    // license makes it license-forced.
+    expect(body.providers[0].runtime).toEqual({ mode: 'isolate', reason: 'license-forced' })
+    expect(body.runtime.defaultMode).toBe('share')
+    expect(body.runtime.choices).toEqual({})
+    harness.stopAll()
+  })
+
+  it('GET /api/aek/capabilities surfaces selective class-① runtime choices', async () => {
+    const harness = fakeCtx()
+    const supervisor = new CapabilitySupervisor({ aekHome })
+    registerCapabilityApi(harness.ctx as never, { supervisor, aekHome })
+    expect(writeRuntimeMode(aekHome, 'aek-websearch', 'isolate').ok).toBe(true)
+
+    const route = harness.routes.find(candidate => candidate.path === CAPABILITIES_API_PATH)
+    expect(route).toBeDefined()
+    const res = fakeRes()
+    await route?.handler({ method: 'GET' } as never, res as never)
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(String(res.ended)) as { runtime: { choices: Record<string, string> } }
+    expect(body.runtime.choices['aek-websearch']).toBe('isolate')
     harness.stopAll()
   })
 

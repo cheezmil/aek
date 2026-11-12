@@ -30,11 +30,15 @@ export interface CapabilityProvider {
   source: string | null
   /** The host-rendered compliance sentence (the "form"). */
   compliance: string
+  /** The provider's runtime topology (always isolate; protocol-generic). */
+  runtime?: { mode: string; reason: string }
 }
 
 /** The read-only capability snapshot. */
 export interface CapabilityFacts {
   protocol: string
+  /** The selective class-① runtime-mode surface (absent on older hosts). */
+  runtime?: { defaultMode: string; choices: Record<string, string> }
   providers: CapabilityProvider[]
 }
 

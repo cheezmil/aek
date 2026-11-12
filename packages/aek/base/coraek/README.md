@@ -117,6 +117,38 @@ loading (bundle + `apply(ctx)`), which this layer must never intercept.
   intentionally thin: install / download / start are operator actions, not
   host actions.
 
+### Selective runtime mode (class ①: `share` ↔ `isolate`)
+
+Our own TS/JS AEK plugins default to `share` — in-process on the shared coraek
+Node runtime, the memory-lean topology. The operator may **selectively** switch
+one capability to `isolate` (its own process, speaking `aek-capability/1`
+under the supervisor above). Strong-copyleft and native capabilities are
+`isolate`-only and never appear in the choice store.
+
+- **Manifest marker** (`aek.runtime` in `package.json`, validated by
+  `plugin-meta.mjs` + the `external` gate's runtime face). `share` defaults to
+  on and needs an in-process entry (`main` / `exports["."]`); `isolate`
+  declares a spawnable `bin` (relative, shell-free). A package may not
+  combine `aek.runtime` with `aek.external` (out-of-process by construction).
+- **Policy core** (`runtime.mjs`, zero-dependency). `resolveRuntimeMode` is a
+  pure decision table: `license-forced` > `runtime-forced` > `user-select` >
+  `default-share`. The user's selective choices live in
+  `<AEK_HOME>/runtime-modes.json` (`readRuntimeModes` / `writeRuntimeMode`),
+  derived through `@cheezmil/coraek/home` — never hardcoded.
+- **Host API** (`src/capability-api.ts`). `GET /api/aek/capabilities` also
+  returns `runtime: { defaultMode, choices }` and a per-provider
+  `runtime: { mode, reason }` block; the aek-home About panel shows the
+  choice counts and the reason chip.
+- **Operator CLI** (`aek runtime`, `src/commands/runtime.ts`). `list` /
+  `status <id>` are read-only; `set <id> share|isolate` is a write and needs
+  `--confirm`. A forced capability refuses `set share` with its reason; a
+  capability without `aek.runtime.isolate.bin` refuses `set isolate`.
+
+The `isolate` topology reuses the external supervisor's spawn / adopt /
+dispose machinery unchanged (no new protocol); the `share` topology is the
+pre-existing in-process loading. The host loader's import-vs-spawn switch for
+a capability set to `isolate` is the remaining live-verification piece.
+
 ## Model Experience
 
 No effect on model requests, token usage, or KV-cache behavior. The package

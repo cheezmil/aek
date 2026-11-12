@@ -14,7 +14,10 @@
  *   - publish   no A2 package appears in any publish / installable roster
  *   - external  every `aek.external` wrapper is structurally out-of-process:
  *               required provider license (`spdx`), whitelisted `attach.kind`,
- *               and NO in-process entry point (`main` / `exports["."]`)
+ *               and NO in-process entry point (`main` / `exports["."]`);
+ *               plus the runtime face: every `aek.runtime` block is legal
+ *               (`isolate.bin` relative + shell-free, `share` keeps an
+ *               in-process entry, never combined with `aek.external`)
  *
  * SAFETY: no arguments = read-only check. `--json` for CI. `--only <gate>`
  * narrows the run. `--skip-signing` is ONLY for pure source compiles that
@@ -30,7 +33,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { checkExternalPackages, readPluginMeta } from '../../packages/aek/base/coraek/plugin-meta.mjs'
+import { checkExternalPackages, checkRuntimePackages, readPluginMeta } from '../../packages/aek/base/coraek/plugin-meta.mjs'
 import { runCheck, repoRoot } from './plugin-class.mjs'
 import { resolveSigningIdentity, setupGuide } from './signing-identity.mjs'
 
@@ -68,14 +71,18 @@ export function checkPublishScope(root = repoRoot()) {
 
 /**
  * Structural half of the external-capability license boundary: every
- * `aek.external` wrapper must keep its provider out-of-process. Reuses the
- * shared validator in `plugin-meta.mjs` so there is one source of truth.
+ * `aek.external` wrapper must keep its provider out-of-process, and every
+ * `aek.runtime` block must stay legal (the selective share/isolate marker for
+ * TS/JS capabilities). Reuses the shared validators in `plugin-meta.mjs` so
+ * there is one source of truth.
  * @param {string} root - repository root.
  * @returns {{ ok: boolean, problems: string[] }} result.
  */
 export function checkExternalGate(root = repoRoot()) {
-  const result = checkExternalPackages(root)
-  return { ok: result.ok, problems: result.violations }
+  const external = checkExternalPackages(root)
+  const runtime = checkRuntimePackages(root)
+  const problems = [...external.violations, ...runtime.violations]
+  return { ok: external.ok && runtime.ok, problems }
 }
 
 /**
@@ -142,7 +149,11 @@ export function assertBuildRules(options = {}) {
       lines.push('    · 必填 aek.external.spdx（provider 许可证，如 "AGPL-3.0-or-later"）；')
       lines.push('    · attach.kind 限白名单（mcp-stdio / jsonrpc-stdio / http / cli）；')
       lines.push('    · 不得声明 main 或 exports["."] 运行时入口（host 永远不能 import 到 provider 代码）。')
-      lines.push('  详见 packages/aek/base/coraek/external-supervisor.mjs 的模块说明。')
+      lines.push('  TS/JS 能力包（aek.runtime，选择性 share/isolate）必须合法：')
+      lines.push('    · aek.runtime.isolate 必填相对、无 shell 元字符的 bin（宿主将 spawn 它）；')
+      lines.push('    · share（缺省为开）须保留进程内入口 main / exports["."]；')
+      lines.push('    · 不得与 aek.external 同时声明（外部包天生出进程）。')
+      lines.push('  详见 packages/aek/base/coraek/external-supervisor.mjs 与 runtime.mjs 的模块说明。')
     }
   }
   lines.push('', '  单独复查（只读）：node scripts/aek/verify-build-rules.mjs', '')

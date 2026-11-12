@@ -27,6 +27,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { CapabilitySupervisor } from '../external-supervisor.mjs'
+import { readRuntimeModes, isStrongCopyleft } from '../runtime.mjs'
+import { resolveAekHome } from '../home.mjs'
 
 /** Routes owned by this module. */
 export const CAPABILITIES_API_PATH = '/api/aek/capabilities'
@@ -137,14 +139,19 @@ function serverOf(ctx: Context): {
  *
  * @param ctx - the coraek plugin context.
  * @param options - injection seam; a test may supply its own supervisor bound
- *   to a throwaway home. Production callers pass nothing and get the default
- *   (which resolves the real AEK home).
+ *   to a throwaway home, and/or an explicit `aekHome` for the runtime-mode
+ *   store. Production callers pass nothing and get the defaults (which resolve
+ *   the real AEK home).
  */
-export function registerCapabilityApi(ctx: Context, options: { supervisor?: CapabilitySupervisor } = {}): void {
+export function registerCapabilityApi(
+  ctx: Context,
+  options: { supervisor?: CapabilitySupervisor; aekHome?: string } = {},
+): void {
   const server = serverOf(ctx)
   if (server === undefined) return
 
   const supervisor = options.supervisor ?? new CapabilitySupervisor()
+  const aekHome = options.aekHome ?? resolveAekHome()
   ctx.effect(() => () => supervisor.stopAllNow(), 'coraek: capability supervisor shutdown')
   ctx.effect(() => {
     const unsubscribers = [
@@ -154,8 +161,15 @@ export function registerCapabilityApi(ctx: Context, options: { supervisor?: Capa
         handler: async (_req, res) => {
           try {
             const providers = await supervisor.statusAll()
+            const choices = readRuntimeModes(aekHome)
             sendJson(res, 200, {
               protocol: 'aek-capability/1',
+              runtime: {
+                // The selective class-① choices (id → 'share' | 'isolate').
+                // Class ②/③ are isolate-only and never appear here.
+                defaultMode: 'share',
+                choices,
+              },
               providers: providers.map(row => ({
                 id: row.id,
                 state: row.state,
@@ -168,6 +182,11 @@ export function registerCapabilityApi(ctx: Context, options: { supervisor?: Capa
                 spdx: row.declared.spdx ?? null,
                 source: row.declared.source ?? null,
                 attach: row.declared.attach,
+                // Registered providers are always out-of-process (classes ②/③).
+                runtime: {
+                  mode: 'isolate',
+                  reason: isStrongCopyleft(row.declared.spdx) ? 'license-forced' : 'runtime-forced',
+                },
                 compliance: CapabilitySupervisor.complianceLine(row),
               })),
             })

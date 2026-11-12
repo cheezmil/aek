@@ -65,6 +65,10 @@
     "./external-supervisor": {
       "types": "./external-supervisor.d.mts",
       "default": "./external-supervisor.mjs"
+    },
+    "./runtime": {
+      "types": "./runtime.d.mts",
+      "default": "./runtime.mjs"
     }
   },
   "dsh": {
@@ -121,7 +125,9 @@
     "external.mjs",
     "external.d.mts",
     "external-supervisor.mjs",
-    "external-supervisor.d.mts"
+    "external-supervisor.d.mts",
+    "runtime.mjs",
+    "runtime.d.mts"
   ],
   "oclif": {
     "bin": "aek",
