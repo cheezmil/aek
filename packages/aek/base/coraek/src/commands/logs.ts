@@ -30,7 +30,7 @@ const SOURCE_OPTIONS = ['desktop', 'web', 'all'] as const
 const RAW_CONSOLE_FILES = ['web.log', 'web.err.log'] as const
 
 /** pino level numbers (web-host.log lines) to words. */
-const PINO_LEVELS: Record<number, string> = { 10: 'FATAL', 20: 'ERROR', 30: 'WARN', 40: 'INFO', 50: 'DEBUG', 60: 'TRACE' }
+const PINO_LEVELS: Record<number, string> = { 10: 'TRACE', 20: 'DEBUG', 30: 'INFO', 40: 'WARN', 50: 'ERROR', 60: 'FATAL' }
 /** Keys that are pino envelope, not operator content. */
 const PINO_ENVELOPE = new Set(['level', 'time', 'msg', 'pid', 'hostname', 'v'])
 
