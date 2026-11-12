@@ -11,7 +11,11 @@
  *
  * It never fights over the port: if the slot's own server is already up (a
  * `desktop.mjs` / `start-release` session, the arbiter, a manual
- * `launch.mjs web`), it just waits. Only when the port is free does it start a
+ * `launch.mjs web`), it just waits. When the holder is NOT this
+ * supervisor's own child, it says so loudly once (pid + command line + the
+ * kill path) — a foreign holder may be missing the launcher flags this
+ * supervisor would pass (e.g. `--trusted-host`), which degrades the backend
+ * silently. Only when the port is free does it start a
  * server itself.
  *
  * Default (no arguments) is a READ-ONLY check that prints the state and exits —
@@ -23,6 +27,7 @@
  *   node scripts/aek/serve-slot.mjs --serve         # supervise until SIGTERM
  */
 import { spawn } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { SLOTS, slotConfig, slotWebUp, slotHome, listenPids } from './shared-logic.mjs'
 
 const POLL_MS = 15_000
@@ -47,9 +52,29 @@ if (!serve) {
   process.exit(0)
 }
 
+/**
+ * Describe the process holding a port (pid + command line), for the loud
+ * foreign-holder warning. Never throws: the supervisor must not die on a
+ * flaky `ps`.
+ * @param pids - pids from `listenPids`.
+ * @returns a short human-readable line, or '' when nothing is describable.
+ */
+function holderDescription(pids) {
+  const parts = []
+  for (const pid of pids) {
+    let detail = ''
+    try {
+      detail = execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8', timeout: 3000 }).trim()
+    } catch { /* ps failed (race: the holder died between check and ps) */ }
+    parts.push(`pid ${String(pid)}${detail ? ' — ' + detail.slice(0, 200) : ' (command unknown)'}`)
+  }
+  return parts.join('; ')
+}
+
 let stopping = false
 let timer = null
 let child = null
+let foreignHoldersReported = false
 
 /**
  * Wait, but let a signal cut the wait short.
@@ -71,13 +96,28 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 
 while (!stopping) {
   if (slotWebUp(slot)) {
-    console.log(`[serve] ${slot} web already up on ${cfg.webPort} — waiting`)
+    if (child !== null) {
+      // Our own child is up — the quiet, expected case.
+      foreignHoldersReported = false
+      console.log(`[serve] ${slot} web up on ${cfg.webPort} (our pid ${String(child.pid)}) — waiting`)
+    } else if (!foreignHoldersReported) {
+      // Someone ELSE answers on the slot port: a stuck dev-era boot, a manual
+      // session, or an orphaned launcher. Waiting on that is silent data loss:
+      // the holder may lack the launcher flags this supervisor would pass
+      // (e.g. --trusted-host), which degrades the backend without any error.
+      // Report it once, loudly, with the kill path; keep waiting afterwards.
+      const holders = listenPids(cfg.webPort)
+      console.warn(`[serve] WARNING: ${cfg.webPort} is held by a process that is not this supervisor's child: ${holderDescription(holders) || '(holder gone)'}`)
+      console.warn(`[serve] The slot backend may be degraded (missing launcher flags such as --trusted-host). To hand the port back to the supervisor: kill ${holders.map(String).join(' ')} (or reload the slot's LaunchAgent). The supervisor keeps waiting until the port is free.`)
+      foreignHoldersReported = true
+    }
     await sleep(POLL_MS)
     continue
   }
 
-  // The port is taken but not by us (a foreign app, or a stuck socket). Do NOT
-  // start a server that can only fail: wait until the port is really free.
+  foreignHoldersReported = false
+  // The port is taken but not answering (a foreign app, or a stuck socket). Do
+  // NOT start a server that can only fail: wait until the port is really free.
   if (listenPids(cfg.webPort).length > 0) {
     console.log(`[serve] ${cfg.webPort} is held by another process — waiting`)
     await sleep(POLL_MS)
