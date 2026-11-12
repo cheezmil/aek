@@ -85,9 +85,14 @@ Slots: aek (default) -> ~/.aek, next -> ~/.aek-next; ports 1685/1686 vs 1687/168
 function invocation(cmd, args) {
   switch (cmd) {
     case 'aek': return [NODE, [AEK_BIN, ...args]]
-    case 'web': return [NODE, [AEK_BIN, 'web', '--port', String(SLOTS[slot].webPort), ...args]]
-    case 'dev-web': return [TSX, [join(ROOT, 'scripts', 'dev-web.ts'), '--poll', ...args]]
-    case 'inspector': return [NODE, [AEK_BIN, 'web', '--patch', './packages/experimental/inspector/cordis.source.patch.yml', ...args]]
+    // `--trusted-host` registers the slot's browser alias (see SLOTS webHost):
+    // shells load the combo via `http://<webHost>:<port>` for site-zoom
+    // isolation, so the gateway's Host/Origin fence must accept that alias or
+    // every `remote.mux` WebSocket handshake from the combo is rejected with
+    // 403 and the connection layer retries forever.
+    case 'web': return [NODE, [AEK_BIN, 'web', '--port', String(SLOTS[slot].webPort), '--trusted-host', SLOTS[slot].webHost, ...args]]
+    case 'dev-web': return [TSX, [join(ROOT, 'scripts', 'dev-web.ts'), '--poll', '--trusted-host', SLOTS[slot].webHost, ...args]]
+    case 'inspector': return [NODE, [AEK_BIN, 'web', '--patch', './packages/experimental/inspector/cordis.source.patch.yml', '--trusted-host', SLOTS[slot].webHost, ...args]]
     case 'demo-ptc': return [NODE, [join(ROOT, 'scripts', 'demo-ptc.mjs'), ...args]]
     case 'verify-web-ui': return [NODE, [join(HERE, 'verify-web-ui.mjs'), ...args]]
     case 'start-dev': return [NODE, [join(HERE, 'start-dev.mjs'), ...args]]
