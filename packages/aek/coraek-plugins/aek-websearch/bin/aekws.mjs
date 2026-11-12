@@ -17,7 +17,7 @@
  */
 
 import { resolve, dirname, join } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync, existsSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { resolveAekHome } from '@cheezmil/coraek/home'
@@ -100,12 +100,19 @@ if (INSTALLED) {
     // a JS file with a shebang. Let the OS resolve it via the shebang instead
     // of forcing `node <target>`: feeding a shell script to node throws
     // "SyntaxError: Invalid or unexpected token". Windows .cmd/.bat cannot be
-    // spawned directly by execFileSync, so route those through the shell.
-    execFileSync(target, args, {
+    // spawned directly without a shell, so route those through the shell.
+    // spawnSync (not execFileSync): a non-zero child exit must PROPAGATE as
+    // this process's exit code, never re-throw a crash dump out of the
+    // wrapper.
+    const r = spawnSync(target, args, {
       stdio: 'inherit',
       shell: process.platform === 'win32',
     })
-    process.exit(0)
+    if (r.error !== undefined) {
+      console.error(String(r.error.message))
+      process.exit(1)
+    }
+    process.exit(r.status ?? 1)
   }
   console.error('Error: pnpm global CLI not found (looked in the pnpm global bin dir, $NPM_PREFIX/bin, ~/.npm-global/bin).')
   console.error('Hint: pnpm add -g @cheezmil/aek-websearch   (AEK uses pnpm, not npm install -g)')
@@ -118,5 +125,14 @@ if (INSTALLED) {
     console.error('  pnpm add -g @cheezmil/aek-websearch')
     process.exit(1)
   }
-  execFileSync(TSX_BIN, [CLI_ENTRY, ...args], { stdio: 'inherit', cwd: REPO_ROOT })
+  // spawnSync, not execFileSync: oclif error exits (non-zero) must PROPAGATE
+  // as this wrapper's exit code. execFileSync re-throws them and the wrapper
+  // dies with a raw Node crash dump ("Node.js v…" footer) — the very crash
+  // wall the .catch(Errors.handle) fix exists to prevent.
+  const r = spawnSync(TSX_BIN, [CLI_ENTRY, ...args], { stdio: 'inherit', cwd: REPO_ROOT })
+  if (r.error !== undefined) {
+    console.error(String(r.error.message))
+    process.exit(1)
+  }
+  process.exit(r.status ?? 1)
 }

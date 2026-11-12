@@ -13,7 +13,7 @@
  */
 
 import { resolve, dirname, join } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { existsSync, realpathSync } from 'node:fs'
 
 // Resolve REAL script path (follows symlinks — resolve() does NOT)
@@ -57,5 +57,14 @@ if (INSTALLED) {
     console.error('Error: cannot resolve repo root / tsx. Run from the repo, or install the package globally.')
     process.exit(1)
   }
-  execFileSync(TSX_BIN, [CLI_ENTRY, ...args], { stdio: 'inherit', cwd: REPO_ROOT })
+  // spawnSync, not execFileSync: oclif error exits (non-zero) must PROPAGATE
+  // as this wrapper's exit code. execFileSync re-throws them and the wrapper
+  // dies with a raw Node crash dump ("Node.js v…" footer) — the very crash
+  // wall the .catch(Errors.handle) fix exists to prevent.
+  const r = spawnSync(TSX_BIN, [CLI_ENTRY, ...args], { stdio: 'inherit', cwd: REPO_ROOT })
+  if (r.error !== undefined) {
+    console.error(String(r.error.message))
+    process.exit(1)
+  }
+  process.exit(r.status ?? 1)
 }
