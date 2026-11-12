@@ -272,11 +272,11 @@ export function spawnWebServerWith(home, port, options = {}) {
   }
   delete env.NODE_OPTIONS
 
-  const webCmd = `DSH_HOME=${home} ${tsxBin()} ${dshBin()} web --no-open --port ${port} --trusted-host ${new URL(advertised).hostname}`
   // Advertise the slot's alias host, not the loopback literal: Chromium keys
   // site zoom by host (port ignored), so handing out `127.0.0.1:<port>` is what
   // made AEK and the shell web UI share one zoom level.
   const advertised = webUrlForPort(port)
+  const webCmd = `DSH_HOME=${home} ${tsxBin()} ${dshBin()} web --no-open --port ${port} --trusted-host ${new URL(advertised).hostname}`
   console.error(`[start] web  → ${advertised} (home ${home})`)
   const web = spawn('bash', ['-c', webCmd], {
     cwd: PROJECT_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'], detached: Boolean(options.detached),
