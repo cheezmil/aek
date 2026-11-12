@@ -53,7 +53,7 @@ describe('aek-system-skills.yml (the only allowlist)', () => {
       'aek-websearch', 'aek-prompt-manager', 'aek-skill-manager',
     ])
     expect([...allowedSystemSkillNames(manifest)].sort()).toEqual([
-      'aek-prompt-manager', 'aek-skill-manager', 'aek-websearch',
+      'aek-prompt-manager', 'aek-skill-manager', 'aek-usage', 'aek-websearch',
     ])
     // manager skill is seeded by ManagerSkillService, not SystemSkillService
     expect(seedablePackages(manifest).map(entry => entry.name)).toEqual([
