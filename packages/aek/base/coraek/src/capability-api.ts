@@ -27,7 +27,13 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { CapabilitySupervisor } from '../external-supervisor.mjs'
-import { readRuntimeModes, isStrongCopyleft } from '../runtime.mjs'
+import {
+  bootIsolateRuntimePackages,
+  discoverAekSiblingPackages,
+  readRuntimeModes,
+  isStrongCopyleft,
+  type DiscoveredAekPackage,
+} from '../runtime.mjs'
 import { resolveAekHome } from '../home.mjs'
 
 /** Routes owned by this module. */
@@ -139,13 +145,14 @@ function serverOf(ctx: Context): {
  *
  * @param ctx - the coraek plugin context.
  * @param options - injection seam; a test may supply its own supervisor bound
- *   to a throwaway home, and/or an explicit `aekHome` for the runtime-mode
- *   store. Production callers pass nothing and get the defaults (which resolve
- *   the real AEK home).
+ *   to a throwaway home, an explicit `aekHome` for the runtime-mode store, and
+ *   `runtimePackages` for the boot-time isolate switch. Production callers
+ *   pass nothing and get the defaults (which resolve the real AEK home and
+ *   discover the installed sibling AEK packages from this module's location).
  */
 export function registerCapabilityApi(
   ctx: Context,
-  options: { supervisor?: CapabilitySupervisor; aekHome?: string } = {},
+  options: { supervisor?: CapabilitySupervisor; aekHome?: string; runtimePackages?: DiscoveredAekPackage[] } = {},
 ): void {
   const server = serverOf(ctx)
   if (server === undefined) return
@@ -153,6 +160,26 @@ export function registerCapabilityApi(
   const supervisor = options.supervisor ?? new CapabilitySupervisor()
   const aekHome = options.aekHome ?? resolveAekHome()
   ctx.effect(() => () => supervisor.stopAllNow(), 'coraek: capability supervisor shutdown')
+  // The boot-time topology switch: user-selected class ① isolates are
+  // registered under the supervisor and spawned here, best-effort — a failed
+  // spawn never blocks host boot (per-id problems are warned, not thrown).
+  // The client-shaped tsconfig has no ambient `node` types: reach `process`
+  // through globalThis (the host half only; an empty cwd is the no-op case).
+  const hostProcess = (globalThis as unknown as { process?: { cwd?: () => string } }).process
+  const runtimePackages = options.runtimePackages ?? discoverAekSiblingPackages(import.meta.url, typeof hostProcess?.cwd === 'function' ? hostProcess.cwd() : '')
+  void bootIsolateRuntimePackages({ supervisor, aekHome, packages: runtimePackages }).then(
+    (results) => {
+      const failed = Object.entries(results).filter(([, result]) => result.ok === false)
+      if (failed.length > 0) {
+        console.warn(
+          `[coraek] runtime-isolate boot: ${failed.map(([id, result]) => `${id}: ${result.problem ?? 'failed'}`).join('; ')}`,
+        )
+      }
+    },
+    () => {
+      // Best effort: the host must never die over the topology boot.
+    },
+  )
   ctx.effect(() => {
     const unsubscribers = [
       server.register({
@@ -182,10 +209,16 @@ export function registerCapabilityApi(
                 spdx: row.declared.spdx ?? null,
                 source: row.declared.source ?? null,
                 attach: row.declared.attach,
-                // Registered providers are always out-of-process (classes ②/③).
+                // Registered providers are out-of-process registrations, but
+                // the EFFECTIVE topology of a class ① capability follows the
+                // user's stored choice (a `share` choice means the in-process
+                // cordis load is authoritative again and the registration is
+                // inert). Only unchosen rows are the forced ②/③ ones.
                 runtime: {
-                  mode: 'isolate',
-                  reason: isStrongCopyleft(row.declared.spdx) ? 'license-forced' : 'runtime-forced',
+                  mode: choices[row.id] === 'isolate' ? 'isolate' : choices[row.id] === 'share' ? 'share' : 'isolate',
+                  reason: choices[row.id] !== undefined
+                    ? 'user-select'
+                    : isStrongCopyleft(row.declared.spdx) ? 'license-forced' : 'runtime-forced',
                 },
                 compliance: CapabilitySupervisor.complianceLine(row),
               })),

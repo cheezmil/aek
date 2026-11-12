@@ -207,4 +207,55 @@ describe('capability api routes', () => {
     expect(res.statusCode).toBe(502)
     harness.stopAll()
   })
+
+  it('GET marks a user-selected class-① isolate provider as user-select, not forced', async () => {
+    const harness = fakeCtx()
+    const supervisor = new CapabilitySupervisor({ aekHome })
+    registerCapabilityApi(harness.ctx as never, { supervisor, aekHome, runtimePackages: [] })
+    await supervisor.register('aek-websearch', {
+      protocol: 'aek-capability/1',
+      name: 'aek-websearch',
+      version: '1.0.0',
+      spdx: 'Apache-2.0',
+      attach: { kind: 'jsonrpc-stdio', command: 'bin/isolate.mjs', cwd: '/opt/fixture/aek-websearch', args: [] },
+    })
+    expect(writeRuntimeMode(aekHome, 'aek-websearch', 'isolate').ok).toBe(true)
+
+    const route = harness.routes.find(candidate => candidate.path === CAPABILITIES_API_PATH)
+    const res = fakeRes()
+    await route?.handler({ method: 'GET' } as never, res as never)
+    const body = JSON.parse(String(res.ended)) as { providers: { id: string; runtime?: { mode: string; reason: string } }[] }
+    const row = body.providers.find(candidate => candidate.id === 'aek-websearch')
+    expect(row?.runtime).toEqual({ mode: 'isolate', reason: 'user-select' })
+    harness.stopAll()
+  })
+
+  it('boots user-selected isolates through the injected supervisor at registration', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'aek-cap-boot-'))
+    try {
+      const harness = fakeCtx()
+      const registered: string[] = []
+      const started: string[] = []
+      const fakeSupervisor = {
+        register: async (id: string) => { registered.push(id); return { ok: true, problems: [] as string[] } },
+        start: async (id: string) => { started.push(id); return { ok: true, state: 'running' as const } },
+        statusAll: async () => ({}),
+        stopAllNow: async () => undefined,
+        stop: async () => ({ ok: false, problem: 'fake' }),
+      }
+      expect(writeRuntimeMode(home, 'aek-websearch', 'isolate').ok).toBe(true)
+      registerCapabilityApi(harness.ctx as never, {
+        supervisor: fakeSupervisor as never,
+        aekHome: home,
+        runtimePackages: [{ id: 'aek-websearch', manifest: { name: '@cheezmil/aek-websearch', version: '1.0.0', license: 'Apache-2.0', aek: { runtime: { share: true, isolate: { bin: 'bin/isolate.mjs' } } } }, packageDir: '/opt/fixture/aek-websearch' }],
+      })
+      // The boot is fire-and-forget; one macrotask later the calls are in.
+      await new Promise(resolve => setTimeout(resolve, 20))
+      expect(registered).toEqual(['aek-websearch'])
+      expect(started).toEqual(['aek-websearch'])
+      harness.stopAll()
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
 })

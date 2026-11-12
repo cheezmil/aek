@@ -183,6 +183,12 @@ export function validateDescriptor(value) {
         problems.push(`attach.wellKnown must be a plain relative path (got ${JSON.stringify(wk)})`)
       }
     }
+    if (a.cwd !== undefined) {
+      const cwd = a.cwd
+      if (typeof cwd !== 'string' || cwd.length === 0 || cwd.length > 4096 || SHELL_META_RE.test(cwd)) {
+        problems.push(`attach.cwd must be a plain path string with no shell metacharacters (got ${JSON.stringify(cwd)})`)
+      }
+    }
   }
 
   if (problems.length > 0) return { ok: false, descriptor: null, problems }

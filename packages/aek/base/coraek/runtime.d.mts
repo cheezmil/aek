@@ -59,3 +59,60 @@ export declare function writeRuntimeMode(
   id: string,
   mode: 'share' | 'isolate',
 ): WriteResult
+
+/** One installed AEK capability package discovered as a sibling of the host. */
+export interface DiscoveredAekPackage {
+  /** The capability id (the package dir name, e.g. `aek-websearch`). */
+  id: string
+  /** The parsed `package.json`. */
+  manifest: Record<string, unknown>
+  /** Absolute directory of the installed package (dev link or npm copy). */
+  packageDir: string
+}
+
+/**
+ * Discover installed AEK capability packages: the `@cheezmil` install scope
+ * two levels above the running coraek host module, merged with the dev repo
+ * layout (`packages/aek/**` below the working directory). No hardcoded
+ * absolute paths — both are derived at call time.
+ * @param fromUrl - the compiled coraek host module's `import.meta.url`.
+ * @param cwd - working directory for the dev layout.
+ * @defaultValue `process.cwd()`
+ */
+export declare function discoverAekSiblingPackages(fromUrl: string, cwd?: string): DiscoveredAekPackage[]
+
+/** The supervisor surface the boot switch needs (structural, zero-dependency). */
+export interface RuntimeBootSupervisor {
+  register: (
+    id: string,
+    declared: unknown,
+  ) => Promise<{ ok: boolean; problems: string[] }>
+  start: (id: string) => Promise<{ ok: boolean; state?: string; problem?: string }>
+}
+
+export interface RuntimeBootInput {
+  /** The supervisor that owns the spawned children. */
+  supervisor: RuntimeBootSupervisor
+  /** The AEK home that holds the runtime-mode store. */
+  aekHome: string
+  /**
+   * The discovered packages; omit for the host's own sibling discovery.
+   * @defaultValue `[]`
+   */
+  packages?: DiscoveredAekPackage[]
+}
+
+export interface RuntimeBootResult {
+  ok: boolean
+  state?: string
+  problem?: string
+}
+
+/**
+ * The boot-time switch: for every class ① capability whose STORED mode is
+ * `isolate`, register its spawnable entry under the supervisor and start it.
+ * Best-effort: per-id failures are recorded, never fatal to host boot.
+ */
+export declare function bootIsolateRuntimePackages(
+  input: RuntimeBootInput,
+): Promise<Record<string, RuntimeBootResult>>

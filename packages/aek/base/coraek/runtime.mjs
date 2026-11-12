@@ -23,8 +23,9 @@
  * @module @cheezmil/coraek/runtime
  */
 
-import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /** The only two runtime topologies a capability can run in. */
 export const RUNTIME_MODES = Object.freeze(['share', 'isolate'])
@@ -161,4 +162,156 @@ export function writeRuntimeMode(aekHome, id, mode) {
   writeFileSync(tmp, `${JSON.stringify({ version: 1, modes }, null, 2)}\n`)
   renameSync(tmp, target)
   return { ok: true, problems: [] }
+}
+
+// --- boot-time topology switch ---------------------------------------------
+
+/**
+ * Discover installed AEK capability packages. Two discovery sources are
+ * merged (deduped by id, scope first):
+ *
+ * 1. THE INSTALL LAYOUT — the `@cheezmil` scope dir two levels above the
+ *    running coraek host module (`lib/index.js` → up two), which holds every
+ *    installed AEK package (npm install, or dev symlinks resolved through
+ *    their real names).
+ * 2. THE DEV LAYOUT — `packages/aek/**` below the working directory: the
+ *    dev host runs from the repo checkout through tsx (source imports, so
+ *    source 1 lands inside `packages/aek/base` and sees no siblings), and
+ *    the operator's cwd is the repo root.
+ *
+ * No hardcoded absolute paths: both are derived from the module's own
+ * location / the process cwd at call time.
+ *
+ * @param {string} fromUrl - the compiled coraek host module's `import.meta.url`.
+ * @param {string} [cwd] - working directory for the dev layout.
+ * @returns {Array<{ id: string, manifest: Record<string, unknown>, packageDir: string }>}
+ */
+export function discoverAekSiblingPackages(fromUrl, cwd = process.cwd()) {
+  const byId = /** @type {Map<string, { id: string, manifest: Record<string, unknown>, packageDir: string }>} */ (new Map())
+
+  /** Collect one scope dir's children (symlinks followed by name). */
+  const collectScope = (scopeDir) => {
+    for (const entry of readdirSync(scopeDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
+      const packageDir = join(scopeDir, entry.name)
+      const manifest = readManifest(packageDir)
+      if (manifest === undefined) continue
+      byId.set(entry.name, { id: entry.name, manifest, packageDir })
+    }
+  }
+
+  // Source 1: the install scope dir.
+  try {
+    collectScope(resolve(dirname(fileURLToPath(fromUrl)), '..', '..'))
+  } catch { /* not the install layout */ }
+
+  // Source 2: the dev repo layout (only when the operator works from a
+  // checkout; a plain `packages/aek` miss is the no-op case).
+  walkRepoAek(join(cwd, 'packages', 'aek'), 3, byId)
+
+  return [...byId.values()]
+}
+
+/**
+ * Read one package.json; undefined when absent / unparsable.
+ * @param {string} packageDir
+ * @returns {Record<string, unknown> | undefined}
+ */
+function readManifest(packageDir) {
+  try {
+    const raw = readFileSync(join(packageDir, 'package.json'), 'utf8')
+    const manifest = JSON.parse(raw)
+    return manifest !== null && typeof manifest === 'object' && manifest.aek !== null && typeof manifest.aek === 'object' && !Array.isArray(manifest.aek)
+      ? manifest
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Walk `packages/aek/**` (depth-bounded, skipping node_modules) and record
+ * every package that carries an `aek` manifest block.
+ * @param {string} rootDir
+ * @param {number} depth
+ * @param {Map<string, { id: string, manifest: Record<string, unknown>, packageDir: string }>} out
+ */
+function walkRepoAek(rootDir, depth, out) {
+  let entries
+  try {
+    entries = readdirSync(rootDir, { withFileTypes: true })
+  } catch {
+    return // not a dev checkout: the no-op case
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
+    if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue
+    const dir = join(rootDir, entry.name)
+    const manifest = readManifest(dir)
+    if (manifest !== undefined && !out.has(entry.name)) {
+      out.set(entry.name, { id: entry.name, manifest, packageDir: dir })
+    }
+    if (depth > 0) walkRepoAek(dir, depth - 1, out)
+  }
+}
+
+/**
+ * The boot-time switch for user-selected `isolate` choices: for every class ①
+ * capability whose stored mode is `isolate`, register its spawnable entry
+ * under the supervisor and start it. `share` is the pre-existing in-process
+ * cordis load — nothing to do there. Best-effort by design: a missing bin or
+ * a failed spawn is recorded per id and never fatal to host boot.
+ *
+ * `supervisor` is structural (register / start / list on an
+ * `external-supervisor` instance); this module stays zero-dependency.
+ *
+ * @param {{ supervisor: { register: (id: string, declared: unknown) => Promise<{ ok: boolean, problems: string[] }>, start: (id: string) => Promise<{ ok: boolean, state?: string, problem?: string }> }, aekHome: string, packages?: Array<{ id: string, manifest: Record<string, unknown>, packageDir: string }> }} input
+ * @returns {Promise<Record<string, { ok: boolean, state?: string, problem?: string }>>}
+ */
+export async function bootIsolateRuntimePackages({ supervisor, aekHome, packages = [] }) {
+  const stored = readRuntimeModes(aekHome)
+  const results = {}
+  for (const { id, manifest, packageDir } of packages) {
+    // Only stored isolates are booted here — `share` (stored or default) is
+    // the pre-existing in-process cordis load, which needs no host action.
+    if (stored[id] !== 'isolate') continue
+    const block = manifest && typeof manifest === 'object' && manifest.aek !== null && typeof manifest.aek === 'object'
+      ? manifest.aek.runtime
+      : undefined
+    if (block === null || typeof block !== 'object' || !effectiveModes(manifest).canIsolate) {
+      // A stored isolate choice with no spawnable declaration is a config
+      // problem the host must surface, not silently ignore.
+      results[id] = { ok: false, problem: "stored 'isolate' choice but the package declares no spawnable aek.runtime.isolate.bin" }
+      continue
+    }
+    const bin = block.isolate && typeof block.isolate === 'object' ? block.isolate.bin : undefined
+    if (typeof bin !== 'string' || bin.length === 0) {
+      results[id] = { ok: false, problem: 'no spawnable aek.runtime.isolate.bin declared' }
+      continue
+    }
+    const declared = {
+      protocol: 'aek-capability/1',
+      name: id,
+      version: typeof manifest.version === 'string' ? manifest.version : '0.0.0',
+      ...(typeof block.isolate.spdx === 'string' && block.isolate.spdx.length > 0
+        ? { spdx: block.isolate.spdx }
+        : typeof manifest.license === 'string' ? { spdx: manifest.license } : {}),
+      ...(typeof manifest.repository === 'string' ? { source: manifest.repository }
+        : manifest.repository?.url !== undefined && typeof manifest.repository.url === 'string'
+          ? { source: manifest.repository.url }
+          : {}),
+      capabilities: Array.isArray(manifest.aek?.capabilities) ? manifest.aek.capabilities : [{ id: 'web' }],
+      // The gate keeps `command` a relative, shell-free name; the package dir
+      // travels as `attach.cwd` so the spawn lands in the package itself.
+      attach: { kind: 'jsonrpc-stdio', command: bin, args: [], cwd: packageDir },
+    }
+    const reg = await supervisor.register(id, declared)
+    if (reg.ok === false) {
+      results[id] = { ok: false, problem: reg.problems.join('; ') }
+      continue
+    }
+    const started = await supervisor.start(id)
+    results[id] = { ok: started.ok, state: started.state, problem: started.problem }
+  }
+  return results
 }

@@ -287,6 +287,7 @@ export class CapabilitySupervisor {
     const stream = spawn(attach.command, attach.args ?? [], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: this._env,
+      ...(attach.cwd !== undefined ? { cwd: attach.cwd } : {}),
     })
     this.#rotateBeforeWrite(id)
     stream.stdout?.on('data', (chunk) => logger(chunk))
@@ -494,7 +495,7 @@ export class CapabilitySupervisor {
     /** @type {import('node:child_process').ChildProcess | null} */
     let child = null
     try {
-      child = spawn(attach.command, attach.args ?? [], { stdio: ['pipe', 'pipe', 'pipe'], env: this._env })
+      child = spawn(attach.command, attach.args ?? [], { stdio: ['pipe', 'pipe', 'pipe'], env: this._env, ...(attach.cwd !== undefined ? { cwd: attach.cwd } : {}) })
       const reader = new JsonRpcStream(child.stdout, { framing: 'newline' })
       child.stdin?.write(JSON.stringify({
         jsonrpc: '2.0',
@@ -521,7 +522,7 @@ export class CapabilitySupervisor {
     /** @type {import('node:child_process').ChildProcess | null} */
     let child = null
     try {
-      child = spawn(attach.command, attach.args ?? [], { stdio: ['pipe', 'pipe', 'pipe'], env: this._env })
+      child = spawn(attach.command, attach.args ?? [], { stdio: ['pipe', 'pipe', 'pipe'], env: this._env, ...(attach.cwd !== undefined ? { cwd: attach.cwd } : {}) })
       const reader = new JsonRpcStream(child.stdout)
       child.stdin?.write(JSON.stringify({ jsonrpc: '2.0', id: 7, method, params: {} }) + '\n')
       const reply = await withTimeout(reader.next(), PING_TIMEOUT_MS)

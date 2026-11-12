@@ -23,6 +23,11 @@ export interface CapabilityAttach {
   /** PATH-resolved executable, never absolute. */
   command?: string
   args?: string[]
+  /**
+   * Optional working directory for the spawned provider. Lets a package-local
+   * bin (a relative `bin/…` path, per the gate rule) be spawned in place.
+   */
+  cwd?: string
   /** An already-running instance to attach to (never spawned here). */
   endpoint?: string
   /** Descriptor path for the http kind. */

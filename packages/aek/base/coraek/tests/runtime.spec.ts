@@ -5,7 +5,7 @@
  * AEK_HOME is touched — the store uses a temp directory.
  */
 import { describe, expect, it, afterEach } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -17,6 +17,8 @@ import {
   readRuntimeModes,
   writeRuntimeMode,
   runtimeModesPath,
+  discoverAekSiblingPackages,
+  bootIsolateRuntimePackages,
 } from '../runtime.mjs'
 import { runtimeMetaOf } from '../plugin-meta.mjs'
 
@@ -157,5 +159,115 @@ describe('runtime mode model', () => {
       expect(result.ok).toBe(false)
       expect(result.problems.join(' ')).toContain('aek.external')
     })
+  })
+})
+
+describe('runtime boot switch (discover + bootIsolateRuntimePackages)', () => {
+  it('discovers sibling AEK packages from a host module location', () => {
+    const root = mkdtempSync(join(tmpdir(), 'aek-runtime-boot-'))
+    try {
+      // `<root>/@cheezmil/` is the scope dir; the "host module" sits two
+      // levels below it, mirroring `@cheezmil/coraek/lib/index.js`.
+      const scope = join(root, '@cheezmil')
+      const hostModuleUrl = join(scope, 'coraek', 'lib', 'index.js')
+      for (const [name, pkg] of [
+        ['aek-websearch', { name: '@cheezmil/aek-websearch', version: '1.0.0', license: 'Apache-2.0', aek: { distribution: 'A1', runtime: { share: true, isolate: { bin: 'bin/isolate.mjs' } } } }],
+        ['plain-pkg', { name: 'plain-pkg', version: '0.1.0' }],
+        ['coraek', { name: '@cheezmil/coraek', version: '0.9.0', aek: { distribution: 'A1' } }],
+      ] as const) {
+        const dir = join(scope, name)
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`)
+      }
+      // `root` doubles as the fake cwd: it has no `packages/aek` layout, so
+      // only the install-scope source contributes.
+      const found = discoverAekSiblingPackages(`file:///${hostModuleUrl.replace(/\\/gu, '/')}`, root)
+      expect(found.map(entry => entry.id)).toEqual(['aek-websearch', 'coraek'])
+      expect(found.every(entry => entry.packageDir.startsWith(scope))).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('discovers the dev repo layout (packages/aek/**) from the working directory', () => {
+    const root = mkdtempSync(join(tmpdir(), 'aek-runtime-dev-'))
+    try {
+      // Fake the dev checkout: <cwd>/packages/aek/coraek-plugins/aek-websearch.
+      const pkgDir = join(root, 'packages', 'aek', 'coraek-plugins', 'aek-websearch')
+      mkdirSync(pkgDir, { recursive: true })
+      writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({
+        name: '@cheezmil/aek-websearch',
+        version: '1.0.0',
+        aek: { distribution: 'A1', runtime: { share: true, isolate: { bin: 'bin/isolate.mjs' } } },
+      }))
+      // A package without an `aek` block must not surface.
+      const plainDir = join(root, 'packages', 'aek', 'coraek-plugins', 'plain')
+      mkdirSync(plainDir, { recursive: true })
+      writeFileSync(join(plainDir, 'package.json'), JSON.stringify({ name: 'plain', version: '0.1.0' }))
+
+      // No install scope (module url points nowhere): only the dev source hits.
+      const found = discoverAekSiblingPackages('file:///nonexistent/coraek/lib/index.js', root)
+      expect(found.map(entry => entry.id)).toEqual(['aek-websearch'])
+      expect(found[0].packageDir).toBe(pkgDir)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('boots only stored isolates; registers with an absolute spawn command', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'aek-runtime-boot-'))
+    try {
+      const home = join(root, 'home')
+      const pkgDir = join(root, 'aek-websearch')
+      mkdirSync(pkgDir, { recursive: true })
+      const manifest = {
+        name: '@cheezmil/aek-websearch',
+        version: '1.0.0',
+        license: 'Apache-2.0',
+        aek: { runtime: { share: true, isolate: { bin: 'bin/isolate.mjs' } } },
+      }
+      expect(writeRuntimeMode(home, 'aek-websearch', 'isolate').ok).toBe(true)
+      expect(writeRuntimeMode(home, 'other-capability', 'share').ok).toBe(true)
+
+      const registered: string[] = []
+      const started: string[] = []
+      const fakeSupervisor = {
+        register: async (id: string) => { registered.push(id); return { ok: true, problems: [] as string[] } },
+        start: async (id: string) => { started.push(id); return { ok: true, state: 'running' } },
+      }
+      const results = await bootIsolateRuntimePackages({
+        supervisor: fakeSupervisor as never,
+        aekHome: home,
+        packages: [{ id: 'aek-websearch', manifest, packageDir: pkgDir }],
+      })
+      expect(registered).toEqual(['aek-websearch'])
+      expect(started).toEqual(['aek-websearch'])
+      expect(results['aek-websearch']?.ok).toBe(true)
+      // share-stored / undeclared ids never reach the supervisor.
+      expect(registered).not.toContain('other-capability')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('reports a missing isolate bin without touching the supervisor', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'aek-runtime-boot-'))
+    try {
+      const home = join(root, 'home')
+      expect(writeRuntimeMode(home, 'no-bin', 'isolate').ok).toBe(true)
+      const fakeSupervisor = {
+        register: async (): Promise<{ ok: boolean; problems: string[] }> => ({ ok: true, problems: [] }),
+        start: async (): Promise<{ ok: boolean; state?: string }> => ({ ok: true, state: 'running' }),
+      }
+      const results = await bootIsolateRuntimePackages({
+        supervisor: fakeSupervisor as never,
+        aekHome: home,
+        packages: [{ id: 'no-bin', manifest: { name: 'no-bin', version: '0.1.0', aek: {} }, packageDir: root }],
+      })
+      expect(results['no-bin']?.ok).toBe(false)
+      expect(String(results['no-bin']?.problem)).toContain('bin')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

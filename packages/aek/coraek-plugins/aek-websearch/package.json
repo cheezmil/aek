@@ -38,6 +38,12 @@
       "name": "aekws",
       "bin": "bin/aekws.mjs"
     },
+    "runtime": {
+      "share": true,
+      "isolate": {
+        "bin": "bin/isolate.mjs"
+      }
+    },
     "cordis": true,
     "dsh": false,
     "systemSkills": [

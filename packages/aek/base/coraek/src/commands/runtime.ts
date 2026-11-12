@@ -100,7 +100,19 @@ export default class RuntimeCommand extends Command {
     const effectiveFor = (capabilityId: string): { mode: 'share' | 'isolate'; forced: boolean; reason: Reason } => {
       const manifest = manifests.get(capabilityId)
       if (manifest !== undefined && hasExternalManifest(manifest)) {
+        // ②/③ by construction: isolate-only, never switchable.
         return resolveRuntimeMode({ manifest })
+      }
+      if (manifest !== undefined && manifest.aek !== null && typeof manifest.aek === 'object' && (manifest.aek as Record<string, unknown>).runtime !== undefined && (manifest.aek as Record<string, unknown>).runtime !== null) {
+        // Class ① with a runtime block: user-select always, even when a
+        // runtime-boot registration also sits in the provider registry —
+        // that registration is the isolate TOPOLOGY, not a license/runtime
+        // forcing, so `share` must stay reachable.
+        const input: { manifest?: Record<string, unknown>; storedMode?: string } = {}
+        input.manifest = manifest
+        const storedMode = stored[capabilityId]
+        if (storedMode !== undefined) input.storedMode = storedMode
+        return resolveRuntimeMode(input)
       }
       const provider = providers[capabilityId]
       if (provider !== undefined) {

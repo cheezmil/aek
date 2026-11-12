@@ -135,6 +135,17 @@ under the supervisor above). Strong-copyleft and native capabilities are
   `default-share`. The user's selective choices live in
   `<AEK_HOME>/runtime-modes.json` (`readRuntimeModes` / `writeRuntimeMode`),
   derived through `@cheezmil/coraek/home` — never hardcoded.
+- **Boot-time topology switch** (`runtime.mjs` + `src/capability-api.ts`).
+  When the host registers its capability API, `bootIsolateRuntimePackages`
+  discovers AEK capability packages (the install scope beside the running
+  coraek module, merged with the dev repo layout `packages/aek/**` under the
+  working directory) and, for every package whose stored choice is
+  `isolate`, registers a built-in descriptor (`jsonrpc-stdio` attach; the
+  package's relative `bin` located through the optional `attach.cwd`
+  extension field) and spawns it under the supervisor above. A missing
+  binary reports a per-package problem and never blocks host startup; in
+  `share` mode the in-process cordis load stays authoritative. Feature-call
+  routing into isolates (`aek.search` & co.) is still pending.
 - **Host API** (`src/capability-api.ts`). `GET /api/aek/capabilities` also
   returns `runtime: { defaultMode, choices }` and a per-provider
   `runtime: { mode, reason }` block; the aek-home About panel shows the
