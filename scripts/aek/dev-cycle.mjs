@@ -271,9 +271,13 @@ function verify(devMode, json) {
       if (process.platform === 'darwin' && existsSync(plistFor('aek'))) {
         const out = execFileSync('plutil', ['-p', plistFor('aek')], { encoding: 'utf8' })
         const mjsArgs = out.match(/"([^"]+\.mjs)"/g) ?? []
+        // Boundary-aware: the stable dir is a path PREFIX of the dev dir
+        // (`…/aek` vs `…/aek-next`), so a bare startsWith accepts dev-tree
+        // paths as "stable" — the exact miss this check must not make.
+        const isStable = (p) => p === stableDir || p.startsWith(stableDir + '/')
         evidences.push({
           label: 'aek LaunchAgent plist',
-          ok: mjsArgs.length > 0 && mjsArgs.every((a) => a.replace(/^"/, '').startsWith(stableDir)),
+          ok: mjsArgs.length > 0 && mjsArgs.every((a) => isStable(a.replace(/^"/, ''))),
         })
       }
       const pidFile = join(slotHome('aek'), '.aek-runtime.pid')
@@ -289,7 +293,7 @@ function verify(devMode, json) {
               cwd = out.split('\n').map((l) => l.slice(1)).find((l) => l.length > 0) ?? null
             } catch { /* lsof unavailable */ }
           }
-          if (cwd) evidences.push({ label: `current web pid ${String(pid)} cwd`, ok: cwd.startsWith(stableDir) })
+          if (cwd) evidences.push({ label: `current web pid ${String(pid)} cwd`, ok: cwd === stableDir || cwd.startsWith(stableDir + '/') })
         }
       }
       checks.push({
@@ -391,8 +395,22 @@ function runCycle() {
   if (!runStep('slots.mjs', ['--only', 'aek', '--yes'])) return 1
 
   // Non-fatal by design: the app is already running, losing only login autostart.
-  const install = spawnSync(NODE, [SCRIPT('service.mjs'), 'install', 'aek', '--yes'], {
-    cwd: ROOT, stdio: 'inherit', timeout: 120_000,
+  // The current slot's LaunchAgent must point at the STABLE tree's serve-slot:
+  // service.mjs renders ITS OWN tree's .mjs path into the plist, so installing
+  // from the dev tree would make current boot dev code (the exact regression
+  // this file's catch-up verify must prevent). Install from the stable tree's
+  // script when resolvable; fall back to the dev tree with a loud note.
+  const layout = dualTreeLayout(ROOT)
+  const stableDir = process.env.AEK_STABLE_TREE ?? layout.stable
+  const stableService = stableDir && existsSync(join(stableDir, 'scripts', 'aek', 'service.mjs'))
+    ? join(stableDir, 'scripts', 'aek', 'service.mjs')
+    : null
+  if (stableService === null) {
+    console.warn('[dev-cycle] 注意：stable 树不可解析——current 的 agent 从 dev 树安装（current 将运行 dev 代码，直到下次发布）。')
+  }
+  const installScript = stableService ?? SCRIPT('service.mjs')
+  const install = spawnSync(NODE, [installScript, 'install', 'aek', '--yes'], {
+    cwd: stableService ?? ROOT, stdio: 'inherit', timeout: 120_000,
   })
   if (install.status !== 0) {
     console.warn(`[dev-cycle] 警告：current 的 LaunchAgent 注册失败（current 仍在运行，可稍后手动 install）。`)
