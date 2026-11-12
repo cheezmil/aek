@@ -27,7 +27,9 @@
  *   3  stable bootstrap (the verified cold-tree recipe):
  *        pnpm install --frozen-lockfile   (+ one lefthook re-anchor retry)
  *        tsx scripts/generate-typert.ts   (typert artifacts, pre-tsc)
- *        pnpm -r --filter './packages/aek/**' run build
+ *        pnpm -r --filter './packages/aek/**' run build      (tsc/tsdown libs)
+ *        pnpm -r --filter './packages/aek/**' run build:cli  (coraek oclif commands)
+ *        pnpm -r --filter './packages/aek/**' run bundle     (aek-home lib)
  *        lib/types backfill (package-level host tsconfigs, discovered)
  *        pnpm run build:artifacts
  *   4  smoke gate: candidate web from the stable tree on port 1689,
@@ -230,7 +232,16 @@ function bootstrap(root) {
     if (!pnpmRun(root, ['install', '--frozen-lockfile'])) fail('stable 树 pnpm install 失败；current 未动')
   }
   if (!pnpmRun(root, ['exec', 'tsx', 'scripts/generate-typert.ts'])) fail('typert 产物生成失败；current 未动')
-  if (!pnpmRun(root, ['-r', '--filter', './packages/aek/**', 'run', 'build'])) fail('AEK 包构建失败（需 pnpm-workspace.yaml 的 ignoreWorkspaceCycles）；current 未动')
+  // The AEK runtime artifact surface. pnpm -r run <script> skips packages
+  // without that script, so the three task names cover the whole set:
+  //   build      — tsc/tsdown lib bundles (+ aek-websearch postbuild oclif readme)
+  //   build:cli  — coraek's oclif commands (lib/commands/*.mjs, incl. `web`)
+  //   bundle     — aek-home (only a `bundle` script; its main points at lib/)
+  for (const task of ['build', 'build:cli', 'bundle']) {
+    if (!pnpmRun(root, ['-r', '--filter', './packages/aek/**', 'run', task])) {
+      fail(`AEK 包 ${task} 失败（需 pnpm-workspace.yaml 的 ignoreWorkspaceCycles）；current 未动`)
+    }
+  }
 
   // lib/types backfill (discovered, idempotent on warm trees): some tsdown
   // entries are emitted only by a package-level host tsconfig no root tsc
@@ -264,11 +275,18 @@ function bootstrap(root) {
 /** @param {string} root @returns {Promise<boolean>} start candidate web, probe /, kill. */
 async function smokeWeb(root) {
   const bin = join(root, 'packages', 'aek', 'base', 'coraek', 'bin', 'aek.mjs')
-  const home = slotHomeDir('aek')
+  const home = slotHome('aek')
   const child = spawn(NODE, [bin, 'web', '--port', String(SMOKE_PORT), '--no-open'], {
     cwd: root,
     env: { ...process.env, AEK_HOME: home, DSH_HOME: home },
     stdio: 'ignore',
+  })
+  // Attach the exit/error listener BEFORE the child can die — a lost 'exit'
+  // event leaves the teardown promise unsettled and Node exits with an
+  // "unsettled top-level await" warning (a false "success" for the gate).
+  const exited = new Promise((r) => {
+    child.once('exit', () => r())
+    child.once('error', () => r()) // spawn failure emits 'error', not 'exit'
   })
   const ok = await new Promise((resolveProbe) => {
     const start = Date.now()
@@ -290,7 +308,7 @@ async function smokeWeb(root) {
     }, 2_000)
   })
   child.kill('SIGTERM')
-  await new Promise((r) => child.once('exit', () => r(undefined)))
+  await Promise.race([exited, new Promise((r) => setTimeout(r, 5_000))])
   return ok
 }
 

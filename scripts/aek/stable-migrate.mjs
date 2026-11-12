@@ -202,6 +202,13 @@ async function smokeWeb(root) {
     env: { ...process.env, AEK_HOME: home, DSH_HOME: home },
     stdio: 'ignore',
   })
+  // Attach the exit/error listener BEFORE the child can die — a lost 'exit'
+  // event leaves the teardown promise unsettled and Node exits with an
+  // "unsettled top-level await" warning (a false "success" for the gate).
+  const exited = new Promise((r) => {
+    child.once('exit', () => r())
+    child.once('error', () => r()) // spawn failure emits 'error', not 'exit'
+  })
   const ok = await new Promise((resolveProbe) => {
     const start = Date.now()
     const timer = setInterval(() => {
@@ -223,7 +230,7 @@ async function smokeWeb(root) {
     }, 2_000)
   })
   child.kill('SIGTERM')
-  await new Promise((r) => child.once('exit', () => r(undefined)))
+  await Promise.race([exited, new Promise((r) => setTimeout(r, 5_000))])
   return ok
 }
 
@@ -410,7 +417,16 @@ if (!pnpmRun(STABLE_ROOT, ['install', '--frozen-lockfile'])) fail('stable 树 pn
 //       does not build them.
 // Both steps are idempotent on an already-built tree.
 if (!pnpmRun(STABLE_ROOT, ['exec', 'tsx', 'scripts/generate-typert.ts'])) fail('stable 树 typert 产物生成失败；回滚：node scripts/aek/stable-migrate.mjs --rollback --yes')
-if (!pnpmRun(STABLE_ROOT, ['-r', '--filter', './packages/aek/**', 'run', 'build'])) fail('stable 树 AEK 包构建失败（需 pnpm-workspace.yaml 的 ignoreWorkspaceCycles）；回滚：node scripts/aek/stable-migrate.mjs --rollback --yes')
+// Three task names cover the whole AEK runtime artifact surface (pnpm -r run
+// skips packages without a given script): build (tsc/tsdown libs, incl. the
+// aek-websearch oclif postbuild), build:cli (coraek oclif commands — the
+// `web` command oclif discovers from lib/commands), bundle (aek-home, which
+// only declares a `bundle` script but whose main points at lib/).
+for (const task of ['build', 'build:cli', 'bundle']) {
+  if (!pnpmRun(STABLE_ROOT, ['-r', '--filter', './packages/aek/**', 'run', task])) {
+    fail(`stable 树 AEK 包 ${task} 失败（需 pnpm-workspace.yaml 的 ignoreWorkspaceCycles）；回滚：node scripts/aek/stable-migrate.mjs --rollback --yes`)
+  }
+}
 
 // lib/types backfill. Some tsdown host entries are `lib/types/*.js` emitted by
 // a PACKAGE-LEVEL host tsconfig that no root tsc program references (observed:
