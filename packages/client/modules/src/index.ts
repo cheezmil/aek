@@ -568,7 +568,7 @@ export function bootInjections(graph: WebBootGraph): IndexInjection[] {
   const queue = `(()=>{
 const pendingQueue=[]
 const t0=performance.now?performance.now():Date.now()
-const tag=(kind,msg,extra)=>{try{const p={message:msg};if(extra!==undefined)p.extra=extra;if(kind==="warn"||kind==="error"){console.warn("[aek-boot] "+msg,extra!==undefined?extra:{})}else{console.log("[aek-boot] "+msg,extra!==undefined?extra:{})}}catch{}}
+const tag=(kind,msg,extra)=>{try{const ex=extra!==undefined?(typeof extra==="object"?JSON.stringify(extra):String(extra)):"";const t="[aek-boot] "+msg+(ex?" "+ex:"");if(kind==="warn"||kind==="error"){console.warn(t)}else{console.log(t)}}catch{}}
 window.__ModuleLoader__={
   mode:"queue",
   pendingQueue,
