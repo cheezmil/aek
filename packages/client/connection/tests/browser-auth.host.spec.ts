@@ -85,7 +85,7 @@ function exchange(
   expect(auth.authorizeIndex(request(`${target.pathname}${target.search}`, authority), res.value, secure)).toBe(false)
   const setCookie = res.state.headers?.['set-cookie']
   if (setCookie === undefined) throw new Error('token exchange did not set a cookie')
-  return { cookie: setCookie.split(';', 1)[0]!, launchUrl, state: res.state }
+  return { cookie: setCookie.split(';', 1)[0], launchUrl, state: res.state }
 }
 
 afterEach(() => {
@@ -128,7 +128,7 @@ describe('API credentials', () => {
     if (cookie === undefined) throw new Error('API connect did not set a cookie')
     const [name, value] = cookie.split('=') as [string, string]
     const payload = { version: 2, authority, id, issuedAt, expiresAt: issuedAt + 30 * 86_400_000 }
-    expect(JSON.parse(Buffer.from(value.split('.')[1]!, 'base64url').toString('utf8'))).toEqual(payload)
+    expect(JSON.parse(Buffer.from(value.split('.')[1], 'base64url').toString('utf8'))).toEqual(payload)
     expect(auth.authenticateApi(request('/', authority, { cookie }))).toBe(id)
     expect(auth.isAuthenticated(request('/', authority, { cookie }))).toBe(false)
     expect(auth.authenticateApi(request('/', authority, { cookie: exchange(auth).cookie }))).toBeUndefined()
@@ -256,7 +256,7 @@ describe('BrowserAuth', () => {
     const setCookie = exchanged.state.headers?.['set-cookie']
     if (setCookie === undefined) throw new Error('mount exchange did not set a cookie')
     expect(auth.isAuthenticated(request(
-      '/', 'gateway.example', { cookie: setCookie.split(';', 1)[0]! },
+      '/', 'gateway.example', { cookie: setCookie.split(';', 1)[0] },
     ))).toBe(true)
   })
 

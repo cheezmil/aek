@@ -73,4 +73,19 @@ export default defineConfig([
     clean: false,
     external: ['@oclif/core'],
   },
+  {
+    // logs: the built-in log reader (`aek logs`). Single-input like every
+    // command above so oclif's lib/commands scan never loads a chunk as a
+    // command.
+    entry: { logs: 'src/commands/logs.ts' },
+    outDir: 'lib/commands',
+    format: ['esm'],
+    platform: 'node',
+    target: 'es2024',
+    outExtension: () => ({ js: '.mjs' }),
+    dts: false,
+    sourcemap: false,
+    clean: false,
+    external: ['@oclif/core'],
+  },
 ])

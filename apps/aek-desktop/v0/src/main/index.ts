@@ -1,10 +1,11 @@
 import { app, BrowserWindow, Menu, shell, systemPreferences } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { resolveAekHome } from '@cheezmil/coraek/home'
-import { bindHost, isSlot, resolveSlot, slotConfig } from '@cheezmil/coraek/slots'
+import { bindHost, isSlot, resolveSlot, slotConfig, slotHome } from '@cheezmil/coraek/slots'
 import { readSlotLock, writeSlotLock, clearSlotLock, isPidAlive } from '@cheezmil/coraek/slot-lock'
+import log from 'electron-log/main'
 
 const APP_ROOT = join(fileURLToPath(import.meta.url), '../..')
 
@@ -50,6 +51,56 @@ function currentSlot(): 'aek' | 'next' {
 
 const SLOT = currentSlot()
 const SLOT_CFG = slotConfig(SLOT)
+
+// T round: desktop log rotation constants (see the electron-log block below).
+const DESKTOP_LOG_MAX_BYTES = 2 * 1024 * 1024
+const DESKTOP_LOG_KEEP_GENERATIONS = 5
+
+/**
+ * T round: the shell's built-in log file, via electron-log (the maintained
+ * Electron logging SDK: cross-platform file transport, rotation, renderer IPC
+ * capture). The file lives in THIS slot's data root — never the default
+ * per-app location — so `aek logs` reads exactly the slot it is told to.
+ * Plain-text lines (`ISO LEVEL [desktop] message k=v`): an incident (white
+ * screen, crash, boot failure) is diagnosable from text alone, on any
+ * platform, with no GUI tooling and no screenshots.
+ */
+log.transports.file.fileName = 'desktop.log'
+log.transports.file.resolvePath = () => join(slotHome(SLOT), 'logs', 'desktop.log')
+log.transports.file.maxSize = DESKTOP_LOG_MAX_BYTES
+log.transports.file.level = 'info'
+log.transports.file.format = (params) => {
+  const data: unknown[] = params.data ?? []
+  const message = String(data.shift() ?? '')
+  const timestamp = new Date(params.message.date).toISOString()
+  const extra = data
+    .map(value => value instanceof Error
+      ? `error=${value.message}\n  ${String(value.stack ?? '').split('\n').slice(0, 4).join('\n  ')}`
+      : typeof value === 'object' && value !== null
+        ? JSON.stringify(value)
+        : String(value))
+    .join(' ')
+  return [`${timestamp} ${String(params.level).toUpperCase()} ${message}${extra ? ` ${extra}` : ''}`]
+}
+// electron-log's native archive keeps a single `.old` file; shift a
+// generation chain instead so 5 files (current + 4 rolled) survive and the
+// oldest one is dropped on each roll.
+log.transports.file.archiveLogFn = (oldLogFile) => {
+  const current = oldLogFile.path
+  for (let generation = DESKTOP_LOG_KEEP_GENERATIONS; generation >= 2; generation--) {
+    const from = `${current}.${generation - 1}`
+    if (existsSync(from)) renameSync(from, `${current}.${generation}`)
+  }
+  if (existsSync(current)) renameSync(current, `${current}.1`)
+}
+
+/** Main-process faults were previously invisible in a packaged app. */
+process.on('uncaughtException', (err: unknown) => {
+  log.error('uncaught exception in main', err instanceof Error ? err : new Error(String(err)))
+})
+process.on('unhandledRejection', (reason: unknown) => {
+  log.error('unhandled rejection in main', reason instanceof Error ? reason : new Error(String(reason)))
+})
 
 // Ports come from the environment when the launcher started us (dev flow), then
 // from the slot baked into the packaged app, and finally from the slot table.
@@ -160,6 +211,7 @@ function releaseSlotLock(): void {
 }
 
 if (!acquireSlotLock()) {
+  log.warn('another instance of this slot is already running; quitting', { slot: SLOT })
   console.log('[main] another instance of this slot is already running; quitting')
   app.quit()
   process.exit(0)
@@ -181,6 +233,7 @@ function portMismatchPage(): string | null {
     'Connecting anyway would show the other app\'s data root.',
     'Start this app through its own launcher, or unset the port override.',
   ].join('\n')
+  log.error('backend port mismatch — refusing to load', { configuredPort: SLOT_CFG.webPort, effectivePort: WEB_PORT })
   console.error(`[main] ${message}`)
   const html = '<!doctype html><meta charset="utf-8"><title>AEK</title>' +
     '<body style="font:14px -apple-system,sans-serif;padding:2rem;color:#222">' +
@@ -260,12 +313,14 @@ function watchBackend(win: BrowserWindow): () => void {
   const showReconnect = (): void => {
     if (showingReconnect) return
     showingReconnect = true
+    log.warn('backend down — showing reconnecting page', { shellUrl })
     void win.loadURL(reconnectingPage()).catch(() => { /* the window may be gone */ })
   }
 
   const showApp = (): void => {
     if (!showingReconnect) return
     showingReconnect = false
+    log.info('backend up — loading shell', { shellUrl })
     void win.loadURL(shellUrl).catch(() => { /* the window may be gone */ })
   }
 
@@ -279,16 +334,43 @@ function watchBackend(win: BrowserWindow): () => void {
     showReconnect()
   }
 
-  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+  // Renderer console capture: the web client's `[aek-boot]` telemetry (module
+  // system created / boot stalled / script failed) plus any page error lands
+  // in desktop.log as `renderer console` events. In a plain browser the same
+  // lines stay in the devtools console; here they become durable text.
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    const source = sourceId ? sourceId.split('/').pop() ?? sourceId : 'renderer'
+    if (level === 3) log.error(`renderer console: ${message}`, { line, source })
+    else if (level === 2) log.warn(`renderer console: ${message}`, { line, source })
+    else if (level === 0) log.debug(`renderer console: ${message}`, { line, source })
+    else log.info(`renderer console: ${message}`, { line, source })
+  })
+
+  win.webContents.on('did-finish-load', () => {
+    // Electron 44's typed listener for this event takes no arguments; the URL
+    // comes from the webContents itself.
+    log.info('did-finish-load', { url: win.webContents.getURL() })
+  })
+
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     // -3 is ERR_ABORTED, which fires for every normal navigation-away.
     if (errorCode === -3) return
+    log.error('did-fail-load', { errorCode, errorDescription, validatedURL, isMainFrame })
     console.log(`[main] load failed (${String(errorCode)} ${errorDescription}) ${validatedURL}`)
     showReconnect()
   })
 
   win.webContents.on('render-process-gone', (_event, details) => {
+    log.error('render-process-gone', { reason: details.reason, exitCode: details.exitCode })
     console.log(`[main] renderer gone: ${details.reason}`)
     showReconnect()
+  })
+
+  win.on('unresponsive', () => {
+    log.warn('window unresponsive')
+  })
+  win.on('responsive', () => {
+    log.info('window responsive')
   })
 
   timer = setInterval(() => { void probe() }, PROBE_INTERVAL_MS)
@@ -441,12 +523,28 @@ function createWindow() {
   win.loadURL(shellUrl).catch(() => {
     if (win.isDestroyed() || shellUrl === LOOPBACK_URL) return
     shellUrl = LOOPBACK_URL
+    log.warn('host did not resolve, falling back to the loopback literal', { webHost: WEB_HOST, fallback: LOOPBACK_URL })
     console.log(`[main] ${WEB_HOST} did not resolve, falling back to ${LOOPBACK_URL}`)
     void win.loadURL(LOOPBACK_URL).catch(() => { /* the watcher retries */ })
   })
 }
 
 app.whenReady().then(() => {
+  // T round: the first log line of every boot — what this shell is, where it
+  // points, and which channel built it. A white screen is read from here
+  // forward: boot → backend probes → load events → renderer console.
+  log.info('boot', {
+    pid: process.pid,
+    slot: SLOT,
+    channel: isDev ? 'dev' : 'prod',
+    electron: process.versions.electron,
+    node: process.versions.node,
+    webHost: WEB_HOST,
+    webPort: WEB_PORT,
+    shellUrl,
+    headless: HEADLESS,
+    packaged: packaged?.slot ?? 'source-tree',
+  })
   // The menu (and its dev-tools accelerators) is independent of windows, so
   // it is installed in headless mode too — harmless, keeps one code path.
   registerApplicationMenu()
@@ -456,6 +554,7 @@ app.whenReady().then(() => {
   // macOS never shows a second Dock icon for an "inactive" slot that is only
   // being kept warm (or verified). The app stays alive until it is stopped.
   if (HEADLESS) {
+    log.info('headless mode: no window', { slot: SLOT, webPort: WEB_PORT })
     console.log(`[main] headless mode: no window (slot ${SLOT}, web port ${WEB_PORT})`)
     return
   }

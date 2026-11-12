@@ -558,8 +558,17 @@ const PARSER_PRELOAD_IDS = [CLIENT_MODULES_ID] as const
  */
 export function bootInjections(graph: WebBootGraph): IndexInjection[] {
   const bootstrapId = JSON.stringify(CLIENT_MODULES_ID)
+  // T round: the emitted bootstrap carries `[aek-boot]` telemetry. In the
+  // desktop shell, the main process captures renderer console output into the
+  // slot log (`desktop.log`), so a white screen (boot stalled / script 404)
+  // is diagnosable from `aek logs` text alone — no GUI tooling. In a browser
+  // the same lines sit in the devtools console. The watchdog arms at queue
+  // creation: 5 s after the page started, if the module system was never
+  // created, the pending registration ids are the exact diagnosis.
   const queue = `(()=>{
 const pendingQueue=[]
+const t0=performance.now?performance.now():Date.now()
+const tag=(kind,msg,extra)=>{try{const p={message:msg};if(extra!==undefined)p.extra=extra;if(kind==="warn"||kind==="error"){console.warn("[aek-boot] "+msg,extra!==undefined?extra:{})}else{console.log("[aek-boot] "+msg,extra!==undefined?extra:{})}}catch{}}
 window.__ModuleLoader__={
   mode:"queue",
   pendingQueue,
@@ -568,17 +577,34 @@ window.__ModuleLoader__={
     if(this.mode!=="queue")throw new Error("client-modules: window.__ModuleLoader__.create called after module-system boot")
     const index=pendingQueue.findIndex(registration=>registration.id===${bootstrapId})
     const registration=pendingQueue[index]
-    if(registration===undefined)throw new Error("client-modules: HTML did not preload ${CLIENT_MODULES_ID}/client.js")
+    if(registration===undefined){
+      tag("error","boot failed",{reason:"HTML did not preload ${CLIENT_MODULES_ID}/client.js",queued:pendingQueue.map(r=>r.id)})
+      throw new Error("client-modules: HTML did not preload ${CLIENT_MODULES_ID}/client.js")
+    }
     pendingQueue.splice(index,1)
     const exports=registration.factory(specifier=>{
       throw new Error('client-modules: ${CLIENT_MODULES_ID}/client.js requested external "'+specifier+'" before the module system existed')
     })
     if(typeof exports!=="object"||exports===null||typeof exports.createClientModuleSystem!=="function"||typeof exports.apply!=="function"){
+      tag("error","boot failed",{reason:"${CLIENT_MODULES_ID}/client.js did not export the bootstrap module face"})
       throw new Error("client-modules: ${CLIENT_MODULES_ID}/client.js did not export the bootstrap module face")
     }
-    return exports.createClientModuleSystem(this,{id:registration.id,exports},options)
+    const system=exports.createClientModuleSystem(this,{id:registration.id,exports},options)
+    tag("info","module system created",{ms:Math.round((performance.now?performance.now():Date.now())-t0)})
+    return system
   }
 }
+window.addEventListener("error",(event)=>{
+  const el=event.target
+  if(el&&el.tagName==="SCRIPT"&&el.src){
+    tag("warn","script failed to load",{src:String(el.src).replace(location.origin,""),queued:pendingQueue.length})
+  }
+},true)
+setTimeout(()=>{
+  if(window.__ModuleLoader__&&window.__ModuleLoader__.mode==="queue"){
+    tag("warn","boot stalled: module system not created after 5s",{queued:pendingQueue.length,ids:pendingQueue.map(r=>r.id),docReady:document.readyState})
+  }
+},5000)
 })()`
   const bootstrap = graph.batches.filter(batch => batch.phase === 'bootstrap')
   const application = graph.batches.filter(batch => batch.phase === 'application')

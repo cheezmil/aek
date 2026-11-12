@@ -12,7 +12,8 @@
     "package": "electron-builder build --mac --config electron-builder.config.mjs"
   },
   "dependencies": {
-    "@cheezmil/coraek": "workspace:*"
+    "@cheezmil/coraek": "workspace:*",
+    "electron-log": "^5.4.4"
   },
   "devDependencies": {
     "@types/node": "22.20.1",

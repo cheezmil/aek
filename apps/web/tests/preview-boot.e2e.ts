@@ -592,7 +592,7 @@ async function requestLazyChunk(page: Page, site: Site, manifest: ImageManifest)
     return results
   }, { id: TERMINAL_PACKAGE })
   expect(chunk.map(result => result.status)).toEqual([200, 200])
-  expect(chunk[0]!.size).toBeGreaterThan(0)
+  expect(chunk[0].size).toBeGreaterThan(0)
   // Two chunk requests, one archive fetch: the Worker filesystem keeps what arrived.
   expect(fetched()).toBe(1)
 }

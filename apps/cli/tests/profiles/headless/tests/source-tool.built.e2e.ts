@@ -71,7 +71,7 @@ describe.skipIf(!existsSync(join(repoRoot, 'apps/cli/lib/bin.js')))('dsh SOURCE 
       expect(result.exitCode, diagnostic).toBe(0)
       const records = result.stdout.split('\n').filter(line => line.startsWith('DSH_SOURCE_TOOL_RESULT '))
       expect(records, diagnostic).toHaveLength(1)
-      const evidence = JSON.parse(records[0]!.slice('DSH_SOURCE_TOOL_RESULT '.length)) as SourceToolEvidence
+      const evidence = JSON.parse(records[0].slice('DSH_SOURCE_TOOL_RESULT '.length)) as SourceToolEvidence
       expect(evidence.execArgv).toEqual(['--import', 'tsx/esm'])
       expect(evidence.errors).toEqual([])
       for (const pkg of ['tools', 'agent-loop']) {

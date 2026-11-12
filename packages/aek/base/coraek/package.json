@@ -69,6 +69,10 @@
     "./runtime": {
       "types": "./runtime.d.mts",
       "default": "./runtime.mjs"
+    },
+    "./logging": {
+      "types": "./logging.d.mts",
+      "default": "./logging.mjs"
     }
   },
   "dsh": {
@@ -142,6 +146,8 @@
     "distribution": "A1"
   },
   "dependencies": {
-    "@oclif/core": "^5.1.11"
+    "@oclif/core": "^5.1.11",
+    "pino": "^10.4.0",
+    "pino-roll": "^4.0.0"
   }
 }
