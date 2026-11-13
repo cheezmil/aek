@@ -91,6 +91,13 @@ attachCleanup(web)
     AEK_SLOT: slot,
     AEK_WEB_PORT: String(cfg.webPort),
     AEK_CDP_PORT: String(cfg.cdpPort),
+    // B round: the shell must know it is the DEV instance — that is what keeps
+    // its Electron profile (userData) and window-bounds file in the slot's
+    // `desktop-dev` dir instead of the prod `desktop` dir / default appData
+    // (see `apps/aek-desktop/v0/src/main/index.ts`, isDev branch).
+    // start-dev spawned shells directly and had drifted from
+    // shared-logic's startShellDev, which already passes this.
+    AEK_MODE: 'dev',
   })
   const app = spawn(electronBin(devAppDirForSlot(slot), cfg.devAppName), [
     mainJs,

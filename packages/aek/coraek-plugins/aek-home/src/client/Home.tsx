@@ -14,12 +14,12 @@
  * @module @cheezmil/aek-home/src/client/Home
  */
 import type { CSSProperties } from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CanonicalHostRedirect, isLegacyLoopback } from './CanonicalHost.tsx'
 import { I18nProvider } from './i18n.tsx'
 import { InfoPanels } from './InfoPanels.tsx'
 import { PromptsPanel, SkillsPanel } from './ConsolePanels.tsx'
-import { oneOf, PREF_KEYS, PrefProvider, usePref, useSettings } from './preferences.tsx'
+import { oneOf, PREF_KEYS, PrefProvider, usePref, usePrefLanded, useSettings, parseBoolean } from './preferences.tsx'
 import { Sidebar } from './Sidebar.tsx'
 import type { PanelId } from './nav-model.ts'
 import {
@@ -37,11 +37,42 @@ import { useCurrentSlot } from './useRuntimeMode.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
 import { WebSearchPanel } from './WebSearchPanel.tsx'
 import { useWebsearchStatus } from './useWebsearchStatus.ts'
+import { prefetchRanking } from './useWebsearchRanking.ts'
+import type { FreeFilter } from './useWebsearchRanking.ts'
 
 /** All valid panel ids, used to validate a persisted value. */
 const PANEL_IDS: readonly PanelId[] = [
   'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'websearchSettings', 'settings', 'about',
 ]
+
+/**
+ * B round: parse the pre-warmed Web Search settings at the console root
+ * (the panel's own parsers are module-local; these mirror them).
+ * @param raw - the raw host value. @returns a valid free-tier literal or undefined.
+ */
+function parseFreeTierHome(raw: unknown): FreeFilter | undefined {
+  return raw === 'yes' || raw === 'no' ? raw : undefined
+}
+
+/** @param raw - the raw host value. @returns a positive TTL in hours, or undefined. */
+function parseTtlHoursHome(raw: unknown): number | undefined {
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? value : undefined
+}
+
+/**
+ * B round: parse the panel out of the URL PATHNAME (`/websearch` — clean
+ * path routing, no `#`). The host web server answers every unknown clean
+ * path with the app document (frontend-static SPA fallback), so a pasted
+ * or typed URL deep-links straight to the panel.
+ * @param pathname - `window.location.pathname`.
+ * @returns the panel id when the path names one, else `undefined`
+ * (`'/'` = no panel named; the persisted pref decides).
+ */
+function panelFromPath(pathname: string): PanelId | undefined {
+  const id = pathname.replace(/^\/+/, '').replace(/\/+$/, '')
+  return (PANEL_IDS as readonly string[]).includes(id) ? (id as PanelId) : undefined
+}
 
 /** Props kept for API compatibility with earlier aek-home releases. */
 export interface AekHomeProps {
@@ -56,6 +87,92 @@ function Console() {
   const state = useWebsearchStatus()
   const inventory = useInventory()
   const currentSlot = useCurrentSlot()
+
+  // B round: URL routing — the active panel mirrors into the address bar as
+  // `/<panelId>` (clean path routing, no `#`) so the console behaves like a
+  // routed app: the URL is copyable (deep links) and browser back/forward
+  // walk the panel history. The host answers unknown clean paths with the
+  // app document, so refresh and pasted URLs both deep-link.
+  //
+  // OWNERSHIP RULE: before the host pref lands, the URL is authoritative
+  // (a typed/pasted deep link must not be clobbered by the fallback panel
+  // value); AFTER it lands, in-app panel changes own the URL, while URL
+  // navigation (back/forward, the deep-link claim itself) must not push a
+  // duplicate entry. `urlDrivenRef` is the hand-off flag between the two.
+  const panelRef = useRef(panel)
+  panelRef.current = panel
+  const urlDrivenRef = useRef(false)
+  const landed = usePrefLanded()
+  // Runs ONLY on the landed transition — never again. Re-running on
+  // `setPanel` identity (which changes with the panel value) is what made
+  // the claim fight every in-app switch: each click would be re-asserted
+  // back to the URL's panel (the "twitching" the user saw).
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional:
+  // `landed` alone is the trigger; `setPanel` is a stable-enough closure.
+  useEffect(() => {
+    if (!landed) return
+    const parsed = panelFromPath(window.location.pathname)
+    if (parsed !== undefined && parsed !== panelRef.current) {
+      urlDrivenRef.current = true
+      setPanel(parsed)
+    }
+  }, [landed])
+  // Mirror panel → URL only for IN-APP changes (push one entry; never echo
+  // a URL-driven panel back into the history stack).
+  useEffect(() => {
+    if (!landed) return
+    if (urlDrivenRef.current) {
+      urlDrivenRef.current = false
+      return
+    }
+    const target = `/${String(panel)}`
+    if (window.location.pathname !== target) {
+      window.history.pushState(null, '', target)
+    }
+  }, [panel, landed])
+  // URL → panel (browser back/forward / a typed or pasted path).
+  useEffect(() => {
+    const onPopState = (): void => {
+      const parsed = panelFromPath(window.location.pathname)
+      if (parsed !== undefined && parsed !== panelRef.current) {
+        urlDrivenRef.current = true
+        setPanel(parsed)
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [setPanel])
+
+  // B round: pre-warm the Web Search ranking board (its module cache) so the
+  // panel's FIRST visit renders the grouped board in ONE frame — no
+  // skeleton → board two-stage pop. Same host-persisted settings the panel
+  // itself reads; the "不进行任何排行分类" switch disables every read.
+  const [prefFreeTier] = usePref<FreeFilter>(PREF_KEYS.websearchFreeTier, 'yes', parseFreeTierHome)
+  const [prefPhone] = usePref(PREF_KEYS.websearchPhone, false, parseBoolean)
+  const [prefCard] = usePref(PREF_KEYS.websearchCard, false, parseBoolean)
+  const [prefTtlHours] = usePref(PREF_KEYS.websearchRankingTtlHours, 24, parseTtlHoursHome)
+  const [prefNoRanking] = usePref(PREF_KEYS.websearchNoRanking, false, parseBoolean)
+  useEffect(() => {
+    prefetchRanking({ free: prefFreeTier, phone: prefPhone, card: prefCard }, { ttlHours: prefTtlHours, enabled: !prefNoRanking })
+  }, [prefFreeTier, prefPhone, prefCard, prefTtlHours, prefNoRanking])
+
+  // B round: while the NEW panel's first frame is landing, the previous
+  // panel's content stays mounted (hidden) for one short beat, so a switch
+  // never shows an empty main — the screen never goes blank. The hold is
+  // capped at 300 ms: the old tree is unmounted right after, keeping the
+  // console's memory profile at ONE live panel (the low-memory rule).
+  const prevPanelRef = useRef<PanelId | null>(null)
+  const [heldPanel, setHeldPanel] = useState<PanelId | null>(null)
+  useEffect(() => {
+    const previous = prevPanelRef.current
+    prevPanelRef.current = panel
+    if (previous === null || previous === panel) return
+    setHeldPanel(previous)
+    const timer = setTimeout(() => {
+      setHeldPanel(current => (current === previous ? null : current))
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [panel])
   // Host facts lifted to the root: the Web Search page needs them for the
   // path display-style setting, and this keeps one shared fetch for every
   // surface instead of one per panel mount.
@@ -99,6 +216,23 @@ function Console() {
   const railVisible = family !== undefined && !hiddenRails.split(',').filter(Boolean).includes(family)
   const labelsCollapsed = family !== undefined && labelsHidden.split(',').filter(Boolean).includes(family)
 
+  /**
+   * B round: the panel → content mapping lives in ONE function so the
+   * held-previous tree (switching, no blank) and the live tree share it.
+   * @param id - the panel to render.
+   * @returns that panel's content component (or nothing).
+   */
+  const renderPanelContent = (id: PanelId) => {
+    if (id === 'runtime') return <RuntimeModePanel refreshSignal={signalFor('runtime')} />
+    if (id === 'websearch') return <WebSearchPanel state={state} refreshSignal={signalFor('websearch')} facts={facts} />
+    if (id === 'plugins' || id === 'settings' || id === 'websearchSettings' || id === 'about') {
+      return <InfoPanels panel={id} inventory={inventory} refreshSignal={signalFor(id)} />
+    }
+    if (id === 'skills') return <SkillsPanel refreshSignal={signalFor('skills')} />
+    if (id === 'prompts') return <PromptsPanel refreshSignal={signalFor('prompts')} />
+    return null
+  }
+
   return (
     <div className={css.app} style={style}>
       <Sidebar
@@ -112,13 +246,10 @@ function Console() {
         {railVisible ? <PluginSubNav active={panel} onSelect={setPanel} labelsHidden={labelsCollapsed} /> : null}
         <div className={css.mainBody}>
           <main className={css.content}>
-            {panel === 'runtime' ? <RuntimeModePanel refreshSignal={signalFor('runtime')} /> : null}
-            {panel === 'websearch' ? <WebSearchPanel state={state} refreshSignal={signalFor('websearch')} facts={facts} /> : null}
-            {panel === 'plugins' || panel === 'settings' || panel === 'websearchSettings' || panel === 'about'
-              ? <InfoPanels panel={panel} inventory={inventory} refreshSignal={signalFor(panel)} />
+            {heldPanel !== null && heldPanel !== panel
+              ? <div style={{ display: 'none' }}>{renderPanelContent(heldPanel)}</div>
               : null}
-            {panel === 'skills' ? <SkillsPanel refreshSignal={signalFor('skills')} /> : null}
-            {panel === 'prompts' ? <PromptsPanel refreshSignal={signalFor('prompts')} /> : null}
+            {renderPanelContent(panel)}
           </main>
         </div>
       </div>

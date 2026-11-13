@@ -107,7 +107,12 @@ export function PrefProvider({ children }: { children: ReactNode }) {
         return await response.json() as Record<string, PrefValue>
       })
       .then((data) => { if (!cancelled) setPrefs(data) })
-      .catch(() => { /* host unreachable: stay on fallbacks, never localStorage */ })
+      .catch(() => {
+        // Host unreachable: land with whatever we have (empty map when
+        // nothing was written yet) so `usePrefLanded` consumers still run;
+        // the optimistic local values are kept, never clobbered.
+        if (!cancelled) setPrefs(prev => prev ?? {})
+      })
     return () => { cancelled = true }
   }, [])
 
@@ -214,6 +219,25 @@ export function usePref<T>(
   }, [key, set, value, parse, fallback])
 
   return [value, update]
+}
+
+/**
+ * Whether the host settings map has landed (the first GET resolved).
+ *
+ * `usePref` values are FALLBACKs until then — consumers that must run ONCE
+ * after the authoritative map arrives (B round: the URL deep-link wins over
+ * the persisted panel) key their effect on this flag instead of guessing.
+ *
+ * @returns `false` before the first host read resolves, `true` after (or
+ * when the host is unreachable — the fallbacks stay, effects must still run).
+ */
+export function usePrefLanded(): boolean {
+  const { prefs } = usePrefContext()
+  // `undefined` = still loading. A resolved-but-empty map, or a failed fetch
+  // that keeps us on fallbacks, both count as "landed": the deep-link effect
+  // must run exactly once, and it must not wait forever for a host that is
+  // down.
+  return prefs !== undefined
 }
 
 /** @returns the settings context. */

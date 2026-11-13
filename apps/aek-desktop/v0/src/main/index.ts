@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, shell, systemPreferences } from 'electron'
+import { app, BrowserWindow, Menu, screen, shell, systemPreferences } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -192,6 +192,52 @@ app.setName(SLOT_CFG.productName)
 // forgot the shell it had launched.
 const SLOT_HOME = resolveAekHome()
 const LOCK_PATH = join(SLOT_HOME, '.aek-runtime.pid')
+
+// ── B round: window bounds memory ─────────────────────────────────────────
+// The window's position, size and maximized state persist across launches in
+// a slot-owned file (`desktop/` for the prod app, `desktop-dev/` for the dev
+// shell — both are manifest-declared dirs under `<SLOT_HOME>`, so no path is
+// derived outside the manifest). No Electron-ecosystem SDK: a plain JSON
+// write on a debounced resize/move.
+const DEFAULT_WINDOW = { x: -1, y: -1, width: 1280, height: 800, maximized: false }
+type SavedBounds = typeof DEFAULT_WINDOW
+const BOUNDS_PATH = join(SLOT_HOME, isDev ? 'desktop-dev' : 'desktop', 'window-bounds.json')
+
+/** @returns the saved bounds, validated against the live display set. */
+function loadWindowBounds(): SavedBounds {
+  let saved: Partial<SavedBounds> = {}
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(BOUNDS_PATH, 'utf8'))
+    if (typeof parsed === 'object' && parsed !== null) saved = parsed as Partial<SavedBounds>
+  } catch { /* first launch / corrupt file */ }
+  const bounds: SavedBounds = {
+    x: Number.isFinite(saved.x) ? (saved.x as number) : DEFAULT_WINDOW.x,
+    y: Number.isFinite(saved.y) ? (saved.y as number) : DEFAULT_WINDOW.y,
+    width: Number.isFinite(saved.width) ? (saved.width as number) : DEFAULT_WINDOW.width,
+    height: Number.isFinite(saved.height) ? (saved.height as number) : DEFAULT_WINDOW.height,
+    maximized: saved.maximized === true,
+  }
+  // A monitor may have been unplugged since the last run: keep the bounds
+  // only when most of the window would still sit inside some work area,
+  // otherwise fall back to the OS-centered default.
+  const rect = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
+  const visible = screen.getAllDisplays().some(display => {
+    const area = display.workArea
+    const overlapX = Math.min(rect.x + rect.width, area.x + area.width) - Math.max(rect.x, area.x)
+    const overlapY = Math.min(rect.y + rect.height, area.y + area.height) - Math.max(rect.y, area.y)
+    const overlap = Math.max(0, overlapX) * Math.max(0, overlapY)
+    return overlap >= 0.4 * rect.width * rect.height
+  })
+  return visible ? bounds : DEFAULT_WINDOW
+}
+
+/** Persist the given bounds (the caller owns debouncing). */
+function saveWindowBounds(bounds: SavedBounds): void {
+  try {
+    mkdirSync(dirname(BOUNDS_PATH), { recursive: true })
+    writeFileSync(BOUNDS_PATH, JSON.stringify(bounds, null, 2) + '\n', 'utf8')
+  } catch { /* a disk failure must not stop the app */ }
+}
 
 /** @returns true when another shell for this slot is already alive. */
 function slotLockHeld(): boolean {
@@ -581,9 +627,14 @@ function registerAccessibility(): void {
 }
 
 function createWindow() {
+  // B round: the previous session's position/size (validated against the
+  // current display set) replaces the hardcoded 1280×800 default.
+  const bounds = loadWindowBounds()
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    x: bounds.x < 0 ? undefined : bounds.x,
+    y: bounds.y < 0 ? undefined : bounds.y,
+    width: bounds.width,
+    height: bounds.height,
     minWidth: 800,
     minHeight: 600,
     // Native frame kept; the caption text itself is intentionally empty.
@@ -594,6 +645,30 @@ function createWindow() {
       contextIsolation: true,
     },
   })
+  if (bounds.maximized) win.maximize()
+  // B round: remember the window position/size. A debounced write coalesces
+  // the resize-drag storm; maximize/unmaximize record the state change.
+  let boundsTimer: NodeJS.Timeout | undefined
+  const scheduleBoundsSave = () => {
+    if (boundsTimer !== undefined) clearTimeout(boundsTimer)
+    boundsTimer = setTimeout(() => {
+      boundsTimer = undefined
+      if (win.isDestroyed()) return
+      const isMax = win.isMaximized()
+      // macOS full screen is NOT a maximize: persist the NORMAL bounds
+      // (the pre-full-screen size), so a restart never re-opens a
+      // full-screen-shaped window. We do not persist the full-screen state
+      // itself — only position, size and maximize.
+      const rect = (isMax || win.isFullScreen()) ? win.getNormalBounds() : win.getBounds()
+      saveWindowBounds({ ...rect, maximized: isMax })
+    }, 250)
+  }
+  win.on('resize', scheduleBoundsSave)
+  win.on('move', scheduleBoundsSave)
+  win.on('maximize', scheduleBoundsSave)
+  win.on('unmaximize', scheduleBoundsSave)
+  win.on('enter-full-screen', scheduleBoundsSave)
+  win.on('leave-full-screen', scheduleBoundsSave)
   // The HTML document also carries a <title>; without this the renderer would
   // push it into the native caption and the text would come back.
   win.on('page-title-updated', (event) => { event.preventDefault() })

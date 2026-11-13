@@ -190,6 +190,42 @@ function messageOf(cause: unknown): string {
 /** Default refresh interval in hours (the Web Search plugin setting default). */
 export const RANKING_TTL_DEFAULT_HOURS = 24
 
+/** B round: in-flight prefetch keys (dedupe overlapping warm-up reads). */
+const prefetching = new Set<string>()
+
+/**
+ * B round: warm the module cache for a filter WITHOUT any UI — the console
+ * root calls it on mount so the Web Search panel's FIRST visit renders the
+ * grouped board in ONE frame (no skeleton → board two-stage pop). A cache
+ * entry that already exists is kept as-is; only a missing key triggers a
+ * read, and overlapping calls for the same key collapse into one request.
+ *
+ * @param filter - the filter to warm (the host-persisted one).
+ * @param options - TTL hours and the `enabled` flag (the "不进行任何排行分类"
+ * switch disables every read, so it disables the prefetch too).
+ */
+export function prefetchRanking(filter: RankingFilter, options: RankingReadOptions = {}): void {
+  if (options.enabled === false) return
+  const key = cacheKey({ free: filter.free, phone: filter.phone, card: filter.card })
+  if (rankingCache.has(key) || prefetching.has(key)) return
+  prefetching.add(key)
+  void fetch(rankingQuery({ free: filter.free, phone: filter.phone, card: filter.card }, { ttlHours: options.ttlHours }), {
+    headers: { accept: 'application/json' },
+  })
+    .then(async (response) => {
+      if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+      return await response.json() as RankingSnapshot
+    })
+    .then((data) => {
+      // Same rule as the panel read: only a CLASSIFIED board enters the
+      // cache; the warm-up may run while the panel is closed, so no UI
+      // state is touched at all.
+      if (data.ok && data.classified) rankingCache.set(key, { snapshot: data, readAtMs: Date.now() })
+    })
+    .catch(() => { /* host unreachable / unclassified: stay out of the way */ })
+    .finally(() => { prefetching.delete(key) })
+}
+
 /**
  * Y round: mirrors the host's `RANKING_REFRESH_BACKOFF_MS` — after a refresh
  * attempt FAILED, both sides retry at most once per this window. The sweep
