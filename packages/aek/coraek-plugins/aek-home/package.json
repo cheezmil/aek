@@ -27,6 +27,7 @@
     }
   },
   "scripts": {
+    "prebundle": "node ../../../../scripts/aek/verify-i18n.mjs",
     "bundle": "tsdown",
     "watch": "tsdown --watch"
   },

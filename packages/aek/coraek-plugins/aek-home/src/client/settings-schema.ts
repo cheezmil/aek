@@ -105,6 +105,12 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     labelKey: 'settings.logoVisible', hintKey: 'settings.logoVisibleHint', default: true,
   },
   {
+    // X round: the W-round horizontal scroll added a bottom scrollbar the user
+    // wants GONE by default (content still scrolls); this toggle brings it back.
+    key: 'aek-home.sidebarHScroll', kind: 'toggle', group: 'sidebar',
+    labelKey: 'settings.sidebarHScroll', hintKey: 'settings.sidebarHScrollHint', default: false,
+  },
+  {
     key: 'aek-home.logoVariant', kind: 'select', group: 'sidebar',
     labelKey: 'settings.logoVariant', default: 'mark',
     options: [

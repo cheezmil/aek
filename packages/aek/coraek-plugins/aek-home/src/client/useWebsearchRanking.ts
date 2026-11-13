@@ -235,9 +235,17 @@ export function useWebsearchRanking(filter: RankingFilter, options: RankingReadO
     const forced = forceSignal > 0 || manualTick > 0
     if (cached === undefined || forced) {
       // First read ever, or the user's manual refresh (force bypasses even
-      // the host cache). A filter change is a cache MISS by key, so a plain
-      // read is enough there.
+      // the host cache). A filter change to an UNSEEN filter is a cache MISS
+      // by key, so a plain read is enough there.
       doRead({ force: forced, silent: forced && cached !== undefined })
+    } else {
+      // X round: switching BACK to a filter that was read before is a cache
+      // HIT — the effect used to do nothing, leaving the VISIBLE snapshot on
+      // the previous filter's board ("点筛选怎么都没变化"). Sync the cached
+      // snapshot into the visible state instantly (no network); the
+      // background sweep below handles its TTL.
+      setSnapshot(cached.snapshot)
+      setError(undefined)
     }
     // Background sweep: once the TTL window has passed, re-read SILENTLY —
     // the visible board stays put until the fresh answer lands.

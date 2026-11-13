@@ -24,7 +24,7 @@
  * @module @cheezmil/aek-home/src/client/WebSearchPanel
  */
 import { useEffect, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { formatDisplayPath, parsePathStyle } from './paths.ts'
@@ -251,9 +251,22 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
   /** Render one provider row, with optional remote rank/metadata badges. */
   const renderProvider = (provider: ProviderStatus, rank?: number, meta?: ProviderMeta): ReactNode => {
     const open = expanded === provider.kind
+    /**
+     * X round: clicking ANYWHERE on the row (name, chips, empty space) opens
+     * the key pool — not just the chevron. Interactive children keep their
+     * own behaviour: the toggle switch, the chevron and every button are
+     * excluded here so a toggle click never also expands the pool.
+     */
+    const handleRowClick = (event: ReactMouseEvent<HTMLDivElement>): void => {
+      if ((event.target as Element).closest('button,a,input,[role="switch"]')) return
+      toggleExpanded(provider.kind)
+    }
     return (
       <li key={provider.kind} className={cx(css.providerItem, open && css.providerItemOpen)}>
-        <div className={css.providerRow}>
+        <div
+          className={cx(css.providerRow, css.providerRowClickable)}
+          onClick={handleRowClick}
+        >
           <button
             type="button"
             role="switch"
@@ -267,14 +280,18 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
           </button>
           <span className={css.providerIcon}><Icon name="search" size={16} /></span>
           <div className={css.providerMain}>
-            <div className={css.providerName} title={meta?.note}>{highlight(provider.kind, needle, css.mark)}</div>
+            <div className={css.providerName} title={meta?.note}>
+              {/* X round: the ordinal sticks to the provider NAME instead of
+                  floating between the name block and the chip cluster. */}
+              {rank !== undefined
+                ? <span className={css.rankChip}>{tf('websearch.ranking.rank', { n: rank })}</span>
+                : null}
+              {highlight(provider.kind, needle, css.mark)}
+            </div>
             <div className={css.providerMeta}>
               {provider.hasPool ? t('websearch.pool') : t('websearch.noPool')}
             </div>
           </div>
-          {rank !== undefined
-            ? <span className={css.rankChip}>{tf('websearch.ranking.rank', { n: rank })}</span>
-            : null}
           {meta?.freeTier === null
             ? (
               <span className={css.unknownChip} title={meta.note || t('websearch.filter.unknownNote')}>
@@ -361,6 +378,13 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
             jump when the data lands. V round: a failed first read keeps the
             SAME skeleton shape (plus a notice) instead of a flat fallback
             list, so the shape never changes. */}
+        {/* X round: the VERY FIRST paint (host status still in flight) also
+            shows the skeleton — the user must see element shape immediately,
+            never a lone spinner. The V-round case below covers the second-
+            half (status loaded but no classified snapshot yet). */}
+        {status === undefined && !disabled
+          ? <RankingSkeleton filtersOpen={filtersOpen} />
+          : null}
         {status !== undefined && !classified
           ? <RankingSkeleton filtersOpen={filtersOpen} />
           : null}

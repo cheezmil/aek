@@ -98,6 +98,15 @@ const DRAWER_KEY = 'aek-home.drawerExpanded'
  * keeps its slot when it is pinned / unpinned.
  */
 const ORDER_KEY = 'aek-home.order'
+/**
+ * X round: parent rows whose nested (third-level) rows are HIDDEN. Comma-
+ * separated panel ids; empty means "everything open". Clicking a second-level
+ * row toggles its third-level rows (user rule) AND selects the panel — the
+ * toggle is persisted like every other rail setting.
+ */
+const SUB_CLOSED_KEY = 'aek-home.subClosed'
+/** X round: restore the rail's bottom horizontal scrollbar (default: hidden). */
+const H_SCROLL_KEY = 'aek-home.sidebarHScroll'
 
 /**
  * A pending insertion: the new row order of one drawer plus the row the
@@ -119,8 +128,6 @@ export interface SidebarProps {
   active: PanelId
   /** Select a panel. */
   onSelect: (id: PanelId) => void
-  /** Provider count badge; `undefined` until the host answers. */
-  providerCount: number | undefined
   /** Which slot serves this console (C9). */
   currentSlot: 'aek' | 'next' | undefined
   /**
@@ -171,7 +178,7 @@ function DrawerGroup({ label, open, onToggle, children }: {
  * @param props - selection only; everything else comes from host settings.
  * @returns the sidebar.
  */
-export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefresh }: SidebarProps) {
+export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarProps) {
   const { t, locale, setLocale } = useI18n()
   const { prefs, set } = useSettings()
   const [collapsed, setCollapsed] = usePref<boolean>(PREF_KEYS.collapsed, false, parseBoolean)
@@ -250,6 +257,20 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefres
   const rankOf = (id: PanelId): number => orderIds.indexOf(id)
   /** Sort helper: applies the manual order to any row slice. */
   const byOrder = (a: NavEntry, b: NavEntry): number => rankOf(a.id) - rankOf(b.id)
+  /**
+   * X round: the parent rows whose nested (third-level) rows are hidden,
+   * persisted like every other rail setting.
+   */
+  const subClosed = useMemo(() => (typeof prefs[SUB_CLOSED_KEY] === 'string'
+    ? String(prefs[SUB_CLOSED_KEY]).split(',').filter(Boolean)
+    : []), [prefs])
+  /** @param id - parent panel. @returns the new closed set after the click. */
+  const toggleSubs = (id: PanelId): void => {
+    const next = subClosed.includes(id) ? subClosed.filter(item => item !== id) : [...subClosed, id]
+    set(SUB_CLOSED_KEY, next.join(','))
+  }
+  /** X round: the base setting that restores the bottom horizontal scrollbar (default off). */
+  const hScroll = prefs[H_SCROLL_KEY] === true
   const logoVisible = prefs['aek-home.logoVisible'] !== false
   const brandText = typeof prefs['aek-home.brandText'] === 'string' ? String(prefs['aek-home.brandText']) : 'AEK'
   const logoVariant = logoVariantOf(prefs['aek-home.logoVariant'])
@@ -435,6 +456,8 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefres
 
   /** @param entry - one row. @param pinnedNow - whether it is pinned. @returns the row. */
   const renderRow = (entry: NavEntry, pinnedNow: boolean): ReactNode => {
+    const subs = subRowsFor(entry.id)
+    const subOpen = subs.length > 0 && !subClosed.includes(entry.id)
     return (
       <li
         key={entry.id}
@@ -453,15 +476,28 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefres
           type="button"
           className={cx(css.navItem, active === entry.id && css.navItemActive)}
           aria-current={active === entry.id ? 'page' : undefined}
-          title={`${t(entry.labelKey)} · ${t('nav.dragHint')}`}
-          onClick={() => onSelect(entry.id)}
+          // X round: a second-level row that owns third-level rows toggles
+          // them on click (persisted via SUB_CLOSED_KEY) AND selects the panel.
+          onClick={() => {
+            onSelect(entry.id)
+            if (subs.length > 0) toggleSubs(entry.id)
+          }}
+          title={subs.length > 0
+            ? `${t(entry.labelKey)} · ${subOpen ? t('nav.subClose') : t('nav.subOpen')}`
+            : `${t(entry.labelKey)} · ${t('nav.dragHint')}`}
         >
           <span className={css.navIcon}><Icon name={entry.icon} size={18} /></span>
           <span className={css.navLabel}>{t(entry.labelKey)}</span>
-          {entry.id === 'websearch' && providerCount !== undefined
-            ? <span className={css.navBadge}>{String(providerCount)}</span>
-            : null}
         </button>
+        {/* X round: the sub-rows' open/closed caret, visible while the rail is
+            expanded; the click on the row itself performs the toggle. */}
+        {subs.length > 0
+          ? (
+            <span className={css.subCaret} aria-hidden="true">
+              <Icon name="chevronDown" size={12} className={cx(css.subCaretIcon, subOpen && css.chevronOpen)} />
+            </span>
+          )
+          : null}
         {/* Q round: the refresh icon sits LEFT of the pin and refreshes the
             page THIS row opens — even when that page is not active yet. */}
         <button
@@ -569,7 +605,7 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefres
       </div>
 
       <nav
-        className={css.sidebarBody}
+        className={cx(css.sidebarBody, hScroll && css.sidebarBodyHScroll)}
         aria-label={t('nav.searchAria')}
         ref={navRef}
         onDragOver={handleRailDragOver}
@@ -613,7 +649,7 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefres
               {pinnedRows.map(entry => (
                 <Fragment key={entry.id}>
                   {renderRow(entry, true)}
-                  {subRowsFor(entry.id).length > 0 ? renderSubRows(entry.id) : null}
+                  {subRowsFor(entry.id).length > 0 && !subClosed.includes(entry.id) ? renderSubRows(entry.id) : null}
                 </Fragment>
               ))}
             </DrawerGroup>
@@ -624,7 +660,7 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefres
           {pluginRows.map(entry => (
             <Fragment key={entry.id}>
               {renderRow(entry, false)}
-              {subRowsFor(entry.id).length > 0 ? renderSubRows(entry.id) : null}
+              {subRowsFor(entry.id).length > 0 && !subClosed.includes(entry.id) ? renderSubRows(entry.id) : null}
             </Fragment>
           ))}
         </DrawerGroup>

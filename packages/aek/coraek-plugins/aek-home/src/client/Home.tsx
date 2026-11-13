@@ -83,7 +83,6 @@ function Console() {
       <Sidebar
         active={panel}
         onSelect={setPanel}
-        providerCount={state.status?.providers.length}
         currentSlot={currentSlot}
         onRefresh={requestRefresh}
       />

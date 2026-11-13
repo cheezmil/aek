@@ -236,6 +236,20 @@ function verify(devMode, json) {
       detail: surface.status === 0 ? detail : `${detail}\n${(surface.stdout ?? '').trim().split('\n').slice(1).join('\n')}`,
     })
   }
+  {
+    // X round: unfinished i18n must not pass the loop either (the same gate
+    // the aek-home prebundle / console-round runs).
+    const i18n = spawnSync(NODE, [join(HERE, 'verify-i18n.mjs'), '--quiet'], {
+      cwd: ROOT, encoding: 'utf8', timeout: 60_000,
+    })
+    checks.push({
+      rule: 'i18n-complete',
+      ok: i18n.status === 0,
+      detail: i18n.status === 0
+        ? '所有 i18n key 在 zh/en 双字典齐全'
+        : ((i18n.stderr ?? '') + (i18n.stdout ?? '')).trim().split('\n').join(' '),
+    })
+  }
 
   // ── Dual-tree rules (S round): current must be crash-proof against dev edits.
   // The stable tree is the detached linked worktree; when it is not resolvable

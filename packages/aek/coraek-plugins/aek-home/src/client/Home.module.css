@@ -186,8 +186,7 @@ body {
    stays centred for the whole animation. `visibility` is delayed only when
    hiding, so showing starts immediately. */
 .brandText,
-.navLabel,
-.navBadge {
+.navLabel {
   overflow: hidden;
   opacity: 1;
   transform: translateX(0);
@@ -234,14 +233,23 @@ body {
    drawer groups may grow past the rail width; the search box stays put. */
 .sidebarBody > .drawerGroup { min-width: max-content; }
 
+/* X round: the rail's BOTTOM horizontal scrollbar is hidden by default — the
+   content still scrolls; the base setting "侧栏横向滚动条" (aek-home.sidebarHScroll,
+   default off) restores it via `.sidebarBodyHScroll`. The axis-scoped bar
+   (height: 0) is honoured by Chromium (the shell); Firefox has no per-axis
+   scrollbar control, so its horizontal bar stays thin there. */
 .sidebarBody::-webkit-scrollbar {
   width: 6px;
-  height: 6px;
+  height: 0;
 }
 
 .sidebarBody::-webkit-scrollbar-thumb {
   background: var(--aek-border-strong);
   border-radius: 999px;
+}
+
+.sidebarBodyHScroll::-webkit-scrollbar {
+  height: 6px;
 }
 
 .navList {
@@ -321,30 +329,11 @@ body {
   text-overflow: ellipsis;
 }
 
-.navBadge {
-  flex: 0 0 auto;
-  max-width: 80px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--aek-surface-hover);
-  border: 1px solid var(--aek-border);
-  color: var(--aek-text-muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.navItemActive .navBadge {
-  background: var(--aek-surface);
-  border-color: var(--aek-accent-border);
-  color: var(--aek-accent-ink);
-}
-
 /* Compact state: collapse the text to zero width while it fades/slides.
    Keeping `visibility` (rather than `display: none`) lets the transition run
    in BOTH directions; the delay applies only while hiding. */
 .sidebarCompact .brandText,
-.sidebarCompact .navLabel,
-.sidebarCompact .navBadge {
+.sidebarCompact .navLabel {
   max-width: 0;
   padding: 0;
   opacity: 0;
@@ -408,7 +397,7 @@ body {
   justify-content: center;
   gap: 0;
 }
-.sidebarCompact .pinButton, .sidebarCompact .rowRefresh { display: none; }
+.sidebarCompact .pinButton, .sidebarCompact .rowRefresh, .sidebarCompact .subCaret { display: none; }
 .sidebarCompact .drawerHead { display: none; }
 .sidebarCompact .drawerGroup {
   margin-top: var(--aek-space-2);
@@ -925,8 +914,7 @@ body {
   }
 
   .sidebar .brandText,
-  .sidebar .navLabel,
-  .sidebar .navBadge {
+  .sidebar .navLabel {
     display: none;
   }
 
@@ -1717,6 +1705,20 @@ body {
 /* W round: the Web Search settings row nests under the Web Search row —
    indented, one step smaller, not independently draggable. */
 .navRowSub { margin: 0 0 0 18px; }
+/* X round: the open/closed caret on a second-level row that owns third-level
+   rows. The CLICK that toggles lives on the row button itself; the caret only
+   mirrors the state (chevron down = open, rotated up = closed, like the
+   drawer heads). */
+.subCaret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 28px;
+  color: var(--aek-text-muted);
+}
+.subCaretIcon { transition: transform 180ms var(--aek-ease); }
 .navItemSub {
   height: 34px;
   padding-left: 12px;
@@ -1959,6 +1961,11 @@ body {
 }
 .heroNote p { margin: 0; font-size: 13px; line-height: 1.7; }
 .noteIcon { flex: 0 0 auto; }
+/* X round: the 权限 section stacks `.heroNote` directly above `.permList` —
+   and only `.hint + .permList` carried a gap rule, so the amber TCC note and
+   the first bundle card were glued together (0px). Give the note the same
+   16px step it uses when opening a section. */
+.heroNote + .permList { margin-top: var(--aek-space-4); }
 .pathBox {
   display: flex;
   align-items: center;
@@ -2227,6 +2234,10 @@ body {
   padding: var(--aek-space-3) var(--aek-space-4);
 }
 
+/* X round: the whole row is a key-pool toggle (not just the chevron). The
+   cursor signals it; interactive children keep their own affordances. */
+.providerRowClickable { cursor: pointer; }
+
 .providerMain { flex: 1 1 auto; min-width: 0; }
 
 .providerIcon { display: inline-flex; color: var(--aek-accent); }
@@ -2336,7 +2347,14 @@ body {
 }
 .modalActions { display: flex; justify-content: flex-end; gap: var(--aek-space-2); }
 
+/* X round: icon + text buttons used to render as a plain block, so the icon
+   sat on the text baseline instead of the vertical centre — make it flex like
+   its .primaryButton sibling. */
 .secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--aek-space-2);
   height: 34px;
   padding: 0 14px;
   border: 1px solid var(--aek-border-strong);
@@ -2621,10 +2639,11 @@ body {
 .tierCount { color: var(--aek-text-muted); font-size: 11px; }
 /* Q round: ranks are now PLAIN numbers (1, 2, 3, …) instead of a prominent
    pill badge — quiet, tabular, left-aligned in its own slot. */
+/* X round: the ordinal now sits INSIDE the provider name row (a leading list
+   number), so it is inline — the row was a flex item before. */
 .rankChip {
-  flex: 0 0 auto;
-  min-width: 16px;
-  text-align: left;
+  display: inline;
+  margin-right: 6px;
   color: var(--aek-text-muted);
   font-size: 11px;
   font-weight: 500;

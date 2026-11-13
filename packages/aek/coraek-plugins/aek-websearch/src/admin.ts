@@ -267,20 +267,44 @@ function readEnabledFlags(): Map<string, boolean> {
 }
 
 /**
+ * X round: the pool READ side, kept warm. Opening one SQLCipher pool runs a
+ * full key-derivation (fractions of a second on arm64 each). The old
+ * `countKeys` built a FRESH `KeyStore` per provider on every request, so a
+ * cold host start made the Web Search panel's first `readStatus()` block for
+ * seconds (the "重启后打开页面要等好几秒" complaint). Now:
+ * - one long-lived read store per provider, shared by every `countKeys`;
+ * - a pre-warm in `apply()` so the FIRST panel request after boot is already
+ *   warm; the write side (KeyPool transactions) keeps its own connection
+ *   lifecycle — WAL mode makes the concurrent reader safe.
+ */
+const openStores = new Map<string, KeyStore>()
+/** @param kind - provider kind. @returns a live shared read store, or undefined when it cannot open. */
+function storeOf(kind: string): KeyStore | undefined {
+  let store = openStores.get(kind)
+  if (store === undefined) {
+    try {
+      store = new KeyStore(kind)
+      openStores.set(kind, store)
+    } catch {
+      return undefined
+    }
+  }
+  return store
+}
+
+/**
  * Count the keys in one provider's encrypted pool. The pool is opened
  * read-only in spirit: this only reads the row count, never the literals.
  * @param kind - the provider kind.
  * @returns the key count, or `undefined` when the pool cannot be opened.
  */
 function countKeys(kind: string): number | undefined {
-  let store: KeyStore | undefined
+  const store = storeOf(kind)
+  if (store === undefined) return undefined
   try {
-    store = new KeyStore(kind)
     return store.count()
   } catch {
     return undefined
-  } finally {
-    store?.close()
   }
 }
 
@@ -729,6 +753,32 @@ export function apply(ctx: Context): void {
   // R6: enforce the 7-day (configurable) recycle-bin TTL as soon as the host
   // boots, before any browser opens the console.
   purgeExpiredKeys()
+  // X round: pre-warm the shared read pools (one KDF per provider, paid ONCE
+  // at boot instead of on the panel's first request). STAGGERED on the
+  // macrotask queue: a `new KeyStore()` is a synchronous KDF (~400ms each),
+  // and `apply()` runs while the HTTP server is already listening — an inline
+  // 9-store warm-up would block the event loop for ~4s and make the panel's
+  // first request wait for the whole chain anyway. Yielding between opens
+  // caps a single request's delay at ONE store open (~0.4s), and by the time
+  // the user finishes navigating to the panel every store is already warm.
+  let warmCursor = 0
+  const warmNext = (): void => {
+    while (warmCursor < PROVIDER_KINDS.length) {
+      const kind = PROVIDER_KINDS[warmCursor]
+      warmCursor += 1
+      if (kind === undefined) break
+      storeOf(kind)
+      if (warmCursor < PROVIDER_KINDS.length) {
+        setTimeout(warmNext, 0)
+        return
+      }
+    }
+  }
+  warmNext()
+  ctx.effect(() => () => {
+    for (const store of openStores.values()) store.close()
+    openStores.clear()
+  }, 'aek-websearch: pre-warmed read pools')
 
   ctx.effect(() => server.register({
     kind: 'exact',
