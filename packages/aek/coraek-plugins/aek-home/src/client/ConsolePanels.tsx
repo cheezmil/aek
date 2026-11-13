@@ -103,26 +103,6 @@ function ManagerPanel({ pluginId, refreshSignal }: {
           : null}
         {state.loading ? <div className={css.loadingState}><Spinner />{t('common.loading')}</div> : null}
 
-        <h3 className={css.sectionTitle}>{t('managers.quick')}</h3>
-        <div className={css.managerActions}>
-          {quick.map(command => (
-            <button
-              key={command.name}
-              type="button"
-              className={css.actionButton}
-              disabled={state.running || plugin?.available !== true}
-              onClick={() => execute(command, command.args.join(' '), false)}
-              title={command.label}
-            >
-              {command.name}
-            </button>
-          ))}
-          {quick.length === 0 && !state.loading
-            ? <div className={css.emptyState}>{t('managers.empty')}</div>
-            : null}
-        </div>
-
-        <div className={css.divider} />
         <h3 className={css.sectionTitle}>{t('managers.allCommands')}</h3>
         <PanelSearch value={query} onChange={setQuery} placeholder={t('managers.searchCommands')} count={state.loading ? undefined : visible.length} />
         <ul className={css.commandList}>
@@ -146,6 +126,28 @@ function ManagerPanel({ pluginId, refreshSignal }: {
         {visible.length === 0 && !state.loading
           ? <div className={css.emptyState}>{t('managers.empty')}</div>
           : null}
+
+        <div className={css.divider} />
+        {/* W round: the one-click read-only actions sit DIRECTLY ABOVE the
+            运行 section (the user's placement), not above 全部命令. */}
+        <h3 className={css.sectionTitle}>{t('managers.quick')}</h3>
+        <div className={css.managerActions}>
+          {quick.map(command => (
+            <button
+              key={command.name}
+              type="button"
+              className={css.actionButton}
+              disabled={state.running || plugin?.available !== true}
+              onClick={() => execute(command, command.args.join(' '), false)}
+              title={command.label}
+            >
+              {command.name}
+            </button>
+          ))}
+          {quick.length === 0 && !state.loading
+            ? <div className={css.emptyState}>{t('managers.empty')}</div>
+            : null}
+        </div>
 
         <div className={css.divider} />
         <h3 className={css.sectionTitle}>{t('managers.run')}</h3>

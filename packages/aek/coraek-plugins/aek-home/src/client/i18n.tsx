@@ -102,6 +102,7 @@ const ZH: Record<string, string> = {
   'nav.pin': '置顶此板块',
   'nav.unpin': '取消置顶',
   'nav.refresh': '刷新该页面',
+  'nav.resizeHint': '拖动调整侧栏宽度，双击恢复默认',
   'nav.dragHint': '按住拖动可调整组内顺序（自动保存）',
   'nav.expand': '展开分组',
   'nav.collapse': '收起分组',
@@ -261,10 +262,9 @@ const ZH: Record<string, string> = {
   'websearch.filter.unknownNote': '注册要求未核实',
   'websearch.ranking.failed': '排名数据拉取失败，暂不显示榜单：{reason}',
   'websearch.ranking.stale': '排名数据暂不可用（{reason}），显示的是缓存榜单（更新于 {date}）；网络恢复后点侧边栏刷新。',
-  'websearch.ranking.source': '榜单更新于 {date}，数据来自 GitHub 仓库',
+  'websearch.ranking.updating': '后台更新中，当前显示缓存榜单（更新于 {date}）',
   /* Q round: 排名只用裸编号（1、2、3），不做醒目徽章。 */
   'websearch.ranking.rank': '{n}',
-  'websearch.ranking.visible': '可见 {n} 家',
   'websearch.ranking.groupCount': '{n} 家',
   'websearch.ranking.empty': '没有符合筛选条件的提供商',
 }
@@ -353,6 +353,7 @@ const EN: Record<string, string> = {
   'nav.pin': 'Pin this section',
   'nav.unpin': 'Unpin',
   'nav.refresh': 'Refresh this page',
+  'nav.resizeHint': 'Drag to resize the sidebar; double-click to reset',
   'nav.dragHint': 'drag to reorder inside the group (saved automatically)',
   'nav.expand': 'Expand group',
   'nav.collapse': 'Collapse group',
@@ -513,10 +514,9 @@ const EN: Record<string, string> = {
   'websearch.filter.unknownNote': 'Signup requirements not verified',
   'websearch.ranking.failed': 'Ranking data unavailable — the grouped board is not shown: {reason}',
   'websearch.ranking.stale': 'Ranking data is currently unavailable ({reason}); showing the cached board (updated {date}). Refresh from the sidebar once the network recovers.',
-  'websearch.ranking.source': 'Board updated {date}, fetched from the GitHub repository',
+  'websearch.ranking.updating': 'Updating in the background — showing the cached board (updated {date})',
   /* Q round: ranks show as plain numbers, no badge / "rank #". */
   'websearch.ranking.rank': '{n}',
-  'websearch.ranking.visible': '{n} visible',
   'websearch.ranking.groupCount': '{n} providers',
   'websearch.ranking.empty': 'No providers match these filters',
 }

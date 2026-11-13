@@ -386,48 +386,40 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
                 ? (
                   <>
                     <div className={css.filterBlock}>
-                      {/* Level 1: one mandatory choice. */}
+                      {/* Level 1: one mandatory choice. Plain divs — a list
+                          here would paint default `::marker` bullets next to
+                          every chip (the user's `<::marker>` complaint). */}
                       <div className={css.filterRow}>
                         <span className={css.filterLabel}>{t('websearch.filter.primary')}</span>
-                        <ul className={css.filterChips}>
-                          <li>
-                            <button type="button" aria-pressed={freeTier === 'yes'} className={cx(css.filterChip, freeTier === 'yes' && css.filterChipActive)} onClick={() => setFreeTier('yes')}>
-                              {t('websearch.filter.freeYes')}
-                            </button>
-                          </li>
-                          <li>
-                            <button type="button" aria-pressed={freeTier === 'no'} className={cx(css.filterChip, freeTier === 'no' && css.filterChipActive)} onClick={() => setFreeTier('no')}>
-                              {t('websearch.filter.freeNo')}
-                            </button>
-                          </li>
-                        </ul>
+                        <div className={css.filterChips}>
+                          <button type="button" aria-pressed={freeTier === 'yes'} className={cx(css.filterChip, freeTier === 'yes' && css.filterChipActive)} onClick={() => setFreeTier('yes')}>
+                            {t('websearch.filter.freeYes')}
+                          </button>
+                          <button type="button" aria-pressed={freeTier === 'no'} className={cx(css.filterChip, freeTier === 'no' && css.filterChipActive)} onClick={() => setFreeTier('no')}>
+                            {t('websearch.filter.freeNo')}
+                          </button>
+                        </div>
                       </div>
                       {/* Level 2: optional multi-select, indented + connected
                           under level 1 so the hierarchy reads as ONE
                           structure instead of two disconnected bars. */}
                       <div className={css.filterRowSecondary}>
                         <span className={css.filterLabel}>{t('websearch.filter.secondary')}</span>
-                        <ul className={css.filterChips}>
-                          <li>
-                            <button type="button" aria-pressed={reqPhone} className={cx(css.filterChip, reqPhone && css.filterChipActive)} onClick={() => setReqPhone(current => !current)}>
-                              {t('websearch.filter.phone')}
-                            </button>
-                          </li>
-                          <li>
-                            <button type="button" aria-pressed={reqCard} className={cx(css.filterChip, reqCard && css.filterChipActive)} onClick={() => setReqCard(current => !current)}>
-                              {t('websearch.filter.card')}
-                            </button>
-                          </li>
+                        <div className={css.filterChips}>
+                          <button type="button" aria-pressed={reqPhone} className={cx(css.filterChip, reqPhone && css.filterChipActive)} onClick={() => setReqPhone(current => !current)}>
+                            {t('websearch.filter.phone')}
+                          </button>
+                          <button type="button" aria-pressed={reqCard} className={cx(css.filterChip, reqCard && css.filterChipActive)} onClick={() => setReqCard(current => !current)}>
+                            {t('websearch.filter.card')}
+                          </button>
                           {reqPhone || reqCard
                             ? (
-                              <li>
-                                <button type="button" className={css.actionButton} onClick={() => { setReqPhone(false); setReqCard(false) }}>
-                                  {t('websearch.filter.reset')}
-                                </button>
-                              </li>
+                              <button type="button" className={css.actionButton} onClick={() => { setReqPhone(false); setReqCard(false) }}>
+                                {t('websearch.filter.reset')}
+                              </button>
                             )
                             : null}
-                        </ul>
+                        </div>
                       </div>
                     </div>
                     <p className={css.filterHint}>{t('websearch.filter.requiresHint')}</p>
@@ -455,12 +447,17 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
           )
           : null}
 
-        {classified
+        {/* W round: the "榜单更新于… 数据来自 GitHub 仓库 / 可见 N 家" meta row
+            is gone (user: 去掉). Freshness now shows ONLY as a transient
+            indicator: while the host serves a cache that is past its TTL and
+            is refreshing in the background, a small chip says so — no
+            permanent meta line. */}
+        {classified && ranking.snapshot?.stale === true && ranking.error === undefined
           ? (
-            <p className={css.rankingMeta}>
-              <span>{tf('websearch.ranking.source', { date: ranking.snapshot?.updatedAt ?? '—' })}</span>
-              <span>{tf('websearch.ranking.visible', { n: visibleCount })}</span>
-            </p>
+            <div className={css.rankingUpdating}>
+              <Spinner />
+              <span>{tf('websearch.ranking.updating', { date: ranking.snapshot.updatedAt || '—' })}</span>
+            </div>
           )
           : null}
 

@@ -332,13 +332,13 @@ function reconnectingPage(): string {
 const BOOT_GRACE_MS = 15_000
 const MAX_CONSECUTIVE_FORCED_RELOADS = 3
 
-function watchBackend(win: BrowserWindow): () => void {
+function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void } {
   let showingReconnect = false
   let stopped = false
   let timer: NodeJS.Timeout | undefined
   /** Last time the renderer reported a healthy boot (ms). */
   let lastBootOkAt = 0
-  /** When the most recent app-URL load started (ms). */
+  /** When the most recent app-URL load was decided by the main process (ms). */
   let lastAppLoadAt = 0
   /** Consecutive forced reloads since the last healthy boot. */
   let forcedReloads = 0
@@ -385,6 +385,7 @@ function watchBackend(win: BrowserWindow): () => void {
       // (Electron's `reloadIgnoringCache` is fire-and-forget: it returns
       // void, not a promise.)
       win.webContents.reloadIgnoringCache()
+      armBootWatch()
     }, BOOT_GRACE_MS)
   }
 
@@ -401,6 +402,12 @@ function watchBackend(win: BrowserWindow): () => void {
     showingReconnect = false
     log.info('backend up — loading shell', { shellUrl })
     void win.loadURL(shellUrl).catch(() => { /* the window may be gone */ })
+    // The app URL is (re)loading now: arm the boot deadline from the moment
+    // of the DECISION, not from did-finish-load — the `[aek-boot]` line
+    // arrives mid-load (before DOM completion), and arming late makes a
+    // healthy boot look stale (observed: 3 false forced reloads per launch
+    // on the dev shell, 2026-11-13).
+    armBootWatch()
   }
 
   const probe = async (): Promise<void> => {
@@ -435,12 +442,9 @@ function watchBackend(win: BrowserWindow): () => void {
     // comes from the webContents itself.
     const url = win.webContents.getURL()
     log.info('did-finish-load', { url })
-    // The reconnecting page and the port-mismatch page are data: URLs — they
-    // never emit boot telemetry, so only arm the deadline for the real app.
-    if (url.startsWith('data:')) return
-    if (url.startsWith(CANONICAL_URL) || url.startsWith(LOOPBACK_URL)) {
-      armBootWatch()
-    }
+    // No arming here: the deadline is armed at the main-process load DECISION
+    // sites (`showApp`, `createWindow`, the forced-reload path), because the
+    // `[aek-boot]` line lands BEFORE this event.
   })
 
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
@@ -472,9 +476,13 @@ function watchBackend(win: BrowserWindow): () => void {
   // The first load may already be failing (backend not up yet).
   void probe()
 
-  return () => {
-    stopped = true
-    if (timer) clearInterval(timer)
+  return {
+    stop(): void {
+      stopped = true
+      if (timer) clearInterval(timer)
+    },
+    /** Arm the boot deadline for a load the main process decided on itself. */
+    arm: armBootWatch,
   }
 }
 
@@ -609,18 +617,23 @@ function createWindow() {
     return
   }
   const stopWatching = watchBackend(win)
-  win.on('closed', stopWatching)
+  win.on('closed', stopWatching.stop)
   // A failed load is usually just "backend not up yet" and the watcher turns it
   // into the reconnecting page. The one case the watcher cannot fix is a
   // resolver that does not know `*.localhost`, so retry once on the literal and
   // remember that choice for every later reload.
-  win.loadURL(shellUrl).catch(() => {
+  void win.loadURL(shellUrl).catch(() => {
     if (win.isDestroyed() || shellUrl === LOOPBACK_URL) return
     shellUrl = LOOPBACK_URL
     log.warn('host did not resolve, falling back to the loopback literal', { webHost: WEB_HOST, fallback: LOOPBACK_URL })
     console.log(`[main] ${WEB_HOST} did not resolve, falling back to ${LOOPBACK_URL}`)
     void win.loadURL(LOOPBACK_URL).catch(() => { /* the watcher retries */ })
+    stopWatching.arm()
   })
+  // The initial app load happens right now: arm its boot deadline from the
+  // decision site (the `[aek-boot]` line arrives mid-load, before any
+  // did-finish-load — see `showApp`).
+  stopWatching.arm()
 }
 
 app.whenReady().then(() => {

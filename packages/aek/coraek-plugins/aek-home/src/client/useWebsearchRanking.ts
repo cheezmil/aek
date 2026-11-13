@@ -82,6 +82,13 @@ export interface RankingSnapshot {
   /** ALL provider metadata, including rows hidden by the filter. */
   providers: ProviderMeta[]
   totalVisible: number
+  /**
+   * W round: true when the host served this board from its (or the
+   * on-disk) cache because the TTL has passed, and a background refresh is
+   * in flight. The board is shown INSTANTLY — the chip in the panel is the
+   * only freshness hint; no blocking wait on the panel's first paint.
+   */
+  stale?: boolean
 }
 
 /** Live ranking state exposed to the Web Search panel. */

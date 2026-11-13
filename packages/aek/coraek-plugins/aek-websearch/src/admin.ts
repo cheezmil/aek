@@ -722,7 +722,10 @@ export function apply(ctx: Context): void {
   registerPluginConsole(ctx)
   // Tier membership and free-tier metadata come ONLY from the remote data
   // file. No ranking constant is compiled into this plugin.
-  registerRanking(ctx, blockedWhenOff)
+  // W round: the last successful board persists in the slot home so a
+  // restarted backend answers the panel instantly (no first-paint GitHub
+  // wait) and refreshes in the background.
+  registerRanking(ctx, blockedWhenOff, join(aekHome(), 'websearch', 'ranking-board.json'))
   // R6: enforce the 7-day (configurable) recycle-bin TTL as soon as the host
   // boots, before any browser opens the console.
   purgeExpiredKeys()

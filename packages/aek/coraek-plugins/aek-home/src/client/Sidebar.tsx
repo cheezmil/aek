@@ -15,8 +15,8 @@
  *
  * @module @cheezmil/aek-home/src/client/Sidebar
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { DragEvent as ReactDragEvent, ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { BrandMark, Icon } from './Icons.tsx'
 import type { BrandVariant, IconName } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
@@ -28,6 +28,18 @@ import { css, cx } from './styles.ts'
 const HOVER_ENTER_DELAY = 120
 /** Delay before the peek collapses after the pointer leaves. */
 const HOVER_LEAVE_DELAY = 200
+
+/** W round: the rail width the user can drag between (the CSS default is 248). */
+const SIDEBAR_MIN_WIDTH = 180
+const SIDEBAR_MAX_WIDTH = 480
+const SIDEBAR_DEFAULT_WIDTH = 248
+
+/** @param raw - the parsed width. @returns a clamped number, or undefined. */
+function parseSidebarWidth(raw: unknown): number | undefined {
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return undefined
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, value))
+}
 
 /** Every surface the console can show. */
 export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'websearchSettings' | 'settings' | 'about'
@@ -45,6 +57,11 @@ interface NavEntry {
   icon: IconName
   /** Which drawer holds it. */
   group: NavGroup
+  /**
+   * W round: nest under another row instead of being a top-level entry of
+   * its drawer (the Web Search settings row lives under Web Search).
+   */
+  subOf?: string
   /** Extra aliases for the search box. */
   keywords: readonly string[]
 }
@@ -63,7 +80,7 @@ const NAV: readonly NavEntry[] = [
   // Q round: every plugin with user-facing settings gets its own settings
   // page instead of one giant Settings page. Web Search owns the ranking
   // refresh interval; the base "Settings" page was renamed 基础设置.
-  { id: 'websearchSettings', labelKey: 'panel.websearchSettings', icon: 'settings', group: 'plugins', keywords: ['websearch', 'search', 'ranking', '排行', '设置'] },
+  { id: 'websearchSettings', labelKey: 'panel.websearchSettings', icon: 'settings', group: 'plugins', subOf: 'websearch', keywords: ['websearch', 'search', 'ranking', '排行', '设置'] },
   { id: 'settings', labelKey: 'panel.settings', icon: 'settings', group: 'other', keywords: ['preferences', 'options', 'sidebar', '基础设置', '设置'] },
   { id: 'about', labelKey: 'panel.about', icon: 'about', group: 'other', keywords: ['version', 'info', 'entry', '关于'] },
 ]
@@ -160,6 +177,31 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefres
   const [collapsed, setCollapsed] = usePref<boolean>(PREF_KEYS.collapsed, false, parseBoolean)
   const [hoverExpand] = usePref<boolean>(PREF_KEYS.hoverExpand, true, parseBoolean)
   const [logoToggle] = usePref<boolean>(PREF_KEYS.logoToggle, true, parseBoolean)
+  // W round: the user-dragged rail width (persisted like every other rail
+  // setting; the CSS variable only animates the DEFAULT width).
+  const [sidebarWidth, setSidebarWidth] = usePref<number>('aek-home.sidebarWidth', SIDEBAR_DEFAULT_WIDTH, parseSidebarWidth)
+  const [resized, setResized] = useState<number | undefined>(undefined)
+  const railWidth = resized ?? sidebarWidth
+
+  /** @param event - the pointerdown on the rail's right-edge handle. */
+  const startResize = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = railWidth
+    setResized(startWidth)
+    const onMove = (move: globalThis.PointerEvent): void => {
+      setResized(parseSidebarWidth(startWidth + move.clientX - startX))
+    }
+    const onUp = (up: globalThis.PointerEvent): void => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      const finalWidth = parseSidebarWidth(startWidth + up.clientX - startX)
+      setResized(undefined)
+      if (finalWidth !== undefined) setSidebarWidth(finalWidth)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
   const [query, setQuery] = useState('')
   const [hovered, setHovered] = useState(false)
   const [suppressPeek, setSuppressPeek] = useState(false)
@@ -322,7 +364,7 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefres
   const resolveDrop = (clientY: number, movingId: PanelId): DropMark | undefined => {
     const nav = navRef.current
     if (nav === null) return undefined
-    const source = [...nav.querySelectorAll<HTMLLIElement>('li[data-panel]')]
+    const source = [...nav.querySelectorAll<HTMLLIElement>('li[data-panel].navRow')]
       .find(item => item.dataset.panel === movingId)
     const list = source?.parentElement
     if (list === null || list === undefined) return undefined
@@ -444,8 +486,45 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefres
     )
   }
 
+  /**
+   * W round: the indented settings row(s) nested under one plugin row.
+   * Deliberately NOT draggable (the order is owned by the parent row) and
+   * without pin / refresh affordances — it is a child, not a peer.
+   */
+  const renderSubRows = (parent: string): ReactNode => {
+    return (
+      <>
+        {subRowsFor(parent).map(sub => (
+          <li
+            key={sub.id}
+            className={css.navRowSub}
+            data-panel={sub.id}
+          >
+            <button
+              type="button"
+              className={cx(css.navItem, css.navItemSub, active === sub.id && css.navItemActive)}
+              aria-current={active === sub.id ? 'page' : undefined}
+              title={t(sub.labelKey)}
+              onClick={() => onSelect(sub.id)}
+            >
+              <span className={css.navIcon}><Icon name={sub.icon} size={14} /></span>
+              <span className={css.navLabel}>{t(sub.labelKey)}</span>
+            </button>
+          </li>
+        ))}
+      </>
+    )
+  }
+
   const pinnedRows = filtered.filter(entry => pinned.includes(entry.id)).sort(byOrder)
-  const pluginRows = filtered.filter(entry => entry.group === 'plugins' && !pinned.includes(entry.id)).sort(byOrder)
+  const pluginRows = filtered.filter(entry => entry.group === 'plugins' && entry.subOf === undefined && !pinned.includes(entry.id)).sort(byOrder)
+  // W round: the settings row that nests under a plugin row — visible only
+  // while its parent row is visible AND neither is pinned away.
+  /** @param parent - the row a settings entry nests under. @returns its visible sub rows. */
+  const subRowsFor = (parent: string): NavEntry[] => {
+    if (pinned.includes(parent) || !filtered.some(entry => entry.id === parent)) return []
+    return filtered.filter(entry => entry.subOf === parent && !pinned.includes(entry.id))
+  }
   const otherRows = filtered.filter(entry => entry.group === 'other' && !pinned.includes(entry.id)).sort(byOrder)
 
   /** @param next - locale chosen in the footer menu. */
@@ -456,7 +535,8 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefres
 
   return (
     <aside
-      className={cx(css.sidebar, compact && css.sidebarCompact)}
+      className={cx(css.sidebar, compact && css.sidebarCompact, resized !== undefined && css.sidebarResizing)}
+      style={compact ? undefined : ({ '--aek-sidebar-width': `${String(railWidth)}px` } as CSSProperties)}
       onMouseEnter={handlePointerEnter}
       onMouseLeave={handlePointerLeave}
     >
@@ -530,13 +610,23 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefres
         {pinnedRows.length > 0
           ? (
             <DrawerGroup label={t('nav.group.pinned')} open={isOpen('pinned')} onToggle={() => toggleGroup('pinned')}>
-              {pinnedRows.map(entry => renderRow(entry, true))}
+              {pinnedRows.map(entry => (
+                <Fragment key={entry.id}>
+                  {renderRow(entry, true)}
+                  {subRowsFor(entry.id).length > 0 ? renderSubRows(entry.id) : null}
+                </Fragment>
+              ))}
             </DrawerGroup>
           )
           : null}
 
         <DrawerGroup label={t('nav.group.plugins')} open={isOpen('plugins')} onToggle={() => toggleGroup('plugins')}>
-          {pluginRows.map(entry => renderRow(entry, false))}
+          {pluginRows.map(entry => (
+            <Fragment key={entry.id}>
+              {renderRow(entry, false)}
+              {subRowsFor(entry.id).length > 0 ? renderSubRows(entry.id) : null}
+            </Fragment>
+          ))}
         </DrawerGroup>
 
         <DrawerGroup label={t('nav.group.other')} open={isOpen('other')} onToggle={() => toggleGroup('other')}>
@@ -602,6 +692,21 @@ export function Sidebar({ active, onSelect, providerCount, currentSlot, onRefres
           </a>
         </div>
       </div>
+
+      {/* W round: drag the rail's right edge to resize; double-click resets.
+          Only while expanded — the compact rail is fixed to its icon width. */}
+      {!compact
+        ? (
+          <div
+            className={css.sidebarResize}
+            role="separator"
+            aria-orientation="vertical"
+            title={t('nav.resizeHint')}
+            onPointerDown={startResize}
+            onDoubleClick={() => { setResized(undefined); setSidebarWidth(SIDEBAR_DEFAULT_WIDTH) }}
+          />
+        )
+        : null}
     </aside>
   )
 }

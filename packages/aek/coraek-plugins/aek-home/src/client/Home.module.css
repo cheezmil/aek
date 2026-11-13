@@ -133,6 +133,26 @@ body {
   width: var(--aek-sidebar-compact);
 }
 
+/* W round: the rail's right edge is a 5px drag handle — drag to resize,
+   double-click to reset. The width travels through the same
+   `--aek-sidebar-width` variable the rail already animates on. */
+.sidebarResize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 3;
+  touch-action: none;
+}
+.sidebarResize:hover,
+.sidebarResizing .sidebarResize {
+  background: var(--aek-accent-border);
+}
+/* No easing while dragging: the handle must track the pointer 1:1. */
+.sidebarResizing { transition: none !important; }
+
 .sidebarHeader {
   display: flex;
   align-items: center;
@@ -204,13 +224,19 @@ body {
 
 .sidebarBody {
   flex: 1;
-  overflow-y: auto;
+  overflow: auto;
   padding: var(--aek-space-4) var(--aek-space-3);
   transition: padding var(--aek-sidebar-duration) var(--aek-ease-out);
 }
 
+/* W round: labels wider than the rail (「Prompt Man…」) used to be clipped
+   with no way to reach them — the rail now scrolls horizontally. Only the
+   drawer groups may grow past the rail width; the search box stays put. */
+.sidebarBody > .drawerGroup { min-width: max-content; }
+
 .sidebarBody::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
 .sidebarBody::-webkit-scrollbar-thumb {
@@ -1688,6 +1714,16 @@ body {
 .drawerCaret { transition: transform 180ms var(--aek-ease); }
 .drawerLabel { flex: 1 1 auto; text-align: left; }
 .navRow { display: flex; align-items: center; gap: 2px; position: relative; }
+/* W round: the Web Search settings row nests under the Web Search row —
+   indented, one step smaller, not independently draggable. */
+.navRowSub { margin: 0 0 0 18px; }
+.navItemSub {
+  height: 34px;
+  padding-left: 12px;
+  font-size: 12px;
+  color: var(--aek-text-muted);
+}
+.navRowSub .navIcon svg { width: 14px; height: 14px; }
 .navRow > .navItem { flex: 1 1 auto; min-width: 0; }
 /* Rows are press-and-drag reorderable (2026-11-09). The affordance is the
    cursor plus the insertion line; no grip handle eats label width. */
@@ -2457,11 +2493,13 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--aek-space-2);
-  margin-top: var(--aek-space-2);
+  gap: 8px;
+  margin-top: 6px;
 }
-.filterLabel { flex: 0 0 auto; min-width: 86px; color: var(--aek-text-muted); font-size: 11px; }
-.filterChips { display: flex; flex-wrap: wrap; gap: var(--aek-space-2); }
+.filterLabel { flex: 0 0 auto; min-width: 82px; color: var(--aek-text-muted); font-size: 11px; }
+/* W round: chips are plain buttons in a div — a <ul> here painted default
+   `::marker` bullets next to every chip (the user's complaint). */
+.filterChips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; }
 .filterChip {
   padding: 4px 11px;
   border: 1px solid var(--aek-border);
@@ -2487,10 +2525,14 @@ body {
 .filterBlock { margin: 0; }
 .filterRowSecondary {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--aek-space-3);
-  margin: 4px 0 0 calc(86px + var(--aek-space-3));
-  padding: 4px 0 0 12px;
+  gap: 8px;
+  /* W round: the WHOLE secondary row indents under the primary one (a clean
+     tree), instead of the row content jumping into the chip column, which
+     read as a broken L-shape. */
+  margin: 6px 0 0;
+  padding: 2px 0 2px 12px;
   border-left: 2px solid var(--aek-border-strong);
 }
 
@@ -2554,11 +2596,13 @@ body {
   font-size: 12px;
   line-height: 1.6;
 }
-.rankingMeta {
+/* W round: the permanent "board updated … / N visible" meta row is gone —
+   freshness shows ONLY as this transient chip while the host serves a
+   past-TTL cache and refreshes in the background. */
+.rankingUpdating {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--aek-space-3);
+  gap: var(--aek-space-2);
   margin: 0 0 var(--aek-space-3);
   color: var(--aek-text-muted);
   font-size: 11px;

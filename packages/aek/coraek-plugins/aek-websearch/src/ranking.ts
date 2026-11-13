@@ -19,6 +19,7 @@
  * @module aek-websearch/ranking
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { readFile, writeFile } from 'node:fs/promises'
 import type { Context } from '@cheezmil/coraek/types'
 import { PROVIDER_KINDS } from './defaults.ts'
 
@@ -128,6 +129,13 @@ export interface RankingSnapshot {
   providers: ProviderMeta[]
   /** How many providers survived the filter. */
   totalVisible: number
+  /**
+   * W round: the board came back from a cache whose TTL already passed; a
+   * background refresh is in flight. Sent so the console can render the
+   * (cached) board instantly and show a transient "updating" hint instead of
+   * blocking the first paint on a GitHub round-trip.
+   */
+  stale?: boolean
 }
 
 /** Minimal fetch seam, injectable in unit tests. */
@@ -154,6 +162,14 @@ export interface RankingOptions {
   filter?: Partial<RankingFilter>
   /** Bypass the success cache and fetch a fresh payload (the `force` query parameter). */
   force?: boolean
+  /**
+   * W round: a file the last successful board is persisted to (the slot's
+   * `websearch/ranking-board.json`). A backend that just restarted serves
+   * THAT file instantly and refreshes in the background, so a cold boot
+   * never blocks the panel's first paint on GitHub either. Omitted in unit
+   * tests: no disk involved.
+   */
+  persistPath?: string | undefined
 }
 
 /**
@@ -411,14 +427,58 @@ export async function loadRanking(options: RankingOptions = {}): Promise<Ranking
     filter,
     fetchedAt: new Date(now()).toISOString(),
   }
-  const cached = cache?.url === url ? cache : undefined
-  // `force` (the manual refresh button) bypasses the whole cache — the user
-  // asked for a fresh answer, even after a recent failure.
-  if (options.force !== true) {
-    const freshEnough = cached !== undefined && now() - cached.at < (cached.data === undefined ? failureTtl : ttl)
-    if (freshEnough) return snapshotFrom(cached, base, filter)
+  let cached = cache?.url === url ? cache : undefined
+  // W round: a backend that just restarted has no in-memory cache — seed it
+  // from the on-disk board so the FIRST request of the new process is also
+  // answered instantly (a cold start must not block the panel on GitHub).
+  if (cached === undefined && options.persistPath !== undefined) {
+    const seeded = await persistedEntry(options.persistPath, url)
+    if (seeded !== undefined) cached = seeded
   }
 
+  // W round: a plain read that holds a CLASSIFIED board never blocks on a
+  // GitHub round-trip. Fresh → return it; past its TTL → return it flagged
+  // `stale` and refresh in the background, so the panel's first paint is
+  // instant and the "updating" chip is the only freshness hint.
+  if (options.force !== true && cached !== undefined && cached.data !== undefined) {
+    const snapshot = snapshotFrom(cached, base, filter)
+    if (now() - cached.at >= ttl) {
+      snapshot.stale = true
+      backgroundRefresh(options, url, now)
+    }
+    return snapshot
+  }
+
+  // A FRESH failure is also served from cache: the short failure TTL keeps an
+  // offline host from hammering GitHub on every panel visit (pre-existing
+  // behaviour, preserved through the W-round restructure).
+  if (options.force !== true && cached !== undefined && cached.data === undefined && now() - cached.at < failureTtl) {
+    return snapshotFrom(cached, base, filter)
+  }
+
+  // Cold (no usable data anywhere) or an explicit `force` (the user asked
+  // for a fresh answer, even after a recent failure): fetch and wait.
+  const entry = await fetchEntry(options, url, now)
+  if (cached !== undefined && cached.data !== undefined && entry.data === undefined) {
+    // The wait/refresh FAILED: keep serving the last good board (flagged
+    // stale) instead of swapping the visible ranking for an error — the
+    // client-cache rule (V round) mirrored on the host. The in-memory cache
+    // is left at the last success, so the NEXT read re-triggers the
+    // background refresh.
+    const snapshot = snapshotFrom(cached, base, filter)
+    snapshot.stale = true
+    return snapshot
+  }
+  cache = entry
+  if (entry.data !== undefined && options.persistPath !== undefined) {
+    persistBoard(options.persistPath, entry)
+  }
+  return snapshotFrom(entry, base, filter)
+}
+
+/** The single fetch block of {@link loadRanking}, shared by the waiting and
+ *  the background paths. */
+async function fetchEntry(options: RankingOptions, url: string, now: () => number): Promise<CacheEntry> {
   let entry: CacheEntry
   try {
     const response = await fetcherOf(options)(url, {
@@ -436,7 +496,7 @@ export async function loadRanking(options: RankingOptions = {}): Promise<Ranking
         const failure: RankingFailure = text.trimStart().startsWith('{') ? 'invalid-schema' : 'invalid-json'
         entry = { url, at: now(), data: undefined, failure, message: messageOf(cause) }
         cache = entry
-        return snapshotFrom(entry, base, filter)
+        return entry
       }
       entry = { url, at: now(), data, failure: '', message: '' }
     }
@@ -450,8 +510,47 @@ export async function loadRanking(options: RankingOptions = {}): Promise<Ranking
       message: messageOf(cause),
     }
   }
-  cache = entry
-  return snapshotFrom(entry, base, filter)
+  return entry
+}
+
+/** One in-flight background refresh per module: repeat reads share it. */
+let background: Promise<void> | undefined
+
+/** @param options - the request options. @param url - the board URL. @param now - the clock. */
+function backgroundRefresh(options: RankingOptions, url: string, now: () => number): void {
+  if (background !== undefined) return
+  background = (async (): Promise<void> => {
+    try {
+      const entry = await fetchEntry(options, url, now)
+      if (entry.data !== undefined) {
+        cache = entry
+        if (options.persistPath !== undefined) persistBoard(options.persistPath, entry)
+      }
+    } catch {
+      // The fetch never throws (fetchEntry catches); kept so the Promise can
+      // never reject into the void.
+    } finally {
+      background = undefined
+    }
+  })()
+}
+
+/** @param path - the persisted board file. @param url - the board it must belong to. */
+async function persistedEntry(path: string, url: string): Promise<CacheEntry | undefined> {
+  try {
+    const raw = await readFile(path, 'utf8')
+    const parsed = JSON.parse(raw) as { url?: string; at?: number; data?: unknown }
+    if (parsed.url !== url || typeof parsed.at !== 'number' || parsed.data === undefined) return undefined
+    return { url, at: parsed.at, data: parseRanking(parsed.data), failure: '', message: '' }
+  } catch {
+    return undefined
+  }
+}
+
+/** @param path - the persisted board file. @param entry - the successful fetch. */
+function persistBoard(path: string, entry: CacheEntry): void {
+  const body = JSON.stringify({ url: entry.url, at: entry.at, data: entry.data })
+  void writeFile(path, body, 'utf8').catch(() => { /* a dead disk must not take the ranking down */ })
 }
 
 /** @param base - common snapshot fields. @returns a fresh snapshot shell. */
@@ -547,8 +646,11 @@ export function forceFromQuery(url: string | undefined): boolean {
  * Register `GET /api/aek/websearch/ranking` on the composition's web server.
  * @param ctx - the plugin context.
  * @param guard - the plugin's switched-off guard (returns true after replying).
+ * @param persistPath - W round: where the last successful board is kept on
+ *   disk (the slot's `websearch/ranking-board.json`) so a restarted backend
+ *   answers instantly. Omitted in tests / bare compositions.
  */
-export function registerRanking(ctx: Context, guard: RankingGuard): void {
+export function registerRanking(ctx: Context, guard: RankingGuard, persistPath?: string): void {
   const server = (ctx as unknown as { webServer?: RankingWebServer }).webServer
   if (server === undefined) return
   ctx.effect(() => server.register({
@@ -565,6 +667,7 @@ export function registerRanking(ctx: Context, guard: RankingGuard): void {
         filter: filterFromQuery(req.url),
         ttlMs: ttlMsFromQuery(req.url),
         force: forceFromQuery(req.url),
+        persistPath,
       })
       send(res, 200, snapshot)
     },
