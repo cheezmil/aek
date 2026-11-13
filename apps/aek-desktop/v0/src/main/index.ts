@@ -10,6 +10,23 @@ import log from 'electron-log/main'
 const APP_ROOT = join(fileURLToPath(import.meta.url), '../..')
 
 /**
+ * V round (2026-11-13, observed with the shell spawned by `slots.mjs`):
+ * the launch supervisor exits right after spawning the shell, breaking the
+ * stdout pipe it passed. Every later `console.log` / electron-log console
+ * write then throws `EPIPE`; electron-log's uncaught-exception handler
+ * writes ANOTHER log line into the same dead pipe, and that write throws
+ * again — an EPIPE death spiral at 95% CPU that fills the 2 MiB log
+ * generations in seconds and hides every real boot line. Swallowing EPIPE
+ * on the standard streams once, at the very top, keeps the FILE transport
+ * (the durable record) alive and makes a dead console pipe harmless.
+ */
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code !== 'EPIPE') throw error
+  })
+}
+
+/**
  * Slot metadata baked into the packaged app by electron-builder
  * (`extraMetadata.aek`). It is absent when the shell runs straight from the
  * source tree, which is fine: the environment or the slot table then decides.
