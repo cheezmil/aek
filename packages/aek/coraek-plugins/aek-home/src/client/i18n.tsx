@@ -218,6 +218,17 @@ const ZH: Record<string, string> = {
   'settings.sidebarHScroll': '侧栏横向滚动条',
   'settings.sidebarHScrollHint': '勾选后侧栏内容超宽时底部显示横向滚动条；默认不勾选——滚动条隐藏，内容仍可横向滚动。',
   'nav.pluginRoutes': '插件内板块',
+  /* A round: the plugin route rail's bottom operation hint (single-click =
+     show/hide the rail, double-click = hide the labels) + its dismiss button. */
+  'nav.railHint.text': '单击主侧栏的插件行可收起 / 展开这里的侧栏；快速双击可隐藏文字',
+  'nav.railHint.dismiss': '关闭提示',
+  /* A round: the plugin route rail's width + the hint's base setting. */
+  'settings.pluginRailWidth': '插件板块宽度',
+  'settings.pluginRailWidthHint': '插件内板块侧栏的宽度；也可直接拖拽该侧栏的右缘调节（自动保存）。',
+  'settings.pluginRailCompactWidth': '紧凑宽度（隐藏文字时）',
+  'settings.pluginRailCompactWidthHint': '双击隐藏文字后，二级侧栏收成图标列的宽度；可在此细分调节。',
+  'settings.railHint': '侧栏操作提示',
+  'settings.railHintHint': '在插件内板块侧栏底部显示操作提示（单击 / 双击）；关掉后可随时重新打开。',
   'access.defaultHint': '默认只允许本机与局域网（RFC1918 A/B/C 类）访问，不对外网开放。',
   'access.allowlist': '自定义允许访问的域名 / IP / CIDR',
   'access.allowlistHint': '每行一条；支持 example.com、192.168.1.0/24、10.0.0.5 这样的写法。',
@@ -493,6 +504,16 @@ const EN: Record<string, string> = {
   'settings.sidebarHScroll': 'Sidebar horizontal scrollbar',
   'settings.sidebarHScrollHint': 'When on, a horizontal scrollbar appears at the bottom of the rail when the content overflows; when off (default) the bar is hidden but the content still scrolls horizontally.',
   'nav.pluginRoutes': 'Plugin sections',
+  /* A round: the plugin route rail's bottom operation hint + its dismiss button. */
+  'nav.railHint.text': 'Click a plugin row in the main rail to show / hide this rail; double-click quickly to hide the labels',
+  'nav.railHint.dismiss': 'Dismiss hint',
+  /* A round: the plugin route rail's width + the hint's base setting. */
+  'settings.pluginRailWidth': 'Plugin rail width',
+  'settings.pluginRailWidthHint': 'Width of the plugin route rail; you can also drag its right edge (saved automatically).',
+  'settings.pluginRailCompactWidth': 'Compact width (labels hidden)',
+  'settings.pluginRailCompactWidthHint': 'Width of the mini rail when labels are hidden (double-click); adjust it here.',
+  'settings.railHint': 'Rail operation hint',
+  'settings.railHintHint': 'Show the operation hint at the bottom of the plugin route rail (single / double click); can be re-enabled anytime.',
   'access.defaultHint': 'Only this machine and the local network (RFC1918 A/B/C) may connect; the console is not exposed to the internet.',
   'access.allowlist': 'Extra allowed domains / IPs / CIDRs',
   'access.allowlistHint': 'One per line; accepts example.com, 192.168.1.0/24 or 10.0.0.5.',
@@ -570,6 +591,23 @@ const EN: Record<string, string> = {
 /** Dictionaries keyed by locale. */
 const DICTS: Record<Locale, Record<string, string>> = { 'zh-CN': ZH, 'en-US': EN }
 
+/**
+ * A round: CJK ↔ Latin auto-spacing. Chinese and Latin scripts sit flush
+ * together after interpolation ("Web Search首页"), which the user finds
+ * unreadable; this inserts ONE space at each CJK↔(letter/digit) boundary, in
+ * both directions. Existing spaces are never doubled, and CJK PUNCTUATION
+ * (，。、！？…) is intentionally NOT in the class — "设置，Web" needs no space
+ * after the comma. Pure-EN and pure-CJK strings pass through unchanged.
+ * @param text - translated text.
+ * @returns the text with CJK↔Latin boundaries spaced.
+ */
+export function spaceMixed(text: string): string {
+  const CJK = '\\u3040-\\u30ff\\u3400-\\u4dbf\\u4e00-\\u9fff\\uf900-\\ufaff'
+  return text
+    .replace(new RegExp(`([${CJK}])([A-Za-z0-9])`, 'g'), '$1 $2')
+    .replace(new RegExp(`([A-Za-z0-9])([${CJK}])`, 'g'), '$1 $2')
+}
+
 /** Values available through {@link useI18n}. */
 export interface I18nValue {
   /** Active locale. */
@@ -591,9 +629,13 @@ const I18nContext = createContext<I18nValue | undefined>(undefined)
  */
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setStored] = usePref<Locale>(PREF_KEYS.locale, 'zh-CN', oneOf(LOCALES))
-  const t = (key: string): string => DICTS[locale][key] ?? ZH[key] ?? key
-  const tf = (key: string, values: Readonly<Record<string, string | number>>): string => t(key)
-    .replace(/\{(\w+)\}/gu, (match, name: string) => values[name] === undefined ? match : String(values[name]))
+  // A round: every visible string leaves through these two funnels with
+  // CJK↔Latin boundaries spaced (spaceMixed). `tf` re-runs it AFTER
+  // interpolation — the spacing can only be known once the `{name}` value is
+  // in ("Web Search" + "首页" → "Web Search 首页").
+  const t = (key: string): string => spaceMixed(DICTS[locale][key] ?? ZH[key] ?? key)
+  const tf = (key: string, values: Readonly<Record<string, string | number>>): string => spaceMixed(t(key)
+    .replace(/\{(\w+)\}/gu, (match, name: string) => values[name] === undefined ? match : String(values[name])))
   return (
     <I18nContext.Provider value={{ locale, setLocale: setStored, t, tf }}>
       {children}

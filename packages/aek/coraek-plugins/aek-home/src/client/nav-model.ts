@@ -127,3 +127,40 @@ export function useLastSubMemory(): {
   }, [lastSub, set])
   return { lastSub, record }
 }
+
+/**
+ * A round: host preferences of the per-plugin route rail interactions. The
+ * list-valued keys hold comma-separated FAMILY ids (the row owning plugin
+ * routes — today only `websearch`).
+ */
+/** `aek-home.pluginRailHidden`: family ids whose route rail is hidden. */
+export const RAIL_HIDDEN_KEY = 'aek-home.pluginRailHidden'
+/** `aek-home.pluginRailLabelsHidden`: family ids whose route labels are hidden (icon-only rows). */
+export const RAIL_LABELS_HIDDEN_KEY = 'aek-home.pluginRailLabelsHidden'
+/**
+ * `aek-home.railHint`: the base switch of the rail's bottom operation hint
+ * (one boolean owns it: the × button switches it off, the Settings row
+ * switches it back on; unset = default on).
+ */
+export const RAIL_HINT_KEY = 'aek-home.railHint'
+/** `aek-home.pluginRailWidth`: the dragged rail width in px (settings-schema row). */
+export const RAIL_WIDTH_KEY = 'aek-home.pluginRailWidth'
+/** `aek-home.pluginRailCompactWidth`: the icon-only column width used while the labels are hidden. */
+export const RAIL_COMPACT_WIDTH_KEY = 'aek-home.pluginRailCompactWidth'
+
+/** @param raw - the raw pref value. @returns the stored comma list ("" when unset). */
+export function parseCommaList(raw: unknown): string {
+  return typeof raw === 'string' ? raw : ''
+}
+
+/**
+ * Toggle one family id inside a comma-separated list (pure — spec-able).
+ * @param list - the stored comma list, "" allowed.
+ * @param id - the family to add or remove.
+ * @returns the next list.
+ */
+export function toggleInCommaList(list: string, id: string): string {
+  const items = list.length === 0 ? [] : list.split(',').filter(Boolean)
+  const next = items.includes(id) ? items.filter(item => item !== id) : [...items, id]
+  return next.join(',')
+}

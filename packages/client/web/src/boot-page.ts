@@ -34,7 +34,10 @@ export class BootPage {
     this.root = div(css.boot)
     this.root.dataset.dshBoot = ''
     this.card = div(css.card)
-    this.wordmark = div(css.wordmark, 'HARNESS')
+    // A round: the console boots as AEK, not as the forked dsh shell — the
+    // wordmark is the product name, and the full form spells out the acronym
+    // for first-time users.
+    this.wordmark = div(css.wordmark, 'AEK (Agent Enhance Kit)')
     this.spinner = div(css.spinner)
     this.spinner.dataset.dshBootSpinner = ''
     this.hint = div(css.hint, 'Loading plugins…')

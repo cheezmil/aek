@@ -21,6 +21,13 @@
  * The shared model (NAV / family routes / last-sub memory) lives in
  * `nav-model.ts` so the rail and the plugin side rails read one source.
  *
+ * A round: a FAMILY row (one that owns plugin routes) gains click semantics:
+ * SINGLE click = select the remembered route AND toggle the plugin's own
+ * route rail (show/hide the `PluginSubNav` column); a QUICK DOUBLE click =
+ * toggle that rail's LABELS (icon-only rows) without touching selection.
+ * Both states persist on the host (`aek-home.pluginRailHidden` /
+ * `aek-home.pluginRailLabelsHidden`, comma lists in `nav-model.ts`).
+ *
  * @module @cheezmil/aek-home/src/client/Sidebar
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -29,7 +36,7 @@ import { BrandMark, Icon } from './Icons.tsx'
 import type { BrandVariant } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import type { Locale } from './i18n.tsx'
-import { NAV, NAV_TOP, subEntriesOf, useLastSubMemory } from './nav-model.ts'
+import { NAV, NAV_TOP, RAIL_HIDDEN_KEY, RAIL_LABELS_HIDDEN_KEY, parseCommaList, subEntriesOf, toggleInCommaList, useLastSubMemory } from './nav-model.ts'
 import type { NavEntry, PanelId } from './nav-model.ts'
 import { parseBoolean, PREF_KEYS, usePref, useSettings } from './preferences.tsx'
 import { css, cx } from './styles.ts'
@@ -40,6 +47,13 @@ export type { PanelId } from './nav-model.ts'
 const HOVER_ENTER_DELAY = 120
 /** Delay before the peek collapses after the pointer leaves. */
 const HOVER_LEAVE_DELAY = 200
+
+/**
+ * A round: how long after the FIRST click on a family row the SINGLE-click
+ * action (select + toggle the plugin rail) waits for a possible DOUBLE click
+ * (which instead toggles the rail's labels).
+ */
+const FAMILY_CLICK_DELAY = 250
 
 /** W round: the rail width the user can drag between (the CSS default is 248). */
 const SIDEBAR_MIN_WIDTH = 180
@@ -230,6 +244,49 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
    * route; the plugin's own side rail records visits.
    */
   const { lastSub } = useLastSubMemory()
+  /**
+   * A round: the per-family plugin route rail states (comma lists, shared
+   * keys in `nav-model.ts`). Single-click of a family row toggles the rail
+   * itself; a quick double-click toggles the rail's labels.
+   */
+  const [, setRailHidden] = usePref<string>(RAIL_HIDDEN_KEY, '', parseCommaList)
+  const [, setRailLabelsHidden] = usePref<string>(RAIL_LABELS_HIDDEN_KEY, '', parseCommaList)
+  /**
+   * A round: pending SINGLE clicks, keyed by family id. The first click arms
+   * a 250 ms timer (single = select + toggle the rail); a second click inside
+   * the window cancels it and performs the DOUBLE action (toggle the labels)
+   * instead.
+   */
+  const familyClickTimer = useRef<Partial<Record<string, ReturnType<typeof setTimeout>>>>({})
+  useEffect(() => () => {
+    for (const id of Object.keys(familyClickTimer.current)) clearTimeout(familyClickTimer.current[id])
+  }, [])
+
+  /**
+   * A round: one click on a row. Family rows (owning plugin routes) are
+   * single / double-click sensitive; plain rows select immediately.
+   * @param entry - the row clicked.
+   * @param subIds - the row's plugin routes (empty = plain row).
+   */
+  const handleRowClick = (entry: NavEntry, subIds: readonly string[]): void => {
+    if (subIds.length === 0) {
+      onSelect(entry.id)
+      return
+    }
+    const pending = familyClickTimer.current[entry.id]
+    if (pending !== undefined) {
+      clearTimeout(pending)
+      delete familyClickTimer.current[entry.id]
+      setRailLabelsHidden(current => toggleInCommaList(current, entry.id))
+      return
+    }
+    familyClickTimer.current[entry.id] = setTimeout(() => {
+      delete familyClickTimer.current[entry.id]
+      const remembered = lastSub.get(entry.id)
+      onSelect(remembered ?? entry.id)
+      setRailHidden(current => toggleInCommaList(current, entry.id))
+    }, FAMILY_CLICK_DELAY)
+  }
   /** X round: the base setting that restores the bottom horizontal scrollbar (default off). */
   const hScroll = prefs[H_SCROLL_KEY] === true
   /** Y round: fade the floating refresh/pin box in and out (default on; off = instant). */
@@ -441,19 +498,15 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
         onDragEnd={() => { dragIdRef.current = undefined; dropAtRef.current = undefined; setDragId(undefined); setDropMark(undefined) }}
       >
         {/* Z round: family rows light up for the whole family; the plugin's
-            own routes live in its side rail (PluginSubNav), not in this one. */}
+            own routes live in its side rail (PluginSubNav), not in this one.
+            A round: a FAMILY row's click is single / double-click sensitive
+            (single = select the remembered route + toggle the plugin's route
+            rail; double = toggle that rail's labels); plain rows select. */}
         <button
           type="button"
           className={cx(css.navItem, rowActive && css.navItemActive)}
           aria-current={rowActive ? 'page' : undefined}
-          // Y round: clicking a family row re-opens the last visited route of
-          // the plugin (the "首页" applies only until the first visit). Z
-          // round: the X-round show/hide toggle of third-level rows is gone
-          // with them.
-          onClick={() => {
-            const remembered = lastSub.get(entry.id)
-            onSelect(remembered ?? entry.id)
-          }}
+          onClick={() => handleRowClick(entry, subIds)}
           title={`${t(entry.labelKey)} · ${t('nav.dragHint')}`}
         >
           <span className={css.navIcon}><Icon name={entry.icon} size={18} /></span>

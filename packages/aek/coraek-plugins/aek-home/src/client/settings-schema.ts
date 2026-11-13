@@ -168,6 +168,30 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
       { value: 'full', labelKey: 'settings.pathStyle.full' },
     ],
   },
+  {
+    // A round: the per-plugin route rail (PluginSubNav) width. Dragging the
+    // rail's right edge writes this pref; the CSS variable below carries the
+    // number into the layout, same as every other sidebar metric.
+    key: 'aek-home.pluginRailWidth', kind: 'range', group: 'sidebar',
+    labelKey: 'settings.pluginRailWidth', hintKey: 'settings.pluginRailWidthHint',
+    default: 200, min: 140, max: 360, step: 2, unit: 'px', cssVar: '--aek-plugin-rail-width',
+  },
+  {
+    // A round addendum: the compact icon-only column width used while the
+    // rail's labels are hidden. Settings-owned (no CSS variable — the value
+    // drives PluginSubNav's layout property directly).
+    key: 'aek-home.pluginRailCompactWidth', kind: 'range', group: 'sidebar',
+    labelKey: 'settings.pluginRailCompactWidth', hintKey: 'settings.pluginRailCompactWidthHint',
+    default: 64, min: 48, max: 96, step: 2, unit: 'px',
+  },
+  {
+    // A round: base switch for the plugin route rail's bottom operation hint
+    // ("single-click the main rail row = show/hide this rail; double-click =
+    // hide the labels"). The hint can also be dismissed inline with its ×;
+    // flipping this ON re-arms it.
+    key: 'aek-home.railHint', kind: 'toggle', group: 'navigation',
+    labelKey: 'settings.railHint', hintKey: 'settings.railHintHint', default: true,
+  },
 ]
 
 /**

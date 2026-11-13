@@ -22,7 +22,12 @@ import { PromptsPanel, SkillsPanel } from './ConsolePanels.tsx'
 import { oneOf, PREF_KEYS, PrefProvider, usePref, useSettings } from './preferences.tsx'
 import { Sidebar } from './Sidebar.tsx'
 import type { PanelId } from './nav-model.ts'
-import { panelFamilyOf } from './nav-model.ts'
+import {
+  panelFamilyOf,
+  parseCommaList,
+  RAIL_HIDDEN_KEY,
+  RAIL_LABELS_HIDDEN_KEY,
+} from './nav-model.ts'
 import { PluginSubNav } from './PluginSubNav.tsx'
 import { RuntimeModePanel } from './RuntimeModePanel.tsx'
 import { sidebarCssVars } from './settings-schema.ts'
@@ -84,7 +89,15 @@ function Console() {
   // root like `websearch`, or one of its routes like `websearchSettings`)
   // gets the plugin's OWN route rail next to its content; plain panels get
   // no rail. The class switches the main area from a column to a row.
+  // A round: the rail can be HIDDEN by single-clicking the family row in the
+  // main rail (host pref `aek-home.pluginRailHidden`), and its labels can be
+  // collapsed to icons by double-clicking (host pref
+  // `aek-home.pluginRailLabelsHidden`). Both live in `nav-model.ts`.
   const family = panelFamilyOf(panel) as PanelId | undefined
+  const [hiddenRails] = usePref<string>(RAIL_HIDDEN_KEY, '', parseCommaList)
+  const [labelsHidden] = usePref<string>(RAIL_LABELS_HIDDEN_KEY, '', parseCommaList)
+  const railVisible = family !== undefined && !hiddenRails.split(',').filter(Boolean).includes(family)
+  const labelsCollapsed = family !== undefined && labelsHidden.split(',').filter(Boolean).includes(family)
 
   return (
     <div className={css.app} style={style}>
@@ -95,8 +108,8 @@ function Console() {
         onRefresh={requestRefresh}
       />
 
-      <div className={cx(css.main, family !== undefined && css.mainWithSubNav)}>
-        {family !== undefined ? <PluginSubNav active={panel} onSelect={setPanel} /> : null}
+      <div className={cx(css.main, railVisible && css.mainWithSubNav)}>
+        {railVisible ? <PluginSubNav active={panel} onSelect={setPanel} labelsHidden={labelsCollapsed} /> : null}
         <div className={css.mainBody}>
           <main className={css.content}>
             {panel === 'runtime' ? <RuntimeModePanel refreshSignal={signalFor('runtime')} /> : null}

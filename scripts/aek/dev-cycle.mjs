@@ -237,6 +237,21 @@ function verify(devMode, json) {
     })
   }
   {
+    // A round: the localStorage red line is machine-enforced in the loop —
+    // no AEK setting may live in the browser's Web Storage (or in any
+    // Electron-ecosystem store); settings persist on the host.
+    const storage = spawnSync(NODE, [join(HERE, 'verify-aek-storage.mjs'), '--quiet'], {
+      cwd: ROOT, encoding: 'utf8', timeout: 60_000,
+    })
+    checks.push({
+      rule: 'aek-storage-redline',
+      ok: storage.status === 0,
+      detail: storage.status === 0
+        ? 'AEK 自有代码零 Web Storage 使用（设置走 host preferences，不碰 Electron 生态）'
+        : ((storage.stderr ?? '') + (storage.stdout ?? '')).trim().split('\n').join(' '),
+    })
+  }
+  {
     // X round: unfinished i18n must not pass the loop either (the same gate
     // the aek-home prebundle / console-round runs).
     const i18n = spawnSync(NODE, [join(HERE, 'verify-i18n.mjs'), '--quiet'], {

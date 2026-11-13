@@ -507,8 +507,11 @@ body {
   top: 0;
   display: flex;
   flex-direction: column;
-  flex: 0 0 200px;
-  width: 200px;
+  /* A round: the width is the user-dragged pref (the settings-schema row
+     `aek-home.pluginRailWidth` feeds this variable through `sidebarCssVars`
+     on the app root; the rail ALSO sets it inline while dragging). */
+  flex: 0 0 var(--aek-plugin-rail-width, 200px);
+  width: var(--aek-plugin-rail-width, 200px);
   height: 100vh;
   padding: var(--aek-space-6) var(--aek-space-3) var(--aek-space-3);
   background: var(--aek-surface);
@@ -572,6 +575,63 @@ body {
   background: var(--aek-accent);
 }
 .pluginSubNavItemActive .pluginSubNavIcon { color: var(--aek-accent-ink); }
+
+/* A round: the main rail's DOUBLE click on the family row collapses the
+   route labels to icons only (the rows keep their height). */
+.pluginSubNavNoLabels .pluginSubNavLabel { display: none; }
+/* A round addendum: icon-only rows center their icon in the compact column
+   instead of hugging the left edge (same for the lone × of the hint box). */
+.pluginSubNavNoLabels .pluginSubNavItem { justify-content: center; padding: 0; }
+.pluginSubNavNoLabels .pluginSubNavHint { justify-content: center; }
+
+/* A round: the rail's right-edge drag handle (same interaction language as
+   the main rail's resizer). */
+.pluginSubNavResizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 1;
+}
+.pluginSubNavResizer:hover,
+.pluginSubNavResizer:active { background: var(--aek-accent-soft); }
+
+/* A round: the bottom operation hint (single / double click of the main
+   rail's family row) + its inline dismiss button. */
+.pluginSubNavHint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--aek-space-2);
+  margin-top: auto;
+  padding: var(--aek-space-2);
+  border: 1px solid var(--aek-border);
+  border-radius: var(--aek-radius-sm);
+  background: var(--aek-surface-hover);
+}
+.pluginSubNavHintText {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--aek-text-muted);
+}
+.pluginSubNavHintDismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--aek-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--aek-radius-sm);
+  cursor: pointer;
+}
+.pluginSubNavHintDismiss:hover { color: var(--aek-text); background: var(--aek-surface); }
+.pluginSubNavHintDismiss svg { width: 12px; height: 12px; }
 
 /* ── Cards ───────────────────────────────────────────────────────────── */
 
