@@ -382,7 +382,9 @@ function watchBackend(win: BrowserWindow): () => void {
       })
       console.log(`[main] renderer silent-failure — forcing reload (attempt ${String(forcedReloads)})`)
       // Reload bypasses the HTTP cache so a poisoned bundle cannot survive.
-      void win.webContents.reloadIgnoringCache().catch(() => { /* the window may be gone */ })
+      // (Electron's `reloadIgnoringCache` is fire-and-forget: it returns
+      // void, not a promise.)
+      win.webContents.reloadIgnoringCache()
     }, BOOT_GRACE_MS)
   }
 
