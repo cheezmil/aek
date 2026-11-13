@@ -6,7 +6,8 @@
  * modules). It contains no tier names, no provider-to-tier mapping and no
  * ranks — all of that arrives from `/api/aek/websearch/ranking`, whose data
  * comes from the GitHub-hosted file. When the host reports
- * `classified: false`, the caller renders a flat, ungrouped list.
+ * `classified: false`, the panel keeps the last classified board on screen
+ * (stale) instead of collapsing the layout.
  *
  * Q round (2026-11-12): the board is INTERVAL-driven, not visit-driven. A
  * module-level cache renders the last snapshot instantly on panel remount
@@ -14,6 +15,11 @@
  * re-reads only after the configured TTL (default 24 h, the Web Search
  * plugin setting), and the sidebar refresh button forces a fresh read via
  * `force=1`.
+ *
+ * V round (2026-11-13): the cache only ever stores CLASSIFIED snapshots. A
+ * failed or unclassified read never clobbers the last good board — the
+ * panel keeps its grouped shape, shows a stale notice, and self-heals the
+ * moment a read succeeds again (background sweep or manual force).
  *
  * @module @cheezmil/aek-home/src/client/useWebsearchRanking
  */
@@ -80,11 +86,19 @@ export interface RankingSnapshot {
 
 /** Live ranking state exposed to the Web Search panel. */
 export interface RankingState {
-  /** `undefined` until the first read resolves. */
+  /**
+   * The last CLASSIFIED snapshot for this filter, or `undefined` when no
+   * read has ever succeeded. Failed / unclassified reads never replace it
+   * (V round), so the visible board keeps its grouped shape.
+   */
   snapshot: RankingSnapshot | undefined
   /** True while a read is in flight. */
   loading: boolean
-  /** Transport-level error; a host-side no-classification result is NOT an error. */
+  /**
+   * The reason the latest read failed or reported no classification
+   * (transport error OR host-side `classified: false`). `undefined` while
+   * the visible board is fresh.
+   */
   error: string | undefined
   /** Force a fresh read. */
   refresh: () => void
@@ -186,17 +200,28 @@ export function useWebsearchRanking(filter: RankingFilter, options: RankingReadO
         })
         .then((data) => {
           if (controller.signal.aborted) return
-          rankingCache.set(key, { snapshot: data, readAtMs: Date.now() })
-          setSnapshot(data)
-          setError(undefined)
+          if (data.ok && data.classified) {
+            // Only a classified board enters the cache and the visible state —
+            // a failed/unclassified read must never reshape the board.
+            rankingCache.set(key, { snapshot: data, readAtMs: Date.now() })
+            setSnapshot(data)
+            setError(undefined)
+          } else {
+            // V round: GitHub unreachable / unclassified payload → keep the
+            // last classified snapshot (or nothing, on the first read ever)
+            // and surface the reason so the panel shows a stale notice
+            // instead of a layout-jumping fallback list.
+            setError(data.reason || data.message || 'ranking unavailable')
+          }
           if (!opts.silent) setLoading(false)
         })
         .catch((cause: unknown) => {
           if (controller.signal.aborted) return
-          if (!opts.silent) {
-            setError(messageOf(cause))
-            setLoading(false)
-          }
+          // V round: transport errors also preserve the visible board — only
+          // the SNAPSHOT state is protected, and the error reason surfaces as
+          // a stale notice next to it.
+          setError(messageOf(cause))
+          if (!opts.silent) setLoading(false)
         })
     }
     const cached = rankingCache.get(key)

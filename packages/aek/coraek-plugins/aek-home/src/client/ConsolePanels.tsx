@@ -75,7 +75,11 @@ function ManagerPanel({ pluginId, refreshSignal }: {
       setNotice(t('managers.confirmNeeded'))
       return
     }
+    // V round: the placeholder advertises the full `<cli> <args>` shape
+    // ("aeksm status"), so tolerate a leading CLI token — `aeksm status` and
+    // `status` both run the same command.
     const tokens = line.trim().split(/\s+/u).filter(Boolean)
+    if (plugin?.cli !== undefined && tokens[0] === plugin.cli) tokens.shift()
     if (tokens.length === 0) return
     setNotice('')
     void state.run(pluginId, tokens, confirmed)

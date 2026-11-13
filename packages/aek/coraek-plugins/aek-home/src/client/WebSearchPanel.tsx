@@ -225,9 +225,11 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
   }
 
   // The board is 100% data-driven: tier names, order, membership and rank all
-  // come from the remote file. When it cannot be fetched, `classified` is
-  // false and the provider list stays a single flat, ungrouped <ul>.
-  const classified = ranking.snapshot?.classified === true
+  // come from the remote file. V round: the ranking hook only ever holds a
+  // CLASSIFIED snapshot (or none), so a failed / unclassified read keeps the
+  // last good board on screen with a stale notice — the layout shape never
+  // changes; without any snapshot, the grouped skeleton holds the shape.
+  const classified = ranking.snapshot !== undefined
   const metaByKind = new Map<string, ProviderMeta>(
     (ranking.snapshot?.providers ?? []).map(meta => [meta.kind, meta]),
   )
@@ -244,10 +246,7 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
     ? groups.reduce((total, group) => total + group.items.length, 0)
     : providers.length
   const tierLabel = (label: { zh: string; en: string }): string => locale === 'en-US' ? label.en : label.zh
-  const failureReason = ranking.error
-    || ranking.snapshot?.message
-    || ranking.snapshot?.reason
-    || t('websearch.filter.unknown')
+  const failureReason = ranking.error ?? t('websearch.filter.unknown')
 
   /** Render one provider row, with optional remote rank/metadata badges. */
   const renderProvider = (provider: ProviderStatus, rank?: number, meta?: ProviderMeta): ReactNode => {
@@ -355,11 +354,14 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
       <div className={css.cardBody}>
         <PanelSearch value={query} onChange={setQuery} placeholder={t('websearch.search')} count={visibleCount} />
 
-        {/* Q round: while the FIRST read of the board is in flight, render a
-            FIXED-SHAPE skeleton (same groups, rows and heights as the real
-            board, with a shimmer sweep) so the layout is stable from the
-            first paint — no jump when the data lands. */}
-        {status !== undefined && !classified && ranking.loading && ranking.snapshot === undefined
+        {/* Q round: while the FIRST read of the board is in flight (or has
+            FAILED and no classified snapshot exists yet), render a FIXED-SHAPE
+            skeleton (same groups, rows and heights as the real board, with a
+            shimmer sweep) so the layout is stable from the first paint — no
+            jump when the data lands. V round: a failed first read keeps the
+            SAME skeleton shape (plus a notice) instead of a flat fallback
+            list, so the shape never changes. */}
+        {status !== undefined && !classified
           ? <RankingSkeleton filtersOpen={filtersOpen} />
           : null}
 
@@ -437,11 +439,18 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
           )
           : null}
 
-        {!classified && (ranking.snapshot !== undefined || ranking.error !== undefined)
+        {/* V round: the layout shape never changes — with a classified board
+            the notice sits NEXT TO the stale board; without one, it sits
+            below the grouped skeleton above. */}
+        {status !== undefined && ranking.error !== undefined
           ? (
             <div className={css.rankingNotice}>
               <Icon name="alert" size={16} />
-              <span>{tf('websearch.ranking.failed', { reason: failureReason })}</span>
+              <span>
+                {classified
+                  ? tf('websearch.ranking.stale', { reason: failureReason, date: ranking.snapshot?.updatedAt ?? '—' })
+                  : tf('websearch.ranking.failed', { reason: failureReason })}
+              </span>
             </div>
           )
           : null}
@@ -508,15 +517,6 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
                 </section>
               ))}
             </>
-          )
-          : null}
-
-        {/* GitHub unreachable / invalid payload → no classification at all. */}
-        {status !== undefined && !classified
-          ? (
-            <ul className={css.providerList}>
-              {providers.map(provider => renderProvider(provider))}
-            </ul>
           )
           : null}
 

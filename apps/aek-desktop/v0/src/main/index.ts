@@ -305,15 +305,75 @@ function reconnectingPage(): string {
  * @param win - the window to keep alive.
  * @returns a function that stops the watcher.
  */
+/**
+ * V round (2026-11-13): renderer silent-failure window. The client's own
+ * stall watchdog reports `[aek-boot] boot stalled` 5 s after the module
+ * system failed to create; the shell gives the app a little extra grace
+ * before forcing a full reload, and bounds consecutive forced reloads so a
+ * permanently broken build cannot turn the window into a reload loop.
+ */
+const BOOT_GRACE_MS = 15_000
+const MAX_CONSECUTIVE_FORCED_RELOADS = 3
+
 function watchBackend(win: BrowserWindow): () => void {
   let showingReconnect = false
   let stopped = false
   let timer: NodeJS.Timeout | undefined
+  /** Last time the renderer reported a healthy boot (ms). */
+  let lastBootOkAt = 0
+  /** When the most recent app-URL load started (ms). */
+  let lastAppLoadAt = 0
+  /** Consecutive forced reloads since the last healthy boot. */
+  let forcedReloads = 0
+  /** The one-shot boot deadline for the current load. */
+  let bootTimer: NodeJS.Timeout | undefined
+
+  const disarmBootWatch = (): void => {
+    if (bootTimer !== undefined) clearTimeout(bootTimer)
+    bootTimer = undefined
+  }
+
+  /**
+   * Arm the "did the renderer actually boot?" deadline for one load. After
+   * {@link BOOT_GRACE_MS} with no fresh `[aek-boot] module system created`
+   * line the renderer is declared silent-failed and hard-reloaded — this is
+   * the U-round follow-up: two white screens (2026-11-13 02:28 / 02:51)
+   * both needed a manual app restart because the renderer could die or stall
+   * while the backend stayed up, which the reconnect watcher never sees.
+   */
+  const armBootWatch = (): void => {
+    disarmBootWatch()
+    lastAppLoadAt = Date.now()
+    bootTimer = setTimeout(() => {
+      bootTimer = undefined
+      if (stopped || win.isDestroyed()) return
+      // A healthy boot since THIS load means nothing to do.
+      if (lastBootOkAt >= lastAppLoadAt) {
+        forcedReloads = 0
+        return
+      }
+      if (forcedReloads >= MAX_CONSECUTIVE_FORCED_RELOADS) {
+        log.error('renderer silent-failure: giving up after consecutive forced reloads — manual restart needed', {
+          attempts: forcedReloads,
+        })
+        return
+      }
+      forcedReloads += 1
+      log.warn('renderer silent-failure: no [aek-boot] after app load — forcing reload', {
+        attempt: forcedReloads,
+        shellUrl,
+      })
+      console.log(`[main] renderer silent-failure — forcing reload (attempt ${String(forcedReloads)})`)
+      // Reload bypasses the HTTP cache so a poisoned bundle cannot survive.
+      void win.webContents.reloadIgnoringCache().catch(() => { /* the window may be gone */ })
+    }, BOOT_GRACE_MS)
+  }
 
   const showReconnect = (): void => {
     if (showingReconnect) return
     showingReconnect = true
     log.warn('backend down — showing reconnecting page', { shellUrl })
+    disarmBootWatch()
     void win.loadURL(reconnectingPage()).catch(() => { /* the window may be gone */ })
   }
 
@@ -340,6 +400,11 @@ function watchBackend(win: BrowserWindow): () => void {
   // lines stay in the devtools console; here they become durable text.
   win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     const source = sourceId ? sourceId.split('/').pop() ?? sourceId : 'renderer'
+    // V round: a healthy module-system line is the renderer's "I booted"
+    // signal; the boot watcher trusts only this one marker.
+    if (message.includes('[aek-boot] module system created')) {
+      lastBootOkAt = Date.now()
+    }
     if (level === 3) log.error(`renderer console: ${message}`, { line, source })
     else if (level === 2) log.warn(`renderer console: ${message}`, { line, source })
     else if (level === 0) log.debug(`renderer console: ${message}`, { line, source })
@@ -349,7 +414,14 @@ function watchBackend(win: BrowserWindow): () => void {
   win.webContents.on('did-finish-load', () => {
     // Electron 44's typed listener for this event takes no arguments; the URL
     // comes from the webContents itself.
-    log.info('did-finish-load', { url: win.webContents.getURL() })
+    const url = win.webContents.getURL()
+    log.info('did-finish-load', { url })
+    // The reconnecting page and the port-mismatch page are data: URLs — they
+    // never emit boot telemetry, so only arm the deadline for the real app.
+    if (url.startsWith('data:')) return
+    if (url.startsWith(CANONICAL_URL) || url.startsWith(LOOPBACK_URL)) {
+      armBootWatch()
+    }
   })
 
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
@@ -361,8 +433,11 @@ function watchBackend(win: BrowserWindow): () => void {
   })
 
   win.webContents.on('render-process-gone', (_event, details) => {
+    // A dead renderer reports no boot line ever; remember the failure so the
+    // next app load (after the backend transition) forces a fresh one.
     log.error('render-process-gone', { reason: details.reason, exitCode: details.exitCode })
     console.log(`[main] renderer gone: ${details.reason}`)
+    lastBootOkAt = 0
     showReconnect()
   })
 
