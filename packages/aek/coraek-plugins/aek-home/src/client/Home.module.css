@@ -490,6 +490,89 @@ body {
   margin: 0 auto;
 }
 
+/* ── Z round: the per-plugin route rail ────────────────────────────────
+   A plugin that owns internal routes (today: Web Search) gets its own
+   left side rail inside the panel area — the main rail stays at two
+   levels. `.mainWithSubNav` flips the main area to a row: the rail, then
+   the content column. */
+.mainWithSubNav { flex-direction: row; }
+.mainBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.pluginSubNav {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 200px;
+  width: 200px;
+  height: 100vh;
+  padding: var(--aek-space-6) var(--aek-space-3) var(--aek-space-3);
+  background: var(--aek-surface);
+  border-right: 1px solid var(--aek-border);
+}
+.pluginSubNavList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aek-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pluginSubNavIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--aek-text-muted);
+}
+.pluginSubNavIcon svg { width: 14px; height: 14px; }
+.pluginSubNavLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pluginSubNavItem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--aek-space-2);
+  width: 100%;
+  height: 34px;
+  padding: 0 var(--aek-space-2);
+  color: var(--aek-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--aek-radius-sm);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 140ms var(--aek-ease), background 140ms var(--aek-ease);
+}
+.pluginSubNavItem:hover {
+  color: var(--aek-text);
+  background: var(--aek-surface-hover);
+}
+.pluginSubNavItem:focus-visible { outline: 2px solid var(--aek-accent); outline-offset: 2px; }
+.pluginSubNavItemActive,
+.pluginSubNavItemActive:hover {
+  color: var(--aek-accent-ink);
+  background: var(--aek-accent-soft);
+}
+.pluginSubNavItemActive::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--aek-accent);
+}
+.pluginSubNavItemActive .pluginSubNavIcon { color: var(--aek-accent-ink); }
+
 /* ── Cards ───────────────────────────────────────────────────────────── */
 
 .card {
@@ -1703,18 +1786,9 @@ body {
 .drawerCaret { transition: transform 180ms var(--aek-ease); }
 .drawerLabel { flex: 1 1 auto; text-align: left; }
 .navRow { display: flex; align-items: center; gap: 2px; position: relative; }
-/* W round: the Web Search settings row nests under the Web Search row —
-   indented, one step smaller, not independently draggable. */
-.navRowSub { margin: 0 0 0 18px; }
-/* Y round: the user dropped the open/closed chevron on second-level rows —
-   the row CLICK still toggles the third-level list; no glyph mirrors it. */
-.navItemSub {
-  height: 34px;
-  padding-left: 12px;
-  font-size: 12px;
-  color: var(--aek-text-muted);
-}
-.navRowSub .navIcon svg { width: 14px; height: 14px; }
+/* Z round: the rail is at most two levels — the nested Web Search settings
+   row (W round `.navRowSub` / `.navItemSub`) moved into the plugin's own
+   route rail (`.pluginSubNav`), so the nested-row styles are gone. */
 .navRow > .navItem { flex: 1 1 auto; min-width: 0; }
 /* Rows are press-and-drag reorderable (2026-11-09). The affordance is the
    cursor plus the insertion line; no grip handle eats label width. */

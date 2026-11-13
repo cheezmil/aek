@@ -13,16 +13,28 @@
  * - The top search box filters the rail; panel-level search boxes live in the
  *   panels themselves.
  *
+ * Z round: the rail is at most TWO levels (group → row). The third-level
+ * boards (a plugin's own routes, e.g. its settings page) left the rail — a
+ * plugin manages them in its OWN side rail (`PluginSubNav`). Clicking a
+ * family row still re-opens the remembered route (Y round `lastSub` memory);
+ * the X-round show/hide toggle of the third-level rows is gone with them.
+ * The shared model (NAV / family routes / last-sub memory) lives in
+ * `nav-model.ts` so the rail and the plugin side rails read one source.
+ *
  * @module @cheezmil/aek-home/src/client/Sidebar
  */
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { BrandMark, Icon } from './Icons.tsx'
-import type { BrandVariant, IconName } from './Icons.tsx'
+import type { BrandVariant } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import type { Locale } from './i18n.tsx'
+import { NAV, NAV_TOP, subEntriesOf, useLastSubMemory } from './nav-model.ts'
+import type { NavEntry, PanelId } from './nav-model.ts'
 import { parseBoolean, PREF_KEYS, usePref, useSettings } from './preferences.tsx'
 import { css, cx } from './styles.ts'
+
+export type { PanelId } from './nav-model.ts'
 
 /** Delay before a pointer hover starts the peek (hover intent). */
 const HOVER_ENTER_DELAY = 120
@@ -41,62 +53,6 @@ function parseSidebarWidth(raw: unknown): number | undefined {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, value))
 }
 
-/** Every surface the console can show. */
-export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'websearchSettings' | 'settings' | 'about'
-
-/** The two drawer groups the user asked for (plus the pinned bucket). */
-export type NavGroup = 'plugins' | 'other'
-
-/** One menu row. */
-interface NavEntry {
-  /** Panel to activate. */
-  id: PanelId
-  /** i18n key of the visible label. */
-  labelKey: string
-  /** Icon drawn before the label. */
-  icon: IconName
-  /** Which drawer holds it. */
-  group: NavGroup
-  /**
-   * W round: nest under another row instead of being a top-level entry of
-   * its drawer (the Web Search settings row lives under Web Search).
-   */
-  subOf?: string
-  /** Extra aliases for the search box. */
-  keywords: readonly string[]
-}
-
-/** Y round: one labelled third-level row (a synthetic "首页" or a real sub). */
-interface SubRow {
-  /** Panel to activate. */
-  id: PanelId
-  /** Icon drawn before the label. */
-  icon: IconName
-  /** Translated visible label. */
-  label: string
-  /** True for the synthetic default "{name}首页" row. */
-  home: boolean
-}
-
-/** Navigation model. Adding a panel = one row; the drawer picks it up. */
-const NAV: readonly NavEntry[] = [
-  { id: 'runtime', labelKey: 'panel.runtime', icon: 'activity', group: 'other', keywords: ['runtime', 'instance', 'slot', 'port', '运行实例', '实例'] },
-  // Web Search is a real AEK plugin, so it belongs in the 插件 drawer, not 其他.
-  { id: 'websearch', labelKey: 'panel.websearch', icon: 'search', group: 'plugins', keywords: ['search', 'keys', 'api key', 'provider', '密钥'] },
-  { id: 'plugins', labelKey: 'panel.plugins', icon: 'plugins', group: 'plugins', keywords: ['plugin', 'package', 'inventory', '插件管理'] },
-  // Q round: "book" read as docs and "sparkles" as AI magic — neither says
-  // "manager". A skill is a pluggable capability block (puzzle); a prompt
-  // manager manages plain text blocks (type).
-  { id: 'skills', labelKey: 'panel.skills', icon: 'puzzle', group: 'plugins', keywords: ['skill', 'manager', '技能'] },
-  { id: 'prompts', labelKey: 'panel.prompts', icon: 'type', group: 'plugins', keywords: ['prompt', 'manager', '提示词'] },
-  // Q round: every plugin with user-facing settings gets its own settings
-  // page instead of one giant Settings page. Web Search owns the ranking
-  // refresh interval; the base "Settings" page was renamed 基础设置.
-  { id: 'websearchSettings', labelKey: 'panel.websearchSettings', icon: 'settings', group: 'plugins', subOf: 'websearch', keywords: ['websearch', 'search', 'ranking', '排行', '设置'] },
-  { id: 'settings', labelKey: 'panel.settings', icon: 'settings', group: 'other', keywords: ['preferences', 'options', 'sidebar', '基础设置', '设置'] },
-  { id: 'about', labelKey: 'panel.about', icon: 'about', group: 'other', keywords: ['version', 'info', 'entry', '关于'] },
-]
-
 /** The project's public repository (verified with `gh repo view`). */
 const GITHUB_REPO_URL = 'https://github.com/cheezmil/agent-enhance-kit'
 
@@ -111,25 +67,13 @@ const DRAWER_KEY = 'aek-home.drawerExpanded'
  */
 const ORDER_KEY = 'aek-home.order'
 /**
- * X round: parent rows whose nested (third-level) rows are HIDDEN. Comma-
- * separated panel ids; empty means "everything open". Clicking a second-level
- * row toggles its third-level rows (user rule) AND selects the panel — the
- * toggle is persisted like every other rail setting.
+ * X round: restore the rail's bottom horizontal scrollbar (default: hidden).
+ * (The Z round removed the third level and with it the `aek-home.subClosed`
+ * pref — a stored value is simply ignored now.)
  */
-const SUB_CLOSED_KEY = 'aek-home.subClosed'
-/** X round: restore the rail's bottom horizontal scrollbar (default: hidden). */
 const H_SCROLL_KEY = 'aek-home.sidebarHScroll'
-/**
- * Y round: per-plugin memory of the last visited third-level board, stored
- * as `parent:child,parent:child` panel ids (`child === parent` means the
- * default "{name}首页" board). Clicking a second-level row re-opens the
- * remembered board; the "首页" applies only until the first visit.
- */
-const LAST_SUB_KEY = PREF_KEYS.lastSub
 /** The base setting that fades the floating action box in / out (default on). */
 const NAV_ACTIONS_FADE_KEY = PREF_KEYS.navActionsFade
-/** Every panel id, used to validate the stored last-sub pairs. */
-const NAV_IDS: readonly string[] = NAV.map(entry => entry.id)
 
 /**
  * A pending insertion: the new row order of one drawer plus the row the
@@ -202,7 +146,7 @@ function DrawerGroup({ label, open, onToggle, children }: {
  * @returns the sidebar.
  */
 export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarProps) {
-  const { t, tf, locale, setLocale } = useI18n()
+  const { t, locale, setLocale } = useI18n()
   const { prefs, set } = useSettings()
   const [collapsed, setCollapsed] = usePref<boolean>(PREF_KEYS.collapsed, false, parseBoolean)
   const [hoverExpand] = usePref<boolean>(PREF_KEYS.hoverExpand, true, parseBoolean)
@@ -281,41 +225,11 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   /** Sort helper: applies the manual order to any row slice. */
   const byOrder = (a: NavEntry, b: NavEntry): number => rankOf(a.id) - rankOf(b.id)
   /**
-   * X round: the parent rows whose nested (third-level) rows are hidden,
-   * persisted like every other rail setting.
+   * Z round: the per-plugin last-visited route memory (shared model,
+   * `nav-model`). A family-row click in THIS rail re-opens the remembered
+   * route; the plugin's own side rail records visits.
    */
-  const subClosed = useMemo(() => (typeof prefs[SUB_CLOSED_KEY] === 'string'
-    ? String(prefs[SUB_CLOSED_KEY]).split(',').filter(Boolean)
-    : []), [prefs])
-  /** @param id - parent panel. @returns the new closed set after the click. */
-  const toggleSubs = (id: PanelId): void => {
-    const next = subClosed.includes(id) ? subClosed.filter(item => item !== id) : [...subClosed, id]
-    set(SUB_CLOSED_KEY, next.join(','))
-  }
-  /**
-   * Y round: the per-plugin third-level memory. Stored as
-   * `parent:child,parent:child`; unknown ids are dropped on read so a stale
-   * file can never select a dead panel.
-   */
-  const lastSub = useMemo(() => {
-    const map = new Map<PanelId, PanelId>()
-    if (typeof prefs[LAST_SUB_KEY] === 'string') {
-      for (const part of String(prefs[LAST_SUB_KEY]).split(',')) {
-        const at = part.lastIndexOf(':')
-        if (at <= 0) continue
-        const parent = part.slice(0, at) as PanelId
-        const child = part.slice(at + 1) as PanelId
-        if (NAV_IDS.includes(parent) && NAV_IDS.includes(child)) map.set(parent, child)
-      }
-    }
-    return map
-  }, [prefs])
-  /** @param parent - plugin row. @param child - the third-level board just visited. */
-  const recordLastSub = (parent: PanelId, child: PanelId): void => {
-    const next = new Map(lastSub)
-    next.set(parent, child)
-    set(LAST_SUB_KEY, [...next.entries()].map(([parentId, childId]) => `${parentId}:${childId}`).join(','))
-  }
+  const { lastSub } = useLastSubMemory()
   /** X round: the base setting that restores the bottom horizontal scrollbar (default off). */
   const hScroll = prefs[H_SCROLL_KEY] === true
   /** Y round: fade the floating refresh/pin box in and out (default on; off = instant). */
@@ -388,9 +302,11 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   const brandLabel = !logoToggle ? brandText : (compact ? t('brand.expand') : (collapsed ? t('brand.pinOpen') : t('brand.collapse')))
 
   const needle = query.trim().toLowerCase()
+  // Z round: the search box surfaces top-level rows only — a plugin's own
+  // routes are found in the plugin's side rail, not in the main nav.
   const filtered = needle.length === 0
-    ? NAV
-    : NAV.filter((entry) => {
+    ? NAV_TOP
+    : NAV_TOP.filter((entry) => {
       const haystack = [t(entry.labelKey), entry.id, ...entry.keywords].join(' ').toLowerCase()
       return haystack.includes(needle)
     })
@@ -505,8 +421,11 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
 
   /** @param entry - one row. @param pinnedNow - whether it is pinned. @returns the row. */
   const renderRow = (entry: NavEntry, pinnedNow: boolean): ReactNode => {
-    const subs = subListFor(entry)
-    const subOpen = subs.length > 0 && !subClosed.includes(entry.id)
+    // Z round: the rail is at most two levels. A row that owns plugin routes
+    // is a FOLDER — it lights up for the whole family (itself OR any of its
+    // routes), while plain rows keep the usual self-highlight.
+    const subIds = subEntriesOf(entry.id).map(item => item.id)
+    const rowActive = active === entry.id || subIds.includes(active)
     return (
       <li
         key={entry.id}
@@ -521,26 +440,21 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
         onDragStart={event => handleDragStart(event, entry.id)}
         onDragEnd={() => { dragIdRef.current = undefined; dropAtRef.current = undefined; setDragId(undefined); setDropMark(undefined) }}
       >
-        {/* Y round: a row that owns third-level boards is a FOLDER, not a
-            panel — it never lights up. The highlight belongs to the third
-            level (the "首页" row carries the parent's id, sub rows carry
-            their own). Plain rows without subs keep the usual highlight. */}
+        {/* Z round: family rows light up for the whole family; the plugin's
+            own routes live in its side rail (PluginSubNav), not in this one. */}
         <button
           type="button"
-          className={cx(css.navItem, subs.length === 0 && active === entry.id && css.navItemActive)}
-          aria-current={subs.length === 0 && active === entry.id ? 'page' : undefined}
-          // X round: a second-level row that owns third-level rows toggles
-          // them on click (persisted via SUB_CLOSED_KEY). Y round: it ALSO
-          // remembers the last visited third-level board — first click opens
-          // the default "首页", later clicks re-open the remembered one.
+          className={cx(css.navItem, rowActive && css.navItemActive)}
+          aria-current={rowActive ? 'page' : undefined}
+          // Y round: clicking a family row re-opens the last visited route of
+          // the plugin (the "首页" applies only until the first visit). Z
+          // round: the X-round show/hide toggle of third-level rows is gone
+          // with them.
           onClick={() => {
             const remembered = lastSub.get(entry.id)
             onSelect(remembered ?? entry.id)
-            if (subs.length > 0) toggleSubs(entry.id)
           }}
-          title={subs.length > 0
-            ? `${t(entry.labelKey)} · ${subOpen ? t('nav.subClose') : t('nav.subOpen')}`
-            : `${t(entry.labelKey)} · ${t('nav.dragHint')}`}
+          title={`${t(entry.labelKey)} · ${t('nav.dragHint')}`}
         >
           <span className={css.navIcon}><Icon name={entry.icon} size={18} /></span>
           <span className={css.navLabel}>{t(entry.labelKey)}</span>
@@ -575,71 +489,10 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
     )
   }
 
-  /**
-   * W round: the indented rows nested under one plugin row. Deliberately NOT
-   * draggable (the order is owned by the parent row) and without pin /
-   * refresh affordances — a child, not a peer. Y round: the list starts with
-   * the plugin's default "{name}首页" board, and visiting ANY third-level row
-   * (首页 included) records the per-plugin memory so the parent row click
-   * re-opens it instead of bouncing back to the default.
-   */
-  const renderSubRows = (parent: NavEntry): ReactNode => {
-    const subs = subListFor(parent)
-    if (subs.length === 0) return null
-    return (
-      <>
-        {subs.map(sub => (
-          <li
-            key={sub.id}
-            className={css.navRowSub}
-            data-panel={sub.id}
-          >
-            <button
-              type="button"
-              className={cx(css.navItem, css.navItemSub, active === sub.id && css.navItemActive)}
-              aria-current={active === sub.id ? 'page' : undefined}
-              title={sub.label}
-              onClick={() => {
-                onSelect(sub.id)
-                recordLastSub(parent.id, sub.id)
-              }}
-            >
-              <span className={css.navIcon}><Icon name={sub.icon} size={14} /></span>
-              <span className={css.navLabel}>{sub.label}</span>
-            </button>
-          </li>
-        ))}
-      </>
-    )
-  }
-
-  const pinnedRows = filtered.filter(entry => pinned.includes(entry.id)).sort(byOrder)
+  const pinnedRows = filtered
+    .filter(entry => pinned.includes(entry.id) && entry.subOf === undefined)
+    .sort(byOrder)
   const pluginRows = filtered.filter(entry => entry.group === 'plugins' && entry.subOf === undefined && !pinned.includes(entry.id)).sort(byOrder)
-  // W round: the settings row that nests under a plugin row — visible only
-  // while its parent row is visible AND neither is pinned away.
-  /** @param parent - the row a settings entry nests under. @returns its visible sub rows. */
-  const subRowsFor = (parent: string): NavEntry[] => {
-    if (pinned.includes(parent) || !filtered.some(entry => entry.id === parent)) return []
-    return filtered.filter(entry => entry.subOf === parent && !pinned.includes(entry.id))
-  }
-  /**
-   * Y round: the FULL third-level list of one second-level row: the plugin's
-   * default "{name}首页" board first (plugin rows only), then the real nested
-   * rows (e.g. the settings page). Labels are translated here once, so the
-   * sub rows render without per-child i18n lookups.
-   */
-  const subListFor = (entry: NavEntry): SubRow[] => {
-    const rows: SubRow[] = subRowsFor(entry.id).map(sub => ({
-      id: sub.id,
-      icon: sub.icon,
-      label: t(sub.labelKey),
-      home: false,
-    }))
-    if (entry.group === 'plugins') {
-      rows.unshift({ id: entry.id, icon: 'layout', label: tf('nav.home', { name: t(entry.labelKey) }), home: true })
-    }
-    return rows
-  }
   const otherRows = filtered.filter(entry => entry.group === 'other' && !pinned.includes(entry.id)).sort(byOrder)
 
   /** @param next - locale chosen in the footer menu. */
@@ -730,23 +583,13 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
         {pinnedRows.length > 0
           ? (
             <DrawerGroup label={t('nav.group.pinned')} open={isOpen('pinned')} onToggle={() => toggleGroup('pinned')}>
-              {pinnedRows.map(entry => (
-                <Fragment key={entry.id}>
-                  {renderRow(entry, true)}
-                  {subListFor(entry).length > 0 && !subClosed.includes(entry.id) ? renderSubRows(entry) : null}
-                </Fragment>
-              ))}
+              {pinnedRows.map(entry => renderRow(entry, true))}
             </DrawerGroup>
           )
           : null}
 
         <DrawerGroup label={t('nav.group.plugins')} open={isOpen('plugins')} onToggle={() => toggleGroup('plugins')}>
-          {pluginRows.map(entry => (
-            <Fragment key={entry.id}>
-              {renderRow(entry, false)}
-              {subListFor(entry).length > 0 && !subClosed.includes(entry.id) ? renderSubRows(entry) : null}
-            </Fragment>
-          ))}
+          {pluginRows.map(entry => renderRow(entry, false))}
         </DrawerGroup>
 
         <DrawerGroup label={t('nav.group.other')} open={isOpen('other')} onToggle={() => toggleGroup('other')}>

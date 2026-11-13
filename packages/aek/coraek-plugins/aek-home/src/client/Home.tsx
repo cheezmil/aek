@@ -21,10 +21,12 @@ import { InfoPanels } from './InfoPanels.tsx'
 import { PromptsPanel, SkillsPanel } from './ConsolePanels.tsx'
 import { oneOf, PREF_KEYS, PrefProvider, usePref, useSettings } from './preferences.tsx'
 import { Sidebar } from './Sidebar.tsx'
-import type { PanelId } from './Sidebar.tsx'
+import type { PanelId } from './nav-model.ts'
+import { panelFamilyOf } from './nav-model.ts'
+import { PluginSubNav } from './PluginSubNav.tsx'
 import { RuntimeModePanel } from './RuntimeModePanel.tsx'
 import { sidebarCssVars } from './settings-schema.ts'
-import { css } from './styles.ts'
+import { css, cx } from './styles.ts'
 import { useInventory } from './useInventory.ts'
 import { useCurrentSlot } from './useRuntimeMode.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
@@ -78,6 +80,12 @@ function Console() {
 
   const signalFor = (id: PanelId): number => refreshTicks[id] ?? 0
 
+  // Z round: a panel owned by a plugin that has internal routes (a family
+  // root like `websearch`, or one of its routes like `websearchSettings`)
+  // gets the plugin's OWN route rail next to its content; plain panels get
+  // no rail. The class switches the main area from a column to a row.
+  const family = panelFamilyOf(panel) as PanelId | undefined
+
   return (
     <div className={css.app} style={style}>
       <Sidebar
@@ -87,16 +95,19 @@ function Console() {
         onRefresh={requestRefresh}
       />
 
-      <div className={css.main}>
-        <main className={css.content}>
-          {panel === 'runtime' ? <RuntimeModePanel refreshSignal={signalFor('runtime')} /> : null}
-          {panel === 'websearch' ? <WebSearchPanel state={state} refreshSignal={signalFor('websearch')} facts={facts} /> : null}
-          {panel === 'plugins' || panel === 'settings' || panel === 'websearchSettings' || panel === 'about'
-            ? <InfoPanels panel={panel} inventory={inventory} refreshSignal={signalFor(panel)} />
-            : null}
-          {panel === 'skills' ? <SkillsPanel refreshSignal={signalFor('skills')} /> : null}
-          {panel === 'prompts' ? <PromptsPanel refreshSignal={signalFor('prompts')} /> : null}
-        </main>
+      <div className={cx(css.main, family !== undefined && css.mainWithSubNav)}>
+        {family !== undefined ? <PluginSubNav active={panel} onSelect={setPanel} /> : null}
+        <div className={css.mainBody}>
+          <main className={css.content}>
+            {panel === 'runtime' ? <RuntimeModePanel refreshSignal={signalFor('runtime')} /> : null}
+            {panel === 'websearch' ? <WebSearchPanel state={state} refreshSignal={signalFor('websearch')} facts={facts} /> : null}
+            {panel === 'plugins' || panel === 'settings' || panel === 'websearchSettings' || panel === 'about'
+              ? <InfoPanels panel={panel} inventory={inventory} refreshSignal={signalFor(panel)} />
+              : null}
+            {panel === 'skills' ? <SkillsPanel refreshSignal={signalFor('skills')} /> : null}
+            {panel === 'prompts' ? <PromptsPanel refreshSignal={signalFor('prompts')} /> : null}
+          </main>
+        </div>
       </div>
     </div>
   )
