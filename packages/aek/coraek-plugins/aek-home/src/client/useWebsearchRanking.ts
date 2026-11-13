@@ -21,6 +21,11 @@
  * panel keeps its grouped shape, shows a stale notice, and self-heals the
  * moment a read succeeds again (background sweep or manual force).
  *
+ * Y round (2026-11-14): a FAILED refresh is reported honestly — the host's
+ * `refreshFailed` marker (retry backoff, never "in progress") surfaces as a
+ * distinct notice, the sweep retries failed boards on the backoff clock, and
+ * `enabled: false` (the "不进行任何排行分类" setting) disables every read.
+ *
  * @module @cheezmil/aek-home/src/client/useWebsearchRanking
  */
 import { useCallback, useEffect, useState } from 'react'
@@ -89,6 +94,13 @@ export interface RankingSnapshot {
    * only freshness hint; no blocking wait on the panel's first paint.
    */
   stale?: boolean
+  /**
+   * Y round: the visible board is the last successful one, but the most
+   * recent refresh attempt failed and the host's retry backoff has not
+   * elapsed. The panel shows an honest "refresh failed" notice instead of a
+   * permanent "updating in the background" chip.
+   */
+  refreshFailed?: { reason: string; message: string; at: string }
 }
 
 /** Live ranking state exposed to the Web Search panel. */
@@ -107,6 +119,13 @@ export interface RankingState {
    * the visible board is fresh.
    */
   error: string | undefined
+  /**
+   * Y round: set while the visible (classified) board is served from cache
+   * after a FAILED refresh attempt inside the host's retry backoff. The
+   * panel renders the last good board PLUS this honest notice; the background
+   * sweep re-attempts after {@link RANKING_REFRESH_BACKOFF_MS}.
+   */
+  refreshFailed: RankingSnapshot['refreshFailed']
   /** Force a fresh read. */
   refresh: () => void
 }
@@ -122,6 +141,13 @@ export interface RankingReadOptions {
    * own refresh). `> 0` forces a fresh read on that tick.
    */
   forceSignal?: number | undefined
+  /**
+   * Y round: `false` disables the ranking entirely (the Web Search setting
+   * "不进行任何排行分类"): no request on mount, no background sweep, no
+   * forced reads. Flipping back to `true` restores the module cache
+   * instantly.
+   */
+  enabled?: boolean | undefined
 }
 
 /** @param filter - the filter to send. @param options - TTL / force. @returns the request URL. */
@@ -145,6 +171,8 @@ interface CacheEntry {
   snapshot: RankingSnapshot
   /** When THIS client read succeeded (ms), not the host fetch time. */
   readAtMs: number
+  /** Y round: a classified board whose refresh just failed (host backoff). */
+  refreshFailed?: RankingSnapshot['refreshFailed']
 }
 const rankingCache = new Map<string, CacheEntry>()
 /** Key: the same filter values two mounts share. */
@@ -161,6 +189,14 @@ function messageOf(cause: unknown): string {
 
 /** Default refresh interval in hours (the Web Search plugin setting default). */
 export const RANKING_TTL_DEFAULT_HOURS = 24
+
+/**
+ * Y round: mirrors the host's `RANKING_REFRESH_BACKOFF_MS` — after a refresh
+ * attempt FAILED, both sides retry at most once per this window. The sweep
+ * uses it to decide when a `refreshFailed` board gets another silent forced
+ * read, so a dead network self-heals while the panel is open.
+ */
+export const RANKING_REFRESH_BACKOFF_MS = 30 * 60 * 1000
 
 /**
  * Read the remote ranking with interval semantics (Q round).
@@ -180,19 +216,28 @@ export const RANKING_TTL_DEFAULT_HOURS = 24
  */
 export function useWebsearchRanking(filter: RankingFilter, options: RankingReadOptions = {}): RankingState {
   const [snapshot, setSnapshot] = useState<RankingSnapshot | undefined>(
-    () => rankingCache.get(cacheKey(filter))?.snapshot,
+    () => options.enabled === false ? undefined : rankingCache.get(cacheKey(filter))?.snapshot,
   )
   const [loading, setLoading] = useState<boolean>(
-    () => rankingCache.get(cacheKey(filter)) === undefined,
+    () => options.enabled === false ? false : rankingCache.get(cacheKey(filter)) === undefined,
   )
   const [error, setError] = useState<string | undefined>(undefined)
+  // Y round: the host-reported refresh failure for the visible cached board
+  // (undefined = the board is fresh, or no board at all).
+  const [refreshFailed, setRefreshFailed] = useState<RankingSnapshot['refreshFailed']>(
+    () => options.enabled === false ? undefined : rankingCache.get(cacheKey(filter))?.refreshFailed,
+  )
   const [manualTick, setManualTick] = useState(0)
   const { free, phone, card } = filter
   const key = cacheKey({ free, phone, card })
   const ttlHours = options.ttlHours
   const forceSignal = options.forceSignal ?? 0
+  const enabled = options.enabled !== false
 
   useEffect(() => {
+    // Y round: the "不进行任何排行分类" switch — no request on mount, no
+    // background sweep, no forced reads at all.
+    if (!enabled) return
     const controller = new AbortController()
     const ttlMs = (ttlHours ?? RANKING_TTL_DEFAULT_HOURS) * 3_600_000
     const doRead = (opts: { force: boolean; silent: boolean }): void => {
@@ -209,15 +254,23 @@ export function useWebsearchRanking(filter: RankingFilter, options: RankingReadO
           if (controller.signal.aborted) return
           if (data.ok && data.classified) {
             // Only a classified board enters the cache and the visible state —
-            // a failed/unclassified read must never reshape the board.
-            rankingCache.set(key, { snapshot: data, readAtMs: Date.now() })
+            // a failed/unclassified read must never reshape the board. Y
+            // round: the host's refresh-failure marker travels WITH the cached
+            // board, so the panel can show the honest "refresh failed" notice.
+            rankingCache.set(key, {
+              snapshot: data,
+              readAtMs: Date.now(),
+              refreshFailed: data.refreshFailed,
+            })
             setSnapshot(data)
+            setRefreshFailed(data.refreshFailed)
             setError(undefined)
           } else {
             // V round: GitHub unreachable / unclassified payload → keep the
             // last classified snapshot (or nothing, on the first read ever)
             // and surface the reason so the panel shows a stale notice
             // instead of a layout-jumping fallback list.
+            setRefreshFailed(undefined)
             setError(data.reason || data.message || 'ranking unavailable')
           }
           if (!opts.silent) setLoading(false)
@@ -227,6 +280,7 @@ export function useWebsearchRanking(filter: RankingFilter, options: RankingReadO
           // V round: transport errors also preserve the visible board — only
           // the SNAPSHOT state is protected, and the error reason surfaces as
           // a stale notice next to it.
+          setRefreshFailed(undefined)
           setError(messageOf(cause))
           if (!opts.silent) setLoading(false)
         })
@@ -245,22 +299,28 @@ export function useWebsearchRanking(filter: RankingFilter, options: RankingReadO
       // snapshot into the visible state instantly (no network); the
       // background sweep below handles its TTL.
       setSnapshot(cached.snapshot)
+      setRefreshFailed(cached.refreshFailed)
       setError(undefined)
     }
     // Background sweep: once the TTL window has passed, re-read SILENTLY —
-    // the visible board stays put until the fresh answer lands.
+    // the visible board stays put until the fresh answer lands. Y round: a
+    // board whose refresh FAILED is retried on the (shorter) backoff clock
+    // instead of sitting on a fake "updating" chip for the whole TTL.
     const timer = setInterval(() => {
       const entry = rankingCache.get(key)
-      if (entry === undefined || Date.now() - entry.readAtMs < ttlMs) return
+      if (entry === undefined) return
+      if (entry.refreshFailed !== undefined) {
+        if (Date.now() - entry.readAtMs < RANKING_REFRESH_BACKOFF_MS) return
+      } else if (Date.now() - entry.readAtMs < ttlMs) return
       doRead({ force: true, silent: true })
     }, STALENESS_CHECK_MS)
     return () => {
       controller.abort()
       clearInterval(timer)
     }
-  }, [free, phone, card, key, ttlHours, forceSignal, manualTick])
+  }, [free, phone, card, key, ttlHours, forceSignal, manualTick, enabled])
 
   /** Manual force read (kept for API compatibility with earlier panels). */
   const refresh = useCallback(() => setManualTick(value => value + 1), [])
-  return { snapshot, loading, error, refresh }
+  return { snapshot, loading, error, refreshFailed, refresh }
 }

@@ -41,6 +41,15 @@ export const RANKING_TTL_MS = 5 * 60 * 1000
 /** Failures are cached briefly so an offline host does not time out on every click. */
 export const RANKING_FAILURE_TTL_MS = 30 * 1000
 
+/**
+ * Y round: after a FAILED refresh attempt (background or forced) the host does
+ * not retry for this window. A board whose GitHub refresh keeps failing must
+ * not claim "updating in the background" on every page open (the user saw the
+ * fake in-progress banner pinned to a three-day-old cache) — it reports the
+ * last failure instead, and the next attempt happens at most once per window.
+ */
+export const RANKING_REFRESH_BACKOFF_MS = 30 * 60 * 1000
+
 /** The one accepted schema version. */
 export const RANKING_SCHEMA = 1
 
@@ -136,6 +145,13 @@ export interface RankingSnapshot {
    * blocking the first paint on a GitHub round-trip.
    */
   stale?: boolean
+  /**
+   * Y round: the visible board is the last SUCCESSFUL one, but the most
+   * recent refresh attempt already failed and the retry backoff has not
+   * elapsed. Sent so the console shows an honest "refresh failed" notice
+   * instead of a permanent "updating in the background" chip.
+   */
+  refreshFailed?: { reason: RankingFailure; message: string; at: string }
 }
 
 /** Minimal fetch seam, injectable in unit tests. */
@@ -202,6 +218,10 @@ interface CacheEntry {
 }
 
 let cache: CacheEntry | undefined
+/** Y round: the most recent refresh attempt (background OR forced), so a board
+ *  whose GitHub refresh keeps failing reports an honest failure + backoff
+ *  instead of claiming "in progress" on every read. */
+let lastAttempt: { at: number; ok: boolean; failure: RankingFailure; message: string } | undefined
 
 /** @returns the URL to fetch; only http/https overrides are honoured. */
 export function rankingUrl(env: NodeJS.ProcessEnv = process.env): string {
@@ -443,8 +463,22 @@ export async function loadRanking(options: RankingOptions = {}): Promise<Ranking
   if (options.force !== true && cached !== undefined && cached.data !== undefined) {
     const snapshot = snapshotFrom(cached, base, filter)
     if (now() - cached.at >= ttl) {
-      snapshot.stale = true
-      backgroundRefresh(options, url, now)
+      // Y round: the refresh window has passed, but "stale" may only be
+      // claimed while a refresh is genuinely in flight. If the last attempt
+      // FAILED and its backoff has not elapsed, report the failure instead —
+      // a dead refresh must not masquerade as "updating in the background"
+      // on every page open (the user's 11-11 cache stuck behind the chip).
+      const backoffElapsed = lastAttempt === undefined || now() - lastAttempt.at >= RANKING_REFRESH_BACKOFF_MS
+      if (background === undefined && lastAttempt !== undefined && !lastAttempt.ok && !backoffElapsed) {
+        snapshot.refreshFailed = {
+          reason: lastAttempt.failure,
+          message: lastAttempt.message,
+          at: new Date(lastAttempt.at).toISOString(),
+        }
+      } else {
+        snapshot.stale = true
+        if (background === undefined) backgroundRefresh(options, url, now)
+      }
     }
     return snapshot
   }
@@ -460,16 +494,23 @@ export async function loadRanking(options: RankingOptions = {}): Promise<Ranking
   // for a fresh answer, even after a recent failure): fetch and wait.
   const entry = await fetchEntry(options, url, now)
   if (cached !== undefined && cached.data !== undefined && entry.data === undefined) {
-    // The wait/refresh FAILED: keep serving the last good board (flagged
-    // stale) instead of swapping the visible ranking for an error — the
-    // client-cache rule (V round) mirrored on the host. The in-memory cache
-    // is left at the last success, so the NEXT read re-triggers the
-    // background refresh.
+    // The wait/refresh FAILED: keep serving the last good board instead of
+    // swapping the visible ranking for an error — the client-cache rule
+    // (V round) mirrored on the host. Y round: the failure is reported as
+    // `refreshFailed` (honest "the refresh broke"), never as `stale`
+    // ("updating in progress"), and it starts the retry backoff so the next
+    // dozen page opens do not each claim a fresh attempt.
+    lastAttempt = { at: now(), ok: false, failure: entry.failure, message: entry.message }
     const snapshot = snapshotFrom(cached, base, filter)
-    snapshot.stale = true
+    snapshot.refreshFailed = {
+      reason: entry.failure,
+      message: entry.message,
+      at: new Date(entry.at).toISOString(),
+    }
     return snapshot
   }
   cache = entry
+  lastAttempt = { at: now(), ok: entry.data !== undefined, failure: entry.failure, message: entry.message }
   if (entry.data !== undefined && options.persistPath !== undefined) {
     persistBoard(options.persistPath, entry)
   }
@@ -522,6 +563,10 @@ function backgroundRefresh(options: RankingOptions, url: string, now: () => numb
   background = (async (): Promise<void> => {
     try {
       const entry = await fetchEntry(options, url, now)
+      // Y round: record the outcome — a failed background refresh starts the
+      // retry backoff, so subsequent reads report `refreshFailed` instead of
+      // re-launching a refresh that just failed moments ago.
+      lastAttempt = { at: now(), ok: entry.data !== undefined, failure: entry.failure, message: entry.message }
       if (entry.data !== undefined) {
         cache = entry
         if (options.persistPath !== undefined) persistBoard(options.persistPath, entry)
@@ -606,6 +651,7 @@ function snapshotFrom(entry: CacheEntry, base: {
 /** Clear the in-memory cache (tests / explicit host reload). */
 export function clearRankingCache(): void {
   cache = undefined
+  lastAttempt = undefined
 }
 
 /** @param url - a request URL. @returns the normalized filter from its query. */

@@ -137,6 +137,12 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     labelKey: 'settings.drawerExpanded', hintKey: 'settings.drawerExpandedHint', default: true,
   },
   {
+    // Y round: the sidebar's floating refresh/pin action box fades in and out
+    // on hover; this switch turns the animation off (instant show / hide).
+    key: 'aek-home.navActionsFade', kind: 'toggle', group: 'navigation',
+    labelKey: 'settings.navActionsFade', hintKey: 'settings.navActionsFadeHint', default: true,
+  },
+  {
     // Disabling a plugin takes its routes down immediately, so the switch asks
     // for a second click by default. Users who disable plugins often can turn
     // that off here instead of being stuck with a confirm step forever.
@@ -172,6 +178,13 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
  * page itself.
  */
 export const WEBSEARCH_SETTINGS_SCHEMA: readonly SettingField[] = [
+  {
+    // Y round: the "不进行任何排行分类" switch — when on, the Web Search page
+    // shows a flat provider list: no tier groups, no ranks, no filters and
+    // no ranking traffic at all (the refresh interval below is moot).
+    key: 'aek-home.websearch.noRanking', kind: 'toggle', group: 'websearch',
+    labelKey: 'settings.websearchNoRanking', hintKey: 'settings.websearchNoRankingHint', default: false,
+  },
   {
     key: 'aek-home.websearch.rankingTtlHours', kind: 'range', group: 'websearch',
     labelKey: 'settings.websearchRankingTtl', hintKey: 'settings.websearchRankingTtlHint',

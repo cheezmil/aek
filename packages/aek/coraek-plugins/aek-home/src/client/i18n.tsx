@@ -102,6 +102,8 @@ const ZH: Record<string, string> = {
   'nav.pin': '置顶此板块',
   'nav.unpin': '取消置顶',
   'nav.refresh': '刷新该页面',
+  /* Y round: 每个插件的默认三级板块「XXX首页」。 */
+  'nav.home': '{name}首页',
   'nav.resizeHint': '拖动调整侧栏宽度，双击恢复默认',
   'nav.dragHint': '按住拖动可调整组内顺序（自动保存）',
   'nav.expand': '展开分组',
@@ -155,6 +157,9 @@ const ZH: Record<string, string> = {
   'settings.brandTextHint': '留空则只显示 Logo',
   'settings.drawerExpanded': '默认展开分组抽屉',
   'settings.drawerExpandedHint': '关掉后分组默认收起，可手动展开',
+  /* Y round: 侧栏悬浮操作框（刷新/置顶）的渐隐渐显开关。 */
+  'settings.navActionsFade': '侧栏悬浮操作框渐隐渐显',
+  'settings.navActionsFadeHint': '悬停侧栏行时，浮动在行上的操作框（刷新 / 置顶）淡入淡出；关掉后改为立即显示 / 隐藏。',
   'settings.confirmPluginDisable': '停用插件前先确认',
   'settings.confirmPluginDisableHint': '开启时，拨动开关只展开一条确认，再点「停用」才真正停用；关闭后拨动即生效',
   'settings.keyRetentionDays': '密钥回收站保留天数',
@@ -165,6 +170,9 @@ const ZH: Record<string, string> = {
   'settings.pathStyleHint': '简写把 home 前缀显示为 ~/（macOS / Linux）或 %USERPROFILE%\\（Windows，反斜杠）；完整路径则显示原始绝对路径。复制永远复制完整路径。',
   'settings.pathStyle.abbreviated': '简写（~/ 或 %USERPROFILE%\\）',
   'settings.pathStyle.full': '完整绝对路径',
+  /* Y round: Web Search 插件的「不进行任何排行分类」总开关。 */
+  'settings.websearchNoRanking': '不进行任何排行分类',
+  'settings.websearchNoRankingHint': '开启后 Web Search 页只显示扁平的提供商列表：不拉取、不显示、也不后台更新榜单（没有档位分组、没有名次编号、没有「后台更新中」提示）。随时可以关掉恢复。',
   /* Q round: 排行榜刷新间隔（Web Search 插件自有设置项，默认 24h）。 */
   'settings.websearchRankingTtl': '排行榜刷新间隔',
   'settings.websearchRankingTtlHint': '距上次成功拉取超过该间隔才会重新请求榜单；点侧边栏的刷新图标可立即强制刷新。',
@@ -271,6 +279,14 @@ const ZH: Record<string, string> = {
   'websearch.ranking.failed': '排名数据拉取失败，暂不显示榜单：{reason}',
   'websearch.ranking.stale': '排名数据暂不可用（{reason}），显示的是缓存榜单（更新于 {date}）；网络恢复后点侧边栏刷新。',
   'websearch.ranking.updating': '后台更新中，当前显示缓存榜单（更新于 {date}）',
+  /* Y round: 后台刷新「失败」的诚实提示（区别于「进行中」）。 */
+  'websearch.ranking.refreshFailed': '后台更新失败（{reason}），当前显示缓存榜单（更新于 {date}）；稍后自动重试，点侧边栏刷新图标可立即强制刷新。',
+  /* Y round: 失败原因 token → 人类可读文案。 */
+  'websearch.ranking.reason.timeout': '请求超时',
+  'websearch.ranking.reason.http-error': '服务端返回错误',
+  'websearch.ranking.reason.invalid-json': '响应不是合法 JSON',
+  'websearch.ranking.reason.invalid-schema': '数据格式不符',
+  'websearch.ranking.reason.network-error': '网络不可达',
   /* Q round: 排名只用裸编号（1、2、3），不做醒目徽章。 */
   'websearch.ranking.rank': '{n}',
   'websearch.ranking.groupCount': '{n} 家',
@@ -361,6 +377,8 @@ const EN: Record<string, string> = {
   'nav.pin': 'Pin this section',
   'nav.unpin': 'Unpin',
   'nav.refresh': 'Refresh this page',
+  /* Y round: the default third-level board of every plugin, "{name} Home". */
+  'nav.home': '{name} Home',
   'nav.resizeHint': 'Drag to resize the sidebar; double-click to reset',
   'nav.dragHint': 'drag to reorder inside the group (saved automatically)',
   'nav.expand': 'Expand group',
@@ -414,6 +432,9 @@ const EN: Record<string, string> = {
   'settings.brandTextHint': 'Leave empty to show the logo alone',
   'settings.drawerExpanded': 'Expand drawer groups by default',
   'settings.drawerExpandedHint': 'When off, groups start collapsed but stay openable',
+  /* Y round: fade in/out of the sidebar's floating refresh/pin action box. */
+  'settings.navActionsFade': 'Fade the sidebar hover action box',
+  'settings.navActionsFadeHint': 'The floating action box (refresh / pin) on a hovered sidebar row fades in and out; turn off to show / hide it instantly.',
   'settings.confirmPluginDisable': 'Ask before disabling a plugin',
   'settings.confirmPluginDisableHint': 'On: the switch only reveals a confirmation and nothing is disabled until you click Disable. Off: the switch acts immediately',
   'settings.keyRetentionDays': 'Key recycle bin retention (days)',
@@ -425,6 +446,9 @@ const EN: Record<string, string> = {
   'settings.pathStyleHint': 'Abbreviated shows the home prefix as ~/ (macOS / Linux) or %USERPROFILE%\\ (Windows, backslashes). Full shows the raw absolute path. Copying always copies the full path.',
   'settings.pathStyle.abbreviated': 'Abbreviated (~/ or %USERPROFILE%\\)',
   'settings.pathStyle.full': 'Full absolute path',
+  /* Y round: the Web Search plugin's "disable all ranking classification" switch. */
+  'settings.websearchNoRanking': 'Disable all ranking classification',
+  'settings.websearchNoRankingHint': 'When on, the Web Search page shows a flat provider list: the ranking is never fetched, displayed, or updated in the background (no tier groups, no rank numbers, no "updating in the background" notice). Turn it off any time to restore the board.',
   /* Q round: ranking refresh interval (Web Search plugin's own setting, default 24h). */
   'settings.websearchRankingTtl': 'Ranking refresh interval',
   'settings.websearchRankingTtlHint': 'The board is only re-fetched once this many hours have passed since the last successful fetch. The sidebar refresh button forces one immediately.',
@@ -531,6 +555,14 @@ const EN: Record<string, string> = {
   'websearch.ranking.failed': 'Ranking data unavailable — the grouped board is not shown: {reason}',
   'websearch.ranking.stale': 'Ranking data is currently unavailable ({reason}); showing the cached board (updated {date}). Refresh from the sidebar once the network recovers.',
   'websearch.ranking.updating': 'Updating in the background — showing the cached board (updated {date})',
+  /* Y round: honest "the refresh FAILED" notice (distinct from in-progress). */
+  'websearch.ranking.refreshFailed': 'Background refresh failed ({reason}); showing the cached board (updated {date}). It retries automatically later, or force it from the sidebar refresh icon.',
+  /* Y round: failure-reason tokens → human-readable text. */
+  'websearch.ranking.reason.timeout': 'the request timed out',
+  'websearch.ranking.reason.http-error': 'the server returned an error',
+  'websearch.ranking.reason.invalid-json': 'the response is not valid JSON',
+  'websearch.ranking.reason.invalid-schema': 'the data schema is invalid',
+  'websearch.ranking.reason.network-error': 'the network was unreachable',
   /* Q round: ranks show as plain numbers, no badge / "rank #". */
   'websearch.ranking.rank': '{n}',
   'websearch.ranking.groupCount': '{n} providers',

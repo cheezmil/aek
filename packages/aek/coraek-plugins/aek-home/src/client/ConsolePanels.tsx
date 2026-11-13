@@ -152,11 +152,14 @@ function ManagerPanel({ pluginId, refreshSignal }: {
         <div className={css.divider} />
         <h3 className={css.sectionTitle}>{t('managers.run')}</h3>
         <div className={css.managerForm}>
+          {/* Y round: an EMPTY box shows no text at all — the placeholder
+              ("aeksm status" / the args hint) was noise. The accessible name
+              stays; the V-round tolerance for a typed leading CLI token is
+              unchanged. */}
           <input
             className={css.textInput}
             value={commandLine}
             onChange={(event) => { setCommandLine(event.target.value); setNotice('') }}
-            placeholder={plugin?.cli ? `${plugin.cli} status` : t('managers.args')}
             spellCheck={false}
             aria-label={t('managers.args')}
           />

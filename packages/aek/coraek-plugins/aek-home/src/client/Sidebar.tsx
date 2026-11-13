@@ -66,6 +66,18 @@ interface NavEntry {
   keywords: readonly string[]
 }
 
+/** Y round: one labelled third-level row (a synthetic "首页" or a real sub). */
+interface SubRow {
+  /** Panel to activate. */
+  id: PanelId
+  /** Icon drawn before the label. */
+  icon: IconName
+  /** Translated visible label. */
+  label: string
+  /** True for the synthetic default "{name}首页" row. */
+  home: boolean
+}
+
 /** Navigation model. Adding a panel = one row; the drawer picks it up. */
 const NAV: readonly NavEntry[] = [
   { id: 'runtime', labelKey: 'panel.runtime', icon: 'activity', group: 'other', keywords: ['runtime', 'instance', 'slot', 'port', '运行实例', '实例'] },
@@ -107,6 +119,17 @@ const ORDER_KEY = 'aek-home.order'
 const SUB_CLOSED_KEY = 'aek-home.subClosed'
 /** X round: restore the rail's bottom horizontal scrollbar (default: hidden). */
 const H_SCROLL_KEY = 'aek-home.sidebarHScroll'
+/**
+ * Y round: per-plugin memory of the last visited third-level board, stored
+ * as `parent:child,parent:child` panel ids (`child === parent` means the
+ * default "{name}首页" board). Clicking a second-level row re-opens the
+ * remembered board; the "首页" applies only until the first visit.
+ */
+const LAST_SUB_KEY = PREF_KEYS.lastSub
+/** The base setting that fades the floating action box in / out (default on). */
+const NAV_ACTIONS_FADE_KEY = PREF_KEYS.navActionsFade
+/** Every panel id, used to validate the stored last-sub pairs. */
+const NAV_IDS: readonly string[] = NAV.map(entry => entry.id)
 
 /**
  * A pending insertion: the new row order of one drawer plus the row the
@@ -179,7 +202,7 @@ function DrawerGroup({ label, open, onToggle, children }: {
  * @returns the sidebar.
  */
 export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarProps) {
-  const { t, locale, setLocale } = useI18n()
+  const { t, tf, locale, setLocale } = useI18n()
   const { prefs, set } = useSettings()
   const [collapsed, setCollapsed] = usePref<boolean>(PREF_KEYS.collapsed, false, parseBoolean)
   const [hoverExpand] = usePref<boolean>(PREF_KEYS.hoverExpand, true, parseBoolean)
@@ -269,8 +292,34 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
     const next = subClosed.includes(id) ? subClosed.filter(item => item !== id) : [...subClosed, id]
     set(SUB_CLOSED_KEY, next.join(','))
   }
+  /**
+   * Y round: the per-plugin third-level memory. Stored as
+   * `parent:child,parent:child`; unknown ids are dropped on read so a stale
+   * file can never select a dead panel.
+   */
+  const lastSub = useMemo(() => {
+    const map = new Map<PanelId, PanelId>()
+    if (typeof prefs[LAST_SUB_KEY] === 'string') {
+      for (const part of String(prefs[LAST_SUB_KEY]).split(',')) {
+        const at = part.lastIndexOf(':')
+        if (at <= 0) continue
+        const parent = part.slice(0, at) as PanelId
+        const child = part.slice(at + 1) as PanelId
+        if (NAV_IDS.includes(parent) && NAV_IDS.includes(child)) map.set(parent, child)
+      }
+    }
+    return map
+  }, [prefs])
+  /** @param parent - plugin row. @param child - the third-level board just visited. */
+  const recordLastSub = (parent: PanelId, child: PanelId): void => {
+    const next = new Map(lastSub)
+    next.set(parent, child)
+    set(LAST_SUB_KEY, [...next.entries()].map(([parentId, childId]) => `${parentId}:${childId}`).join(','))
+  }
   /** X round: the base setting that restores the bottom horizontal scrollbar (default off). */
   const hScroll = prefs[H_SCROLL_KEY] === true
+  /** Y round: fade the floating refresh/pin box in and out (default on; off = instant). */
+  const navActionsFade = prefs[NAV_ACTIONS_FADE_KEY] !== false
   const logoVisible = prefs['aek-home.logoVisible'] !== false
   const brandText = typeof prefs['aek-home.brandText'] === 'string' ? String(prefs['aek-home.brandText']) : 'AEK'
   const logoVariant = logoVariantOf(prefs['aek-home.logoVariant'])
@@ -456,7 +505,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
 
   /** @param entry - one row. @param pinnedNow - whether it is pinned. @returns the row. */
   const renderRow = (entry: NavEntry, pinnedNow: boolean): ReactNode => {
-    const subs = subRowsFor(entry.id)
+    const subs = subListFor(entry)
     const subOpen = subs.length > 0 && !subClosed.includes(entry.id)
     return (
       <li
@@ -472,14 +521,21 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
         onDragStart={event => handleDragStart(event, entry.id)}
         onDragEnd={() => { dragIdRef.current = undefined; dropAtRef.current = undefined; setDragId(undefined); setDropMark(undefined) }}
       >
+        {/* Y round: a row that owns third-level boards is a FOLDER, not a
+            panel — it never lights up. The highlight belongs to the third
+            level (the "首页" row carries the parent's id, sub rows carry
+            their own). Plain rows without subs keep the usual highlight. */}
         <button
           type="button"
-          className={cx(css.navItem, active === entry.id && css.navItemActive)}
-          aria-current={active === entry.id ? 'page' : undefined}
+          className={cx(css.navItem, subs.length === 0 && active === entry.id && css.navItemActive)}
+          aria-current={subs.length === 0 && active === entry.id ? 'page' : undefined}
           // X round: a second-level row that owns third-level rows toggles
-          // them on click (persisted via SUB_CLOSED_KEY) AND selects the panel.
+          // them on click (persisted via SUB_CLOSED_KEY). Y round: it ALSO
+          // remembers the last visited third-level board — first click opens
+          // the default "首页", later clicks re-open the remembered one.
           onClick={() => {
-            onSelect(entry.id)
+            const remembered = lastSub.get(entry.id)
+            onSelect(remembered ?? entry.id)
             if (subs.length > 0) toggleSubs(entry.id)
           }}
           title={subs.length > 0
@@ -489,48 +545,50 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
           <span className={css.navIcon}><Icon name={entry.icon} size={18} /></span>
           <span className={css.navLabel}>{t(entry.labelKey)}</span>
         </button>
-        {/* X round: the sub-rows' open/closed caret, visible while the rail is
-            expanded; the click on the row itself performs the toggle. */}
-        {subs.length > 0
-          ? (
-            <span className={css.subCaret} aria-hidden="true">
-              <Icon name="chevronDown" size={12} className={cx(css.subCaretIcon, subOpen && css.chevronOpen)} />
-            </span>
-          )
-          : null}
-        {/* Q round: the refresh icon sits LEFT of the pin and refreshes the
-            page THIS row opens — even when that page is not active yet. */}
-        <button
-          type="button"
-          className={css.rowRefresh}
-          onClick={() => onRefresh(entry.id)}
-          title={t('nav.refresh')}
-          aria-label={t('nav.refresh')}
-        >
-          <Icon name="refresh" size={13} />
-        </button>
-        <button
-          type="button"
-          className={cx(css.pinButton, pinnedNow && css.pinActive)}
-          onClick={() => togglePin(entry.id)}
-          title={pinnedNow ? t('nav.unpin') : t('nav.pin')}
-          aria-label={pinnedNow ? t('nav.unpin') : t('nav.pin')}
-        >
-          <Icon name="pin" size={13} />
-        </button>
+        {/* Y round: the refresh + pin actions no longer sit at the row's
+            tail (the user: "别放到外面") — they live in ONE floating card
+            that fades in on row hover (the base setting `navActionsFade`
+            switches the fade on / off). Keyboard focus reveals it too. */}
+        <div className={css.rowActions}>
+          {/* Q round: the refresh icon refreshes the page THIS row opens —
+              even when that page is not active yet. */}
+          <button
+            type="button"
+            className={css.rowRefresh}
+            onClick={() => onRefresh(entry.id)}
+            title={t('nav.refresh')}
+            aria-label={t('nav.refresh')}
+          >
+            <Icon name="refresh" size={13} />
+          </button>
+          <button
+            type="button"
+            className={cx(css.pinButton, pinnedNow && css.pinActive)}
+            onClick={() => togglePin(entry.id)}
+            title={pinnedNow ? t('nav.unpin') : t('nav.pin')}
+            aria-label={pinnedNow ? t('nav.unpin') : t('nav.pin')}
+          >
+            <Icon name="pin" size={13} />
+          </button>
+        </div>
       </li>
     )
   }
 
   /**
-   * W round: the indented settings row(s) nested under one plugin row.
-   * Deliberately NOT draggable (the order is owned by the parent row) and
-   * without pin / refresh affordances — it is a child, not a peer.
+   * W round: the indented rows nested under one plugin row. Deliberately NOT
+   * draggable (the order is owned by the parent row) and without pin /
+   * refresh affordances — a child, not a peer. Y round: the list starts with
+   * the plugin's default "{name}首页" board, and visiting ANY third-level row
+   * (首页 included) records the per-plugin memory so the parent row click
+   * re-opens it instead of bouncing back to the default.
    */
-  const renderSubRows = (parent: string): ReactNode => {
+  const renderSubRows = (parent: NavEntry): ReactNode => {
+    const subs = subListFor(parent)
+    if (subs.length === 0) return null
     return (
       <>
-        {subRowsFor(parent).map(sub => (
+        {subs.map(sub => (
           <li
             key={sub.id}
             className={css.navRowSub}
@@ -540,11 +598,14 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
               type="button"
               className={cx(css.navItem, css.navItemSub, active === sub.id && css.navItemActive)}
               aria-current={active === sub.id ? 'page' : undefined}
-              title={t(sub.labelKey)}
-              onClick={() => onSelect(sub.id)}
+              title={sub.label}
+              onClick={() => {
+                onSelect(sub.id)
+                recordLastSub(parent.id, sub.id)
+              }}
             >
               <span className={css.navIcon}><Icon name={sub.icon} size={14} /></span>
-              <span className={css.navLabel}>{t(sub.labelKey)}</span>
+              <span className={css.navLabel}>{sub.label}</span>
             </button>
           </li>
         ))}
@@ -561,6 +622,24 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
     if (pinned.includes(parent) || !filtered.some(entry => entry.id === parent)) return []
     return filtered.filter(entry => entry.subOf === parent && !pinned.includes(entry.id))
   }
+  /**
+   * Y round: the FULL third-level list of one second-level row: the plugin's
+   * default "{name}首页" board first (plugin rows only), then the real nested
+   * rows (e.g. the settings page). Labels are translated here once, so the
+   * sub rows render without per-child i18n lookups.
+   */
+  const subListFor = (entry: NavEntry): SubRow[] => {
+    const rows: SubRow[] = subRowsFor(entry.id).map(sub => ({
+      id: sub.id,
+      icon: sub.icon,
+      label: t(sub.labelKey),
+      home: false,
+    }))
+    if (entry.group === 'plugins') {
+      rows.unshift({ id: entry.id, icon: 'layout', label: tf('nav.home', { name: t(entry.labelKey) }), home: true })
+    }
+    return rows
+  }
   const otherRows = filtered.filter(entry => entry.group === 'other' && !pinned.includes(entry.id)).sort(byOrder)
 
   /** @param next - locale chosen in the footer menu. */
@@ -571,7 +650,12 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
 
   return (
     <aside
-      className={cx(css.sidebar, compact && css.sidebarCompact, resized !== undefined && css.sidebarResizing)}
+      className={cx(
+        css.sidebar,
+        compact && css.sidebarCompact,
+        resized !== undefined && css.sidebarResizing,
+        !navActionsFade && css.sidebarNoFade,
+      )}
       style={compact ? undefined : ({ '--aek-sidebar-width': `${String(railWidth)}px` } as CSSProperties)}
       onMouseEnter={handlePointerEnter}
       onMouseLeave={handlePointerLeave}
@@ -649,7 +733,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
               {pinnedRows.map(entry => (
                 <Fragment key={entry.id}>
                   {renderRow(entry, true)}
-                  {subRowsFor(entry.id).length > 0 && !subClosed.includes(entry.id) ? renderSubRows(entry.id) : null}
+                  {subListFor(entry).length > 0 && !subClosed.includes(entry.id) ? renderSubRows(entry) : null}
                 </Fragment>
               ))}
             </DrawerGroup>
@@ -660,7 +744,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
           {pluginRows.map(entry => (
             <Fragment key={entry.id}>
               {renderRow(entry, false)}
-              {subRowsFor(entry.id).length > 0 && !subClosed.includes(entry.id) ? renderSubRows(entry.id) : null}
+              {subListFor(entry).length > 0 && !subClosed.includes(entry.id) ? renderSubRows(entry) : null}
             </Fragment>
           ))}
         </DrawerGroup>

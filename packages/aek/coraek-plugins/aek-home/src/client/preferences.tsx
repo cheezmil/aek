@@ -41,6 +41,24 @@ export const PREF_KEYS = {
    */
   websearchRankingTtlHours: 'aek-home.websearch.rankingTtlHours',
   /**
+   * Y round: the Web Search plugin's "不进行任何排行分类" switch — when
+   * `true` the panel never fetches, displays or updates the ranking and
+   * shows a flat provider list instead.
+   */
+  websearchNoRanking: 'aek-home.websearch.noRanking',
+  /**
+   * Y round: per-plugin memory of the last visited third-level board.
+   * Stored as `parent:child,parent:child` panel ids; clicking a
+   * second-level row re-opens the remembered board instead of the
+   * default "首页" (which only applies until the first visit).
+   */
+  lastSub: 'aek-home.lastSub',
+  /**
+   * Y round: fade the sidebar's floating refresh/pin action box in and out
+   * on hover (default `true`); `false` shows / hides it instantly.
+   */
+  navActionsFade: 'aek-home.navActionsFade',
+  /**
    * Path display style (Q round): `abbreviated` shows `~/…` (posix) or
    * `%USERPROFILE%\…` (Windows, backslashes); `full` shows the raw absolute
    * path. Copy buttons always copy the raw path, never the display form.

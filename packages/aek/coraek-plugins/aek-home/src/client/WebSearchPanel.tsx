@@ -100,10 +100,14 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
   // Q round: the refresh interval is a user setting (default 24 h), and the
   // sidebar refresh icon forces a fresh read (`force=1` bypasses caches).
   const [rankingTtlHours] = usePref(PREF_KEYS.websearchRankingTtlHours, 24, parseTtlHours)
+  // Y round: the "不进行任何排行分类" switch — when on, the panel shows a flat
+  // provider list and the ranking hook performs NO reads at all (the host
+  // cache is kept, so switching back restores the board instantly).
+  const [noRanking] = usePref(PREF_KEYS.websearchNoRanking, false, parseBoolean)
   const [pathStyle] = usePref(PREF_KEYS.pathStyle, 'abbreviated', parsePathStyle)
   const ranking = useWebsearchRanking(
     { free: freeTier, phone: reqPhone, card: reqCard },
-    { ttlHours: rankingTtlHours, forceSignal: refreshSignal },
+    { ttlHours: rankingTtlHours, forceSignal: refreshSignal, enabled: !noRanking },
   )
 
   // Sidebar-row refresh (Q round): re-read the status; the ranking part is
@@ -229,7 +233,9 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
   // CLASSIFIED snapshot (or none), so a failed / unclassified read keeps the
   // last good board on screen with a stale notice — the layout shape never
   // changes; without any snapshot, the grouped skeleton holds the shape.
-  const classified = ranking.snapshot !== undefined
+  // Y round: the "不进行任何排行分类" switch — the snapshot's tier groups are
+  // never rendered (flat list instead), so it does not count as classified.
+  const classified = !noRanking && ranking.snapshot !== undefined
   const metaByKind = new Map<string, ProviderMeta>(
     (ranking.snapshot?.providers ?? []).map(meta => [meta.kind, meta]),
   )
@@ -385,7 +391,9 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
         {status === undefined && !disabled
           ? <RankingSkeleton filtersOpen={filtersOpen} />
           : null}
-        {status !== undefined && !classified
+        {/* Y round: with "不进行任何排行分类" on, there is no board and no
+            skeleton — the flat provider list below is the content. */}
+        {status !== undefined && !classified && !noRanking
           ? <RankingSkeleton filtersOpen={filtersOpen} />
           : null}
 
@@ -476,6 +484,10 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
             indicator: while the host serves a cache that is past its TTL and
             is refreshing in the background, a small chip says so — no
             permanent meta line. */}
+        {/* Y round: "后台更新中" is only honest while a refresh is GENUINELY
+            in flight (host `stale`). Once the refresh FAILED, the host flips
+            to `refreshFailed` and the chip must turn into an honest
+            "更新失败" notice instead of spinning forever on a stale date. */}
         {classified && ranking.snapshot?.stale === true && ranking.error === undefined
           ? (
             <div className={css.rankingUpdating}>
@@ -483,6 +495,24 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
               <span>{tf('websearch.ranking.updating', { date: ranking.snapshot.updatedAt || '—' })}</span>
             </div>
           )
+          : null}
+        {classified && ranking.refreshFailed !== undefined
+          ? (() => {
+            // The host reports machine tokens ("network-error", …); translate
+            // them, falling back to the raw token if a key is missing.
+            const raw = ranking.refreshFailed.reason
+            const reasonKey = `websearch.ranking.reason.${raw}`
+            const reason = t(reasonKey) === reasonKey ? (raw.length > 0 ? raw : 'unknown') : t(reasonKey)
+            return (
+              <div className={css.rankingNotice}>
+                <Icon name="alert" size={16} />
+                <span>{tf('websearch.ranking.refreshFailed', {
+                  reason,
+                  date: ranking.snapshot?.updatedAt ?? '—',
+                })}</span>
+              </div>
+            )
+          })()
           : null}
 
         {disabled
@@ -538,6 +568,17 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
                 </section>
               ))}
             </>
+          )
+          : null}
+
+        {/* Y round: the "不进行任何排行分类" switch — one flat provider list,
+            no tier groups, no rank numbers, no remote metadata chips: the
+            ranking is not fetched at all in this mode. */}
+        {status !== undefined && noRanking
+          ? (
+            <ul className={css.providerList}>
+              {providers.map(provider => renderProvider(provider))}
+            </ul>
           )
           : null}
 

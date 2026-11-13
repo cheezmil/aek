@@ -187,13 +187,27 @@ export function registerCapabilityApi(
         path: CAPABILITIES_API_PATH,
         handler: async (_req, res) => {
           try {
-            const providers = await supervisor.statusAll()
+            const allRows = await supervisor.statusAll()
             const choices = readRuntimeModes(aekHome)
+            // Y9: a supervisor registration only describes a capability that is
+            // ACTUALLY external when its effective topology is `isolate`. A class ①
+            // capability whose stored choice is `share` runs in-process (the cordis
+            // load is authoritative); its registration is inert — possibly a stale
+            // leftover from a previous `isolate` choice (stopped state with a dead
+            // pid). List ONLY the rows that are really out-of-process, so the About
+            // "external capabilities" section never claims an in-process, our-own
+            // plugin is "a separate process, not part of the AEK host".
+            const effectiveMode = (row: { id: string }) =>
+              choices[row.id] === 'isolate' ? 'isolate' : choices[row.id] === 'share' ? 'share' : 'isolate'
+            const providers = allRows.filter(row => effectiveMode(row) === 'isolate')
             sendJson(res, 200, {
               protocol: 'aek-capability/1',
               runtime: {
                 // The selective class-① choices (id → 'share' | 'isolate').
-                // Class ②/③ are isolate-only and never appear here.
+                // Class ②/③ are isolate-only and never appear here. The full
+                // choice map is served so the client can render the "runtime
+                // modes" topology line even when no provider is currently
+                // isolated.
                 defaultMode: 'share',
                 choices,
               },

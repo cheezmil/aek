@@ -16,6 +16,7 @@ import { PROVIDER_KINDS } from '../src/defaults.ts'
 import {
   buildGroups,
   clearRankingCache,
+  RANKING_REFRESH_BACKOFF_MS,
   filterFromQuery,
   loadRanking,
   matchesFilter,
@@ -300,5 +301,91 @@ describe('loadRanking (runtime fetch + degradation)', () => {
     const no = await loadRanking({ ...base, filter: { free: 'no' } })
     expect(calls).toBe(1)
     expect(yes.totalVisible).not.toBe(no.totalVisible)
+  })
+})
+
+/**
+ * Y round: a board whose refresh keeps FAILING must not claim "updating in
+ * the background" on every page open (the user's 11-11 cache stuck behind a
+ * spinning chip). The host reports `refreshFailed` instead and backs off.
+ */
+describe('Y round: honest refresh-failure reporting', () => {
+  it('reports a failed FORCED refresh as refreshFailed, never as stale', async () => {
+    let fail = false
+    let calls = 0
+    const fetcher: RankingFetcher = async () => {
+      calls += 1
+      return fail
+        ? { ok: false, status: 503, text: async () => '' }
+        : { ok: true, status: 200, text: async () => DATA_TEXT }
+    }
+    let clock = 1000
+    const options = { url: URL_A, fetcher, now: () => clock, ttlMs: 5000 }
+    const seeded = await loadRanking(options)
+    expect(seeded.classified).toBe(true)
+    // Let the TTL pass, break the remote, and force a fresh read.
+    fail = true
+    clock += 5001
+    const failed = await loadRanking({ ...options, force: true })
+    expect(failed.classified).toBe(true)
+    expect(failed.stale).toBeUndefined()
+    expect(failed.refreshFailed).toEqual({
+      reason: 'http-error',
+      message: 'GitHub answered HTTP 503',
+      at: new Date(clock).toISOString(),
+    })
+  })
+
+  it('holds a failing refresh in backoff — no re-fetch, an honest flag', async () => {
+    let fail = true
+    let calls = 0
+    const fetcher: RankingFetcher = async () => {
+      calls += 1
+      return fail
+        ? { ok: false, status: 503, text: async () => '' }
+        : { ok: true, status: 200, text: async () => DATA_TEXT }
+    }
+    let clock = 1000
+    const options = { url: URL_A, fetcher, now: () => clock, ttlMs: 5000 }
+    fail = false
+    await loadRanking(options)
+    fail = true
+    clock += 5001
+    await loadRanking({ ...options, force: true }) // records the failure
+    const early = await loadRanking(options)
+    expect(early.classified).toBe(true)
+    expect(early.stale).toBeUndefined()
+    expect(early.refreshFailed?.reason).toBe('http-error')
+    expect(calls).toBe(2) // the backoff swallowed the retry
+  })
+
+  it('retries after the backoff window and a success clears the flag', async () => {
+    let fail = true
+    let calls = 0
+    const fetcher: RankingFetcher = async () => {
+      calls += 1
+      return fail
+        ? { ok: false, status: 503, text: async () => '' }
+        : { ok: true, status: 200, text: async () => DATA_TEXT }
+    }
+    let clock = 1000
+    const options = { url: URL_A, fetcher, now: () => clock, ttlMs: 5000 }
+    fail = false
+    await loadRanking(options)
+    fail = true
+    clock += 5001
+    await loadRanking({ ...options, force: true })
+    // Cross the backoff window: the next read may claim "in progress" again.
+    clock += RANKING_REFRESH_BACKOFF_MS + 1
+    const retrying = await loadRanking(options)
+    expect(retrying.stale).toBe(true)
+    expect(retrying.refreshFailed).toBeUndefined()
+    // The background retry succeeds: the flag is gone, the cache is fresh.
+    fail = false
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    const after = await loadRanking({ ...options, force: true })
+    expect(after.stale).toBeUndefined()
+    expect(after.refreshFailed).toBeUndefined()
+    expect(after.classified).toBe(true)
   })
 })

@@ -862,14 +862,24 @@ function AboutPanel({ inventory, refreshSignal }: { inventory: InventoryState; r
         {base.length === 0 ? <div className={css.emptyState}>{t('about.empty')}</div> : null}
 
         {/* EXTERNAL capability providers: shown when the host reports at least
-            one provider, or when the operator has selective runtime-mode
-            choices. The compliance line is host-rendered from the provider's
-            own self-description — the client bundle carries no upstream facts. */}
+            one ACTUALLY-external (isolate-topology) provider, or when the
+            operator has selective runtime-mode choices. The "external
+            capabilities" title + "not part of AEK" hint only render when such
+            a provider exists — a class ① capability the operator set to `share`
+            runs in-process and is NOT an external capability, so its inert
+            registration must not be listed under this heading (Y9). The
+            "runtime modes" topology line stays (neutral, accurate). The
+            compliance line is host-rendered from the provider's own
+            self-description — the client bundle carries no upstream facts. */}
         {showExternalSection ? (
           <>
             <div className={css.divider} />
-            <h3 className={css.sectionTitle}>{t('about.external.title')}</h3>
-            <div className={css.hint}>{t('about.external.hint')}</div>
+            {providers.length > 0 ? (
+              <>
+                <h3 className={css.sectionTitle}>{t('about.external.title')}</h3>
+                <div className={css.hint}>{t('about.external.hint')}</div>
+              </>
+            ) : null}
             {runtimeChoices.length > 0
               ? <div className={css.hint}>{tf('about.external.runtimeChoices', { shared: sharedCount, isolated: isolatedCount })}</div>
               : null}

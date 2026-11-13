@@ -265,7 +265,7 @@ function walkRepoAek(rootDir, depth, out) {
  * `supervisor` is structural (register / start / list on an
  * `external-supervisor` instance); this module stays zero-dependency.
  *
- * @param {{ supervisor: { register: (id: string, declared: unknown) => Promise<{ ok: boolean, problems: string[] }>, start: (id: string) => Promise<{ ok: boolean, state?: string, problem?: string }> }, aekHome: string, packages?: Array<{ id: string, manifest: Record<string, unknown>, packageDir: string }> }} input
+ * @param {{ supervisor: { register: (id: string, declared: unknown, extra?: { pin?: string, installPolicy?: 'self' | 'managed' }) => Promise<{ ok: boolean, problems: string[] }>, start: (id: string) => Promise<{ ok: boolean, state?: string, problem?: string }> }, aekHome: string, packages?: Array<{ id: string, manifest: Record<string, unknown>, packageDir: string }> }} input
  * @returns {Promise<Record<string, { ok: boolean, state?: string, problem?: string }>>}
  */
 export async function bootIsolateRuntimePackages({ supervisor, aekHome, packages = [] }) {
@@ -305,7 +305,11 @@ export async function bootIsolateRuntimePackages({ supervisor, aekHome, packages
       // travels as `attach.cwd` so the spawn lands in the package itself.
       attach: { kind: 'jsonrpc-stdio', command: bin, args: [], cwd: packageDir },
     }
-    const reg = await supervisor.register(id, declared)
+    // In-tree class ① packages ship WITH the AEK distribution (maintained by
+    // the AEK project, not installed/hand-maintained by the user) — mark them
+    // `managed` so the host-rendered compliance line says "distributed by AEK"
+    // rather than "installed and maintained by the user" (Y9).
+    const reg = await supervisor.register(id, declared, { installPolicy: 'managed' })
     if (reg.ok === false) {
       results[id] = { ok: false, problem: reg.problems.join('; ') }
       continue

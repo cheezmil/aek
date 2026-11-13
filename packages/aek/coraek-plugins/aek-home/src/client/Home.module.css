@@ -397,7 +397,8 @@ body {
   justify-content: center;
   gap: 0;
 }
-.sidebarCompact .pinButton, .sidebarCompact .rowRefresh, .sidebarCompact .subCaret { display: none; }
+/* Y round: the actions live in one floating box now; compact mode hides it. */
+.sidebarCompact .rowActions { display: none; }
 .sidebarCompact .drawerHead { display: none; }
 .sidebarCompact .drawerGroup {
   margin-top: var(--aek-space-2);
@@ -1705,20 +1706,8 @@ body {
 /* W round: the Web Search settings row nests under the Web Search row —
    indented, one step smaller, not independently draggable. */
 .navRowSub { margin: 0 0 0 18px; }
-/* X round: the open/closed caret on a second-level row that owns third-level
-   rows. The CLICK that toggles lives on the row button itself; the caret only
-   mirrors the state (chevron down = open, rotated up = closed, like the
-   drawer heads). */
-.subCaret {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 20px;
-  height: 28px;
-  color: var(--aek-text-muted);
-}
-.subCaretIcon { transition: transform 180ms var(--aek-ease); }
+/* Y round: the user dropped the open/closed chevron on second-level rows —
+   the row CLICK still toggles the third-level list; no glyph mirrors it. */
 .navItemSub {
   height: 34px;
   padding-left: 12px;
@@ -1745,45 +1734,54 @@ body {
 }
 .navRowDropBefore::before { top: -3px; }
 .navRowDropAfter::after { bottom: -3px; }
-.pinButton {
-  display: inline-flex;
+/* Y round: the refresh + pin actions no longer sit at the row's tail (the
+   user: "这几个元素别放到外面"). They live in ONE floating card that fades
+   in above the hovered row and out on leave; the row itself stays clean.
+   The base setting `aek-home.navActionsFade` (default on) switches the
+   fade on/off — off means `transition: none` (instant show / hide). */
+.rowActions {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  z-index: 3;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--aek-text-muted);
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--aek-border);
+  border-radius: 8px;
+  background: var(--aek-surface);
+  box-shadow: var(--aek-shadow);
   opacity: 0;
-  cursor: pointer;
-  transition: opacity 140ms var(--aek-ease), color 140ms var(--aek-ease);
+  pointer-events: none;
+  transform: translate(6px, -50%);
+  transition: opacity 150ms var(--aek-ease), transform 150ms var(--aek-ease);
 }
-.navRow:hover > .pinButton, .pinButton:focus-visible, .pinActive { opacity: 1; }
-.pinButton:hover { color: var(--aek-accent); background: var(--aek-accent-soft); }
-.pinActive { color: var(--aek-accent); }
+.navRow:hover > .rowActions,
+.navRow:focus-within > .rowActions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(0, -50%);
+}
+.sidebarNoFade .rowActions { transition: none; }
 
-/* Q round: the "refresh THIS page" icon, sitting left of the pin. It mirrors
-   the pin's reveal-on-hover behaviour so the row stays clean until the
-   pointer arrives. */
-.rowRefresh {
+.pinButton, .rowRefresh {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 24px;
-  height: 28px;
+  height: 24px;
   padding: 0;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--aek-text-muted);
-  opacity: 0;
   cursor: pointer;
-  transition: opacity 140ms var(--aek-ease), color 140ms var(--aek-ease), transform 140ms var(--aek-ease);
+  transition: color 140ms var(--aek-ease), background 140ms var(--aek-ease), transform 140ms var(--aek-ease);
 }
-.navRow:hover > .rowRefresh, .rowRefresh:focus-visible { opacity: 1; }
-.rowRefresh:hover { color: var(--aek-accent); background: var(--aek-accent-soft); transform: rotate(90deg); }
+.pinButton:hover, .rowRefresh:hover { color: var(--aek-accent); background: var(--aek-accent-soft); }
+.rowRefresh:hover { transform: rotate(90deg); }
+.pinActive { color: var(--aek-accent); }
 .localeMenu li { list-style: none; }
 
 /* Shared UI kit */
@@ -2452,11 +2450,18 @@ body {
   color: var(--aek-text-muted);
   font-size: 11px;
 }
-.managerForm { display: flex; gap: var(--aek-space-2); align-items: center; }
-.managerForm > .textInput { flex: 1 1 auto; }
+/* Y round: the Run button must NEVER drop to its own line — the input may
+   shrink (min-width guards against collapsing to zero) but the button keeps
+   its natural width on the same row. */
+.managerForm { display: flex; flex-wrap: nowrap; gap: var(--aek-space-2); align-items: center; }
+.managerForm > .textInput { flex: 1 1 auto; min-width: 120px; }
+.managerForm > .actionButtonPrimary { flex: 0 0 auto; white-space: nowrap; }
 .managerCheck { display: flex; align-items: center; gap: var(--aek-space-2); font-size: 12px; color: var(--aek-text-muted); }
 .outputHead { display: flex; align-items: center; gap: var(--aek-space-3); flex-wrap: wrap; }
 .outputHead > .sectionTitle { margin: 0; }
+/* Y round: the copy / clear button row and the output window used to touch
+   ("贴在一起亲嘴了") — one step of space between them. */
+.outputHead { margin-bottom: var(--aek-space-2); }
 /* Q round: the truncated <pre> was replaced by a VIRTUALIZED output view
    (ui-kit.tsx `OutputView`). The host no longer clips stdout/stderr, so a
    single command can return a huge amount of text; only the visible lines
