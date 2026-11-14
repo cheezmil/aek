@@ -932,16 +932,24 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                 <span className={css.featureIcon}><Icon name="layers" size={18} /></span>
                 <div className={css.pluginText}>
                   <div className={css.featureTitle}>{displayName(plugin.packageName)}</div>
+                  {/* N2 fix: the merged row was one undifferentiated line
+                      ("TypeScript · CSS AEK home surface: …" — no separators,
+                      chips jammed against the version). Now: version + A1/A2 +
+                      languages read as distinct chips on ONE line, and the
+                      (long, colon-carrying) description gets its own line
+                      below — the same two-line rhythm as the row above it. */}
                   <div className={css.featureText}>
-                    {plugin.version}
+                    <span className={css.countChip}>{plugin.version}</span>
                     {plugin.distribution !== ''
                       ? <span className={css.stackChip}>{plugin.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
                       : null}
                     {plugin.languages.length > 0
                       ? <span className={css.stackText} title={plugin.languages.join(' · ')}>{plugin.languages.join(' · ')}</span>
                       : null}
-                    {plugin.description !== '' ? <span className={css.stackText}>{plugin.description}</span> : null}
                   </div>
+                  {plugin.description !== ''
+                    ? <div className={css.featureDesc}>{plugin.description}</div>
+                    : null}
                 </div>
                 {/* Fixed three-column cluster (switch | lock slot | restart) so the
                     switch sits at the SAME x on every row. The lock slot is always

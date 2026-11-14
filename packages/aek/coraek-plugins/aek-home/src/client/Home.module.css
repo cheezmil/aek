@@ -1060,6 +1060,15 @@ body {
   gap: 4px 6px;
 }
 
+/* N2 fix: the description's own line (see PluginsPanel row) — plain text,
+   no chip mix, so a long colon-carrying sentence reads as text again. */
+.featureDesc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--aek-text-muted);
+}
+
 /* N round: the 插件与程序管理 page is three stacked cards that the user
    read as "排版混乱，分类混乱" — no section breaks, no titles, and the
    plugin list duplicated across two cards. Each section now carries its
