@@ -1948,6 +1948,20 @@ body {
 /* F round: the toolbar (search + count) is a control, not content — a hairline
    divider ends it so the first section below starts a clearly new zone. */
 .panelSearchWrap { display: flex; align-items: center; gap: 8px; margin-bottom: var(--aek-space-5); padding-bottom: var(--aek-space-4); border-bottom: 1px solid var(--aek-border); }
+
+/* G round: the settings-page toolbar is pinned to the top of the viewport
+   while the section list scrolls. The document (not the card) is the scroll
+   container — `.app` has min-height: 100vh and no overflow clip — so
+   `position: sticky` inside the card is pinned to the window. The opaque
+   surface hides the rows scrolling underneath; the F-round hairline on
+   .panelSearchWrap doubles as the toolbar's bottom edge. It un-pins cleanly
+   when the card's bottom edge is reached (sticky stays inside its parent). */
+.stickyPanelSearch {
+  position: sticky;
+  top: var(--aek-space-3);
+  z-index: 3;
+  background: var(--aek-surface);
+}
 .panelSearchWrap > .navSearchWrap { flex: 1 1 auto; margin: 0; }
 /* The panel search box spans the whole content column, but it reuses the
    sidebar's `.navSearchInput`, which is capped at 200px — so the input filled

@@ -460,7 +460,13 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   return (
     <PanelCard>
       <div className={css.cardBody}>
-        <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} />
+        {/* G round: the settings toolbar is a control, not content — it stays
+            pinned to the top of the viewport while the section list scrolls
+            (the document is the scroll container; sticky + opaque surface +
+            the F-round hairline below it). */}
+        <div className={css.stickyPanelSearch}>
+          <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} />
+        </div>
         {firstRailRows.length > 0
           ? (
             <section className={css.settingGroup}>
@@ -589,7 +595,10 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   return (
     <PanelCard>
       <div className={css.cardBody}>
-        <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} />
+        {/* G round: same sticky toolbar as the base settings page. */}
+        <div className={css.stickyPanelSearch}>
+          <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} />
+        </div>
         {visible.length > 0
           ? (
             <section className={css.settingGroup}>
