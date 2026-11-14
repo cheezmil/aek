@@ -932,7 +932,16 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                 <span className={css.featureIcon}><Icon name="layers" size={18} /></span>
                 <div className={css.pluginText}>
                   <div className={css.featureTitle}>{displayName(plugin.packageName)}</div>
-                  <div className={css.featureText}>{plugin.version} · {plugin.description}</div>
+                  <div className={css.featureText}>
+                    {plugin.version}
+                    {plugin.distribution !== ''
+                      ? <span className={css.stackChip}>{plugin.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
+                      : null}
+                    {plugin.languages.length > 0
+                      ? <span className={css.stackText} title={plugin.languages.join(' · ')}>{plugin.languages.join(' · ')}</span>
+                      : null}
+                    {plugin.description !== '' ? <span className={css.stackText}>{plugin.description}</span> : null}
+                  </div>
                 </div>
                 {/* Fixed three-column cluster (switch | lock slot | restart) so the
                     switch sits at the SAME x on every row. The lock slot is always
@@ -1030,7 +1039,7 @@ function useReleaseState(): { currentTag?: string; previousTag?: string } | null
 }
 
 /** @returns the About page with the three entry points marked. */
-export function AboutPanel({ inventory, refreshSignal }: { inventory: InventoryState; refreshSignal: number }) {
+export function AboutPanel({ inventory, refreshSignal, compactPlugins = false }: { inventory: InventoryState; refreshSignal: number; compactPlugins?: boolean }) {
   const { t, tf } = useI18n()
   const facts = useConsoleFacts()
   const release = useReleaseState()
@@ -1113,29 +1122,40 @@ export function AboutPanel({ inventory, refreshSignal }: { inventory: InventoryS
           ))}
         </ul>
 
-        <div className={css.divider} />
-        <h3 className={css.sectionTitle}>{t('about.group.plugin')}</h3>
-        <div className={css.hint}>{t('about.stackHint')}</div>
-        <ul className={css.packageList}>
-          {plugins.map((pkg) => {
-            const meta = stackByPackage.get(pkg.name)
-            const languages = meta?.languages ?? []
-            return (
-              <li key={pkg.name} className={css.packageRow}>
-                <span className={css.providerName}>{displayName(pkg.name)}</span>
-                <span className={css.countChip}>{pkg.version}</span>
-                {meta?.distribution
-                  ? <span className={css.stackChip}>{meta.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
-                  : null}
-                {languages.length > 0
-                  ? <span className={css.stackText} title={languages.join(' · ')}>{languages.join(' · ')}</span>
-                  : null}
-                <span className={css.badge}>{pkg.kind === 'dev' ? t('about.dev') : t('about.npm')}</span>
-              </li>
-            )
-          })}
-        </ul>
-        {plugins.length === 0 ? <div className={css.emptyState}>{t('about.empty')}</div> : null}
+        {/* N round: when the About content is embedded in the 插件与程序管理
+            page the "AEK 插件" read-only list is dropped — the operational
+            plugin list (PluginsPanel, with the A1/A2 chip + languages merged
+            into each row) already shows the SAME packages; two lists of the
+            same content were exactly the "分类混乱" the user complained
+            about. The base-environment list STAYS (coraek is not in the
+            operational plugin list). */}
+        {!compactPlugins ? (
+          <>
+            <div className={css.divider} />
+            <h3 className={css.sectionTitle}>{t('about.group.plugin')}</h3>
+            <div className={css.hint}>{t('about.stackHint')}</div>
+            <ul className={css.packageList}>
+              {plugins.map((pkg) => {
+                const meta = stackByPackage.get(pkg.name)
+                const languages = meta?.languages ?? []
+                return (
+                  <li key={pkg.name} className={css.packageRow}>
+                    <span className={css.providerName}>{displayName(pkg.name)}</span>
+                    <span className={css.countChip}>{pkg.version}</span>
+                    {meta?.distribution
+                      ? <span className={css.stackChip}>{meta.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
+                      : null}
+                    {languages.length > 0
+                      ? <span className={css.stackText} title={languages.join(' · ')}>{languages.join(' · ')}</span>
+                      : null}
+                    <span className={css.badge}>{pkg.kind === 'dev' ? t('about.dev') : t('about.npm')}</span>
+                  </li>
+                )
+              })}
+            </ul>
+            {plugins.length === 0 ? <div className={css.emptyState}>{t('about.empty')}</div> : null}
+          </>
+        ) : null}
 
         <div className={css.divider} />
         <h3 className={css.sectionTitle}>{t('about.group.base')}</h3>

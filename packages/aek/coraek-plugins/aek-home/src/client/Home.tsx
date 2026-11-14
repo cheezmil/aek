@@ -16,7 +16,7 @@
 import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CanonicalHostRedirect, isLegacyLoopback } from './CanonicalHost.tsx'
-import { I18nProvider } from './i18n.tsx'
+import { I18nProvider, useI18n } from './i18n.tsx'
 import { InfoPanels } from './InfoPanels.tsx'
 import { PromptsPanel, SkillsPanel } from './ConsolePanels.tsx'
 import { oneOf, PREF_KEYS, PrefProvider, usePref, usePrefLanded, useSettings, parseBoolean } from './preferences.tsx'
@@ -246,12 +246,27 @@ function Console() {
     // former 插件管理 page AND the former 关于 content — one combined page.
     // The 插件管理 entry is gone from the nav; 关于 stays but is empty.
     if (id === 'runtime') {
+      // N round: the three stacked cards read as "排版混乱，分类混乱" — no
+      // section titles, and the plugin list duplicated across two cards.
+      // The page now scans as three titled sections, and the About block
+      // drops its read-only plugin list (deduped into the operational one).
+      const { t } = useI18n()
       return (
-        <>
-          <RuntimeModePanel refreshSignal={signalFor('runtime')} />
-          <PluginsPanel refreshSignal={signalFor('plugins')} />
-          <AboutPanel inventory={inventory} refreshSignal={signalFor('about')} />
-        </>
+        <div>
+          <section className={css.programsSection}>
+            <h2 className={css.programsSectionTitle}>{t('panel.runtimeSection')}</h2>
+            <RuntimeModePanel refreshSignal={signalFor('runtime')} />
+          </section>
+          <section className={css.programsSection}>
+            <h2 className={css.programsSectionTitle}>{t('panel.pluginsSection')}</h2>
+            <div className={css.programsSectionHint}>{t('about.stackHint')}</div>
+            <PluginsPanel refreshSignal={signalFor('plugins')} />
+          </section>
+          <section className={css.programsSection}>
+            <h2 className={css.programsSectionTitle}>{t('panel.infoSection')}</h2>
+            <AboutPanel inventory={inventory} refreshSignal={signalFor('about')} compactPlugins />
+          </section>
+        </div>
       )
     }
     if (id === 'websearch') return <WebSearchPanel state={state} refreshSignal={signalFor('websearch')} facts={facts} />
