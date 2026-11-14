@@ -1,7 +1,7 @@
 {
   "name": "@cheezmil/aek-skill-manager",
   "description": "Local-first agent skill hub: the aeksm CLI (primary interface — every operation is a command) + optional Cordis plugin for the aek web profile (auxiliary face). Engine ported from shenysun/skills-manager (MIT).",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
