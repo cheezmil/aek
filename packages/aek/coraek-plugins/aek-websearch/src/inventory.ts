@@ -275,9 +275,9 @@ export function readInventory(_ctx: Context): InventorySnapshot {
 function sourceOfInstallKind(kind: InstallKind): string {
   switch (kind) {
     case 'dev':
-      return 'local dev mode: running from the main source checkout'
+      return 'local dev mode: running from the development source tree'
     case 'build':
-      return 'local build mode: running from a built / pinned install'
+      return 'local build mode: running from a locally built, pinned install'
     case 'global':
       return 'pnpm add -g mode: installed into node_modules'
   }

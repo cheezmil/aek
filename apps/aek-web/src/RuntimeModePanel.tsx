@@ -27,6 +27,7 @@ import type { SlotEndpoint } from './useConsoleFacts.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
 import type { Half, HalfAction } from './useInstances.ts'
 import { useInstances } from './useInstances.ts'
+import { useAiRelease } from './useAiRelease.ts'
 
 /** The two slots, in display order. */
 const SLOTS = ['aek', 'next'] as const
@@ -126,6 +127,8 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
   const { t, tf } = useI18n()
   const state = useInstances()
   const facts = useConsoleFacts()
+  // S7: the AI auto-release switch (persisted host-side, read by scripts too).
+  const aiRelease = useAiRelease(refreshSignal)
   // Q round: path display style (abbreviated ~/ · %USERPROFILE%\ vs full).
   const [pathStyle] = usePref(PREF_KEYS.pathStyle, 'abbreviated', parsePathStyle)
 
@@ -314,6 +317,37 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
               never the display form. */}
           <CopyButton value={facts.facts?.skillPath ?? ''} label={t('runtime.copyPath')} />
         </div>
+
+        {/* S7: the AI auto-release switch. Hides itself on older hosts
+            (no route → 404 → unsupported); it never invents a state. */}
+        {aiRelease.unsupported
+          ? null
+          : (
+            <div className={css.aiReleaseBox}>
+              <div className={css.aiReleaseHead}>
+                <span className={css.aiReleaseTitle}>{t('runtime.aiRelease.title')}</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={aiRelease.allowed === true}
+                  aria-label={t('runtime.aiRelease.title')}
+                  className={cx(css.toggle, aiRelease.allowed === true && css.toggleOn)}
+                  disabled={aiRelease.busy || aiRelease.allowed === undefined}
+                  onClick={() =>{  void aiRelease.setAllowed(aiRelease.allowed !== true) }}
+                >
+                  <span className={css.toggleKnob} />
+                </button>
+              </div>
+              <p className={css.aiReleaseDesc}>{t('runtime.aiRelease.desc')}</p>
+              <span className={css.aiReleaseState}>
+                {aiRelease.allowed === undefined
+                  ? t('common.loading')
+                  : aiRelease.allowed
+                    ? t('runtime.aiRelease.on')
+                    : t('runtime.aiRelease.off')}
+              </span>
+            </div>
+          )}
       </div>
     </PanelCard>
   )

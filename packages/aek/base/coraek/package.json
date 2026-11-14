@@ -74,6 +74,10 @@
       "types": "./runtimes.d.mts",
       "default": "./runtimes.mjs"
     },
+    "./ai-release": {
+      "types": "./ai-release.d.mts",
+      "default": "./ai-release.mjs"
+    },
     "./logging": {
       "types": "./logging.d.mts",
       "default": "./logging.mjs"
@@ -137,7 +141,9 @@
     "runtime.mjs",
     "runtime.d.mts",
     "runtimes.mjs",
-    "runtimes.d.mts"
+    "runtimes.d.mts",
+    "ai-release.mjs",
+    "ai-release.d.mts"
   ],
   "oclif": {
     "bin": "aek",

@@ -2379,6 +2379,27 @@ button.panelSearchCount:hover {
 .pathLabel { flex: 0 0 auto; font-size: 12px; color: var(--aek-text-muted); }
 .pathValue { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--aek-text-secondary); }
 
+/* S7: the AI auto-release switch row (运行实例 section). */
+.aiReleaseBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--aek-space-3);
+  padding: 10px 12px;
+  border: 1px solid var(--aek-border);
+  border-radius: var(--aek-radius-sm);
+  background: var(--aek-surface-subtle);
+}
+.aiReleaseHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.aiReleaseTitle { flex: 1 1 auto; font-size: 13px; line-height: 1.5; color: var(--aek-text); }
+.aiReleaseDesc { margin: 0; font-size: 12px; line-height: 1.6; color: var(--aek-text-muted); }
+.aiReleaseState { font-size: 12px; color: var(--aek-text-secondary); }
+
 /* ── Settings page rhythm ────────────────────────────────────────────────
    2026-11-09: the page had three different vertical gaps (group headings,
    row padding and hint margins did not agree) which read as randomly spaced.
