@@ -138,7 +138,8 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
 |---|---|---|
 | `references/AEK不可违背原则.md` P3 | 「别把 cordis vendor 进仓」 | `vendor/cordis/` 真实存在且属 KEEP → 已加修订说明，禁止删 |
 | 同上 P4 / P6 / P10 | 包名 `@cheezmil/aek-base`、11-02 版本号快照 | 现名 `@cheezmil/coraek`（旧名引用 0 处）；已改为「版本一律查 `package.json` / `npm view`」 |
-| 同上 P8 | `aek-mcp-router` | 现名 `aek-mcp-gateway`，已改 |
+| 同上 P8 | `aek-mcp-router` | 现名 `aek-mcp-gateway`，已改；⚠️ `aek-mcp-gateway` 仍是 **backlog 待建包**（见 `todos/aek-todos.md` 第四节），仓里还没有实体，别把它和已删除的旧 Go 版 `packages/aek-mcp` 混淆 |
+| 仓顶层 `packages/aek-dsh/` / `packages/aek-mcp/` / `packages/aek-task-manager/` 目录 | 疑似「现役 WSL 对端同步 / MCP 网关 / 任务管理包」 | **不是**：11-05 四桶重构（`cdf732a8`）已删三包全部源码，只剩 19 个孤儿 git 跟踪产物（aek-dsh tsdown `lib/`、aek-mcp Vite 前端残件、task-manager 脚本残件；非 pnpm 成员、零活引用）→ O 轮（2026-11-14）已 `git rm` 删除。`aek-task-manager` 在 `scripts/aek/repair-skill-links.mjs` 注释里明标 retired |
 | 同上 P12 | Bundle ID `com.aek.desktop` | 已改为「以 `apps/aek-desktop` 源码为准，用前核对」 |
 | `references/aek插件架构决策.md` | 状态「待实施」+ 3 条已完成的待办 | 已改为「决策有效、待办已结案」，其中 `plugin.json` / MCP 路由转入 todo backlog |
 | `SKILL.md` | lint 9132 错「三选一待用户拍板」、P1 为「本轮重点」 | 已改为「已收口至 0 错 0 警告」并换成归档指针 |

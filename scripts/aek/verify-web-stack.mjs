@@ -18,8 +18,9 @@
  *   - `apps/web/**`                 the Vite frontend shell
  *   - `packages/aek/**`             the AEK plugin / coraek layer
  *   - root `package.json`           workspace-level styling dependencies
- * `packages/aek-mcp/frontend` is a separate sibling subproject and is NOT in
- * scope; `packages/client/**` is faithfully copied upstream and is not in scope.
+ * `packages/client/**` is faithfully copied upstream and is not in scope.
+ * (The old `packages/aek-mcp` Go gateway was removed in the 11-05 4-bucket
+ * refactor; its leftover `frontend/` scraps were deleted 2026-11-14.)
  *
  * Usage:
  *   node scripts/aek/verify-web-stack.mjs            # check, read-only
