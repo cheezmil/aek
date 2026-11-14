@@ -754,10 +754,45 @@ function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   )
 }
 
+/**
+ * The release marker of the running slot (C round). `release.mjs` records
+ * `{ currentTag, previousTag }` in the slot home on every release; the next
+ * slot has no such file → null → the About row stays hidden there.
+ * @returns the release state, or null when the slot records none.
+ */
+function useReleaseState(): { currentTag?: string; previousTag?: string } | null {
+  const [state, setState] = useState<{ currentTag?: string; previousTag?: string } | null>(null)
+  useEffect(() => {
+    let live = true
+    fetch('/api/aek/release-state', { headers: { accept: 'application/json' } })
+      .then(response => response.ok ? response.json() : {})
+      .then((data: unknown) => {
+        if (!live) return
+        const record = data as { currentTag?: unknown; previousTag?: unknown }
+        if (typeof record?.currentTag === 'string') {
+          const previousTag = typeof record.previousTag === 'string' ? record.previousTag : undefined
+          setState(previousTag === undefined
+            ? { currentTag: record.currentTag }
+            : { currentTag: record.currentTag, previousTag })
+          return
+        }
+        setState(null)
+      })
+      .catch(() => {
+        if (live) setState(null)
+      })
+    return () => {
+      live = false
+    }
+  }, [])
+  return state
+}
+
 /** @returns the About page with the three entry points marked. */
 function AboutPanel({ inventory, refreshSignal }: { inventory: InventoryState; refreshSignal: number }) {
   const { t, tf } = useI18n()
   const facts = useConsoleFacts()
+  const release = useReleaseState()
 
   // Sidebar-row refresh (Q round): re-read both the inventory and the facts.
   useEffect(() => {
@@ -805,6 +840,19 @@ function AboutPanel({ inventory, refreshSignal }: { inventory: InventoryState; r
             <span className={css.infoLabel}>{t('about.install')}</span>
             <span className={css.infoValue}>{snapshot?.installKind === 'dev' ? t('about.dev') : t('about.npm')}</span>
           </li>
+          {/* C round: the version marker a shipped update actually shows — the
+              release tag the current slot records (next slot: none, hidden). */}
+          {release?.currentTag !== undefined
+            ? <li className={css.infoRow}>
+              <span className={css.infoLabel}>{t('about.version')}</span>
+              <span className={css.infoValue}>
+                <code className={css.countChip}>{release.currentTag}</code>
+                {release.previousTag !== undefined
+                  ? <span className={css.stackText}>{tf('about.versionPrevious', { tag: release.previousTag })}</span>
+                  : null}
+              </span>
+            </li>
+            : null}
           <li className={css.infoRow}>
             <span className={css.infoLabel}>{t('about.source')}</span>
             <span className={css.infoValue}>{snapshot?.source ?? '—'}</span>

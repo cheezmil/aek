@@ -669,6 +669,10 @@ function createWindow() {
   win.on('unmaximize', scheduleBoundsSave)
   win.on('enter-full-screen', scheduleBoundsSave)
   win.on('leave-full-screen', scheduleBoundsSave)
+  // C round: write the file at boot too (not only after the first
+  // resize/move), so the user can immediately verify the memory file
+  // exists and which position/size the shell restored.
+  scheduleBoundsSave()
   // The HTML document also carries a <title>; without this the renderer would
   // push it into the native caption and the text would come back.
   win.on('page-title-updated', (event) => { event.preventDefault() })

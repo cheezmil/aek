@@ -68,6 +68,7 @@ import { registerRanking } from './ranking.ts'
 import { KeyPool } from './key-pool.ts'
 import type { RecycleEntry } from './key-pool.ts'
 import { readPrefs, registerPreferences } from './preferences.ts'
+import { registerReleaseState } from './release-state.ts'
 import { registerConsole } from './console.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -740,6 +741,7 @@ export function apply(ctx: Context): void {
   registerRuntime(ctx)
   registerInstanceControl(ctx)
   registerPreferences(ctx)
+  registerReleaseState(ctx)
   registerConsole(ctx)
   // Prompt Manager / Skill Manager are not mounted in the web profile, so
   // their CLI capabilities are exposed through a whitelisted host bridge.
