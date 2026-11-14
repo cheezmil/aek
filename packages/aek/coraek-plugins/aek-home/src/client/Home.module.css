@@ -1978,6 +1978,40 @@ body {
   font-size: 11px;
   text-align: center;
 }
+
+/* G2 round: scroll-condensed sticky toolbar. One variable drives everything
+   (0 at the top → 1 at 240px of scroll): the count chip fades AND collapses
+   to zero width (so the search box fills the whole row), the static hairline
+   is replaced by a ::after underline that fades the same way. A short 90ms
+   transition smooths scroll stepping without lagging behind the gesture. */
+.searchCondense {
+  /* The static 8px gap would survive the count's collapse and leave the box
+     short of the row edge — take over the gap on the count's margin so it
+     interpolates too and the box truly fills the row at full progress. */
+  position: relative;
+  border-bottom: none;
+  gap: 0;
+}
+.searchCondense .panelSearchCount {
+  min-width: 0;
+  overflow: hidden;
+  padding: 2px calc(6px * (1 - var(--aek-search-p, 0)));
+  margin-left: calc(8px * (1 - var(--aek-search-p, 0)));
+  opacity: calc(1 - var(--aek-search-p, 0));
+  max-width: calc(48px * (1 - var(--aek-search-p, 0)));
+  transition: opacity 90ms linear, max-width 90ms linear, margin-left 90ms linear, padding 90ms linear;
+}
+.searchCondense::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--aek-border);
+  opacity: calc(1 - var(--aek-search-p, 0));
+  transition: opacity 90ms linear;
+}
 .tagList { display: flex; flex-wrap: wrap; gap: 6px; }
 .capTag {
   padding: 2px 8px;

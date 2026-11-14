@@ -92,6 +92,16 @@ export interface PanelSearchProps {
   placeholder: string
   /** Number of matches shown beside the box; `undefined` hides it. */
   count?: number | undefined
+  /**
+   * G round: opt-in scroll-condensed toolbar for the sticky settings pages.
+   * As the page scrolls down (0 → 240px) the hit-count chip and the hairline
+   * underline fade out while the search box fills the row width; scrolling
+   * back up restores everything. The progress is a single CSS variable
+   * (`--aek-search-p`) driven from `window.scrollY`, batched through
+   * requestAnimationFrame — deliberately no setTimeout (occluded windows
+   * clamp timers, D-round lesson).
+   */
+  condense?: boolean
 }
 
 /**
@@ -100,10 +110,35 @@ export interface PanelSearchProps {
  * @param props - query, setter, placeholder and optional hit count.
  * @returns the search field.
  */
-export function PanelSearch({ value, onChange, placeholder, count }: PanelSearchProps) {
+export function PanelSearch({ value, onChange, placeholder, count, condense }: PanelSearchProps) {
   const { t } = useI18n()
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
+  // G2: the scroll-driven condense progress. Passive scroll listener + rAF
+  // batch; the CSS interpolates count / underline / box width from the
+  // variable, so this handler only writes one number per frame.
+  useEffect(() => {
+    if (condense !== true) return undefined
+    let frame = 0
+    const update = (): void => {
+      frame = 0
+      const el = rootRef.current
+      if (el === null) return
+      el.style.setProperty('--aek-search-p', String(Math.min(1, Math.max(0, window.scrollY / 240))))
+    }
+    const onScroll = (): void => {
+      if (frame === 0) frame = requestAnimationFrame(update)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    update()
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      if (frame !== 0) cancelAnimationFrame(frame)
+    }
+  }, [condense])
+
   return (
-    <div className={css.panelSearchWrap}>
+    <div ref={rootRef} className={cx(css.panelSearchWrap, condense === true && css.searchCondense)}>
       <div className={css.navSearchWrap}>
         <span className={css.navSearchIcon}><Icon name="search" size={16} /></span>
         <input

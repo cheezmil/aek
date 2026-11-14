@@ -38,7 +38,7 @@ import { useI18n } from './i18n.tsx'
 import type { Locale } from './i18n.tsx'
 import { NAV, NAV_TOP, RAIL_HIDDEN_KEY, RAIL_LABELS_HIDDEN_KEY, panelFamilyOf, parseCommaList, subEntriesOf, toggleInCommaList, useLastSubMemory } from './nav-model.ts'
 import type { NavEntry, PanelId } from './nav-model.ts'
-import { parseBoolean, PREF_KEYS, usePref, useSettings } from './preferences.tsx'
+import { parseBoolean, PREF_KEYS, usePrefLanded, usePref, useSettings } from './preferences.tsx'
 import { css, cx } from './styles.ts'
 
 export type { PanelId } from './nav-model.ts'
@@ -276,6 +276,14 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
    * route; the plugin's own side rail records visits.
    */
   const { lastSub } = useLastSubMemory()
+  /**
+   * H round: whether the host settings map has landed. The row order is a
+   * persisted setting that arrives AFTER the first paint — until then the
+   * rail must stay on the DEFAULT order without showing it, so a saved
+   * custom order never "teleports" into place mid-load (visibility keeps
+   * the rail's size stable; the main column never shifts).
+   */
+  const prefLanded = usePrefLanded()
   /**
    * A round: the per-family plugin route rail states (comma lists, shared
    * keys in `nav-model.ts`). D round: a single click on the family row
@@ -672,25 +680,30 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
             : null}
         </div>
 
-        {pinnedRows.length > 0
-          ? (
-            <DrawerGroup label={t('nav.group.pinned')} open={isOpen('pinned')} onToggle={() => toggleGroup('pinned')}>
-              {pinnedRows.map(entry => renderRow(entry, true))}
-            </DrawerGroup>
-          )
-          : null}
+        {/* H round: rows are invisible until the persisted order lands —
+            see `prefLanded`. The search box and the rail's own box stay
+            visible so nothing shifts. */}
+        <div style={{ visibility: prefLanded ? 'visible' : 'hidden' }}>
+          {pinnedRows.length > 0
+            ? (
+              <DrawerGroup label={t('nav.group.pinned')} open={isOpen('pinned')} onToggle={() => toggleGroup('pinned')}>
+                {pinnedRows.map(entry => renderRow(entry, true))}
+              </DrawerGroup>
+            )
+            : null}
 
-        <DrawerGroup label={t('nav.group.plugins')} open={isOpen('plugins')} onToggle={() => toggleGroup('plugins')}>
-          {pluginRows.map(entry => renderRow(entry, false))}
-        </DrawerGroup>
+          <DrawerGroup label={t('nav.group.plugins')} open={isOpen('plugins')} onToggle={() => toggleGroup('plugins')}>
+            {pluginRows.map(entry => renderRow(entry, false))}
+          </DrawerGroup>
 
-        <DrawerGroup label={t('nav.group.other')} open={isOpen('other')} onToggle={() => toggleGroup('other')}>
-          {otherRows.map(entry => renderRow(entry, false))}
-        </DrawerGroup>
+          <DrawerGroup label={t('nav.group.other')} open={isOpen('other')} onToggle={() => toggleGroup('other')}>
+            {otherRows.map(entry => renderRow(entry, false))}
+          </DrawerGroup>
 
-        {filtered.length === 0
-          ? <div className={css.navNoMatch}>{t('nav.noMatch')}</div>
-          : null}
+          {filtered.length === 0
+            ? <div className={css.navNoMatch}>{t('nav.noMatch')}</div>
+            : null}
+        </div>
       </nav>
 
       <div className={css.sidebarFooter}>

@@ -465,7 +465,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             (the document is the scroll container; sticky + opaque surface +
             the F-round hairline below it). */}
         <div className={css.stickyPanelSearch}>
-          <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} />
+          <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} condense />
         </div>
         {firstRailRows.length > 0
           ? (
@@ -595,9 +595,9 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   return (
     <PanelCard>
       <div className={css.cardBody}>
-        {/* G round: same sticky toolbar as the base settings page. */}
+        {/* G round: same sticky + condense toolbar as the base settings page. */}
         <div className={css.stickyPanelSearch}>
-          <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} />
+          <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} condense />
         </div>
         {visible.length > 0
           ? (
