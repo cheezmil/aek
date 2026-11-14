@@ -398,20 +398,51 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
 
   /**
    * Arm the "did the renderer actually boot?" deadline for one load. After
-   * {@link BOOT_GRACE_MS} with no fresh `[aek-boot] module system created`
-   * line the renderer is declared silent-failed and hard-reloaded — this is
+   * {@link BOOT_GRACE_MS} with no healthy-boot signal the renderer is
+   * declared silent-failed and hard-reloaded — this is
    * the U-round follow-up: two white screens (2026-11-13 02:28 / 02:51)
    * both needed a manual app restart because the renderer could die or stall
    * while the backend stayed up, which the reconnect watcher never sees.
+   *
+   * R round (2026-11-15): a healthy boot is now proven two ways — the legacy
+   * `[aek-boot] module system created` console line OR a non-empty `#root`
+   * mount probe. The aek-web-generation page is a standalone React app that
+   * mounts into `#root` WITHOUT booting the dsh client module system, so the
+   * module-system line never lands and the line-only check false-fired on
+   * every load of the new page (2026-11-15 white screens: 3 forced reloads +
+   * "giving up" per launch while the UI actually rendered; the page itself
+   * logged `[aek-boot] boot stalled … queued:1`). Both page generations mount
+   * into `#root`, so the probe is universal. A dead renderer rejects the
+   * probe and is treated as unmounted, keeping the original self-heal path.
    */
   const armBootWatch = (): void => {
     disarmBootWatch()
     lastAppLoadAt = Date.now()
-    bootTimer = setTimeout(() => {
+    bootTimer = setTimeout(async (): Promise<void> => {
       bootTimer = undefined
       if (stopped || win.isDestroyed()) return
       // A healthy boot since THIS load means nothing to do.
       if (lastBootOkAt >= lastAppLoadAt) {
+        forcedReloads = 0
+        return
+      }
+      // R round: ask the renderer whether the app actually mounted. `#root`
+      // is the mount node of every page generation this shell loads (the
+      // legacy dsh shell and aek-web both render into it). The probe rejects
+      // when the renderer is dead or mid-navigation — read that as "not
+      // mounted yet", never as "healthy".
+      let mounted = 0
+      try {
+        mounted = Number(
+          await win.webContents.executeJavaScript(
+            'document.querySelector("#root")?.children.length ?? 0',
+          ),
+        )
+      } catch {
+        // Dead renderer: the probe cannot prove a healthy boot.
+      }
+      if (mounted > 0) {
+        lastBootOkAt = Date.now()
         forcedReloads = 0
         return
       }
