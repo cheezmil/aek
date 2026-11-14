@@ -36,7 +36,7 @@ import { BrandMark, Icon } from './Icons.tsx'
 import type { BrandVariant } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import type { Locale } from './i18n.tsx'
-import { NAV, NAV_TOP, RAIL_HIDDEN_KEY, RAIL_LABELS_HIDDEN_KEY, parseCommaList, subEntriesOf, toggleInCommaList, useLastSubMemory } from './nav-model.ts'
+import { NAV, NAV_TOP, RAIL_HIDDEN_KEY, RAIL_LABELS_HIDDEN_KEY, panelFamilyOf, parseCommaList, subEntriesOf, toggleInCommaList, useLastSubMemory } from './nav-model.ts'
 import type { NavEntry, PanelId } from './nav-model.ts'
 import { parseBoolean, PREF_KEYS, usePref, useSettings } from './preferences.tsx'
 import { css, cx } from './styles.ts'
@@ -44,16 +44,19 @@ import { css, cx } from './styles.ts'
 export type { PanelId } from './nav-model.ts'
 
 /** Delay before a pointer hover starts the peek (hover intent). */
-const HOVER_ENTER_DELAY = 120
-/** Delay before the peek collapses after the pointer leaves. */
-const HOVER_LEAVE_DELAY = 200
 
 /**
- * A round: how long after the FIRST click on a family row the SINGLE-click
- * action (select + toggle the plugin rail) waits for a possible DOUBLE click
- * (which instead toggles the rail's labels).
+ * D round: the family-row click disambiguation no longer waits on a timer.
+ * Chromium's INTENSIVE TIMER THROTTLING clamps every `setTimeout` to ≥1 s
+ * (up to 1 min) in long-lived / occluded sessions, so a 250 ms wait made
+ * both the panel switch and the rail toggle feel a second late. The browser
+ * delivers `MouseEvent.detail` (1 = single, 2 = double) with the click
+ * itself — zero timers:
+ * - cross-page click: SELECT immediately (no rail side effects at all);
+ * - on-family single click: select + TOGGLE the rail show/hide immediately;
+ * - on-family double click: undo that toggle (net zero) + collapse the
+ *   rail's labels — the A-round label shortcut, timer-free.
  */
-const FAMILY_CLICK_DELAY = 250
 
 /** W round: the rail width the user can drag between (the CSS default is 248). */
 const SIDEBAR_MIN_WIDTH = 180
@@ -215,8 +218,37 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   const [dropMark, setDropMark] = useState<DropMark | undefined>(undefined)
   const navRef = useRef<HTMLElement>(null)
   const localeWrap = useRef<HTMLDivElement>(null)
-  const enterTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  /**
+   * D round: the hover-peek delays are rAF FRAME counts, not `setTimeout`
+   * ms — in long-lived / occluded sessions Chromium's intensive timer
+   * throttling clamps timers to ≥1 s (up to 1 min) while rAF keeps ticking
+   * in the visible document. 7 frames ≈ 120 ms, 12 frames ≈ 200 ms at
+   * 60 fps; when frames pause (occluded) the peek simply waits — which is
+   * exactly when nobody is looking anyway.
+   */
+  const HOVER_ENTER_FRAMES = 7
+  const HOVER_LEAVE_FRAMES = 12
+  const pendingFrames = useRef<Partial<Record<'enter' | 'leave', number>>>({})
+  const cancelFrames = (which: 'enter' | 'leave'): void => {
+    const id = pendingFrames.current[which]
+    if (id !== undefined) {
+      cancelAnimationFrame(id)
+      delete pendingFrames.current[which]
+    }
+  }
+  const armFrames = (which: 'enter' | 'leave', frames: number, action: () => void): void => {
+    cancelFrames(which)
+    let count = 0
+    let id = 0
+    const tick = (): void => {
+      delete pendingFrames.current[which]
+      count++
+      if (count >= frames) action()
+      else id = requestAnimationFrame(tick)
+    }
+    id = requestAnimationFrame(tick)
+    pendingFrames.current[which] = id
+  }
 
   const defaultOpen = prefs[DRAWER_KEY] !== false
   const pinned = useMemo(() => (typeof prefs[PINNED_KEY] === 'string'
@@ -246,46 +278,54 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   const { lastSub } = useLastSubMemory()
   /**
    * A round: the per-family plugin route rail states (comma lists, shared
-   * keys in `nav-model.ts`). Single-click of a family row toggles the rail
-   * itself; a quick double-click toggles the rail's labels.
+   * keys in `nav-model.ts`). D round: a single click on the family row
+   * TOGGLES the rail show/hide — but ONLY while the active panel is this
+   * family's (switching into the page from another panel never touches the
+   * rail); a double click collapses the rail's labels.
    */
   const [, setRailHidden] = usePref<string>(RAIL_HIDDEN_KEY, '', parseCommaList)
   const [, setRailLabelsHidden] = usePref<string>(RAIL_LABELS_HIDDEN_KEY, '', parseCommaList)
   /**
-   * A round: pending SINGLE clicks, keyed by family id. The first click arms
-   * a 250 ms timer (single = select + toggle the rail); a second click inside
-   * the window cancels it and performs the DOUBLE action (toggle the labels)
-   * instead.
+   * D round: records that the FIRST click of a double-click already toggled
+   * the rail (on-family only), so the second click can undo that toggle
+   * (net zero) while performing the label collapse. One flag per family.
    */
-  const familyClickTimer = useRef<Partial<Record<string, ReturnType<typeof setTimeout>>>>({})
-  useEffect(() => () => {
-    for (const id of Object.keys(familyClickTimer.current)) clearTimeout(familyClickTimer.current[id])
-  }, [])
+  const railToggledByFirstClick = useRef<Partial<Record<string, boolean>>>({})
 
   /**
-   * A round: one click on a row. Family rows (owning plugin routes) are
-   * single / double-click sensitive; plain rows select immediately.
+   * One click on a row. Family rows (owning plugin routes) are
+   * single / double-click sensitive via the NATIVE `detail` count (zero
+   * timers — see the D-round note above); plain rows select immediately.
    * @param entry - the row clicked.
    * @param subIds - the row's plugin routes (empty = plain row).
+   * @param detail - the browser click count (1 single, 2 double).
    */
-  const handleRowClick = (entry: NavEntry, subIds: readonly string[]): void => {
+  const handleRowClick = (entry: NavEntry, subIds: readonly string[], detail: number): void => {
     if (subIds.length === 0) {
       onSelect(entry.id)
       return
     }
-    const pending = familyClickTimer.current[entry.id]
-    if (pending !== undefined) {
-      clearTimeout(pending)
-      delete familyClickTimer.current[entry.id]
+    // D round: "on this page" = the active panel IS the family root or one of
+    // its sub-routes. Only there do the rail side effects apply at all.
+    const onFamily = active === entry.id || panelFamilyOf(active) === entry.id
+    const remembered = lastSub.get(entry.id)
+    onSelect(remembered ?? entry.id)
+    if (detail === 2 && onFamily && railToggledByFirstClick.current[entry.id] === true) {
+      // True double click on the page: undo the first click's rail toggle
+      // (net zero) and collapse the labels instead — the original double
+      // action, now immediate.
+      delete railToggledByFirstClick.current[entry.id]
+      setRailHidden(current => toggleInCommaList(current, entry.id))
       setRailLabelsHidden(current => toggleInCommaList(current, entry.id))
       return
     }
-    familyClickTimer.current[entry.id] = setTimeout(() => {
-      delete familyClickTimer.current[entry.id]
-      const remembered = lastSub.get(entry.id)
-      onSelect(remembered ?? entry.id)
+    if (detail === 1 && onFamily) {
+      // Single click ON THE PAGE: toggle the rail show/hide immediately.
+      // (A cross-page single click is a pure switch — no rail side effect,
+      // so arriving on the page never re-shapes the layout under the user.)
+      railToggledByFirstClick.current[entry.id] = true
       setRailHidden(current => toggleInCommaList(current, entry.id))
-    }, FAMILY_CLICK_DELAY)
+    }
   }
   /** X round: the base setting that restores the bottom horizontal scrollbar (default off). */
   const hScroll = prefs[H_SCROLL_KEY] === true
@@ -305,37 +345,25 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   }, [menuOpen])
 
   useEffect(() => () => {
-    if (enterTimer.current !== undefined) clearTimeout(enterTimer.current)
-    if (leaveTimer.current !== undefined) clearTimeout(leaveTimer.current)
+    cancelFrames('enter')
+    cancelFrames('leave')
   }, [])
 
   /** Pointer entered the rail: start the (delayed) peek unless suppressed. */
   const handlePointerEnter = (): void => {
-    if (leaveTimer.current !== undefined) {
-      clearTimeout(leaveTimer.current)
-      leaveTimer.current = undefined
-    }
+    cancelFrames('leave')
     // Dragging a row must never expand / collapse the rail under the pointer.
     if (dragId !== undefined) return
-    if (suppressPeek || enterTimer.current !== undefined) return
-    enterTimer.current = setTimeout(() => {
-      enterTimer.current = undefined
-      setHovered(true)
-    }, HOVER_ENTER_DELAY)
+    if (suppressPeek || pendingFrames.current.enter !== undefined) return
+    armFrames('enter', HOVER_ENTER_FRAMES, () => setHovered(true))
   }
 
   /** Pointer left the rail: end the peek, re-arm hover for the next visit. */
   const handlePointerLeave = (): void => {
-    if (enterTimer.current !== undefined) {
-      clearTimeout(enterTimer.current)
-      enterTimer.current = undefined
-    }
-    if (leaveTimer.current !== undefined) clearTimeout(leaveTimer.current)
+    cancelFrames('enter')
+    cancelFrames('leave')
     setSuppressPeek(false)
-    leaveTimer.current = setTimeout(() => {
-      leaveTimer.current = undefined
-      setHovered(false)
-    }, HOVER_LEAVE_DELAY)
+    armFrames('leave', HOVER_LEAVE_FRAMES, () => setHovered(false))
   }
 
   /** Logo click changes the LOCK, but only when the toggle is enabled. */
@@ -346,10 +374,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
     } else {
       setSuppressPeek(true)
       setHovered(false)
-      if (enterTimer.current !== undefined) {
-        clearTimeout(enterTimer.current)
-        enterTimer.current = undefined
-      }
+      cancelFrames('enter')
     }
     setCollapsed(value => !value)
   }
@@ -506,7 +531,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
           type="button"
           className={cx(css.navItem, rowActive && css.navItemActive)}
           aria-current={rowActive ? 'page' : undefined}
-          onClick={() => handleRowClick(entry, subIds)}
+          onClick={(event) => handleRowClick(entry, subIds, event.detail)}
           title={`${t(entry.labelKey)} · ${t('nav.dragHint')}`}
         >
           <span className={css.navIcon}><Icon name={entry.icon} size={18} /></span>

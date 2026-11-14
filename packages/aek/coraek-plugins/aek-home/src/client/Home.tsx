@@ -159,8 +159,14 @@ function Console() {
   // B round: while the NEW panel's first frame is landing, the previous
   // panel's content stays mounted (hidden) for one short beat, so a switch
   // never shows an empty main — the screen never goes blank. The hold is
-  // capped at 300 ms: the old tree is unmounted right after, keeping the
+  // capped at ~300 ms: the old tree is unmounted right after, keeping the
   // console's memory profile at ONE live panel (the low-memory rule).
+  // D round: the release runs on rAF FRAMES, not a `setTimeout` — Chromium's
+  // intensive timer throttling clamps timers to ≥1 s (up to 1 min) in
+  // long-lived / occluded sessions, which made the hold linger a full second
+  // (and every timer-based interaction feel a beat late). rAF keeps ticking
+  // in a visible document; when frames pause (window occluded) the hold
+  // simply persists, which costs nothing visible.
   const prevPanelRef = useRef<PanelId | null>(null)
   const [heldPanel, setHeldPanel] = useState<PanelId | null>(null)
   useEffect(() => {
@@ -168,10 +174,22 @@ function Console() {
     prevPanelRef.current = panel
     if (previous === null || previous === panel) return
     setHeldPanel(previous)
-    const timer = setTimeout(() => {
-      setHeldPanel(current => (current === previous ? null : current))
-    }, 300)
-    return () => clearTimeout(timer)
+    const HOLD_FRAMES = 18 // ≈300 ms at 60 fps
+    let frame = 0
+    let pendingRaf: number | undefined
+    const tick = (): void => {
+      pendingRaf = undefined
+      frame++
+      if (frame >= HOLD_FRAMES) {
+        setHeldPanel(current => (current === previous ? null : current))
+        return
+      }
+      pendingRaf = requestAnimationFrame(tick)
+    }
+    pendingRaf = requestAnimationFrame(tick)
+    return () => {
+      if (pendingRaf !== undefined) cancelAnimationFrame(pendingRaf)
+    }
   }, [panel])
   // Host facts lifted to the root: the Web Search page needs them for the
   // path display-style setting, and this keeps one shared fetch for every
