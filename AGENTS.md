@@ -80,7 +80,7 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
   通法 = `aek-capability/1` 描述符 + `@cheezmil/coraek` 的 `external-supervisor`（单例采纳、SIGTERM 不升级、attach 实例只报不杀），**只服务于上表第 2、3 类（即所有「独立进程」形态）**。独立进程接入包在 `package.json` 声明 `aek.external` 块（`spdx` 自报许可 + `attach` 进程边界），**禁止带 `main` / `exports["."]` 的进程内运行时入口**（允许 `bin`）——这道门禁专门防「独立进程类偷跑进宿主进程」；`verify-build-rules.mjs` 的第四道门禁 `external` 会拦下违规。宿主渲染合规文案用「固定模板 + provider 自描述数据」，不把上游事实硬编码进前端。任何新增 AGPL 项目先做本通法、后加数据。
   第 1 类的运行时拓扑是**用户可显式选择**的（2026-11-12 选择性共用运行时轮）：TS/JS 能力包在 `package.json` 声明 `aek.runtime` 块（`share` 缺省为开 = 进程内共享宿主 Node 运行时、最省内存；`isolate.bin` 声明可被 spawn 的独立进程入口）。操作者可用 `aek runtime` CLI（`list` / `status <id>` / `set <id> share|isolate --confirm`）把单能力切到 isolate，选择持久化在 `<AEK_HOME>/runtime-modes.json`；判定优先级 **license-forced > runtime-forced > user-select > default-share**（②③ 恒 isolate 不可选；① 类即使已被 boot 注册进 provider registry 也保持 user-select，share/isolate 可往返）。`external` 门禁的 runtime 面校验 `aek.runtime` 合法性（isolate 必给 bin；share 保留进程内入口；不得与 `aek.external` 并存）。isolate 形态复用通法 + external-supervisor spawn，**零新协议**（唯一扩展：`attach.cwd` 可选字段——包内相对 bin 由 cwd 定位，`command` 保持相对 shell-free；boot 期宿主经 `capability-api` 接线自动 register/spawn store 里 isolate 的 ① 类能力，特性调用桥 pending）。
 - 插件从 `@cheezmil/coraek` 的类型入口导入 `Context` / `Volatile` / `ClientContext`，**不直接 import cordis**。
-- `aek-for-dsh` 是 `cordis.patch.yml` **bundle**（一次注册所有 aek 插件），不是插件，不承担 `apply(ctx)`。**暂时不开发（2026-11-15 用户定调、挂起）**：本轮及后续不投入开发；已发 npm 版本（`@cheezmil/aek-for-dsh`）维持现状——不 unpublish、不转 A2、不主动下线，只是「停开发」。
+- `aek-for-dsh` 是 `cordis.patch.yml` **bundle**（一次注册所有 aek 插件），不是插件，不承担 `apply(ctx)`。
 - 不凭空造 `aek-core` 之类中间包；`aek-base`/coraek 只做身份层与类型 re-export，不放业务逻辑。
 - `vendor/*/src/` 不要随手改；确需改要按 `vendor/README.md` 的流程记录。
 
@@ -119,6 +119,7 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
   - 目录内的固定结构：当前待办 `todos/aek-todos.md`；**已完成的 todo 移到 `todos/archive/`**；架构决策/参考放 `references/`；完成记录放 `archive/`。
   - **todo 与 archive 只放在上述子目录里**，不要散落到笔记目录本身、它的上层目录或项目根。
 - 用户需求随时会变：**过时或不正确的 todo 及时清理**，不要留着误导下一轮；详情写归档、live 只留指针。
+- **易变状态（挂起 / 暂缓 / 停做 / 待建 backlog）一律记在笔记目录 `todos/aek-todos.md`（本仓外），不写进本文件**；本文件只承载稳定规则，某模块当前挂不挂起、做没做，查 todo，不在此逐条标注。
 - 用户没明确要求时**不新建 skill**；要写就写在使用者指定的目录下，结构遵循使用者提供的 skill 结构范例（`SKILL.md` + `assets/` + `references/` + `scripts/`），文件夹名**不带 `skill` / `notes` 等冗余词**；主题相近先问用户是否合并成一个。
 
 ## 8. 调研与工具
@@ -129,23 +130,3 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
 - 下载二进制优先 `aria2`，GitHub 资源用 `gh` CLI；装软件默认 Homebrew。
 - 推荐跨平台开源工具时，按**网友评价推荐度 → 热度**综合排序，写明编程语言与真实依据（star / 仓库路径 / 日期），**不要凭印象编造**；默认偏好免费 + 开源 + 原生实现，避开付费墙。
 - 断言版本 / 兼容性等事实前**先检索核实**，拿不准就写「待核实」，禁止凭记忆下结论。
-
-## 9. 过时笔记核对（2026-11-05）
-
-历史笔记里有一批与源码不符的事实，**已在本次整理中修正**，别再按旧表述干：
-
-| 出处 | 曾经的错误 | 当前事实 / 处理 |
-|---|---|---|
-| `references/AEK不可违背原则.md` P3 | 「别把 cordis vendor 进仓」 | `vendor/cordis/` 真实存在且属 KEEP → 已加修订说明，禁止删 |
-| 同上 P4 / P6 / P10 | 包名 `@cheezmil/aek-base`、11-02 版本号快照 | 现名 `@cheezmil/coraek`（旧名引用 0 处）；已改为「版本一律查 `package.json` / `npm view`」 |
-| 同上 P8 | `aek-mcp-router` | 现名 `aek-mcp-gateway`，已改；⚠️ `aek-mcp-gateway` 仍是 **backlog 待建包**（见 `todos/aek-todos.md` 第四节），仓里还没有实体，别把它和已删除的旧 Go 版 `packages/aek-mcp` 混淆 |
-| 仓顶层 `packages/aek-dsh/` / `packages/aek-mcp/` / `packages/aek-task-manager/` 目录 | 疑似「现役 WSL 对端同步 / MCP 网关 / 任务管理包」 | **不是**：11-05 四桶重构（`cdf732a8`）已删三包全部源码，只剩 19 个孤儿 git 跟踪产物（aek-dsh tsdown `lib/`、aek-mcp Vite 前端残件、task-manager 脚本残件；非 pnpm 成员、零活引用）→ O 轮（2026-11-14）已 `git rm` 删除。`aek-task-manager` 在 `scripts/aek/repair-skill-links.mjs` 注释里明标 retired |
-| 同上 P12 | Bundle ID `com.aek.desktop` | 已改为「以 `apps/aek-desktop` 源码为准，用前核对」 |
-| `references/aek插件架构决策.md` | 状态「待实施」+ 3 条已完成的待办 | 已改为「决策有效、待办已结案」，其中 `plugin.json` / MCP 路由转入 todo backlog |
-| `SKILL.md` | lint 9132 错「三选一待用户拍板」、P1 为「本轮重点」 | 已改为「已收口至 0 错 0 警告」并换成归档指针 |
-| 子目录 `AGENTS.md`（`scripts/`、`packages/`、`vendor/` 等，dsh 遗留） | 引用 `docs/testing.md`、`docs/architecture.md`、`docs/postmortem/*`、`.agents/skills/dsh-ci-test-reliability/` | **仍未修**：这些文件已随 dsh 文档裁剪删除，链接全部失效。保留作上游遗留，但**其中规则不能当当前事实** |
-| 各笔记中「aek 有文档站 / 有 GitHub Actions」的隐含假设 | — | `docs/` 只剩 2 个文件，`.github/` 已裁决不恢复 |
-
-> 用户口中的「aek-base 插件」= 现在的 `@cheezmil/coraek` 包 / 插件层，按新名理解即可。
->
-> 当前待办唯一真源：使用者当轮给出的笔记目录里的 `todos/aek-todos.md`（本机笔记，不在本仓库内，此处不记录其绝对路径）。
