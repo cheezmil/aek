@@ -388,7 +388,14 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
     if (needle.length === 0) return true
     return [t(field.labelKey), field.key, field.group].join(' ').toLowerCase().includes(needle)
   })
-  const groups: readonly SettingField['group'][] = ['sidebar', 'navigation', 'general']
+  // E round: the console has TWO side rails and the basic-settings page must
+  // say which row drives which. The first rail is the main navigation; the
+  // second is the per-plugin route column (PluginSubNav) that appears on
+  // family pages. The second-rail rows are the plugin-rail width pair plus
+  // the one-time usage hint — they are filed under a dedicated section
+  // instead of the plain "sidebar" / "navigation" groups they came from.
+  const SECOND_RAIL_KEYS = new Set(['aek-home.pluginRailWidth', 'aek-home.pluginRailCompactWidth', 'aek-home.railHint'])
+  const secondRailFields = visible.filter((field) => SECOND_RAIL_KEYS.has(field.key))
   const matches = (keys: readonly string[]): boolean => needle.length === 0 || keys.join(' ').toLowerCase().includes(needle)
 
   // Sidebar-row refresh (Q round): re-read the authoritative settings map.
@@ -437,30 +444,65 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
     setRestore(state => (state.phase === 'backedUp' ? { phase: 'idle' } : state))
   }
 
+  const fieldRow = (field: SettingField): ReactNode => (
+    <li key={field.key} className={css.settingRow}>
+      <SettingControl
+        field={field}
+        value={coerce(field, prefs[field.key] ?? field.default)}
+        onChange={next => setSafe(field.key, next)}
+      />
+    </li>
+  )
+  const firstRailRows = visible.filter(field => field.group === 'sidebar' && !SECOND_RAIL_KEYS.has(field.key))
+  const navigationRows = visible.filter(field => field.group === 'navigation' && !SECOND_RAIL_KEYS.has(field.key))
+  const generalRows = visible.filter(field => field.group === 'general')
+
   return (
     <PanelCard>
       <div className={css.cardBody}>
         <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} />
-        {groups.map((group) => {
-          const rows = visible.filter(field => field.group === group)
-          if (rows.length === 0) return null
-          return (
-            <section key={group} className={css.settingGroup}>
-              <h3 className={css.sectionTitle}>{t(`settings.group.${group}`)}</h3>
+        {firstRailRows.length > 0
+          ? (
+            <section className={css.settingGroup}>
+              <h3 className={css.sectionTitle}>{t('settings.group.sidebarFirst')}</h3>
+              <p className={css.hint}>{t('settings.group.sidebarFirstHint')}</p>
               <ul className={css.settingList}>
-                {rows.map(field => (
-                  <li key={field.key} className={css.settingRow}>
-                    <SettingControl
-                      field={field}
-                      value={coerce(field, prefs[field.key] ?? field.default)}
-                      onChange={next => setSafe(field.key, next)}
-                    />
-                  </li>
-                ))}
+                {firstRailRows.map(fieldRow)}
               </ul>
             </section>
           )
-        })}
+          : null}
+        {secondRailFields.length > 0
+          ? (
+            <section className={css.settingGroup}>
+              <h3 className={css.sectionTitle}>{t('settings.group.sidebarSecond')}</h3>
+              <p className={css.hint}>{t('settings.group.sidebarSecondHint')}</p>
+              <ul className={css.settingList}>
+                {secondRailFields.map(fieldRow)}
+              </ul>
+            </section>
+          )
+          : null}
+        {navigationRows.length > 0
+          ? (
+            <section className={css.settingGroup}>
+              <h3 className={css.sectionTitle}>{t('settings.group.navigation')}</h3>
+              <ul className={css.settingList}>
+                {navigationRows.map(fieldRow)}
+              </ul>
+            </section>
+          )
+          : null}
+        {generalRows.length > 0
+          ? (
+            <section className={css.settingGroup}>
+              <h3 className={css.sectionTitle}>{t('settings.group.general')}</h3>
+              <ul className={css.settingList}>
+                {generalRows.map(fieldRow)}
+              </ul>
+            </section>
+          )
+          : null}
         {matches(['access', 'lan', 'ip', 'cidr', 'basic auth', t('settings.group.access')]) ? <AccessSection /> : null}
         {matches(['permission', 'tcc', 'accessibility', t('settings.group.permissions')]) ? <PermissionsSection /> : null}
         {matches(['default', t('settings.group.defaults'), t('settings.restoreDefaults')])

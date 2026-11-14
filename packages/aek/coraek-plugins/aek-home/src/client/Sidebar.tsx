@@ -325,6 +325,15 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
       // so arriving on the page never re-shapes the layout under the user.)
       railToggledByFirstClick.current[entry.id] = true
       setRailHidden(current => toggleInCommaList(current, entry.id))
+      return
+    }
+    if (detail === 1) {
+      // E round: a cross-page FIRST click must also clear a STALE flag left
+      // by an earlier on-page single click — otherwise a later cross-page
+      // double click (whose first click was NOT on the page) would fire the
+      // label-collapse branch. The label logic applies only to a gesture
+      // that STARTED on the family's page.
+      delete railToggledByFirstClick.current[entry.id]
     }
   }
   /** X round: the base setting that restores the bottom horizontal scrollbar (default off). */
@@ -432,7 +441,12 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   const resolveDrop = (clientY: number, movingId: PanelId): DropMark | undefined => {
     const nav = navRef.current
     if (nav === null) return undefined
-    const source = [...nav.querySelectorAll<HTMLLIElement>('li[data-panel].navRow')]
+    // E round: match rows by the STABLE `data-panel` attribute only. The old
+    // selector also demanded the `.navRow` class name — a CSS-MODULES source
+    // class that ships HASHED (e.g. `_5ZXMiG_navRow`), so the query matched
+    // nothing, resolveDrop bailed, and no drop ever committed an order
+    // ("按住拖动有反应，但顺序没实现").
+    const source = [...nav.querySelectorAll<HTMLLIElement>('li[data-panel]')]
       .find(item => item.dataset.panel === movingId)
     const list = source?.parentElement
     if (list === null || list === undefined) return undefined

@@ -151,11 +151,6 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     default: true,
   },
   {
-    key: 'aek-home.keyRetentionDays', kind: 'range', group: 'general',
-    labelKey: 'settings.keyRetentionDays', hintKey: 'settings.keyRetentionDaysHint',
-    default: 7, min: 1, max: 90, step: 1, unit: 'd',
-  },
-  {
     // Path display style (Q round): the console shows host-absolute paths
     // (providers.yml, plugin dirs, …). The default shortens the home prefix to
     // `~/` (posix) or `%USERPROFILE%\` (Windows, backslashes); "full" keeps the
@@ -213,6 +208,15 @@ export const WEBSEARCH_SETTINGS_SCHEMA: readonly SettingField[] = [
     key: 'aek-home.websearch.rankingTtlHours', kind: 'range', group: 'websearch',
     labelKey: 'settings.websearchRankingTtl', hintKey: 'settings.websearchRankingTtlHint',
     default: 24, min: 1, max: 168, step: 1, unit: 'h',
+  },
+  {
+    // E round: moved out of the host's basic settings ("基础设置不能包含插件
+    // 自身的设置") — the key-pool retention is a Web Search plugin setting
+    // (aek-websearch `key-pool.ts` reads it). The KEY is unchanged, so stored
+    // values survive the move.
+    key: 'aek-home.keyRetentionDays', kind: 'range', group: 'websearch',
+    labelKey: 'settings.keyRetentionDays', hintKey: 'settings.keyRetentionDaysHint',
+    default: 7, min: 1, max: 90, step: 1, unit: 'd',
   },
 ]
 
