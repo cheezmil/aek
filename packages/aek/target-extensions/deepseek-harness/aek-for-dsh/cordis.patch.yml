@@ -4,9 +4,10 @@
 # Install it alongside dsh-base to get the full AEK experience:
 #   dsh --profile aek "your task"
 #
-# UI surfaces (e.g. @cheezmil/aek-home, the React root that replaces the dsh
-# shell) are host-specific and are NOT part of this bundle — wire them in the
-# host that owns them (web-app / aek-desktop profiles) instead.
+# UI surfaces (e.g. @cheezmil/aek-web, the standalone React app the host
+# serves instead of the dsh shell) are host-specific and are NOT part of this
+# bundle — wire them in the host that owns them (web-app / aek-desktop
+# profiles) instead.
 #
 # To use only specific AEK plugins, install them individually.
 

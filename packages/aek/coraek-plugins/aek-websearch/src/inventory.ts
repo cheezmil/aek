@@ -3,9 +3,8 @@
  *
  * Lives next to the other AEK console host routes (`admin.ts`) because that
  * plugin already owns the `webServer` seam and its tsdown entry bundles TS
- * sources directly. aek-home's own host entry is a tsc EMIT artifact
- * (`lib/types/index.js`), so adding a relative TS import there would not
- * survive the bundle — this is why the inventory route is registered here.
+ * sources directly. The console surface is the static `@cheezmil/aek-web`
+ * app (no host entry), so the inventory route is registered here.
  *
  * The page shows REAL facts: the version of every displayed `@cheezmil/*`
  * package (read from its own manifest at request time) and whether this
@@ -86,7 +85,7 @@ export interface InventoryPackage {
 
 /** The snapshot the About page renders. */
 export interface InventorySnapshot {
-  /** Overall install kind, derived from aek-home's own resolved location. */
+  /** Overall install kind, derived from this package's own resolved location. */
   installKind: InstallKind
   /** Short human-readable explanation of how the kind was determined. */
   source: string
@@ -133,7 +132,7 @@ function installKindOf(path: string): InstallKind {
 }
 
 /**
- * Find the dev checkout root by walking up from aek-home's own location.
+ * Find the dev checkout root by walking up from this package's own location.
  * A plain `pnpm-workspace.yaml` is not enough (user profiles have one too),
  * so the root must also own `packages/aek/`.
  * @param start - directory to start from.
@@ -268,5 +267,5 @@ export function registerInventory(ctx: Context): void {
       res.setHeader('cache-control', 'no-store')
       res.end(payload)
     },
-  }), 'aek-home: inventory API')
+  }), 'aek-websearch: inventory API')
 }

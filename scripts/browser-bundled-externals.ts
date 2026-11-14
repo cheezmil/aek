@@ -6,7 +6,6 @@ import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Rolldown, type UserConfigExport } from 'tsdown'
 import ts from 'typescript'
-import { browserDependencyAnalysis } from '../apps/web/product-isolation.ts'
 
 interface Manifest {
   name: string
@@ -122,6 +121,26 @@ interface ViteApi {
     config: Record<string, unknown>, command: 'build', defaultMode: string, defaultNodeEnv: string,
   ): Promise<ShellConfig>
   build(config: Record<string, unknown>): Promise<unknown>
+}
+
+const DEPENDENCY_ANALYSIS_PLUGIN = 'dsh-browser-dependency-analysis'
+
+/**
+ * Identify a dependency-disclosure walk that deliberately leaves third-party imports external.
+ * @returns Analysis intent that refuses builds which can write output.
+ */
+function browserDependencyAnalysis() {
+  return {
+    name: DEPENDENCY_ANALYSIS_PLUGIN,
+    apply: 'build',
+    configResolved(config: { build: { write: boolean } }): void {
+      requireNonWritingAnalysis(config.build.write)
+    },
+  }
+}
+
+function requireNonWritingAnalysis(write: boolean): void {
+  if (write) throw new Error('browser dependency analysis requires build.write: false')
 }
 
 async function collectShell(

@@ -1,0 +1,35 @@
+{
+  "name": "@cheezmil/aek-web",
+  "description": "AEK web console: the React single-page application the host serves as its web surface (successor to the aek-home client half)",
+  "version": "0.0.1",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "node ../../scripts/aek/verify-i18n.mjs",
+    "build": "vite build",
+    "dev": "vite",
+    "watch": "vite build --watch --no-emptyOutDir",
+    "preview": "vite preview"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "lightningcss": "^1.33.0",
+    "typescript": "^6.0.3",
+    "vite": "^6.4.3"
+  },
+  "aek": {
+    "type": "web-app",
+    "description": "AEK web console \u2014 the React SPA the host serves as its web surface",
+    "distribution": "A1"
+  }
+}

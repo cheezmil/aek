@@ -1,6 +1,6 @@
 {
   "name": "@cheezmil/coraek",
-  "description": "AEK base identity layer: pins the AEK home dir and prints the `aek web:` startup line; the client half is an identity no-op (aek-home owns the surface)",
+  "description": "AEK base identity layer: pins the AEK home dir and prints the `aek web:` startup line; the client half is an identity no-op (aek-web owns the surface)",
   "version": "1.0.1",
   "publishConfig": {
     "access": "public"

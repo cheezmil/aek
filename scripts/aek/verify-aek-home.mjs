@@ -13,7 +13,7 @@
  * non-zero exit means the build/typecheck chain must stop.
  *
  * Scope (AEK-authored code only — the faithfully copied dsh upstream is not
- * scanned): `packages/aek`, `apps/web`, `apps/aek-desktop`, `scripts/aek`.
+ * scanned): `packages/aek`, `apps/aek-web`, `apps/aek-desktop`, `scripts/aek`.
  *
  * Usage:
  *   node scripts/aek/verify-aek-home.mjs             # check, read-only
@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SELF = fileURLToPath(import.meta.url)
 
-const SCAN_ROOTS = ['packages/aek', 'apps/web', 'apps/aek-desktop', 'scripts/aek']
+const SCAN_ROOTS = ['packages/aek', 'apps/aek-web', 'apps/aek-desktop', 'scripts/aek']
 const SKIP_DIRS = new Set([
   'node_modules', 'lib', 'dist', 'build', 'coverage', '.git', '.turbo',
   'types', 'test', 'tests', '__fixtures__', 'fixtures',

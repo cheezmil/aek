@@ -73,12 +73,13 @@ export interface PluginEntry {
   /** Persisted enable flag (`<AEK_HOME>/plugins.json`), true by default. */
   enabled: boolean
   /**
-   * True when the plugin cannot be switched off. Two plugins are structural,
-   * and the console must say so instead of offering a control that would
-   * either break the UI or kill the API serving this very response.
+   * True when the plugin cannot be switched off. The console must say so
+   * instead of offering a control that would break the UI. B2: the console UI
+   * is the static `@cheezmil/aek-web` app (served by the host, not a switchable
+   * plugin), so no plugin is structural anymore — this is always false today.
    */
   locked: boolean
-  /** Why it is locked: `root` means "this plugin IS the console UI". */
+  /** Why it is locked: `root` meant "this plugin IS the console UI". */
   lockReason: '' | 'root'
   /** Declared audience: A1 (public) / A2 (local only), empty when invalid. */
   distribution: 'A1' | 'A2' | ''
@@ -227,8 +228,10 @@ function capabilitiesOf(manifest: Record<string, unknown>, id: string): { backen
 /**
  * Plugins that can never be switched off, with the reason.
  *
- * `aek-home` IS the console: switching it off leaves the window with no UI at
- * all, so it is the ONLY structural plugin.
+ * B2: the console UI is the static `@cheezmil/aek-web` app the host serves
+ * (not a switchable plugin), so there is no structural plugin to lock — the
+ * map is empty. `aek-home` WAS the root UI plugin and was locked here; it is
+ * gone (its client half moved into aek-web, host half was an identity no-op).
  *
  * `aek-websearch` used to be locked here as well, on the grounds that it serves
  * `/api/aek/console/facts` and this very switch endpoint. That conflated two
@@ -240,7 +243,6 @@ function capabilitiesOf(manifest: Record<string, unknown>, id: string): { backen
  * always turn it back on. A lock there was a wrong answer to a real concern.
  */
 const LOCKED_PLUGINS: Record<string, '' | 'root'> = {
-  'aek-home': 'root',
 }
 
 /** @returns the persisted disabled plugin ids (`<AEK_HOME>/plugins.json`). */

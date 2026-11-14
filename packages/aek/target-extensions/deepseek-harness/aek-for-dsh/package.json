@@ -1,6 +1,6 @@
 {
   "name": "@cheezmil/aek-for-dsh",
-  "description": "DSh bundle: installing @cheezmil/aek-for-dsh into a dsh profile gives the profile the dsh-facing AEK plugins (coraek, aek-websearch, aek-prompt-manager). Host-specific UI surfaces like aek-home are intentionally not included — wire them in the host that owns them.",
+  "description": "DSh bundle: installing @cheezmil/aek-for-dsh into a dsh profile gives the profile the dsh-facing AEK plugins (coraek, aek-websearch, aek-prompt-manager). Host-specific UI surfaces like @cheezmil/aek-web (the standalone React console) are intentionally not included — the host serves them; wire them in the host that owns them.",
   "version": "0.1.4",
   "type": "module",
   "main": "cordis.patch.yml",

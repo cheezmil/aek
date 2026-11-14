@@ -438,24 +438,48 @@ export function clearLanguageCache() {
  * @returns {string[]} repository-relative package directories, sorted.
  */
 export function findAekPackageDirs(repoRoot) {
-  const base = join(repoRoot, 'packages', 'aek')
-  /** @type {string[]} */
-  const found = []
-  const visit = (dir, depth) => {
-    if (depth > 6 || found.length > 100) return
+  /** @type {Set<string>} */
+  const found = new Set()
+  /** Every `packages/aek/**` dir that owns a package.json is an AEK package. */
+  const visitPackages = (dir, depth) => {
+    if (depth > 6 || found.size > 100) return
     let entries
     try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return }
     if (entries.some(entry => entry.isFile() && entry.name === 'package.json')) {
-      found.push(relative(repoRoot, dir).split(sep).join('/'))
+      found.add(relative(repoRoot, dir).split(sep).join('/'))
       return
     }
     for (const entry of entries) {
       if (!entry.isDirectory() || SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue
-      visit(join(dir, entry.name), depth + 1)
+      visitPackages(join(dir, entry.name), depth + 1)
     }
   }
-  visit(base, 0)
-  return found.sort()
+  visitPackages(join(repoRoot, 'packages', 'aek'), 0)
+  /**
+   * `apps/**` mixes AEK apps (`@cheezmil` scope, e.g. the standalone `aek-web`
+   * console) with upstream shell packages (`@deepseek-ai`, private) — only the
+   * `@cheezmil` ones are AEK packages.
+   */
+  const manifestName = (file) => {
+    try { return JSON.parse(readFileSync(file, 'utf8')).name } catch { return undefined }
+  }
+  const visitApps = (dir, depth) => {
+    if (depth > 3 || found.size > 200) return
+    let entries
+    try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return }
+    if (entries.some(entry => entry.isFile() && entry.name === 'package.json')) {
+      if (String(manifestName(join(dir, 'package.json')) ?? '').startsWith('@cheezmil/')) {
+        found.add(relative(repoRoot, dir).split(sep).join('/'))
+      }
+      return
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue
+      visitApps(join(dir, entry.name), depth + 1)
+    }
+  }
+  visitApps(join(repoRoot, 'apps'), 0)
+  return [...found].sort()
 }
 
 /**

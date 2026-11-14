@@ -27,9 +27,9 @@
  *   3  stable bootstrap (the verified cold-tree recipe):
  *        pnpm install --frozen-lockfile   (+ one lefthook re-anchor retry)
  *        tsx scripts/generate-typert.ts   (typert artifacts, pre-tsc)
- *        pnpm -r --filter './packages/aek/**' run build      (tsc/tsdown libs)
+ *        pnpm -r --filter './packages/aek/**' --filter './apps/aek-web' run build      (tsc/tsdown libs + aek-web vite dist)
  *        pnpm -r --filter './packages/aek/**' run build:cli  (coraek oclif commands)
- *        pnpm -r --filter './packages/aek/**' run bundle     (aek-home lib)
+ *        pnpm -r --filter './packages/aek/**' run bundle     (no AEK package carries it anymore)
  *        lib/types backfill (package-level host tsconfigs, discovered)
  *        pnpm run build:artifacts
  *   4  smoke gate: candidate web from the stable tree on port 1689,
@@ -235,10 +235,11 @@ function bootstrap(root) {
   // The AEK runtime artifact surface. pnpm -r run <script> skips packages
   // without that script, so the three task names cover the whole set:
   //   build      — tsc/tsdown lib bundles (+ aek-websearch postbuild oclif readme)
+  //                and the aek-web console's vite dist (apps/aek-web)
   //   build:cli  — coraek's oclif commands (lib/commands/*.mjs, incl. `web`)
-  //   bundle     — aek-home (only a `bundle` script; its main points at lib/)
+  //   bundle     — (historically aek-home; no AEK package carries it anymore)
   for (const task of ['build', 'build:cli', 'bundle']) {
-    if (!pnpmRun(root, ['-r', '--filter', './packages/aek/**', 'run', task])) {
+    if (!pnpmRun(root, ['-r', '--filter', './packages/aek/**', '--filter', './apps/aek-web', 'run', task])) {
       fail(`AEK 包 ${task} 失败（需 pnpm-workspace.yaml 的 ignoreWorkspaceCycles）；current 未动`)
     }
   }

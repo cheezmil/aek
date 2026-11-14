@@ -88,7 +88,6 @@
     { "path": "./packages/client/ui-sidebar" },
     { "path": "./packages/client/ui-brand-official" },
     { "path": "./packages/aek/base/coraek" },
-    { "path": "./packages/aek/coraek-plugins/aek-home" },
     { "path": "./packages/client/ui-approval" },
     { "path": "./packages/client/ui-chat/tsconfig.client.json" },
     { "path": "./packages/client/ui-conversation/tsconfig.client.json" },
@@ -142,7 +141,6 @@
     { "path": "./packages/client/resources" },
     { "path": "./packages/api/workspace-files/tsconfig.client.json" },
     { "path": "./packages/client/web" },
-    { "path": "./packages/context/file-reference" },
-    { "path": "./apps/web" }
+    { "path": "./packages/context/file-reference" }
   ]
 }

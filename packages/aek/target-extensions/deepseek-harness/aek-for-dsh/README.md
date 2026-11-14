@@ -16,10 +16,10 @@ any dsh profile it is added to.
 Install it once, and the profile gains access to the AEK functionality layer
 (identity + web search) at once.
 
-Host-specific UI surfaces (for example `@cheezmil/aek-home`, the React root
-that renders into `#root` and replaces the dsh shell) are intentionally NOT
-part of this bundle: they belong to the host that owns them (web-app /
-aek-desktop profiles) and should be installed there individually.
+Host-specific UI surfaces (for example `@cheezmil/aek-web`, the standalone
+React app the host serves into `#root` instead of the dsh shell) are
+intentionally NOT part of this bundle: they belong to the host that owns them
+(web-app / aek-desktop profiles) and are served there, not installed here.
 
 ## Install
 

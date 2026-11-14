@@ -2,7 +2,8 @@
 /**
  * Static enforcement: the AEK web frontend is React + Vite + TS + lightningcss,
  * and nothing else. Tailwind CSS (and the PostCSS / preprocessor / CSS-in-JS
- * toolchains it pulls in) must never enter `apps/web` or the AEK plugin layer.
+ * toolchains it pulls in) must never enter the AEK console (apps/aek-web) or
+ * the AEK plugin layer.
  *
  * This is the code-level counterpart of the 2026-11-07 stack decision. It is
  * READ-ONLY: it never writes, renames, or deletes anything. Run it directly,
@@ -15,7 +16,7 @@
  * precompile step, so adding it would break a pipeline that already works.
  *
  * Scope (deliberately narrow — do not widen without a decision):
- *   - `apps/web/**`                 the Vite frontend shell
+ *   - `apps/aek-web/**`            the AEK console (standalone Vite SPA)
  *   - `packages/aek/**`             the AEK plugin / coraek layer
  *   - root `package.json`           workspace-level styling dependencies
  * `packages/client/**` is faithfully copied upstream and is not in scope.
@@ -36,7 +37,7 @@ const SELF = fileURLToPath(import.meta.url)
 const SKIP_DIRS = new Set([
   'node_modules', 'dist', 'lib', 'coverage', '.git', '.turbo', 'types', 'tests',
 ])
-const SCAN_ROOTS = ['apps/web', 'packages/aek']
+const SCAN_ROOTS = ['apps/aek-web', 'packages/aek']
 const SOURCE_EXT = /\.(?:ts|tsx|mjs|js|jsx|css|html)$/u
 const DEP_KEYS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
 
@@ -205,7 +206,7 @@ function selftest() {
   expectViolation('sass dependency', scanManifest('fixture/package.json', {
     devDependencies: { sass: '^1.0.0' },
   }))
-  expectClean('declared stack', scanManifest('apps/web/package.json', {
+  expectClean('declared stack', scanManifest('apps/aek-web/package.json', {
     devDependencies: { react: '^18.2.0', vite: '^6.0.0', typescript: '^6.0.0', lightningcss: '^1.33.0' },
     dependencies: { '@vitejs/plugin-react': '^4.7.0' },
   }))
@@ -221,10 +222,10 @@ function selftest() {
   expectClean('lightningcss usage', scanSourceText('katex-fonts.ts', `import { transform } from 'lightningcss'`))
   expectClean('prose mentioning Tailwind', scanSourceText('notes.ts', '// Tailwind is not used here'))
 
-  expectViolation('postcss config file', scanFileName('apps/web/postcss.config.cjs'))
-  expectViolation('tailwind config file', scanFileName('apps/web/tailwind.config.ts'))
-  expectClean('vite config file', scanFileName('apps/web/vite.config.ts'))
-  expectClean('CSS Modules file', scanFileName('apps/web/src/Home.module.css'))
+  expectViolation('postcss config file', scanFileName('apps/aek-web/postcss.config.cjs'))
+  expectViolation('tailwind config file', scanFileName('apps/aek-web/tailwind.config.ts'))
+  expectClean('vite config file', scanFileName('apps/aek-web/vite.config.ts'))
+  expectClean('CSS Modules file', scanFileName('apps/aek-web/src/Home.module.css'))
 
   for (const name of ALLOWED_STACK) {
     let blocked = false

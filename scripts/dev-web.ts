@@ -4,10 +4,10 @@
  *
  * Stages, in order: `pnpm run build:artifacts` (skipped by `--skip-build`), three
  * long-lived watchers, then `aek web` (skipped by `--no-serve`). The watchers
- * exist because the compile shell links built lib products rather than
+ * exist because the console host links built lib products rather than
  * sources: `tsc -b tsconfig.client.json --watch` emits `lib/types` (the tsdown
  * lib entries are that emit, not `src`), tsdown watch bundles `lib/index.js`
- * and `lib/client.js`, and `vite build --watch` rewrites `apps/web/dist`, which
+ * and `lib/client.js`, and `vite build --watch` rewrites the aek-web console's `dist`, which
  * `aek web` serves. A missing watcher does not fail — it silently shows the
  * previous artifact, so an edit appears to do nothing; any stage exiting on its
  * own therefore stops the loop with exit code 1.
@@ -17,7 +17,7 @@
  * any process that rewrites `lib/client.js` files triggers reloads.
  *
  * MUST NOT run beside `pnpm run build` or `build:artifacts`: they write the same `lib/` and
- * `apps/web/dist/` trees. The build stage here finishes before any watcher starts.
+ * `aek-web/dist/` trees. The build stage here finishes before any watcher starts.
  *
  * Usage: `pnpm run dev:web [--skip-build] [--no-serve] [--poll[=ms]] [aek web arguments]`.
  * `--skip-build` requires the artifact tree from a prior `build` or `build:artifacts`: every
@@ -56,8 +56,8 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 /** Client-face type emit feeding every tsdown lib entry in the watch set. */
 const CLIENT_TYPE_PROGRAM = 'tsconfig.client.json'
 
-/** Compile-shell workspace whose dist `aek web` serves. */
-const SHELL_PACKAGE = '@deepseek-ai/dsh-web-frontend'
+/** Console-app workspace whose dist `aek web` serves (B2: the standalone aek-web console, not the dsh shell). */
+const CONSOLE_PACKAGE = '@cheezmil/aek-web'
 
 /**
  * Test infrastructure builds through the client preset but never enters the
@@ -409,13 +409,13 @@ if (isMain) {
   // in its module graph.
   const bundles = await watchClientPlugins(repoRoot, [...pluginDirs, ...libraryDirs], options.pollInterval)
   if (!shutdownRequested()) {
-    // Through the shell's own `watch` script rather than vite's API: vite is not a
-    // repository-root dependency, and more importantly the vite root is its
+    // Through the console app's own `watch` script rather than vite's API: vite is
+    // not a repository-root dependency, and more importantly the vite root is its
     // working directory — `resolve.dedupe` resolves react from that root, so
-    // running vite from anywhere but apps/web silently switches which react copy
-    // the bundle gets.
-    spawnStage(supervisor, 'vite build --watch', 'pnpm', ['--filter', SHELL_PACKAGE, 'run', 'watch'], false)
-    // The same launch vector as the root `dsh` script, so the served Host runs
+    // running vite from anywhere but apps/aek-web silently switches which react
+    // copy the bundle gets.
+    spawnStage(supervisor, 'vite build --watch', 'pnpm', ['--filter', CONSOLE_PACKAGE, 'run', 'watch'], false)
+    // The same launch vector as the `aek web` command, so the served Host runs
     // from source exactly as `aek web` would.
     if (options.serve) {
       spawnStage(supervisor, 'aek web', process.execPath, [
@@ -423,10 +423,10 @@ if (isMain) {
       ], false)
     }
     console.log(
-      `dev-web: watching ${String(pluginDirs.length)} dsh.client plugin packages`
+      `dev-web: watching ${String(pluginDirs.length)} client plugin packages`
       + ` and ${String(libraryDirs.length)} statically linked library packages`
       + (options.pollInterval !== undefined ? ` (polling ${String(options.pollInterval)}ms)` : '')
-      + `, plus tsc -b ${CLIENT_TYPE_PROGRAM} and the ${SHELL_PACKAGE} dist build`
+      + `, plus tsc -b ${CLIENT_TYPE_PROGRAM} and the ${CONSOLE_PACKAGE} dist build`
       + (options.serve ? ', serving through aek web' : '')
       + ':\n  '
       + [...pluginDirs, ...libraryDirs].join('\n  '),

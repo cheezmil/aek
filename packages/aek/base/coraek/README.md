@@ -109,7 +109,7 @@ loading (bundle + `apply(ctx)`), which this layer must never intercept.
   `POST /api/aek/capabilities/stop` stops a provider and requires
   `confirm: true` (428 otherwise). The compliance line is a *fixed host
   template* filled with provider-asserted data — the host never hardcodes
-  upstream facts. The aek-home About panel renders the section only when at
+  upstream facts. The aek-web About panel renders the section only when at
   least one provider is registered.
 - **Operator CLI** (`aek external`, `src/commands/external.ts`). Read-only
   actions (`list`, `status`, `describe`) need no confirmation; mutating
@@ -148,7 +148,7 @@ under the supervisor above). Strong-copyleft and native capabilities are
   routing into isolates (`aek.search` & co.) is still pending.
 - **Host API** (`src/capability-api.ts`). `GET /api/aek/capabilities` also
   returns `runtime: { defaultMode, choices }` and a per-provider
-  `runtime: { mode, reason }` block; the aek-home About panel shows the
+  `runtime: { mode, reason }` block; the aek-web About panel shows the
   choice counts and the reason chip.
 - **Operator CLI** (`aek runtime`, `src/commands/runtime.ts`). `list` /
   `status <id>` are read-only; `set <id> share|isolate` is a write and needs

@@ -37,6 +37,23 @@ function fetcherOf(text: string, ok = true): RankingFetcher {
   return async () => ({ ok, status: ok ? 200 : 404, text: async () => text })
 }
 
+/** @param initialFail - the switch's starting value. @returns a flip-fetcher handle. */
+function makeFlipFetcher(initialFail: boolean) {
+  let fail = initialFail
+  let calls = 0
+  const fetcher: RankingFetcher = async () => {
+    calls += 1
+    return fail
+      ? { ok: false, status: 503, text: async () => '' }
+      : { ok: true, status: 200, text: async () => DATA_TEXT }
+  }
+  return {
+    fetcher,
+    setFail: (value: boolean): void => { fail = value },
+    calls: (): number => calls,
+  }
+}
+
 /** @param data - validated ranking. @returns its catch-all tier id. */
 function catchAllOf(data: RankingData): string {
   return data.catchAllId
@@ -311,20 +328,13 @@ describe('loadRanking (runtime fetch + degradation)', () => {
  */
 describe('Y round: honest refresh-failure reporting', () => {
   it('reports a failed FORCED refresh as refreshFailed, never as stale', async () => {
-    let fail = false
-    let calls = 0
-    const fetcher: RankingFetcher = async () => {
-      calls += 1
-      return fail
-        ? { ok: false, status: 503, text: async () => '' }
-        : { ok: true, status: 200, text: async () => DATA_TEXT }
-    }
+    const { fetcher, setFail } = makeFlipFetcher(false)
     let clock = 1000
     const options = { url: URL_A, fetcher, now: () => clock, ttlMs: 5000 }
     const seeded = await loadRanking(options)
     expect(seeded.classified).toBe(true)
     // Let the TTL pass, break the remote, and force a fresh read.
-    fail = true
+    setFail(true)
     clock += 5001
     const failed = await loadRanking({ ...options, force: true })
     expect(failed.classified).toBe(true)
@@ -337,42 +347,28 @@ describe('Y round: honest refresh-failure reporting', () => {
   })
 
   it('holds a failing refresh in backoff — no re-fetch, an honest flag', async () => {
-    let fail = true
-    let calls = 0
-    const fetcher: RankingFetcher = async () => {
-      calls += 1
-      return fail
-        ? { ok: false, status: 503, text: async () => '' }
-        : { ok: true, status: 200, text: async () => DATA_TEXT }
-    }
+    const { fetcher, setFail, calls } = makeFlipFetcher(true)
     let clock = 1000
     const options = { url: URL_A, fetcher, now: () => clock, ttlMs: 5000 }
-    fail = false
+    setFail(false)
     await loadRanking(options)
-    fail = true
+    setFail(true)
     clock += 5001
     await loadRanking({ ...options, force: true }) // records the failure
     const early = await loadRanking(options)
     expect(early.classified).toBe(true)
     expect(early.stale).toBeUndefined()
     expect(early.refreshFailed?.reason).toBe('http-error')
-    expect(calls).toBe(2) // the backoff swallowed the retry
+    expect(calls()).toBe(2) // the backoff swallowed the retry
   })
 
   it('retries after the backoff window and a success clears the flag', async () => {
-    let fail = true
-    let calls = 0
-    const fetcher: RankingFetcher = async () => {
-      calls += 1
-      return fail
-        ? { ok: false, status: 503, text: async () => '' }
-        : { ok: true, status: 200, text: async () => DATA_TEXT }
-    }
+    const { fetcher, setFail } = makeFlipFetcher(true)
     let clock = 1000
     const options = { url: URL_A, fetcher, now: () => clock, ttlMs: 5000 }
-    fail = false
+    setFail(false)
     await loadRanking(options)
-    fail = true
+    setFail(true)
     clock += 5001
     await loadRanking({ ...options, force: true })
     // Cross the backoff window: the next read may claim "in progress" again.
@@ -381,8 +377,8 @@ describe('Y round: honest refresh-failure reporting', () => {
     expect(retrying.stale).toBe(true)
     expect(retrying.refreshFailed).toBeUndefined()
     // The background retry succeeds: the flag is gone, the cache is fresh.
-    fail = false
-    await new Promise(resolve => { setTimeout(resolve, 0) })
+    setFail(false)
+    await new Promise((resolve) => { setTimeout(resolve, 0) })
     const after = await loadRanking({ ...options, force: true })
     expect(after.stale).toBeUndefined()
     expect(after.refreshFailed).toBeUndefined()

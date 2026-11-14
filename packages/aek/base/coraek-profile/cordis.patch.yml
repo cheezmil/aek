@@ -9,6 +9,12 @@
 # It is separate from `@cheezmil/aek-for-dsh`: that bundle carries the
 # dsh-facing AEK plugins for a profile that still shows the dsh shell. This
 # one is mounted only by profiles that want the AEK console as their root.
+#
+# B2: the AEK console is the standalone `@cheezmil/aek-web` app (a Vite SPA
+# that the web-app bundle serves unconditionally — the dsh shell was retired
+# from the AEK surface, so aek-web is the only web surface). It is NOT a
+# cordis client plugin, so it needs no insert row here — only the host-side
+# identity + admin APIs are inserted.
 
 # ── dev-only module hot reload ─────────────────────────────────────────────
 #
@@ -31,7 +37,7 @@
 # node_modules for no benefit.
 - id: hmr
   config:
-    root: !!js "process.env.AEK_MODE === 'dev' ? ['node_modules/@cheezmil/coraek/lib', 'node_modules/@cheezmil/aek-home/lib', 'node_modules/@cheezmil/aek-websearch/lib'] : []"
+    root: !!js "process.env.AEK_MODE === 'dev' ? ['node_modules/@cheezmil/coraek/lib', 'node_modules/@cheezmil/aek-web/dist', 'node_modules/@cheezmil/aek-websearch/lib'] : []"
     debounce: 100
     ignored: ['**/*.map']
 
@@ -46,18 +52,10 @@
 
     # ── AEK web-search management API ───────────────────────────────────────
 
-    # aek-websearch-admin: the host-side management API the AEK home surface
-    # reads (`GET /api/aek/websearch`) and writes through
+    # aek-websearch-admin: the host-side management API the AEK web console
+    # (aek-web) reads (`GET /api/aek/websearch`) and writes through
     # (`POST /api/aek/websearch`). It is the ADMIN half only — the search
     # provider itself is registered by the host that composes the search
     # seam, and coraek-profile does not own that composition.
     - id: aek-websearch-admin
       name: '@cheezmil/aek-websearch/admin'
-
-    # ── AEK home surface ────────────────────────────────────────────────────
-
-    # aek-home: the AEK application root. Its client half renders directly
-    # into `#root` via createRoot, so the dsh slot/AppFrame system is not
-    # involved; the dsh `ui-renderer` stays disabled in the web profile.
-    - id: aek-home
-      name: '@cheezmil/aek-home'

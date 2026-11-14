@@ -1,6 +1,6 @@
 {
   "name": "@cheezmil/coraek-profile",
-  "description": "coraek profile assembly layer: a cordis patch that inserts the AEK identity, web-search admin API, and aek-home root into a dsh web profile",
+  "description": "coraek profile assembly layer: a cordis patch that inserts the AEK identity + web-search admin API into a dsh web profile; the AEK console itself is the standalone @cheezmil/aek-web app",
   "version": "0.1.0",
   "publishConfig": {
     "access": "public"
@@ -26,7 +26,7 @@
     "distribution": "A1"
   },
   "dependencies": {
-    "@cheezmil/aek-home": "workspace:*",
+    "@cheezmil/aek-web": "workspace:*",
     "@cheezmil/aek-websearch": "workspace:*",
     "@cheezmil/coraek": "workspace:*"
   },

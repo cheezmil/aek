@@ -90,6 +90,10 @@ export default class WebCommand extends Command {
 
     applyAekEnvironment()
 
+    // B2: the AEK web profile serves the standalone @cheezmil/aek-web console.
+    // web-app's resolveDistIndex() now resolves aek-web unconditionally (the dsh
+    // shell was retired from the AEK surface), so no AEK_WEB_SERVE flag is set.
+
     // T round: structured boot context + lifecycle. Which tree, which tag,
     // how the child died — the things raw console output cannot tell you.
     // pino's base logger already records `pid`/`hostname`; only operator

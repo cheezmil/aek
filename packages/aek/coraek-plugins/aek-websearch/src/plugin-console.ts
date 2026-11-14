@@ -4,7 +4,8 @@
  *
  * WHY A BRIDGE INSTEAD OF `ctx.promptManager` / `ctx.skillsManager`
  * The web profile's `cordis.patch.yml` mounts only coraek, websearch/admin and
- * aek-home. Prompt Manager and Skill Manager are mounted in the *dsh* profile,
+ * the aek-web static console. Prompt Manager and Skill Manager are mounted in
+ * the *dsh* profile,
  * so their in-process services simply do not exist in this host. Their CLIs
  * (`aekpm`, `aeksm`) are the primary human/script face anyway, so this route
  * drives exactly those CLIs — the same engine, the same commands, zero

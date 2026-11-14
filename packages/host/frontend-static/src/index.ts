@@ -131,7 +131,7 @@ export function apply(ctx: Context, config: Config): void {
     const rawPath = new URL(req.url ?? '/', 'http://x').pathname
     // B round: path-based SPA routing. A CLEAN path (no extension) that does
     // not exist in the dist is the application document — the client router
-    // (aek-home) owns it. Requests that ask for an HTML document only
+    // (aek-web) owns it. Requests that ask for an HTML document only
     // (browsers, the Electron shell); a missing ASSET (`.js`/`.css`/…) still
     // answers 404 so broken references never serve silently-wrong HTML.
     const wantsDocument = (req.headers.accept ?? '').includes('text/html')

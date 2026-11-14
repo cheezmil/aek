@@ -28,7 +28,7 @@
  * - `GET  /api/aek/inventory`        → real AEK package versions + dev/npm kind
  *
  * This plugin owns all host routes the AEK console reads. The inventory route
- * is registered here (not in aek-home) because that package's host entry is a
+ * is registered here (not in aek-web) because the console surface is a static app
  * tsc emit artifact that cannot carry relative TS imports through the bundle.
  *
  * The key-pool LIST/CRUD routes NEVER return a plaintext key literal: every

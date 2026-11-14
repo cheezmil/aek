@@ -119,14 +119,21 @@ try {
  * concern — the fallback owner reads files per request, so a composition
  * whose page never reaches the fallback seat (the static worker preview
  * ships its own page and carries no dist) boots without one.
+ *
+ * B2: the AEK web profile serves the standalone @cheezmil/aek-web console
+ * (a Vite SPA). The dsh browser shell (apps/web / @deepseek-ai/dsh-web-frontend)
+ * is retired from the AEK surface — aek-web is the only web surface the AEK
+ * host serves, so this anchor resolves aek-web unconditionally, through the
+ * package manifest (never a hardcoded path).
  */
 function resolveDistIndex(): string {
   const require = createRequire(import.meta.url)
+  const frontend = '@cheezmil/aek-web'
   try {
-    return join(dirname(require.resolve('@deepseek-ai/dsh-web-frontend/package.json')), 'dist', 'index.html')
+    return join(dirname(require.resolve(`${frontend}/package.json`)), 'dist', 'index.html')
   } catch {
-    /* v8 ignore next 2 -- reachable only when the frontend package is absent from the checkout */
-    throw new Error('web-app: @deepseek-ai/dsh-web-frontend is not resolvable from this composition')
+    /* v8 ignore next 2 -- reachable only when the frontend package is absent from the composition */
+    throw new Error(`web-app: ${frontend} is not resolvable from this composition`)
   }
 }
 

@@ -15,7 +15,7 @@
  * builders, skips comments, and skips `test`/`tests`. This gate reads every
  * plain-text file in the AEK-owned tree, comments included.
  *
- * Scope: `packages/aek`, `scripts/aek`, `apps/web`, `apps/aek-desktop`, plus the
+ * Scope: `packages/aek`, `scripts/aek`, `apps/aek-web`, `apps/aek-desktop`, plus the
  * repository root files. The faithfully copied dsh upstream is NOT part of the
  * gate — its fixtures legitimately use names like `/home/node` or
  * `C:\Users\runneradmin`. `--all` scans the whole tree for a manual review and
@@ -109,7 +109,7 @@ const ROOT = findProjectRoot(HERE)
 const ARTIFACT_ROOTS = ['packages', 'apps', 'vendor']
 
 /** AEK-authored trees. Everything here is ours to keep clean. */
-const OWNED_ROOTS = ['packages/aek', 'scripts/aek', 'apps/web', 'apps/aek-desktop']
+const OWNED_ROOTS = ['packages/aek', 'scripts/aek', 'apps/aek-web', 'apps/aek-desktop']
 /** Root files that belong to us as well. */
 const OWNED_FILES = ['AGENTS.md', 'README.md', 'package.json']
 

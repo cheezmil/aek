@@ -73,7 +73,7 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
 - **插件受众分类（A1 / A2，硬规则）**：每个 `packages/aek/**` 的包都必须在 `package.json` 声明 `aek.distribution` —— `A1` = 将来发布到互联网给全球使用；`A2` = 完全本地使用。**只有这两类，没有第三类、没有默认值、没有兜底**：未声明或非法值直接**编译不通过**（`verify-build-rules.mjs`），`launch.mjs` 在启动期也拒绝加载并给出提醒。
 - **A2 绝不发布**：`scripts/release/families.ts`、`scripts/release/verify.ts`、`scripts/aek/cicd.mjs` 与 `plugin-class.mjs publish-list` 都会把 A2 完全排除出 npm / release；`private: true` 是第二道独立保险。A1 ↔ A2 的变更**必须先询问用户、未经允许不得更改**；唯一写入口是 `node scripts/aek/plugin-class.mjs set <pkg> <A1|A2> --reason "..." --confirm`，每次变更写入槽内审计日志。
 - **能力与宿主的运行时关系分三类，不能一句「独立进程 + 通法」盖住**（2026-11-12 用户订正，别再写错）：
-  1. **我们自己的 TS/JS AEK 开源插件**（`aek-websearch` / `aek-home` 等，带 `main` / `exports["."]` 进程内入口、`aek.cordis: true`）→ **共享 coraek 宿主 Node 运行时（进程内）**。这是默认且最省内存的形态；用户可**选择性**共用运行时进一步降低常驻内存，不必每个插件单开一份 Node 进程。**这类不走 `external-supervisor`，也不是「外部能力」**。
+  1. **我们自己的 TS/JS AEK 开源插件**（`aek-websearch` / `aek-prompt-manager` 等，带 `main` / `exports["."]` 进程内入口、`aek.cordis: true`）→ **共享 coraek 宿主 Node 运行时（进程内）**。这是默认且最省内存的形态；用户可**选择性**共用运行时进一步降低常驻内存，不必每个插件单开一份 Node 进程。**这类不走 `external-supervisor`，也不是「外部能力」**。
   2. **强 copyleft 外部 provider**（AGPL / GPL，如将来的 Fury）→ **必须独立进程 + 通法**，理由是**许可隔离**：宿主不写任何具体上游、不搬对方代码、不分发对方二进制进宿主进程。
   3. **原生语言能力**（Go / Rust 等）→ 自身运行时**架构上无法共享 JS 运行时**，故**各需一份独立进程实例**，同样走通法协议，但理由是**运行时不兼容**（不是许可）。
 

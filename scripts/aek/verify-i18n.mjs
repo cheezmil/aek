@@ -8,13 +8,13 @@
  *
  * Checks (all read-only, no side effects — safe to run on every compile):
  *
- * 1. LOCALE PARITY — the zh-CN and en-US dictionaries in the aek-home client
+ * 1. LOCALE PARITY — the zh-CN and en-US dictionaries in the aek-web client
  *    `i18n.tsx` must define the SAME key set (a key missing in either locale
  *    is a violation; the fallback-to-ZH rule hides it at runtime).
  * 2. CONSOLE SCOPE — every `t('dotted.key')` / `tf('dotted.key')` literal,
  *    key-bearing field (`labelKey` / `hintKey` / `i18nKey` / `titleKey` /
  *    `noteKey` / `messageKey` / …), `?? 'dotted.key'` fallback and dynamic
- *    template inside the aek-home package must resolve in BOTH dictionaries.
+ *    template inside the aek-web package must resolve in BOTH dictionaries.
  * 3. FACTS SCOPE — key-bearing field literals anywhere else in the AEK
  *    packages (host-supplied facts such as `noteKey: 'permissions.note.mac'`
  *    in aek-websearch) must resolve in both dictionaries. Plain `t()` calls
@@ -50,8 +50,8 @@ function findRoot(start) {
 }
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)))
-const CONSOLE_SRC = join(ROOT, 'packages', 'aek', 'coraek-plugins', 'aek-home', 'src')
-const I18N_TSX = join(CONSOLE_SRC, 'client', 'i18n.tsx')
+const CONSOLE_SRC = join(ROOT, 'apps', 'aek-web', 'src')
+const I18N_TSX = join(CONSOLE_SRC, 'i18n.tsx')
 const AEK_SRC = join(ROOT, 'packages', 'aek')
 
 /**
@@ -104,7 +104,11 @@ function walkTs(dir) {
  * @param {string} source @param {string} name @returns {string[]} keys.
  */
 function dictKeys(source, name) {
-  const start = source.indexOf(`const ${name}: Record<string, string> = {`)
+  // Match the dictionary const regardless of its value-type annotation
+  // (e.g. `Record<string, string>` or `Record<string, string | undefined>`):
+  // anchor on `const <name>: Record<string,` and let the brace walk below find
+  // the object literal. `Record<...>` uses angle brackets, so no brace noise.
+  const start = source.indexOf(`const ${name}: Record<string,`)
   if (start < 0) throw new Error(`dictionary ${name} not found in i18n.tsx`)
   let depth = 0
   let end = -1
@@ -151,9 +155,9 @@ function requireKey(key, where) {
   violations.push(`missing-key: "${key}" (${where}) missing from ${missing.join(' + ') || 'both locales'}`)
 }
 
-// 2 + 3 — CONSOLE scope (aek-home): t()/tf() literals, key-bearing fields,
+// 2 + 3 — CONSOLE scope (aek-web): t()/tf() literals, key-bearing fields,
 // ?? fallbacks, dynamic templates. Every `t` here renders through the
-// aek-home dictionary. (Other plugins' client cards carry their own
+// aek-web dictionary. (Other plugins' client cards carry their own
 // host-supplied `t`, so they are NOT part of this scope — see SCOPE B.)
 for (const file of walkTs(CONSOLE_SRC)) {
   if (file === I18N_TSX) continue

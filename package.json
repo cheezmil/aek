@@ -28,7 +28,6 @@
     "build:lib": "node scripts/aek/run.mjs build:lib",
     "build:lib:host": "node scripts/aek/run.mjs build:lib:host",
     "build:lib:client": "node scripts/aek/run.mjs build:lib:client",
-    "build:web": "node scripts/aek/run.mjs build:web",
     "build:desktop": "node scripts/aek/run.mjs build:desktop",
     "dev:desktop": "pnpm --filter @deepseek-ai/dsh-desktop run dev",
     "start:desktop": "pnpm --filter @deepseek-ai/dsh-desktop run start",

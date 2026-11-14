@@ -14,9 +14,9 @@ kind: "package-bundle"
 
 安装一次，profile 就获得 AEK 功能层（身份 + 搜索）。
 
-宿主专属的 UI 表面（例如 `@cheezmil/aek-home`，渲染到 `#root`、替代 dsh
-shell 的 React 根）**有意不放进这个 bundle**：它属于拥有它的宿主
-（web-app / aek-desktop profile），应在宿主侧单独安装。
+宿主专属的 UI 表面（例如 `@cheezmil/aek-web`，宿主 serve 到 `#root`、替代 dsh
+shell 的独立 React 应用）**有意不放进这个 bundle**：它属于拥有它的宿主
+（web-app / aek-desktop profile），由宿主侧 serve，不在这里安装。
 
 ## 安装
 

@@ -221,7 +221,7 @@ function loadWindowBounds(): SavedBounds {
   // only when most of the window would still sit inside some work area,
   // otherwise fall back to the OS-centered default.
   const rect = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
-  const visible = screen.getAllDisplays().some(display => {
+  const visible = screen.getAllDisplays().some((display) => {
     const area = display.workArea
     const overlapX = Math.min(rect.x + rect.width, area.x + area.width) - Math.max(rect.x, area.x)
     const overlapY = Math.min(rect.y + rect.height, area.y + area.height) - Math.max(rect.y, area.y)

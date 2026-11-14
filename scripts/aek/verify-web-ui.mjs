@@ -93,9 +93,9 @@ async function check(port) {
   const result = {
     port,
     listeners: processes,
-    index: { ok: false, status: 0, title: '' },
-    boot: { aekHome: false, coraek: false, entries: 0 },
-    clientBundle: { ok: false, cssInjected: false, tokens: false },
+    index: { ok: false, status: 0, title: '', aekWeb: false, jsAsset: '', cssAsset: '' },
+    aekWebAssets: { jsOk: false, cssOk: false },
+    boot: { coraek: false, entries: 0 },
     api: { ok: false, providers: 0 },
   }
 
@@ -107,32 +107,43 @@ async function check(port) {
       ok: response.ok,
       status: response.status,
       title: html.match(/<title>([^<]*)<\/title>/u)?.[1] ?? '',
+      aekWeb: false,
+      jsAsset: '',
+      cssAsset: '',
     }
+    // B2: the served page is the standalone aek-web console (a static Vite dist),
+    // not the dsh client shell. Its content-hashed dist assets are the
+    // serve-point marker.
+    const js = html.match(/assets\/index-[A-Za-z0-9_-]+\.js/u)?.[0] ?? ''
+    const css = html.match(/assets\/index-[A-Za-z0-9_-]+\.css/u)?.[0] ?? ''
+    result.index.aekWeb = js !== '' && css !== ''
+    result.index.jsAsset = js
+    result.index.cssAsset = css
   } catch (cause) {
     result.index.error = cause instanceof Error ? cause.message : String(cause)
   }
 
+  // Verify the aek-web dist assets actually resolve (200) so the page receives
+  // the console, not just a reference to it.
+  for (const [key, asset] of Object.entries({ js: result.index.jsAsset, css: result.index.cssAsset })) {
+    if (asset === '') continue
+    try {
+      const response = await fetch(`${base}/${asset}`, { signal: AbortSignal.timeout(5000) })
+      result.aekWebAssets[`${key}Ok`] = response.ok
+    } catch {
+      result.aekWebAssets[`${key}Ok`] = false
+    }
+  }
+
+  // The dsh module-system boot is still injected into the page by the host.
+  // coraek presence is recorded informationally; aek-web is a static app, not a
+  // client-manifest entry, so it no longer appears here.
   const bootMatch = html.match(/globalThis\["__DSH_BOOT__"\]\s*=\s*(\{[\s\S]*?\})<\/script>/u)
   if (bootMatch !== null) {
     try {
       const boot = JSON.parse(bootMatch[1])
       const ids = (boot.entries ?? []).map(entry => entry.id)
-      result.boot = {
-        aekHome: ids.includes('@cheezmil/aek-home'),
-        coraek: ids.includes('@cheezmil/coraek'),
-        entries: ids.length,
-      }
-      const application = (boot.batches ?? []).find(batch => batch.phase === 'application')
-      if (application?.url !== undefined) {
-        const url = `${base}/${application.url.replace(/&amp;/gu, '&')}`
-        const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
-        const bundle = await response.text()
-        result.clientBundle = {
-          ok: response.ok,
-          cssInjected: bundle.includes('data-plugin-css'),
-          tokens: bundle.includes('--aek-accent:'),
-        }
-      }
+      result.boot = { coraek: ids.includes('@cheezmil/coraek'), entries: ids.length }
     } catch (cause) {
       result.boot.error = cause instanceof Error ? cause.message : String(cause)
     }
@@ -146,8 +157,8 @@ async function check(port) {
     result.api.error = cause instanceof Error ? cause.message : String(cause)
   }
 
-  result.ok = result.index.ok && result.boot.aekHome && result.clientBundle.cssInjected
-    && result.clientBundle.tokens && result.api.ok
+  result.ok = result.index.ok && result.index.aekWeb
+    && result.aekWebAssets.jsOk && result.aekWebAssets.cssOk && result.api.ok
   return result
 }
 
@@ -256,8 +267,8 @@ async function main() {
       console.log(`  listener pid ${item.pid} ${item.ours ? '[ours]' : '[other app]'}: ${item.command || '(unknown)'}`)
     }
     console.log(`  GET /            ${result.index.status} ${JSON.stringify(result.index.title)}`)
-    console.log(`  boot manifest    aek-home=${result.boot.aekHome} coraek=${result.boot.coraek} entries=${result.boot.entries}`)
-    console.log(`  client bundle    css-injected=${result.clientBundle.cssInjected} design-tokens=${result.clientBundle.tokens}`)
+    console.log(`  aek-web served   ${result.index.aekWeb ? 'yes' : 'no'} (js ${result.index.jsAsset || '-'} → ${result.aekWebAssets.jsOk ? '200' : 'n/a'}, css ${result.index.cssAsset || '-'} → ${result.aekWebAssets.cssOk ? '200' : 'n/a'})`)
+    console.log(`  boot manifest    coraek=${result.boot.coraek} entries=${result.boot.entries} (aek-web is a static app, not a manifest entry)`)
     console.log(`  admin API        ok=${result.api.ok} providers=${result.api.providers}`)
   }
   process.exit(result.ok ? 0 : 1)
