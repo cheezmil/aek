@@ -1075,7 +1075,7 @@ body {
    own h2 (same accent-bar look as the settings section titles) so the
    page scans as 运行实例 / 插件与程序 / 系统信息. */
 .programsSection {
-  margin-top: var(--aek-space-9);
+  margin-top: var(--aek-space-8);
 }
 .programsSection:first-child { margin-top: 0; }
 .programsSectionTitle {
@@ -1100,7 +1100,7 @@ body {
 .programsSectionHint {
   margin: -2px 0 var(--aek-space-4);
   font-size: 12px;
-  color: var(--aek-text-dim);
+  color: var(--aek-text-muted);
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────── */
