@@ -1053,6 +1053,30 @@ function useReleaseState(): { currentTag?: string; previousTag?: string } | null
   return state
 }
 
+/**
+ * Render one install-mode label (S round three-way split). Old hosts that
+ * still report the legacy two-way `dev | npm` degrade to the matching mode
+ * label instead of showing a missing key.
+ * @param kind - the install kind from the inventory snapshot.
+ * @returns the localized label.
+ */
+function installKindLabel(kind: 'dev' | 'build' | 'global' | 'npm' | undefined): string {
+  const { t } = useI18n()
+  switch (kind) {
+    case 'dev':
+      return t('about.mode.dev')
+    case 'build':
+      return t('about.mode.build')
+    case 'global':
+      return t('about.mode.global')
+    case 'npm':
+      // Legacy host: an npm install is the package-manager mode.
+      return t('about.mode.global')
+    default:
+      return '—'
+  }
+}
+
 /** @returns the About page with the three entry points marked. */
 export function AboutPanel({
   inventory, refreshSignal, compactPlugins = false,
@@ -1080,7 +1104,7 @@ export function AboutPanel({
   const plugins = snapshot?.packages.filter(pkg => pkg.group === 'plugin') ?? []
   const base = snapshot?.packages.filter(pkg => pkg.group === 'base') ?? []
   const entryLabel: Record<string, string> = {
-    web: t('about.entry.web'),
+    'aek-web': t('about.entry.aek-web'),
     cli: t('about.entry.cli'),
     'aek-desktop': t('about.entry.desktop'),
   }
@@ -1105,7 +1129,7 @@ export function AboutPanel({
         <ul className={css.infoList}>
           <li className={css.infoRow}>
             <span className={css.infoLabel}>{t('about.install')}</span>
-            <span className={css.infoValue}>{snapshot?.installKind === 'dev' ? t('about.dev') : t('about.npm')}</span>
+            <span className={css.infoValue}>{installKindLabel(snapshot?.installKind)}</span>
           </li>
           {/* C round: the version marker a shipped update actually shows — the
               release tag the current slot records (next slot: none, hidden). */}
@@ -1165,7 +1189,7 @@ export function AboutPanel({
                     {languages.length > 0
                       ? <span className={css.stackText} title={languages.join(' · ')}>{languages.join(' · ')}</span>
                       : null}
-                    <span className={css.badge}>{pkg.kind === 'dev' ? t('about.dev') : t('about.npm')}</span>
+                    <span className={css.badge}>{installKindLabel(pkg.kind)}</span>
                   </li>
                 )
               })}
@@ -1181,7 +1205,7 @@ export function AboutPanel({
             <li key={pkg.name} className={css.packageRow}>
               <span className={css.providerName}>{displayName(pkg.name)}</span>
               <span className={css.countChip}>{pkg.version}</span>
-              <span className={css.badge}>{pkg.kind === 'dev' ? t('about.dev') : t('about.npm')}</span>
+              <span className={css.badge}>{installKindLabel(pkg.kind)}</span>
             </li>
           ))}
         </ul>

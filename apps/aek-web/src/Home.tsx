@@ -30,6 +30,7 @@ import {
 } from './nav-model.ts'
 import { PluginSubNav } from './PluginSubNav.tsx'
 import { RuntimeModePanel } from './RuntimeModePanel.tsx'
+import { RuntimesPanel } from './RuntimesPanel.tsx'
 import { AboutPanel, PluginsPanel } from './InfoPanels.tsx'
 import { sidebarCssVars } from './settings-schema.ts'
 import { css, cx } from './styles.ts'
@@ -256,6 +257,7 @@ function Console() {
             <h2 className={css.programsSectionTitle}>{t('panel.runtimeSection')}</h2>
             <RuntimeModePanel refreshSignal={signalFor('runtime')} />
           </section>
+          <RuntimesPanel refreshSignal={signalFor('runtime')} />
           <section className={css.programsSection}>
             <h2 className={css.programsSectionTitle}>{t('panel.pluginsSection')}</h2>
             <div className={css.programsSectionHint}>{t('about.stackHint')}</div>

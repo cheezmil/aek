@@ -11,8 +11,12 @@ import { useCallback, useEffect, useState } from 'react'
 /** The host route publishing the AEK package inventory. */
 export const INVENTORY_API = '/api/aek/inventory'
 
-/** How a package reached this machine. */
-export type InstallKind = 'dev' | 'npm'
+/**
+ * How this install reached the machine (S round three-way split): local dev
+ * mode (main checkout), local build mode (pinned tree / release / asar), or
+ * a `pnpm add -g` style package-manager install.
+ */
+export type InstallKind = 'dev' | 'build' | 'global'
 
 /** Which section a package belongs to. */
 export type InventoryGroup = 'plugin' | 'base'

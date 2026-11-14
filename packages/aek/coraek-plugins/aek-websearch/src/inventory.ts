@@ -22,7 +22,7 @@
  */
 import type { Context } from '@cheezmil/coraek/types'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { dirname, join, sep } from 'node:path'
 import { aekHomePath } from '@cheezmil/coraek/home'
 import { fileURLToPath } from 'node:url'
@@ -68,8 +68,16 @@ interface WebServerSeam {
 /** Which section of the About page a package belongs to. */
 export type InventoryGroup = 'plugin' | 'base'
 
-/** How a package reached this machine. */
-export type InstallKind = 'dev' | 'npm'
+/**
+ * How this install reached the machine (S round: three honest modes, one
+ * per user-visible row on the About page):
+ * - `dev`    — local dev mode: the main source checkout (main worktree).
+ * - `build`  — local build mode: a locally built / pinned install (the
+ *              stable worktree, a release layout, or the packaged asar).
+ * - `global` — `pnpm add -g` mode: a package-manager install under
+ *              `node_modules` (global prefix or a user project).
+ */
+export type InstallKind = 'dev' | 'build' | 'global'
 
 /** One package row on the About page. */
 export interface InventoryPackage {
@@ -118,17 +126,30 @@ function manifestOf(file: string): { name?: string; version?: string } | undefin
 }
 
 /**
- * A `link:` into a workspace resolves to the checkout (no `node_modules`
- * segment); a registry install always resolves under `node_modules`.
- * @param path - a resolved package directory.
+ * A package-manager install (pnpm / npm, including `pnpm add -g`) resolves
+ * under a `node_modules` segment. Anything else is a source checkout: the
+ * workspace root owns a `.git` entry that distinguishes the main worktree
+ * (a DIRECTORY — local dev mode) from a linked worktree (a FILE — the pinned
+ * stable tree, i.e. a local build). A copy with no workspace root at all
+ * (release layout / asar) is also a local build.
+ * @param path - a package directory or file path.
  * @returns the install kind.
  */
 function installKindOf(path: string): InstallKind {
+  let resolved = path
   try {
-    return realpathSync(path).split(sep).includes('node_modules') ? 'npm' : 'dev'
-  } catch {
-    return 'npm'
+    resolved = realpathSync(path)
+  } catch { /* keep the literal path */ }
+  if (resolved.split(sep).includes('node_modules')) return 'global'
+  const root = findWorkspaceRoot(resolved)
+  if (root !== undefined) {
+    try {
+      return statSync(join(root, '.git')).isDirectory() ? 'dev' : 'build'
+    } catch {
+      return 'build'
+    }
   }
+  return 'build'
 }
 
 /**
@@ -171,7 +192,7 @@ function collectFromWorkspace(root: string, sink: Map<string, InventoryPackage>)
         if (meta?.name === undefined || meta.version === undefined) continue
         const group = groupOf(meta.name)
         if (group === undefined) continue
-        sink.set(meta.name, { name: meta.name, version: meta.version, kind: 'dev', group })
+        sink.set(meta.name, { name: meta.name, version: meta.version, kind: installKindOf(dirname(full)), group })
       }
     }
   }
@@ -245,8 +266,20 @@ export function readInventory(_ctx: Context): InventorySnapshot {
     .sort((a, b) => a.name.localeCompare(b.name))
   return {
     installKind,
-    source: installKind === 'dev' ? 'workspace checkout (link:)' : 'installed package (node_modules)',
+    source: sourceOfInstallKind(installKind),
     packages,
+  }
+}
+
+/** The short host-rendered explanation per install mode (S round). */
+function sourceOfInstallKind(kind: InstallKind): string {
+  switch (kind) {
+    case 'dev':
+      return 'local dev mode: running from the main source checkout'
+    case 'build':
+      return 'local build mode: running from a built / pinned install'
+    case 'global':
+      return 'pnpm add -g mode: installed into node_modules'
   }
 }
 

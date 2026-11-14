@@ -1,7 +1,7 @@
 {
   "name": "@cheezmil/aek-web",
   "description": "AEK web console: the React single-page application the host serves as its web surface (successor to the aek-home client half)",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publishConfig": {
     "access": "public"
   },

@@ -188,13 +188,16 @@ function childDirectories(dir: string): string[] {
 }
 
 /**
- * Scan the three product entry points.
+ * Scan the product entry points. The set follows the CURRENT `apps/` layout:
+ * S round renamed the console app directory from `web` to `aek-web` (B2), so
+ * the entry is `aek-web` — a stale `web` directory is build residue, not an
+ * entry point. `plugin-market-generator` is a dev tool, never a product entry.
  * @returns the entry list.
  */
 function scanEntries(): AppEntry[] {
   const base = join(ROOT, 'apps')
   return childDirectories(base)
-    .filter(id => id === 'web' || id === 'cli' || id === 'aek-desktop')
+    .filter(id => id === 'aek-web' || id === 'cli' || id === 'aek-desktop')
     .map((id) => {
       const manifest = readManifest(join(base, id, 'package.json'))
       return {
@@ -283,6 +286,9 @@ function writeDisabledPlugins(ids: ReadonlySet<string>): boolean {
 
 /**
  * Scan EVERY directory in the coraek plugins folder (not a hardcoded roster).
+ * S round: a directory WITHOUT its own `package.json` is build residue
+ * (e.g. a deleted plugin's leftover `lib/` / `node_modules/` dirs in a pinned
+ * tree), not a plugin — it must never produce a row.
  * @returns the plugin roster.
  */
 function scanPlugins(): PluginEntry[] {
@@ -292,26 +298,28 @@ function scanPlugins(): PluginEntry[] {
   // source file is ever opened) supplies the audience class and languages for
   // the About page. See @cheezmil/coraek/plugin-meta.
   const metaByName = new Map(readPluginMeta(ROOT).map(meta => [meta.packageName, meta]))
-  return childDirectories(base).map((id) => {
-    const manifest = readManifest(join(base, id, 'package.json'))
-    const lockReason = LOCKED_PLUGINS[id] ?? ''
-    const name = typeof manifest.name === 'string' ? manifest.name : id
-    const meta = metaByName.get(name)
-    return {
-      id,
-      packageName: name,
-      version: typeof manifest.version === 'string' ? manifest.version : '',
-      description: typeof manifest.description === 'string' ? manifest.description : '',
-      capabilities: capabilitiesOf(manifest, id),
-      // A locked plugin is always reported as enabled: its flag is meaningless.
-      enabled: lockReason !== '' || !disabled.has(id),
-      locked: lockReason !== '',
-      lockReason,
-      distribution: meta?.distribution.ok ? (meta.distribution.value === 'A2' ? 'A2' : 'A1') : '',
-      languages: meta?.languages.languages ?? [],
-      primaryLanguage: meta?.languages.primary ?? 'unknown',
-    }
-  })
+  return childDirectories(base)
+    .filter(id => existsSync(join(base, id, 'package.json')))
+    .map((id) => {
+      const manifest = readManifest(join(base, id, 'package.json'))
+      const lockReason = LOCKED_PLUGINS[id] ?? ''
+      const name = typeof manifest.name === 'string' ? manifest.name : id
+      const meta = metaByName.get(name)
+      return {
+        id,
+        packageName: name,
+        version: typeof manifest.version === 'string' ? manifest.version : '',
+        description: typeof manifest.description === 'string' ? manifest.description : '',
+        capabilities: capabilitiesOf(manifest, id),
+        // A locked plugin is always reported as enabled: its flag is meaningless.
+        enabled: lockReason !== '' || !disabled.has(id),
+        locked: lockReason !== '',
+        lockReason,
+        distribution: meta?.distribution.ok ? (meta.distribution.value === 'A2' ? 'A2' : 'A1') : '',
+        languages: meta?.languages.languages ?? [],
+        primaryLanguage: meta?.languages.primary ?? 'unknown',
+      }
+    })
 }
 
 /**
