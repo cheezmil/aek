@@ -94,7 +94,10 @@ export function buildGates(
     for (const step of libraryBuildSteps(root, 'all')) {
       gates.push(libraryGate(step, step.id === 'host-src' ? ['native'] : step.needs, env))
     }
-    gates.push(pnpmGate('web', 'Web build', ['run', 'build:web'], ['client-bundle'], env))
+    // B2: the old `apps/web` dsh shell is deleted, so there is no `build:web`
+    // root script anymore. The AEK console is the standalone `@cheezmil/aek-web`
+    // app, whose Vite dist is built by its own script (`pnpm --filter @cheezmil/aek-web
+    // run build`) and by the release bootstrap — not by this gate graph.
   }
   if (scope === 'typecheck') {
     for (const step of contractSteps(root, 'all')) gates.push(libraryGate(step, step.needs, env))
