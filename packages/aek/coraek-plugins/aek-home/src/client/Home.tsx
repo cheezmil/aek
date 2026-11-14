@@ -30,6 +30,7 @@ import {
 } from './nav-model.ts'
 import { PluginSubNav } from './PluginSubNav.tsx'
 import { RuntimeModePanel } from './RuntimeModePanel.tsx'
+import { AboutPanel, PluginsPanel } from './InfoPanels.tsx'
 import { sidebarCssVars } from './settings-schema.ts'
 import { css, cx } from './styles.ts'
 import { useInventory } from './useInventory.ts'
@@ -241,7 +242,18 @@ function Console() {
    * @returns that panel's content component (or nothing).
    */
   const renderPanelContent = (id: PanelId) => {
-    if (id === 'runtime') return <RuntimeModePanel refreshSignal={signalFor('runtime')} />
+    // M round: 运行实例管理 was renamed 插件与程序管理 and now hosts the
+    // former 插件管理 page AND the former 关于 content — one combined page.
+    // The 插件管理 entry is gone from the nav; 关于 stays but is empty.
+    if (id === 'runtime') {
+      return (
+        <>
+          <RuntimeModePanel refreshSignal={signalFor('runtime')} />
+          <PluginsPanel refreshSignal={signalFor('plugins')} />
+          <AboutPanel inventory={inventory} refreshSignal={signalFor('about')} />
+        </>
+      )
+    }
     if (id === 'websearch') return <WebSearchPanel state={state} refreshSignal={signalFor('websearch')} facts={facts} />
     if (id === 'plugins' || id === 'settings' || id === 'websearchSettings' || id === 'about') {
       return <InfoPanels panel={id} inventory={inventory} refreshSignal={signalFor(id)} />

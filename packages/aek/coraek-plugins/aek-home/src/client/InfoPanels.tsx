@@ -832,7 +832,7 @@ const PLUGIN_ACTIONS: readonly PluginAction[] = [
 ]
 
 /** @returns the plugin management page. */
-function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
+export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   const { t, tf } = useI18n()
   const facts = useConsoleFacts()
 
@@ -1030,7 +1030,7 @@ function useReleaseState(): { currentTag?: string; previousTag?: string } | null
 }
 
 /** @returns the About page with the three entry points marked. */
-function AboutPanel({ inventory, refreshSignal }: { inventory: InventoryState; refreshSignal: number }) {
+export function AboutPanel({ inventory, refreshSignal }: { inventory: InventoryState; refreshSignal: number }) {
   const { t, tf } = useI18n()
   const facts = useConsoleFacts()
   const release = useReleaseState()
@@ -1204,8 +1204,24 @@ function AboutPanel({ inventory, refreshSignal }: { inventory: InventoryState; r
  * @returns the selected surface.
  */
 export function InfoPanels({ panel, inventory, refreshSignal }: InfoPanelsProps) {
+  // M round: the "插件管理" page no longer exists as its own nav entry — its
+  // content (and the About content) is merged INTO the 插件与程序管理
+  // (runtime) page, composed by Home. The panel id 'plugins' stays a valid
+  // render target only through that composition.
   if (panel === 'plugins') return <PluginsPanel refreshSignal={refreshSignal} />
   if (panel === 'settings') return <SettingsPanel refreshSignal={refreshSignal} />
   if (panel === 'websearchSettings') return <WebSearchSettingsPanel refreshSignal={refreshSignal} />
+  // M round: the 关于 page is deliberately empty for now — its content moved
+  // to 插件与程序管理. The nav entry stays (the user may fill it later).
+  if (panel === 'about') {
+    const { t } = useI18n()
+    return (
+      <PanelCard>
+        <div className={css.cardBody}>
+          <p className={css.hint}>{t('panel.aboutEmpty')}</p>
+        </div>
+      </PanelCard>
+    )
+  }
   return <AboutPanel inventory={inventory} refreshSignal={refreshSignal} />
 }

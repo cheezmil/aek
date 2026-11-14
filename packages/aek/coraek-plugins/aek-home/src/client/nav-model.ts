@@ -48,10 +48,14 @@ export interface NavEntry {
 
 /** Navigation model. Adding a panel = one row; the drawer picks it up. */
 export const NAV: readonly NavEntry[] = [
-  { id: 'runtime', labelKey: 'panel.runtime', icon: 'activity', group: 'other', keywords: ['runtime', 'instance', 'slot', 'port', '运行实例', '实例'] },
+  // M round: 运行实例管理 was renamed 插件与程序管理 and now also hosts the
+  // former 插件管理 page content plus the former 关于 content (Home composes
+  // the three sections into one page). The 'plugins' entry is GONE from the
+  // nav — its old stored-order id is filtered out by the Sidebar's
+  // orderIds memo (stored ids not in NAV simply don't render).
+  { id: 'runtime', labelKey: 'panel.runtime', icon: 'activity', group: 'other', keywords: ['plugin', 'program', 'runtime', 'instance', 'slot', 'port', '运行实例', '实例', '插件与程序', '程序'] },
   // Web Search is a real AEK plugin, so it belongs in the 插件 drawer, not 其他.
   { id: 'websearch', labelKey: 'panel.websearch', icon: 'search', group: 'plugins', keywords: ['search', 'keys', 'api key', 'provider', '密钥'] },
-  { id: 'plugins', labelKey: 'panel.plugins', icon: 'plugins', group: 'plugins', keywords: ['plugin', 'package', 'inventory', '插件管理'] },
   // Q round: "book" read as docs and "sparkles" as AI magic — neither says
   // "manager". A skill is a pluggable capability block (puzzle); a prompt
   // manager manages plain text blocks (type).
