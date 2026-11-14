@@ -2014,13 +2014,23 @@ body {
 }
 
 /* I round: the count chip becomes a BUTTON (it opens the changed-items box).
-   Reset the UA button chrome so it looks exactly like the old span chip. */
+   Reset the UA button chrome so it looks exactly like the old span chip.
+   J round: the button IS the dirty-state badge (it renders only while
+   something is staged), so make it RED — the user asked for the badge to
+   shout "unsaved changes" (plain neutral chip reads as a count, not a
+   warning). The G2b condense opacity math still applies on top. */
 button.panelSearchCount {
   border: 0;
   font: inherit;
   line-height: inherit;
   cursor: pointer;
   font-size: 11px;
+  background: var(--aek-danger);
+  color: #fff;
+  box-shadow: var(--aek-shadow-sm, 0 1px 2px rgb(0 0 0 / 10%));
+}
+button.panelSearchCount:hover {
+  filter: brightness(1.08);
 }
 
 /* I round: the changed-items box. Absolute inside the sticky toolbar (which

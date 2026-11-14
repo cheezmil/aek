@@ -22,7 +22,7 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
-import { useDraftSettings, useSettings } from './preferences.tsx'
+import { useAccessDraft, useDraftSettings, useSettings } from './preferences.tsx'
 import type { PrefValue } from './preferences.tsx'
 import { allSettingFields, coerce, SETTINGS_SCHEMA, WEBSEARCH_SETTINGS_SCHEMA } from './settings-schema.ts'
 import type { SettingField } from './settings-schema.ts'
@@ -39,19 +39,10 @@ export type InfoPanelId = 'plugins' | 'settings' | 'websearchSettings' | 'about'
 const PLUGIN_ACTION_API = '/api/aek/plugins/action'
 /** Setting that decides whether disabling a plugin needs a second click. */
 const CONFIRM_DISABLE_KEY = 'aek-home.confirmPluginDisable'
-const ACCESS_API = '/api/aek/access'
 const PERMISSIONS_OPEN_API = '/api/aek/permissions/open'
 /** Q round: the settings backup / undo pair (aek-websearch host routes). */
 const PREFERENCES_BACKUP_API = '/api/aek/preferences/backup'
 const PREFERENCES_RESTORE_API = '/api/aek/preferences/restore'
-
-/** The API-safe access settings view (never contains a password hash). */
-interface AccessView {
-  publicMode: boolean
-  allowlist: string[]
-  username: string
-  hasPassword: boolean
-}
 
 /**
  * Display-only package name (C3): strip the npm scope.
@@ -175,78 +166,42 @@ function SettingControl({ field, value, onChange }: {
   )
 }
 
-/** @returns the access-control section of the settings page. */
+/**
+ * @returns the access-control section of the settings page.
+ * J round: the form STAGES edits into the provider-level draft (no host
+ * write, no standalone save button); the commit happens through the
+ * changed-items box (per-item save or save-all). `accessCommitError`
+ * surfaces the client-side credential check / host failure here.
+ */
 function AccessSection() {
   const { t } = useI18n()
-  const [view, setView] = useState<AccessView | undefined>(undefined)
-  const [publicMode, setPublicMode] = useState(false)
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [allowlist, setAllowlist] = useState('')
-  const [hasPassword, setHasPassword] = useState(false)
-  const [notice, setNotice] = useState<string | undefined>(undefined)
-  const [error, setError] = useState<string | undefined>(undefined)
-  const [saving, setSaving] = useState(false)
+  const { view: _view, form, dirty, accessStage, accessCommit, accessCommitError, autoSave } = useAccessDraft()
+  const { publicMode, username, password, allowlist, hasPassword } = form
+  const [notice] = useState<string | undefined>(undefined)
 
-  useEffect(() => {
-    let cancelled = false
-    void fetch(ACCESS_API, { headers: { accept: 'application/json' } })
-      .then(async response => await response.json() as AccessView)
-      .then((data) => {
-        if (cancelled) return
-        setView(data)
-        setPublicMode(data.publicMode)
-        setUsername(data.username)
-        setAllowlist(data.allowlist.join('\n'))
-        setHasPassword(data.hasPassword)
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause))
-      })
-    return () => { cancelled = true }
-  }, [])
+  // J round: auto-save mode still commits access edits — but ONLY on a
+  // deliberate boundary (the public-mode switch flips instantly; the text
+  // fields commit on blur). Keystroke-level POSTs of credentials would be
+  // nonsense, so typing never auto-commits even in auto-save mode.
+  const onPublicMode = (next: boolean): void => {
+    accessStage({ publicMode: next })
+    if (autoSave) void accessCommit()
+  }
+  const onTextBlur = (): void => {
+    if (autoSave) void accessCommit()
+  }
 
   const missingCredentials = publicMode && (username.trim().length === 0 || (password.length === 0 && !hasPassword))
 
-  /** Persist the whole form in one host write. */
-  const save = (): void => {
-    if (missingCredentials) {
-      setError(t('access.needCredentials'))
-      return
-    }
-    setSaving(true)
-    setError(undefined)
-    setNotice(undefined)
-    const entries = allowlist.split(/\r?\n/u).map(line => line.trim()).filter(line => line.length > 0)
-    void fetch(ACCESS_API, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ publicMode, username, password, allowlist: entries }),
-    })
-      .then(async (response) => {
-        const data = await response.json() as AccessView & { message?: string }
-        if (!response.ok) throw new Error(data.message ?? `HTTP ${String(response.status)}`)
-        return data
-      })
-      .then((data) => {
-        setView(data)
-        setHasPassword(data.hasPassword)
-        setPassword('')
-        setNotice(t('access.saved'))
-      })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
-      .finally(() => setSaving(false))
-  }
-
   return (
-    <section className={css.settingGroup}>
+    <section className={css.settingGroup} data-access-section>
       <h3 className={css.sectionTitle}>{t('settings.group.access')}</h3>
       <p className={css.hint}>{t('access.defaultHint')}</p>
       <ul className={css.settingList}>
-        <li className={css.settingRow}>
+        <li className={css.settingRow} data-setting-key="aek-home.access">
           <div className={css.settingToggleRow}>
             <span className={css.settingToggleLabel}>{t('access.publicMode')}</span>
-            <ToggleSwitch checked={publicMode} onChange={setPublicMode} label={t('access.publicMode')} />
+            <ToggleSwitch checked={publicMode} onChange={onPublicMode} label={t('access.publicMode')} />
           </div>
           <p className={css.hint}>{t('access.publicModeHint')}</p>
         </li>
@@ -258,7 +213,8 @@ function AccessSection() {
             value={allowlist}
             placeholder={t('access.allowlistPlaceholder')}
             aria-label={t('access.allowlist')}
-            onChange={event => setAllowlist(event.target.value)}
+            onChange={event => accessStage({ allowlist: event.target.value })}
+            onBlur={onTextBlur}
           />
           <p className={css.hint}>{t('access.allowlistHint')}</p>
         </li>
@@ -273,7 +229,8 @@ function AccessSection() {
                   value={username}
                   autoComplete="off"
                   aria-label={t('access.username')}
-                  onChange={event => setUsername(event.target.value)}
+                  onChange={event => accessStage({ username: event.target.value })}
+                  onBlur={onTextBlur}
                 />
               </li>
               <li className={css.settingRow}>
@@ -285,7 +242,8 @@ function AccessSection() {
                   autoComplete="new-password"
                   placeholder={hasPassword ? t('access.passwordKeep') : ''}
                   aria-label={t('access.password')}
-                  onChange={event => setPassword(event.target.value)}
+                  onChange={event => accessStage({ password: event.target.value })}
+                  onBlur={onTextBlur}
                 />
               </li>
             </>
@@ -293,14 +251,16 @@ function AccessSection() {
           : null}
       </ul>
       {missingCredentials ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{t('access.needCredentials')}</span></div> : null}
-      {error !== undefined ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{error}</span></div> : null}
+      {accessCommitError !== undefined
+        ? (
+          <div className={css.errorBanner}>
+            <Icon name="alert" size={16} />
+            <span>{accessCommitError === 'needCredentials' ? t('access.needCredentials') : accessCommitError}</span>
+          </div>
+        )
+        : null}
       {notice !== undefined ? <p className={css.hint}>{notice}</p> : null}
-      <div className={css.accessActions}>
-        <button type="button" className={css.primaryButton} disabled={saving || view === undefined || missingCredentials} onClick={save}>
-          {saving ? <Spinner /> : null}
-          {t('access.save')}
-        </button>
-      </div>
+      {dirty ? <p className={css.hint}>{t('access.stagedHint')}</p> : null}
     </section>
   )
 }
@@ -378,13 +338,22 @@ type RestoreState =
  * staged (unsaved) setting: the label jumps to that row (scroll + flash),
  * "undo" drops the staged value, "save" commits just that key to the host.
  * The header's save icon (with the red dot while anything is dirty) commits
- * ALL keys in one POST. Closes on outside click / Escape.
+ * EVERYTHING: the access form first, then the schema draft.
+ *
+ * J round: the box carries the ACCESS form as a special row (staged
+ * credentials never auto-commit), and the default close behaviour flipped —
+ * it STAYS open on outside clicks / ESC; only the chip toggles it, unless
+ * the "close on outside click" switch is on.
  */
 const FIELD_BY_KEY = new Map(allSettingFields().map(field => [field.key, field]))
 
-function SettingsDirtyPopover({ open, onClose }: { open: boolean; onClose: () => void }) {
+function SettingsDirtyPopover({ open, onClose, withAccess }: { open: boolean; onClose: () => void; withAccess: boolean }) {
   const { t } = useI18n()
   const { dirtyKeys, values: draftValues, draftSave, draftUndo } = useDraftSettings()
+  const access = useAccessDraft()
+  // J round: the close-on-outside switch is a UI behaviour, so it reads the
+  // PERSISTED value (immediate write), like auto-save.
+  const outsideClose = useOutsideClosePref()
 
   // I round: jump to a staged row. The row carries `data-setting-key`;
   // `settingRowFlash` adds a brief accent outline that clears itself on
@@ -406,19 +375,33 @@ function SettingsDirtyPopover({ open, onClose }: { open: boolean; onClose: () =>
   }
 
   useEffect(() => {
-    if (open !== true) return undefined
+    if (open !== true || outsideClose !== true) return undefined
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  }, [open, outsideClose, onClose])
 
   if (open === false) return null
 
+  const total = dirtyKeys.length + (withAccess && access.dirty ? 1 : 0)
+
+  const saveAll = async (): Promise<void> => {
+    // J round: access FIRST (it validates the credentials; the schema
+    // commit below still runs afterwards, so a broken access form stays
+    // dirty and visible while the schema keys land).
+    if (withAccess && access.dirty) {
+      await access.accessCommit()
+    }
+    await draftSave('all')
+  }
+
   return (
     <>
-      <div className={css.dirtyBackdrop} role="presentation" onClick={onClose} />
+      {outsideClose === true
+        ? <div className={css.dirtyBackdrop} role="presentation" onClick={onClose} />
+        : null}
       <div className={css.dirtyPopover} role="dialog" aria-label={t('settings.dirty.title')}>
         <div className={css.dirtyPopoverHead}>
           <span className={css.dirtyPopoverTitle}>{t('settings.dirty.title')}</span>
@@ -427,18 +410,46 @@ function SettingsDirtyPopover({ open, onClose }: { open: boolean; onClose: () =>
             className={css.dirtySaveAll}
             title={t('settings.dirty.saveAll')}
             aria-label={`${t('settings.dirty.saveAll')} — ${t('settings.dirty.dot')}`}
-            onClick={() => void draftSave('all')}
+            onClick={() => void saveAll()}
           >
             <Icon name="save" size={18} />
-            {dirtyKeys.length > 0
+            {total > 0
               ? <span className={css.dirtySaveAllDot} aria-label={t('settings.dirty.dot')} />
               : null}
           </button>
         </div>
-        {dirtyKeys.length === 0
+        {total === 0
           ? <p className={css.hint}>{t('settings.dirty.empty')}</p>
           : (
             <ul className={css.dirtyList}>
+              {withAccess && access.dirty
+                ? (
+                  <li className={css.dirtyRow}>
+                    <button type="button" className={css.dirtyRowLabel} title={t('settings.dirty.locate')} onClick={() => locate('aek-home.access')}>
+                      {t('settings.access.item')}
+                    </button>
+                    <span className={css.dirtyRowValue}>—</span>
+                    <button
+                      type="button"
+                      className={css.dirtyRowAction}
+                      title={t('settings.dirty.undo')}
+                      aria-label={t('settings.dirty.undo')}
+                      onClick={() => access.accessUndo()}
+                    >
+                      <Icon name="restore" size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className={css.dirtyRowAction}
+                      title={t('settings.dirty.saveOne')}
+                      aria-label={t('settings.dirty.saveOne')}
+                      onClick={() => void access.accessCommit()}
+                    >
+                      <Icon name="check" size={14} />
+                    </button>
+                  </li>
+                )
+                : null}
               {dirtyKeys.map((key) => {
                 const field = FIELD_BY_KEY.get(key)
                 const label = field !== undefined ? t(field.labelKey) : key
@@ -477,6 +488,16 @@ function SettingsDirtyPopover({ open, onClose }: { open: boolean; onClose: () =>
 }
 
 /**
+ * J round: the persisted "close the changed-items box on outside click /
+ * ESC" switch. It reads the PERSISTED map (a UI behaviour must not itself
+ * sit in the draft layer).
+ */
+function useOutsideClosePref(): boolean {
+  const { prefs } = useSettings()
+  return prefs?.['aek-home.dirtyPopoverOutsideClose'] === true
+}
+
+/**
  * The 基础设置 (basic settings) page, Q round. The giant catch-all Settings
  * page was split: this page keeps the host-wide groups (sidebar / navigation /
  * general / access / permissions) plus the "restore defaults" flow; plugin
@@ -488,6 +509,9 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   // I round: settings-page edits stage in the DRAFT layer; the host POST only
   // happens at a commit point (per-item save, save-all, or auto-save on).
   const { values: draftValues, draftSet, dirtyKeys } = useDraftSettings()
+  // J round: the access form stages into the provider-level draft too.
+  const access = useAccessDraft()
+  const totalDirty = dirtyKeys.length + (access.dirty ? 1 : 0)
   const [query, setQuery] = useState('')
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [restore, setRestore] = useState<RestoreState>({ phase: 'idle' })
@@ -553,16 +577,21 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
     setRestore(state => (state.phase === 'backedUp' ? { phase: 'idle' } : state))
   }
 
+  /**
+   * The auto-save switch and the outside-close switch are UI BEHAVIOURS:
+   * they define how the commit flow works, so each commits at once (an
+   * immediate host write) instead of staging like the rest, and reads the
+   * persisted value, not the staged one.
+   */
+  const immediateKeys = new Set(['aek-home.autoSave', 'aek-home.dirtyPopoverOutsideClose'])
+
   const fieldRow = (field: SettingField): ReactNode => (
     <li key={field.key} className={css.settingRow} data-setting-key={field.key}>
       <SettingControl
         field={field}
-        // The auto-save switch defines HOW saving works, so it commits at
-        // once (an immediate host write) instead of staging like the rest —
-        // and reads the persisted value, not the staged one.
-        value={coerce(field, (field.key === 'aek-home.autoSave' ? (prefs?.[field.key] ?? field.default) : draftValues[field.key] ?? field.default))}
+        value={coerce(field, (immediateKeys.has(field.key) ? (prefs?.[field.key] ?? field.default) : draftValues[field.key] ?? field.default))}
         onChange={(next) => {
-          if (field.key === 'aek-home.autoSave') { set(field.key, next); setRestore(state => (state.phase === 'backedUp' ? { phase: 'idle' } : state)); return }
+          if (immediateKeys.has(field.key)) { set(field.key, next); setRestore(state => (state.phase === 'backedUp' ? { phase: 'idle' } : state)); return }
           setSafe(field.key, next)
         }}
       />
@@ -571,6 +600,11 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   const firstRailRows = visible.filter(field => field.group === 'sidebar' && !SECOND_RAIL_KEYS.has(field.key))
   const navigationRows = visible.filter(field => field.group === 'navigation' && !SECOND_RAIL_KEYS.has(field.key))
   const generalRows = visible.filter(field => field.group === 'general')
+  // K round: the dedicated TEST section — a real schema row (so it flows
+  // through the draft/commit system exactly like every setting) but wired
+  // to NOTHING; it exists so the user (and agents) can poke the settings
+  // machinery without touching real settings.
+  const testRows = visible.filter(field => field.group === 'test')
 
   return (
     <PanelCard>
@@ -584,13 +618,13 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             value={query}
             onChange={setQuery}
             placeholder={t('settings.panelSearch')}
-            count={dirtyKeys.length > 0 ? dirtyKeys.length : undefined}
+            count={totalDirty > 0 ? totalDirty : undefined}
             countAria={t('settings.dirty.title')}
-            onCountClick={() => setPopoverOpen(true)}
+            onCountClick={() => setPopoverOpen(open => !open)}
             condense
-            condenseHold={dirtyKeys.length > 0}
+            condenseHold={totalDirty > 0}
           />
-          <SettingsDirtyPopover open={popoverOpen && dirtyKeys.length > 0} onClose={() => setPopoverOpen(false)} />
+          <SettingsDirtyPopover open={popoverOpen && totalDirty > 0} onClose={() => setPopoverOpen(false)} withAccess />
         </div>
         {firstRailRows.length > 0
           ? (
@@ -630,6 +664,17 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
               <h3 className={css.sectionTitle}>{t('settings.group.general')}</h3>
               <ul className={css.settingList}>
                 {generalRows.map(fieldRow)}
+              </ul>
+            </section>
+          )
+          : null}
+        {testRows.length > 0
+          ? (
+            <section className={css.settingGroup}>
+              <h3 className={css.sectionTitle}>{t('settings.group.test')}</h3>
+              <p className={css.hint}>{t('settings.group.testHint')}</p>
+              <ul className={css.settingList}>
+                {testRows.map(fieldRow)}
               </ul>
             </section>
           )
@@ -732,11 +777,11 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             placeholder={t('settings.panelSearch')}
             count={dirtyKeys.length > 0 ? dirtyKeys.length : undefined}
             countAria={t('settings.dirty.title')}
-            onCountClick={() => setPopoverOpen(true)}
+            onCountClick={() => setPopoverOpen(open => !open)}
             condense
             condenseHold={dirtyKeys.length > 0}
           />
-          <SettingsDirtyPopover open={popoverOpen && dirtyKeys.length > 0} onClose={() => setPopoverOpen(false)} />
+          <SettingsDirtyPopover open={popoverOpen && dirtyKeys.length > 0} onClose={() => setPopoverOpen(false)} withAccess={false} />
         </div>
         {visible.length > 0
           ? (

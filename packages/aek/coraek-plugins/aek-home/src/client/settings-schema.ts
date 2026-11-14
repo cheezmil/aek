@@ -35,7 +35,7 @@ export interface SettingField {
   /** Which control to render. */
   kind: SettingKind
   /** Group id, used only for headings + in-page search. */
-  group: 'sidebar' | 'navigation' | 'general' | 'websearch'
+  group: 'sidebar' | 'navigation' | 'general' | 'websearch' | 'test'
   /** i18n key of the visible label. */
   labelKey: string
   /** i18n key of the hint under the control. */
@@ -160,6 +160,28 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     key: 'aek-home.autoSave', kind: 'toggle', group: 'general',
     labelKey: 'settings.autoSave', hintKey: 'settings.autoSaveHint',
     default: false,
+  },
+  {
+    // J round: how the changed-items box closes. OFF (default) = only the
+    // toolbar badge toggles it (outside clicks / ESC keep it open, so the
+    // user can read the list and act on it); ON = outside click / ESC
+    // dismisses it. Like auto-save this is a UI BEHAVIOUR, so the row
+    // itself writes IMMEDIATELY (persisted value, not the draft).
+    key: 'aek-home.dirtyPopoverOutsideClose', kind: 'toggle', group: 'general',
+    labelKey: 'settings.dirtyOutsideClose', hintKey: 'settings.dirtyOutsideCloseHint',
+    default: false,
+  },
+  {
+    // K round: the dedicated TEST row. It is a REAL schema field (so it
+    // stages / commits through the exact same draft system as every other
+    // setting) but is wired to NO other code — changing it does nothing to
+    // the app. It exists so a human or an agent can exercise the settings
+    // machinery (dirty chip, changed-items box, undo, save-all) without
+    // ever touching a real setting (the I/J round lesson: testing on real
+    // rows left fontSize=24 in the user's data root).
+    key: 'aek-home.testOption', kind: 'text', group: 'test',
+    labelKey: 'settings.testOption', hintKey: 'settings.testOptionHint',
+    default: '',
   },
   {
     // Path display style (Q round): the console shows host-absolute paths

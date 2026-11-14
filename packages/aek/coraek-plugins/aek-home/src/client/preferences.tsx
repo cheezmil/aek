@@ -21,6 +21,9 @@ import type { ReactNode } from 'react'
 /** The host settings route (see aek-websearch `registerPreferences`). */
 export const PREFS_API = '/api/aek/preferences'
 
+/** The host access-control route (J round: committed through the same flow). */
+export const ACCESS_API = '/api/aek/access'
+
 /** Setting keys, namespaced so several AEK surfaces can coexist in one file. */
 export const PREF_KEYS = {
   panel: 'aek-home.panel',
@@ -104,6 +107,49 @@ interface PrefContextValue {
   draftUndo: (key: string) => void
   /** The `aek-home.autoSave` switch: on = every draft write is committed at once. */
   autoSave: boolean
+  /**
+   * J round: the access-control form (public mode / username / password /
+   * allowlist) joins the SAME commit system. The form stages edits in a
+   * provider-level draft (survives panel switches); the host write to
+   * `/api/aek/access` only happens on `accessCommit` (the per-item save in
+   * the changed-items box, or save-all). There is deliberately NO
+   * standalone save button in the settings UI anymore.
+   */
+  accessView: AccessView | undefined
+  /** The staged access form (`null` = nothing staged, the view is live). */
+  accessDraft: AccessDraft | null
+  /** True while any access field differs from the last host-answered view. */
+  accessDirty: boolean
+  /** Merge fields into the staged access form (no host write). */
+  accessStage: (patch: Partial<AccessDraft>) => void
+  /** Drop the staged access form (the host view comes back). */
+  accessUndo: () => void
+  /**
+   * Commit the staged access form to the host. Rejects on the
+   * client-side credential check (public mode needs username + password)
+   * or on a non-OK host answer; the draft survives the failure.
+   */
+  accessCommit: () => Promise<void>
+  /** Set by a failed `accessCommit`; cleared by the next successful commit. */
+  accessCommitError: string | undefined
+}
+
+/** The host-answered access view (GET /api/aek/access). */
+export interface AccessView {
+  publicMode: boolean
+  username: string
+  allowlist: string[]
+  hasPassword: boolean
+}
+
+/** One staged access form: the four inputs the section renders. */
+export interface AccessDraft {
+  publicMode: boolean
+  username: string
+  /** Empty = "keep the stored password" (the section renders the hint). */
+  password: string
+  /** Newline-separated, exactly what the textarea shows. */
+  allowlist: string
 }
 
 const PrefContext = createContext<PrefContextValue | undefined>(undefined)
@@ -118,6 +164,8 @@ export function PrefProvider({ children }: { children: ReactNode }) {
   // I round: the unsaved draft layer (per key). Lives HERE (app root) so it
   // survives panel / route switches; an app RESTART drops it by design.
   const [draft, setDraft] = useState<Record<string, PrefValue>>({})
+  // J round: the host-answered access view + the staged access form.
+  const [accessView, setAccessView] = useState<AccessView | undefined>(undefined)
   const prefsRef = useRef(prefs)
   useEffect(() => {
     prefsRef.current = prefs
@@ -141,6 +189,17 @@ export function PrefProvider({ children }: { children: ReactNode }) {
         // the optimistic local values are kept, never clobbered.
         if (!cancelled) setPrefs(prev => prev ?? {})
       })
+    return () => { cancelled = true }
+  }, [])
+
+  // J round: load the host access view once (the access section no longer
+  // owns the fetch — the staging layer needs it here for the dirty check).
+  useEffect(() => {
+    let cancelled = false
+    void fetch(ACCESS_API, { headers: { accept: 'application/json' } })
+      .then(async response => await response.json() as AccessView)
+      .then((data) => { if (!cancelled) setAccessView(data) })
+      .catch(() => { /* no host yet: the section stays inert */ })
     return () => { cancelled = true }
   }, [])
 
@@ -249,12 +308,84 @@ export function PrefProvider({ children }: { children: ReactNode }) {
 
   /** The draft overlaid on the persisted map — what consumers read. */
   const draftView: Record<string, PrefValue> = { ...(prefs ?? {}), ...draft }
+  /** J round: stage the access form (provider level, survives panel switches). */
+  const [accessDraft, setAccessDraft] = useState<AccessDraft | null>(null)
+  const [accessCommitError, setAccessCommitError] = useState<string | undefined>(undefined)
+  const accessDraftRef = useRef(accessDraft)
+  useEffect(() => {
+    accessDraftRef.current = accessDraft
+  }, [accessDraft])
+
+  /** J round: merge fields into the staged access form (never the host). */
+  const accessStage = useCallback((patch: Partial<AccessDraft>): void => {
+    setAccessDraft(prev => ({
+      publicMode: prev?.publicMode ?? false,
+      username: prev?.username ?? '',
+      password: prev?.password ?? '',
+      allowlist: prev?.allowlist ?? '',
+      ...patch,
+    }))
+  }, [])
+
+  /** J round: drop the staged form; the last host-answered view shows again. */
+  const accessUndo = useCallback((): void => {
+    setAccessDraft(null)
+    setAccessCommitError(undefined)
+  }, [])
+
+  /**
+   * J round: commit the staged access form to the host (the ONLY access
+   * write path — the section's standalone save button is gone). The
+   * credential check runs client-side so a broken form never reaches the
+   * host; a failure KEEPS the draft (the user's edits are never lost).
+   */
+  const accessCommit = useCallback(async (): Promise<void> => {
+    const draftNow = accessDraftRef.current
+    const viewNow = accessView
+    if (draftNow === null) return
+    if (draftNow.publicMode
+      && (draftNow.username.trim().length === 0 || (draftNow.password.length === 0 && !viewNow?.hasPassword))) {
+      setAccessCommitError('needCredentials')
+      return
+    }
+    setAccessCommitError(undefined)
+    const entries = draftNow.allowlist.split(/\r?\n/u).map(line => line.trim()).filter(line => line.length > 0)
+    const response = await fetch(ACCESS_API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        publicMode: draftNow.publicMode,
+        username: draftNow.username,
+        password: draftNow.password,
+        allowlist: entries,
+      }),
+    })
+    const data = await response.json() as AccessView & { message?: string }
+    if (!response.ok) {
+      setAccessCommitError(data.message ?? `HTTP ${String(response.status)}`)
+      return
+    }
+    setAccessView(data)
+    setAccessDraft(null)
+  }, [accessView])
+
   const dirtyKeys = Object.keys(draft).filter(key => draftView[key] !== prefs?.[key])
+  // J round: the access form is dirty when any staged field differs from
+  // the last host view (an empty password means "keep the stored one";
+  // the allowlist compares as TRIMMED ENTRY LISTS, not raw text, so a
+  // re-typed identical list is not dirty).
+  const accessDirty = accessDraft !== null
+    && (accessDraft.publicMode !== accessView?.publicMode
+      || accessDraft.username !== accessView?.username
+      || (accessDraft.password.length > 0)
+      || accessDraft.allowlist.split(/\r?\n/u).map(line => line.trim()).filter(line => line.length > 0).join('|')
+        !== (accessView?.allowlist ?? []).join('|'))
 
   return <PrefContext.Provider
     value={{
       prefs, set, setMany, reload, adopt,
       draft, draftView, dirtyKeys, draftSet, draftSave, draftUndo, autoSave,
+      accessView, accessDraft, accessDirty, accessStage, accessUndo, accessCommit, accessCommitError,
     }}>{children}
   </PrefContext.Provider>
 }
@@ -312,6 +443,35 @@ export function usePref<T>(
   }, [key, set, value, parse, fallback])
 
   return [value, update]
+}
+
+/**
+ * J round: the access-control draft view for the settings surfaces. The
+ * section renders `form` (staged fields over the host view) and writes
+ * through `accessStage`; the ONLY host write is `accessCommit` (called by
+ * the changed-items box, per-item or via save-all).
+ * @returns the staged form plus the commit / undo actions.
+ */
+export function useAccessDraft(): {
+  view: AccessView | undefined
+  form: { publicMode: boolean; username: string; password: string; allowlist: string; hasPassword: boolean }
+  dirty: boolean
+  accessStage: (patch: Partial<AccessDraft>) => void
+  accessUndo: () => void
+  accessCommit: () => Promise<void>
+  accessCommitError: string | undefined
+  autoSave: boolean
+} {
+  const { accessView, accessDraft, accessDirty, accessStage, accessUndo, accessCommit, accessCommitError, autoSave } =
+    usePrefContext()
+  const form = {
+    publicMode: accessDraft?.publicMode ?? accessView?.publicMode ?? false,
+    username: accessDraft?.username ?? accessView?.username ?? '',
+    password: accessDraft?.password ?? '',
+    allowlist: accessDraft?.allowlist ?? (accessView?.allowlist ?? []).join('\n'),
+    hasPassword: accessView?.hasPassword ?? false,
+  }
+  return { view: accessView, form, dirty: accessDirty, accessStage, accessUndo, accessCommit, accessCommitError, autoSave }
 }
 
 /**
