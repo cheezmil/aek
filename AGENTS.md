@@ -80,7 +80,7 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
   通法 = `aek-capability/1` 描述符 + `@cheezmil/coraek` 的 `external-supervisor`（单例采纳、SIGTERM 不升级、attach 实例只报不杀），**只服务于上表第 2、3 类（即所有「独立进程」形态）**。独立进程接入包在 `package.json` 声明 `aek.external` 块（`spdx` 自报许可 + `attach` 进程边界），**禁止带 `main` / `exports["."]` 的进程内运行时入口**（允许 `bin`）——这道门禁专门防「独立进程类偷跑进宿主进程」；`verify-build-rules.mjs` 的第四道门禁 `external` 会拦下违规。宿主渲染合规文案用「固定模板 + provider 自描述数据」，不把上游事实硬编码进前端。任何新增 AGPL 项目先做本通法、后加数据。
   第 1 类的运行时拓扑是**用户可显式选择**的（2026-11-12 选择性共用运行时轮）：TS/JS 能力包在 `package.json` 声明 `aek.runtime` 块（`share` 缺省为开 = 进程内共享宿主 Node 运行时、最省内存；`isolate.bin` 声明可被 spawn 的独立进程入口）。操作者可用 `aek runtime` CLI（`list` / `status <id>` / `set <id> share|isolate --confirm`）把单能力切到 isolate，选择持久化在 `<AEK_HOME>/runtime-modes.json`；判定优先级 **license-forced > runtime-forced > user-select > default-share**（②③ 恒 isolate 不可选；① 类即使已被 boot 注册进 provider registry 也保持 user-select，share/isolate 可往返）。`external` 门禁的 runtime 面校验 `aek.runtime` 合法性（isolate 必给 bin；share 保留进程内入口；不得与 `aek.external` 并存）。isolate 形态复用通法 + external-supervisor spawn，**零新协议**（唯一扩展：`attach.cwd` 可选字段——包内相对 bin 由 cwd 定位，`command` 保持相对 shell-free；boot 期宿主经 `capability-api` 接线自动 register/spawn store 里 isolate 的 ① 类能力，特性调用桥 pending）。
 - 插件从 `@cheezmil/coraek` 的类型入口导入 `Context` / `Volatile` / `ClientContext`，**不直接 import cordis**。
-- `aek-for-dsh` 是 `cordis.patch.yml` **bundle**（一次注册所有 aek 插件），不是插件，不承担 `apply(ctx)`。
+- `aek-for-dsh` 是 `cordis.patch.yml` **bundle**（一次注册所有 aek 插件），不是插件，不承担 `apply(ctx)`。**暂时不开发（2026-11-15 用户定调、挂起）**：本轮及后续不投入开发；已发 npm 版本（`@cheezmil/aek-for-dsh`）维持现状——不 unpublish、不转 A2、不主动下线，只是「停开发」。
 - 不凭空造 `aek-core` 之类中间包；`aek-base`/coraek 只做身份层与类型 re-export，不放业务逻辑。
 - `vendor/*/src/` 不要随手改；确需改要按 `vendor/README.md` 的流程记录。
 
