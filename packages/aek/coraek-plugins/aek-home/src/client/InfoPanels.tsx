@@ -626,6 +626,10 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
           />
           <SettingsDirtyPopover open={popoverOpen && totalDirty > 0} onClose={() => setPopoverOpen(false)} withAccess />
         </div>
+        {/* L round: the divider is its OWN node in document flow — it stays
+            put (and scrolls away) while the toolbar above pins; the
+            floating box must not carry a bottom line. */}
+        <div className={css.stickyDivider} aria-hidden="true" />
         {firstRailRows.length > 0
           ? (
             <section className={css.settingGroup}>
@@ -783,6 +787,8 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
           />
           <SettingsDirtyPopover open={popoverOpen && dirtyKeys.length > 0} onClose={() => setPopoverOpen(false)} withAccess={false} />
         </div>
+        {/* L round: standalone divider (document flow, not part of the sticky box). */}
+        <div className={css.stickyDivider} aria-hidden="true" />
         {visible.length > 0
           ? (
             <section className={css.settingGroup}>

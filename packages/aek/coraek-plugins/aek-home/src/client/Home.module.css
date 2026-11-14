@@ -1981,9 +1981,15 @@ body {
 
 /* G2 round: scroll-condensed sticky toolbar. One variable drives everything
    (0 at the top → 1 at 240px of scroll): the count chip fades AND collapses
-   to zero width (so the search box fills the whole row), the static hairline
-   is replaced by a ::after underline that fades the same way. A short 90ms
-   transition smooths scroll stepping without lagging behind the gesture. */
+   to zero width (so the search box fills the whole row). A short 90ms
+   transition smooths scroll stepping without lagging behind the gesture.
+
+   L round: the hairline is NO LONGER part of this floating container — it
+   used to ride the sticky box as an ::after, and the user kept seeing "the
+   bottom border floats with the search box, hovering over the content".
+   The divider is now its own div (`.stickyDivider`, rendered by the panels
+   right after the sticky wrapper), so it stays in document flow and simply
+   scrolls away; the pinned toolbar carries only the search box + badge. */
 .searchCondense {
   /* The static 8px gap would survive the count's collapse and leave the box
      short of the row edge — take over the gap on the count's margin so it
@@ -2001,16 +2007,14 @@ body {
   max-width: calc(48px * (1 - var(--aek-search-p, 0)));
   transition: opacity 90ms linear, max-width 90ms linear, margin-left 90ms linear, padding 90ms linear;
 }
-.searchCondense::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
+/* L round: the standalone divider. Sits in normal document flow AFTER the
+   sticky toolbar: at the top of the page it looks exactly like the old
+   border-bottom did; once the toolbar pins, the divider stays put and
+   scrolls away with the content — the floating box no longer carries a line. */
+.stickyDivider {
   height: 1px;
   background: var(--aek-border);
-  opacity: calc(1 - var(--aek-search-p, 0));
-  transition: opacity 90ms linear;
+  margin-bottom: var(--aek-space-5);
 }
 
 /* I round: the count chip becomes a BUTTON (it opens the changed-items box).
