@@ -102,6 +102,16 @@ export interface PanelSearchProps {
    * clamp timers, D-round lesson).
    */
   condense?: boolean
+  /**
+   * I round: hold the condense progress at zero while set — the chip keeps
+   * showing ("the changed-count must stay visible while scrolling down").
+   * The settings page passes `condenseHold={dirtyCount > 0}`.
+   */
+  condenseHold?: boolean
+  /** I round: makes the count chip a button (the changed-items box opens). */
+  onCountClick?: (() => void) | undefined
+  /** I round: extra aria text for the count chip. */
+  countAria?: string | undefined
 }
 
 /**
@@ -110,32 +120,45 @@ export interface PanelSearchProps {
  * @param props - query, setter, placeholder and optional hit count.
  * @returns the search field.
  */
-export function PanelSearch({ value, onChange, placeholder, count, condense }: PanelSearchProps) {
+export function PanelSearch({ value, onChange, placeholder, count, condense, condenseHold, onCountClick, countAria }: PanelSearchProps) {
   const { t } = useI18n()
   const rootRef = useRef<HTMLDivElement | null>(null)
+  // I round: read the hold flag through a ref so the scroll listener keeps
+  // its identity (no re-subscribe on every dirty-count change).
+  const holdRef = useRef(condenseHold)
+  holdRef.current = condenseHold
 
-  // G2: the scroll-driven condense progress. Passive scroll listener + rAF
-  // batch; the CSS interpolates count / underline / box width from the
-  // variable, so this handler only writes one number per frame.
+  // G2: the scroll-driven condense progress. The variable is written
+  // SYNCHRONOUSLY in the (passive) scroll handler — no requestAnimationFrame
+  // batch, no timers: an rAF batch silently dies whenever the compositor
+  // stalls (GPU-process crash, occluded window) and the variable gets
+  // stuck at a stale value; a one-property write per scroll event is cheap
+  // enough that batching buys nothing here.
   useEffect(() => {
     if (condense !== true) return undefined
-    let frame = 0
     const update = (): void => {
-      frame = 0
       const el = rootRef.current
       if (el === null) return
-      el.style.setProperty('--aek-search-p', String(Math.min(1, Math.max(0, window.scrollY / 240))))
+      const progress = holdRef.current ? 0 : Math.min(1, Math.max(0, window.scrollY / 240))
+      el.style.setProperty('--aek-search-p', String(progress))
     }
-    const onScroll = (): void => {
-      if (frame === 0) frame = requestAnimationFrame(update)
-    }
-    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('scroll', update, { passive: true })
     update()
     return () => {
-      window.removeEventListener('scroll', onScroll)
-      if (frame !== 0) cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', update)
     }
   }, [condense])
+
+  // I round: the hold flag can flip WITHOUT a scroll event (the user stages
+  // an edit while the page is parked mid-scroll) — re-apply the variable at
+  // the current scroll position whenever it changes.
+  useEffect(() => {
+    if (condense !== true) return
+    const el = rootRef.current
+    if (el === null) return
+    const progress = condenseHold ? 0 : Math.min(1, Math.max(0, window.scrollY / 240))
+    el.style.setProperty('--aek-search-p', String(progress))
+  }, [condense, condenseHold])
 
   return (
     <div ref={rootRef} className={cx(css.panelSearchWrap, condense === true && css.searchCondense)}>
@@ -165,7 +188,21 @@ export function PanelSearch({ value, onChange, placeholder, count, condense }: P
           : null}
       </div>
       {count !== undefined
-        ? <span className={css.panelSearchCount}>{String(count)}</span>
+        ? (
+          onCountClick !== undefined
+            ? (
+              <button
+                type="button"
+                className={css.panelSearchCount}
+                onClick={onCountClick}
+                title={countAria}
+                aria-label={countAria}
+              >
+                {String(count)}
+              </button>
+            )
+            : <span className={css.panelSearchCount}>{String(count)}</span>
+        )
         : null}
     </div>
   )

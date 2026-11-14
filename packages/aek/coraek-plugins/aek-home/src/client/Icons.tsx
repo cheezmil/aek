@@ -24,6 +24,7 @@ export type IconName =
   | 'copy' | 'pin' | 'book' | 'sparkles' | 'terminal' | 'layout' | 'restore'
   | 'play' | 'stop'
   | 'lock' | 'grip'
+  | 'save'
   | 'puzzle' | 'type'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
@@ -183,6 +184,17 @@ const ICONS: Record<IconName, ReactNode> = {
     <>
       <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
       <path d="M3 3v5h5" />
+    </>
+  ),
+  /**
+   * Lucide `save` (floppy disk): the I-round "save all settings" action in
+   * the changed-items box (the one that carries the red dot).
+   */
+  save: (
+    <>
+      <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+      <path d="M17 21v-7a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v7" />
+      <path d="M7 3v4a2 2 0 0 0 2 2h4" />
     </>
   ),
   /**

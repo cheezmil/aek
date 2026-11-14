@@ -22,7 +22,7 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
-import { useSettings } from './preferences.tsx'
+import { useDraftSettings, useSettings } from './preferences.tsx'
 import type { PrefValue } from './preferences.tsx'
 import { allSettingFields, coerce, SETTINGS_SCHEMA, WEBSEARCH_SETTINGS_SCHEMA } from './settings-schema.ts'
 import type { SettingField } from './settings-schema.ts'
@@ -373,6 +373,110 @@ type RestoreState =
   | { phase: 'restoreFailed' }
 
 /**
+ * I round: the changed-items box. Opens from the sticky toolbar's count chip
+ * (which now shows the DIRTY count, not the field count). Each row is a
+ * staged (unsaved) setting: the label jumps to that row (scroll + flash),
+ * "undo" drops the staged value, "save" commits just that key to the host.
+ * The header's save icon (with the red dot while anything is dirty) commits
+ * ALL keys in one POST. Closes on outside click / Escape.
+ */
+const FIELD_BY_KEY = new Map(allSettingFields().map(field => [field.key, field]))
+
+function SettingsDirtyPopover({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useI18n()
+  const { dirtyKeys, values: draftValues, draftSave, draftUndo } = useDraftSettings()
+
+  // I round: jump to a staged row. The row carries `data-setting-key`;
+  // `settingRowFlash` adds a brief accent outline that clears itself on
+  // animation end (no timers — the D-round occlusion lesson).
+  //
+  // The scroll is INSTANT (`behavior: 'instant'`): both `scrollIntoView`
+  // with `behavior: 'smooth'` and rAF tweens silently no-op in this shell
+  // whenever the compositor stalls (GPU-process crash / occluded window),
+  // and an instant jump + the flash row is reliable in every state.
+  const locate = (key: string): void => {
+    const row = document.querySelector<HTMLElement>(`[data-setting-key="${key}"]`)
+    const flashClass = css.settingRowFlash
+    if (row === null || flashClass === undefined) return
+    row.scrollIntoView({ block: 'center', behavior: 'instant' })
+    row.classList.remove(flashClass)
+    // Restart the animation even when the row was flashed seconds ago.
+    void row.offsetWidth
+    row.classList.add(flashClass)
+  }
+
+  useEffect(() => {
+    if (open !== true) return undefined
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  if (open === false) return null
+
+  return (
+    <>
+      <div className={css.dirtyBackdrop} role="presentation" onClick={onClose} />
+      <div className={css.dirtyPopover} role="dialog" aria-label={t('settings.dirty.title')}>
+        <div className={css.dirtyPopoverHead}>
+          <span className={css.dirtyPopoverTitle}>{t('settings.dirty.title')}</span>
+          <button
+            type="button"
+            className={css.dirtySaveAll}
+            title={t('settings.dirty.saveAll')}
+            aria-label={`${t('settings.dirty.saveAll')} — ${t('settings.dirty.dot')}`}
+            onClick={() => void draftSave('all')}
+          >
+            <Icon name="save" size={18} />
+            {dirtyKeys.length > 0
+              ? <span className={css.dirtySaveAllDot} aria-label={t('settings.dirty.dot')} />
+              : null}
+          </button>
+        </div>
+        {dirtyKeys.length === 0
+          ? <p className={css.hint}>{t('settings.dirty.empty')}</p>
+          : (
+            <ul className={css.dirtyList}>
+              {dirtyKeys.map((key) => {
+                const field = FIELD_BY_KEY.get(key)
+                const label = field !== undefined ? t(field.labelKey) : key
+                return (
+                  <li key={key} className={css.dirtyRow}>
+                    <button type="button" className={css.dirtyRowLabel} title={t('settings.dirty.locate')} onClick={() => locate(key)}>
+                      {label}
+                    </button>
+                    <span className={css.dirtyRowValue}>{String(draftValues[key] ?? '')}</span>
+                    <button
+                      type="button"
+                      className={css.dirtyRowAction}
+                      title={t('settings.dirty.undo')}
+                      aria-label={t('settings.dirty.undo')}
+                      onClick={() => draftUndo(key)}
+                    >
+                      <Icon name="restore" size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className={css.dirtyRowAction}
+                      title={t('settings.dirty.saveOne')}
+                      aria-label={t('settings.dirty.saveOne')}
+                      onClick={() => void draftSave(key)}
+                    >
+                      <Icon name="check" size={14} />
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+      </div>
+    </>
+  )
+}
+
+/**
  * The 基础设置 (basic settings) page, Q round. The giant catch-all Settings
  * page was split: this page keeps the host-wide groups (sidebar / navigation /
  * general / access / permissions) plus the "restore defaults" flow; plugin
@@ -381,7 +485,11 @@ type RestoreState =
 function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   const { t } = useI18n()
   const { prefs, set, setMany, reload, adopt } = useSettings()
+  // I round: settings-page edits stage in the DRAFT layer; the host POST only
+  // happens at a commit point (per-item save, save-all, or auto-save on).
+  const { values: draftValues, draftSet, dirtyKeys } = useDraftSettings()
   const [query, setQuery] = useState('')
+  const [popoverOpen, setPopoverOpen] = useState(false)
   const [restore, setRestore] = useState<RestoreState>({ phase: 'idle' })
   const needle = query.trim().toLowerCase()
   const visible = SETTINGS_SCHEMA.filter((field) => {
@@ -438,18 +546,25 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   }
 
   /** Any manual edit dismisses the undo banner (the backup is no longer the
-      "previous state" the user is looking at). */
+      "previous state" the user is looking at). I round: edits stage in the
+      draft layer (host commit is a separate, explicit act). */
   const setSafe = (key: string, next: PrefValue): void => {
-    set(key, next)
+    draftSet(key, next)
     setRestore(state => (state.phase === 'backedUp' ? { phase: 'idle' } : state))
   }
 
   const fieldRow = (field: SettingField): ReactNode => (
-    <li key={field.key} className={css.settingRow}>
+    <li key={field.key} className={css.settingRow} data-setting-key={field.key}>
       <SettingControl
         field={field}
-        value={coerce(field, prefs[field.key] ?? field.default)}
-        onChange={next => setSafe(field.key, next)}
+        // The auto-save switch defines HOW saving works, so it commits at
+        // once (an immediate host write) instead of staging like the rest —
+        // and reads the persisted value, not the staged one.
+        value={coerce(field, (field.key === 'aek-home.autoSave' ? (prefs?.[field.key] ?? field.default) : draftValues[field.key] ?? field.default))}
+        onChange={(next) => {
+          if (field.key === 'aek-home.autoSave') { set(field.key, next); setRestore(state => (state.phase === 'backedUp' ? { phase: 'idle' } : state)); return }
+          setSafe(field.key, next)
+        }}
       />
     </li>
   )
@@ -465,7 +580,17 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             (the document is the scroll container; sticky + opaque surface +
             the F-round hairline below it). */}
         <div className={css.stickyPanelSearch}>
-          <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} condense />
+          <PanelSearch
+            value={query}
+            onChange={setQuery}
+            placeholder={t('settings.panelSearch')}
+            count={dirtyKeys.length > 0 ? dirtyKeys.length : undefined}
+            countAria={t('settings.dirty.title')}
+            onCountClick={() => setPopoverOpen(true)}
+            condense
+            condenseHold={dirtyKeys.length > 0}
+          />
+          <SettingsDirtyPopover open={popoverOpen && dirtyKeys.length > 0} onClose={() => setPopoverOpen(false)} />
         </div>
         {firstRailRows.length > 0
           ? (
@@ -580,8 +705,12 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
  */
 function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   const { t } = useI18n()
-  const { prefs, set, reload } = useSettings()
+  const { reload } = useSettings()
+  // I round: same draft layer as the base settings page (and the same
+  // changed-items box, so edits made here show up on every settings surface).
+  const { values: draftValues, draftSet, dirtyKeys } = useDraftSettings()
   const [query, setQuery] = useState('')
+  const [popoverOpen, setPopoverOpen] = useState(false)
   const needle = query.trim().toLowerCase()
   const visible = WEBSEARCH_SETTINGS_SCHEMA.filter((field) => {
     if (needle.length === 0) return true
@@ -597,7 +726,17 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
       <div className={css.cardBody}>
         {/* G round: same sticky + condense toolbar as the base settings page. */}
         <div className={css.stickyPanelSearch}>
-          <PanelSearch value={query} onChange={setQuery} placeholder={t('settings.panelSearch')} count={visible.length} condense />
+          <PanelSearch
+            value={query}
+            onChange={setQuery}
+            placeholder={t('settings.panelSearch')}
+            count={dirtyKeys.length > 0 ? dirtyKeys.length : undefined}
+            countAria={t('settings.dirty.title')}
+            onCountClick={() => setPopoverOpen(true)}
+            condense
+            condenseHold={dirtyKeys.length > 0}
+          />
+          <SettingsDirtyPopover open={popoverOpen && dirtyKeys.length > 0} onClose={() => setPopoverOpen(false)} />
         </div>
         {visible.length > 0
           ? (
@@ -605,11 +744,11 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
               <h3 className={css.sectionTitle}>{t('settings.group.websearch')}</h3>
               <ul className={css.settingList}>
                 {visible.map(field => (
-                  <li key={field.key} className={css.settingRow}>
+                  <li key={field.key} className={css.settingRow} data-setting-key={field.key}>
                     <SettingControl
                       field={field}
-                      value={coerce(field, prefs[field.key] ?? field.default)}
-                      onChange={next => set(field.key, next)}
+                      value={coerce(field, draftValues[field.key] ?? field.default)}
+                      onChange={next => draftSet(field.key, next)}
                     />
                   </li>
                 ))}

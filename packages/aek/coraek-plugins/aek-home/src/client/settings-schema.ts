@@ -151,6 +151,17 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     default: true,
   },
   {
+    // I round: the commit mode of the settings draft layer. OFF (default) =
+    // edits stage in the draft and only reach the host via "save all" / the
+    // per-item save in the changed-items box; ON = every edit commits at
+    // once (the pre-I-round behaviour). This row itself writes IMMEDIATELY
+    // (it defines how saving works, so it must never wait for the very
+    // thing it configures).
+    key: 'aek-home.autoSave', kind: 'toggle', group: 'general',
+    labelKey: 'settings.autoSave', hintKey: 'settings.autoSaveHint',
+    default: false,
+  },
+  {
     // Path display style (Q round): the console shows host-absolute paths
     // (providers.yml, plugin dirs, …). The default shortens the home prefix to
     // `~/` (posix) or `%USERPROFILE%\` (Windows, backslashes); "full" keeps the

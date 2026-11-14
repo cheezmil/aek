@@ -83,6 +83,27 @@ interface PrefContextValue {
    * Q round: the "restore defaults" flow gets the authoritative file back).
    */
   adopt: (values: Record<string, PrefValue>) => void
+  /**
+   * I round: the DRAFT layer. Settings-page controls write here instead of
+   * straight to the host: the value updates the live view instantly (so the
+   * sidebar CSS variables follow the slider in real time) but the host POST
+   * only happens at an explicit commit point — one key, "all", or never
+   * (auto-save off). The draft lives on the provider (app root), so it
+   * survives every panel / route switch within this app session.
+   */
+  draft: Record<string, PrefValue>
+  /** The draft overlaid on the persisted map: what every consumer should read. */
+  draftView: Record<string, PrefValue>
+  /** Keys whose draft value differs from the persisted one (the dirty set). */
+  dirtyKeys: string[]
+  /** Write one key into the draft (and to the host at once when auto-save is on). */
+  draftSet: (key: string, next: PrefValue) => void
+  /** Commit one key ("all" = every dirty key in one POST) to the host. */
+  draftSave: (key: string | 'all') => Promise<void>
+  /** Discard the draft value of one key (the persisted value comes back). */
+  draftUndo: (key: string) => void
+  /** The `aek-home.autoSave` switch: on = every draft write is committed at once. */
+  autoSave: boolean
 }
 
 const PrefContext = createContext<PrefContextValue | undefined>(undefined)
@@ -94,10 +115,17 @@ const PrefContext = createContext<PrefContextValue | undefined>(undefined)
  */
 export function PrefProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<Record<string, PrefValue> | undefined>(undefined)
+  // I round: the unsaved draft layer (per key). Lives HERE (app root) so it
+  // survives panel / route switches; an app RESTART drops it by design.
+  const [draft, setDraft] = useState<Record<string, PrefValue>>({})
   const prefsRef = useRef(prefs)
   useEffect(() => {
     prefsRef.current = prefs
   }, [prefs])
+  const draftRef = useRef(draft)
+  useEffect(() => {
+    draftRef.current = draft
+  }, [draft])
 
   useEffect(() => {
     let cancelled = false
@@ -163,7 +191,72 @@ export function PrefProvider({ children }: { children: ReactNode }) {
     setPrefs(prev => ({ ...(prev ?? {}), ...values }))
   }, [])
 
-  return <PrefContext.Provider value={{ prefs, set, setMany, reload, adopt }}>{children}</PrefContext.Provider>
+  /**
+   * I round: commit ONE key or ALL dirty keys to the host in one POST, then
+   * merge the answered values into the persisted map and drop the committed
+   * draft entries. A failed POST keeps the draft (nothing is lost).
+   */
+  const draftSave = useCallback(async (key: string | 'all'): Promise<void> => {
+    const draftNow = draftRef.current
+    const single = key === 'all' ? undefined : draftNow[key]
+    if (key === 'all' ? Object.keys(draftNow).length === 0 : single === undefined) return
+    // The guard above proves `single` is a real PrefValue on the single-key
+    // path; the index signature can't be narrowed, so assert it.
+    const values: Record<string, PrefValue> = key === 'all' ? { ...draftNow } : { [key]: single as PrefValue }
+    const response = await fetch(PREFS_API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(key === 'all' ? { values } : { key, value: single }),
+    })
+    if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+    const answered: Record<string, PrefValue> = key === 'all' ? values : { [key]: single as PrefValue }
+    setPrefs(prev => ({ ...(prev ?? {}), ...answered }))
+    setDraft(prev => {
+      const drop = new Set(Object.keys(answered))
+      const next: Record<string, PrefValue> = {}
+      for (const [k, v] of Object.entries(prev)) if (!drop.has(k)) next[k] = v
+      return next
+    })
+  }, [])
+
+  /** I round: discard the draft value of one key (the persisted value shows). */
+  const draftUndo = useCallback((key: string): void => {
+    setDraft(prev => {
+      if (prev[key] === undefined) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }, [])
+
+  /** I round: write into the draft; with auto-save on the write commits at once. */
+  const autoSave = prefs?.['aek-home.autoSave'] === true
+  const draftSet = useCallback((key: string, next: PrefValue): void => {
+    setDraft(prev => ({ ...prev, [key]: next }))
+    if (prefs?.['aek-home.autoSave'] === true) {
+      void fetch(PREFS_API, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key, value: next }),
+      })
+        .then(response => {
+          if (!response.ok) return
+          setPrefs(prevMap => ({ ...(prevMap ?? {}), [key]: next }))
+        })
+        .catch(() => { /* the draft stays; the next commit retries */ })
+    }
+  }, [prefs])
+
+  /** The draft overlaid on the persisted map — what consumers read. */
+  const draftView: Record<string, PrefValue> = { ...(prefs ?? {}), ...draft }
+  const dirtyKeys = Object.keys(draft).filter(key => draftView[key] !== prefs?.[key])
+
+  return <PrefContext.Provider
+    value={{
+      prefs, set, setMany, reload, adopt,
+      draft, draftView, dirtyKeys, draftSet, draftSave, draftUndo, autoSave,
+    }}>{children}
+  </PrefContext.Provider>
 }
 
 /**
@@ -219,6 +312,31 @@ export function usePref<T>(
   }, [key, set, value, parse, fallback])
 
   return [value, update]
+}
+
+/**
+ * I round: the draft/commit view for the settings SURFACES (settings page,
+ * web-search settings). Controls read `values` (draft over persisted, so a
+ * slider live-previews while staying unsaved) and write with `draftSet`;
+ * commits happen via `draftSave` (one key or all). Everything is provider
+ * state, so switching panels never loses the unsaved edits.
+ * @returns the draft view plus the commit / undo actions.
+ */
+export function useDraftSettings(): {
+  values: Record<string, PrefValue>
+  dirtyKeys: string[]
+  draftSet: (key: string, next: PrefValue) => void
+  draftSave: (key: string | 'all') => Promise<void>
+  draftUndo: (key: string) => void
+  autoSave: boolean
+  setMany: (values: Record<string, PrefValue>) => void
+  reload: () => void
+  adopt: (values: Record<string, PrefValue>) => void
+} {
+  const { prefs, draftView, dirtyKeys, draftSet, draftSave, draftUndo, autoSave, setMany, reload, adopt } =
+    usePrefContext()
+  void prefs
+  return { values: draftView, dirtyKeys, draftSet, draftSave, draftUndo, autoSave, setMany, reload, adopt }
 }
 
 /**
