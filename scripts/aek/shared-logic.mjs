@@ -1199,7 +1199,15 @@ export function installApp(slot = 'aek', source) {
     return false
   }
 
-  return placeVerifiedBundle(slot, target, staged)
+  const placed = placeVerifiedBundle(slot, target, staged)
+  if (placed) {
+    // X4: only a bundle produced from the CURRENT source state counts as
+    // fresh — a release may rebuild the TS half without re-packaging the
+    // shell, in which case the next install must force the package. The
+    // marker is written at install time only and compared in isBuildFresh.
+    writeFileSync(installFingerprintPath(slot), `${buildFingerprint()}\n`, { encoding: 'utf8' })
+  }
+  return placed
 }
 
 /**
@@ -1288,6 +1296,18 @@ export function fingerprintPath(slot) {
 }
 
 /**
+ * The marker recording which source state the INSTALLED shell bundle was
+ * produced from (written by `installApp` after a verified install; X4: a
+ * release rebuilds the TS half without re-packaging the shell, so "TS build
+ * is fresh" must not count as "the installed app is current").
+ * @param {string} slot - 'aek' | 'next'.
+ * @returns {string} the path of the slot's install-fingerprint marker.
+ */
+export function installFingerprintPath(slot) {
+  return join(APP_ROOT, 'dist', slot, '.install-fingerprint')
+}
+
+/**
  * The packaged (dist) bundle for a slot.
  * @param {string} slot - 'aek' | 'next'.
  * @returns {string} path of `dist/<slot>/mac-arm64/<product>.app`.
@@ -1312,7 +1332,15 @@ export function isBuildFresh(slot = 'aek') {
   const witnesses = [distAppPath(slot), prodAppDirForSlot(slot)]
   if (!witnesses.some(p => existsSync(p))) return false
   try {
-    return readFileSync(fingerprintPath(slot), 'utf8').trim() === buildFingerprint()
+    const fp = buildFingerprint()
+    if (readFileSync(fingerprintPath(slot), 'utf8').trim() !== fp) return false
+    // X4: the installed bundle must have been produced from the CURRENT
+    // source state. A release rebuilds the TS half (fingerprint matches) but
+    // never re-packages the shell — without this check the next install
+    // would silently "reuse" an out-of-date asar (old code posing as new).
+    // The marker is written only by installApp; missing = force a package.
+    if (readFileSync(installFingerprintPath(slot), 'utf8').trim() !== fp) return false
+    return true
   } catch {
     return false
   }
