@@ -38,13 +38,14 @@ import { useInventory } from './useInventory.ts'
 import { useCurrentSlot } from './useRuntimeMode.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
 import { WebSearchPanel } from './WebSearchPanel.tsx'
+import { ComponentsPanel } from './ComponentsPanel.tsx'
 import { useWebsearchStatus } from './useWebsearchStatus.ts'
 import { prefetchRanking } from './useWebsearchRanking.ts'
 import type { FreeFilter } from './useWebsearchRanking.ts'
 
 /** All valid panel ids, used to validate a persisted value. */
 const PANEL_IDS: readonly PanelId[] = [
-  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'websearchSettings', 'settings', 'about',
+  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'websearchSettings', 'settings', 'about', 'components',
 ]
 
 /**
@@ -274,6 +275,7 @@ function Console() {
     if (id === 'plugins' || id === 'settings' || id === 'websearchSettings' || id === 'about') {
       return <InfoPanels panel={id} inventory={inventory} refreshSignal={signalFor(id)} />
     }
+    if (id === 'components') return <ComponentsPanel />
     if (id === 'skills') return <SkillsPanel refreshSignal={signalFor('skills')} />
     return <PromptsPanel refreshSignal={signalFor('prompts')} />
   }

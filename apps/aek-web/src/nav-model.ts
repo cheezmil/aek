@@ -20,7 +20,7 @@ import { PREF_KEYS, useSettings } from './preferences.tsx'
 import type { IconName } from './Icons.tsx'
 
 /** Every surface the console can show. */
-export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'websearchSettings' | 'settings' | 'about'
+export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'websearchSettings' | 'settings' | 'about' | 'components'
 
 /** The two drawer groups the user asked for (plus the pinned bucket). */
 export type NavGroup = 'plugins' | 'other'
@@ -65,6 +65,9 @@ export const NAV: readonly NavEntry[] = [
   // page instead of one giant Settings page. Web Search owns the ranking
   // refresh interval; the base "Settings" page was renamed 基础设置.
   { id: 'websearchSettings', labelKey: 'panel.websearchSettings', icon: 'settings', group: 'plugins', subOf: 'websearch', keywords: ['websearch', 'search', 'ranking', '排行', '设置'] },
+  // X5b third round: free selection of the optional AEK components lives in the
+  // console (the wizard auto-installs only the base environment).
+  { id: 'components', labelKey: 'panel.components', icon: 'layers', group: 'plugins', keywords: ['component', 'install', 'aekpm', 'aekws', 'aeksm', '组件', '安装'] },
   { id: 'settings', labelKey: 'panel.settings', icon: 'settings', group: 'other', keywords: ['preferences', 'options', 'sidebar', '基础设置', '设置'] },
   { id: 'about', labelKey: 'panel.about', icon: 'about', group: 'other', keywords: ['version', 'info', 'entry', '关于'] },
 ]

@@ -249,20 +249,7 @@
 }
 
 /* ------------------------------------------------ agent prompt ---- */
-.promptBlock {
-  border: 1px solid var(--aek-border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  background: var(--aek-surface-subtle);
-}
 
-.promptHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-}
 
 /* ------------------------------------------------ footer / ready ---- */
 .readyLine {
@@ -278,6 +265,67 @@
   margin-top: 18px;
   display: flex;
   justify-content: flex-end;
+}
+
+
+/* ------------------------------------------------ v3 status / auto-install ---- */
+.iconAlert {
+  color: var(--aek-danger);
+  flex: 0 0 18px;
+  margin-left: 1px;
+}
+
+.iconSpin {
+  color: var(--aek-accent);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.hintLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--aek-text-secondary);
+  margin: 10px 0 0;
+}
+
+.outputWrap {
+  margin-top: 10px;
+  border: 1px solid var(--aek-border);
+  border-radius: 10px;
+  background: var(--aek-surface);
+  overflow: hidden;
+}
+
+.outputHead {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 10px 0;
+}
+
+.readyLineFinal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--aek-success);
+  margin: 14px 0 0;
+}
+
+/* console component-install panel header */
+.componentsTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--aek-text);
+  margin: 0 0 4px;
 }
 
 /* ------------------------------------------------ collapsible component list ---- */
@@ -362,23 +410,8 @@
 }
 
 /* ------------------------------------------------ agent section ---- */
-.agentLine {
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--aek-text-secondary);
-  margin: 0 0 10px;
-}
 
 /* the AEK system skill path: mono, WRAPS fully — no clipping, ever. */
-.pathRow {
-  margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--aek-text);
-  white-space: pre-wrap;
-  word-break: break-all;
-}
 
 /* ------------------------------------------------ top-right notice (console) ---- */
 .floatNotice {
