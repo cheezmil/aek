@@ -1263,9 +1263,12 @@ function fingerprintFiles(dir, out = []) {
  */
 export function buildFingerprint() {
   const hash = createHash('sha256')
+  // Cloud builds recompile `lib/` from `src/` themselves (CI runs the same
+  // tsc), so the electron-layer inputs are src + config + manifest — never
+  // the derived `lib/` artifacts (their mtimes churn on every local shell
+  // build and would make the marker look dirty after each `desktop.mjs build`).
   const files = [
     ...fingerprintFiles(join(APP_ROOT, 'src')),
-    ...fingerprintFiles(join(APP_ROOT, 'lib')),
     join(APP_ROOT, 'electron-builder.config.mjs'),
     join(APP_ROOT, 'package.json'),
     join(APP_ROOT, 'entitlements.plist'),
