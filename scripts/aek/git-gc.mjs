@@ -4,7 +4,9 @@
  *
  * 设计约束（项目硬规则）：
  *  - 默认无参 = 只读报告，零副作用；`--gc` 也是 dry-run；只有 `--gc --yes` 才真的改仓库。
- *  - 所有 git 调用统一走 `cqg git <args>`，禁止裸 git（token 注入 / exclude 校验）。
+ *  - 所有 git 调用经 `git-runner.mjs`：本机有 `cqg`（作者本地 git 包装，
+ *    token 注入 / exclude 校验）则走 `cqg git <args>`，否则自动回落裸 git
+ *    （cqg 不是仓依赖、不随仓分发，全球 clone 必须能跑）。
  *  - 源码零绝对路径：仓库根取 cwd，.git 用相对路径拼；跨平台路径只用 path/os 模块。
  *  - 本脚本永远不 push。推送属于独立的、需用户确认的动作。
  *
@@ -18,6 +20,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { gitRunner } from './git-runner.mjs'
+
+// cqg when installed on this machine (author's local wrapper), bare git otherwise.
+const RUNNER = gitRunner()
 
 const ROOT = process.cwd()
 const GIT_DIR = path.join(ROOT, '.git')
@@ -41,18 +47,18 @@ GC 不会删除「仍被历史引用」的大文件；那种情况需要重写�
 `
 
 function git(args, options = {}) {
-  const result = spawnSync('cqg', ['git', ...args], {
+  const result = spawnSync(RUNNER.cmd, [...RUNNER.prefix, ...args], {
     cwd: ROOT,
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
     shell: process.platform === 'win32',
   })
   if (result.error) {
-    throw new Error(`cqg git ${args.join(' ')} 无法执行: ${result.error.message}`)
+    throw new Error(`${RUNNER.via} ${args.join(' ')} 无法执行: ${result.error.message}`)
   }
   if (result.status !== 0 && options.allowFailure !== true) {
     throw new Error(
-      `cqg git ${args.join(' ')} 失败 (exit ${result.status}): ${String(result.stderr || '').slice(0, 600)}`,
+      `${RUNNER.via} ${args.join(' ')} 失败 (exit ${result.status}): ${String(result.stderr || '').slice(0, 600)}`,
     )
   }
   return {
@@ -367,7 +373,7 @@ function printReport(info) {
     for (const item of oversized.items) {
       lines.push(`    ${item.size.padStart(11)}  ${item.path}${item.inHead ? '  (当前 HEAD 仍在)' : '  (仅历史)'}`)
     }
-    lines.push('  这些是 .git 体积大头，GC 不会删除；要真正瘦身必须重写历史（filter-repo / cqg clean-oversize），须用户明确确认。')
+    lines.push('  这些是 .git 体积大头，GC 不会删除；要真正瘦身必须重写历史（git filter-repo / cqg clean-oversize），须用户明确确认。')
   } else {
     lines.push('  未发现 >=10MiB 的可达历史大文件。')
   }
@@ -409,7 +415,7 @@ function runGc(before) {
     console.log('DRY RUN — 未执行任何变更。确认后加 --yes。')
     console.log(`回滚点将写入: ${path.join('.git', 'aek-gc-backups', '<时间戳>')}`)
     console.log('将依次执行:')
-    for (const step of steps) console.log(`  cqg git ${step.join(' ')}`)
+    for (const step of steps) console.log(`  ${RUNNER.via} ${step.join(' ')}`)
     console.log('本脚本不 push；--aggressive=' + String(aggressive))
     return 0
   }
@@ -429,7 +435,7 @@ function runGc(before) {
   for (const step of steps) {
     const isOptional = step[0] === 'multi-pack-index'
     const result = git(step, { allowFailure: isOptional })
-    console.log(`  cqg git ${step.join(' ')} -> ${result.ok ? 'ok' : 'skipped (optional)'}`)
+    console.log(`  ${RUNNER.via} ${step.join(' ')} -> ${result.ok ? 'ok' : 'skipped (optional)'}`)
     if (!result.ok && !isOptional) return 1
   }
   const after = analyse()

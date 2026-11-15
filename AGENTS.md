@@ -100,7 +100,7 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
 ## 6. 工程流程
 
 - 所有命令**先 cd 到仓库根**再执行。
-- **提交/推送一律用 `cqg`，禁止裸 `git`**（会绕过 token 注入与 exclude 校验）。非交互提交：`cqg acp --all -m "..."`；只推不提交 `cqg push-only`；其它 git 操作 `cqg git <args> --platform <name>`。
+- **git 提交/推送（工具分层）**：`cqg` 是**作者本机的个人工具**（多平台 token 注入 + exclude 校验），**不是仓库依赖、不随仓分发**。全球开发者 clone 后没有 cqg：**直接用裸 `git`，不要安装、不要寻找 cqg**，「禁止裸 git」的限制只适用于装了 cqg 的作者本机。本机有 cqg 时优先走它：非交互提交 `cqg acp --all -m "..."`；只推不提交 `cqg push-only`；其它 git 操作 `cqg git <args> --platform <name>`。仓内脚本（`scripts/aek/git-runner.mjs`）同一分层：检测到 cqg 优先、缺 cqg 自动回落裸 git——**所有脚本必须在全球 clone（无 cqg）上可跑**。
 - 脚本 **不带参数默认必须是安全的只读 / dry-run，零副作用**；`--prune` / `--copy` 之类改变状态的操作必须显式 `--yes` 才生效。dry-run 要逐行确认没有漏网的真实执行点。
 - 改动用户级 / 系统级配置文件（shell 启动文件、工具配置目录、系统配置等）前**先留 `<原文件名>.bak.<时间戳>-pre-edit` 备份**；同类提权操作合并成一次授权，需要 sudo 就直接 sudo。
 

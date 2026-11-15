@@ -53,7 +53,9 @@
  *   - The dev target must not exist (or be empty). Nothing is ever written
  *     into an existing directory.
  *   - `git worktree add` is a local structural operation (no commit, no
- *     push): it deliberately does not go through cqg. Commits still do.
+ *     push): it deliberately does not go through the author's local `cqg`
+ *     wrapper (which is not shipped with this repo). Commits do — `cqg`
+ *     when installed, bare git otherwise (see scripts/aek/git-runner.mjs).
  *   - The smoke gate (step 6) runs the candidate code BEFORE the agent is
  *     re-installed; a broken tag aborts with the system left stopped, and
  *     `--rollback --yes` brings everything back.
@@ -158,7 +160,7 @@ function assertPinUsable(pin, status) {
   if (!pin.sha) fail(`tag/ref ${pin.ref} 解析不到 commit（--tag 传一个已验收的 ref）`)
   if (!pin.explicit && !status.clean) {
     fail(`工作区不干净（${String(status.dirtyLines)} 条改动）：stable 树不能钉一个未验收的状态。` +
-      '先 `cqg acp --all` 提交，或 `--tag <ref>` 显式钉一个已验收的祖先。')
+      '先提交干净（`cqg acp --all`，本机未装 cqg 则 `git add -A && git commit`），或 `--tag <ref>` 显式钉一个已验收的祖先。')
   }
 }
 

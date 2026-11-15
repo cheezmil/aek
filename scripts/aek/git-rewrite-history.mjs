@@ -12,7 +12,10 @@
  *    packages/aek-websearch/aek），不碰 pnpm-lock.yaml / cli-manifest.json。
  *  - 关键顺序：重写 → 强推 gitea（更新 gitea/main 跟踪引用）→ 删本地 github/* 跟踪引用
  *    → reflog expire + gc。若不删 github/*，旧历史（含 67 MiB 二进制）仍可达，GC 白做。
- *  - 源码零绝对路径；所有 git 调用走 `cqg git`，不裸跑 git。
+ *  - 源码零绝对路径；git 调用经 `git-runner.mjs`：本机有 `cqg`（作者本地
+ *    git 包装）走 `cqg git`，否则回落裸 git。`cqg clean-oversize` 步骤是
+ *    cqg 专有能力：无 cqg 时执行模式直接中止并给出裸 git 手工替代，
+ *    dry-run 只标注。cqg 不是仓依赖，全球 clone 必须能读懂本脚本。
  *
  * 用法：
  *   node scripts/aek/git-rewrite-history.mjs                     只读报告
@@ -22,6 +25,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { gitRunner } from './git-runner.mjs'
 
 const ROOT = process.cwd()
 const GIT_DIR = path.join(ROOT, '.git')
@@ -32,6 +36,9 @@ const yes = has('--yes') || has('-y')
 const PUSH_PLATFORM = 'gitea'
 const THRESHOLD = '20MB'
 const GITHUB_REPO = 'cheezmil/agent-enhance-kit'
+// git runner: `cqg git` when the author's local cqg is installed, bare git otherwise.
+const RUNNER = gitRunner()
+const HAS_CQG = RUNNER.cmd === 'cqg'
 
 const USAGE = `git-rewrite-history.mjs — 只清历史大二进制，强推 gitea，GitHub 保持不动
 
@@ -39,9 +46,11 @@ const USAGE = `git-rewrite-history.mjs — 只清历史大二进制，强推 git
   node scripts/aek/git-rewrite-history.mjs --rewrite         dry-run，只打印步骤
   node scripts/aek/git-rewrite-history.mjs --rewrite --yes  执行
 
-阈值 ${THRESHOLD}（只命中两个 33MB 二进制）；重写用 cqg clean-oversize --no-push，
-随后只强推 ${PUSH_PLATFORM} 的 main 与 tags，删本地 github/* 跟踪引用后 GC。
-回滚点：.git/aek-rewrite-backups/<时间戳>/ + cqg clean-oversize 自带的完整 .git 备份。
+阈值 ${THRESHOLD}（只命中两个 33MB 二进制）；重写用 cqg clean-oversize --no-push
+（cqg 为作者本地工具；本机未装 cqg 时执行模式会中止，替代：git filter-repo 手工清大文件），
+随后只强推 ${PUSH_PLATFORM} 的 main 与 tags（cqg 用 --platform 语法，裸 git 用 remote 名），
+删本地 github/* 跟踪引用后 GC。
+回滚点：.git/aek-rewrite-backups/<时间戳>/ ${HAS_CQG ? '+ cqg clean-oversize 自带的完整 .git 备份。' : '（无 cqg：请先自行备份 .git）。'}
 `
 
 function run(tool, args, options = {}) {
@@ -65,7 +74,17 @@ function run(tool, args, options = {}) {
 }
 
 function git(args, options = {}) {
-  return run('cqg', ['git', ...args], options)
+  return run(RUNNER.cmd, [...RUNNER.prefix, ...args], options)
+}
+
+/**
+ * push-arg builder: cqg uses `--platform <name>`, bare git uses the remote
+ * name positionally. Both target the same remote (gitea).
+ * @param {string[]} extra e.g. ['--force','main']
+ * @returns {string[]}
+ */
+function pushArgs(extra) {
+  return HAS_CQG ? ['push', '--platform', PUSH_PLATFORM, ...extra] : ['push', PUSH_PLATFORM, ...extra]
 }
 
 function gitOut(args, options = {}) {
@@ -196,16 +215,19 @@ function rewrite(before) {
   const steps = [
     ['worktree prune（清理 prunable 元数据）', () => git(['worktree', 'prune'])],
     [
-      `cqg clean-oversize --threshold ${THRESHOLD} --no-push --yes`,
-      () => run('cqg', ['clean-oversize', '--threshold', THRESHOLD, '--no-push', '--yes'], { verbose: true }),
+      `cqg clean-oversize --threshold ${THRESHOLD} --no-push --yes${HAS_CQG ? '' : '（本机无 cqg：执行模式会在此前中止）'}`,
+      () => {
+        if (!HAS_CQG) throw new Error('本机无 cqg：clean-oversize 为 cqg 专有能力（git filter-repo 手工替代）')
+        return run('cqg', ['clean-oversize', '--threshold', THRESHOLD, '--no-push', '--yes'], { verbose: true })
+      },
     ],
     [
       `强推 ${PUSH_PLATFORM} main（唯一允许的远端写操作）`,
-      () => git(['push', '--platform', PUSH_PLATFORM, '--force', 'main'], { verbose: true }),
+      () => git(pushArgs(['--force', 'main']), { verbose: true }),
     ],
     [
       `强推 ${PUSH_PLATFORM} tags`,
-      () => git(['push', '--platform', PUSH_PLATFORM, '--force', '--tags'], { verbose: true }),
+      () => git(pushArgs(['--force', '--tags']), { verbose: true }),
     ],
     ...deleted.map(({ ref, oid }) => [
       `删本地跟踪引用 ${ref} (${oid.slice(0, 12)})，GitHub 远端不动`,
@@ -227,6 +249,14 @@ function rewrite(before) {
 
   if (before.status) {
     console.error('拒绝执行：工作区不干净。')
+    return 1
+  }
+  if (!HAS_CQG) {
+    console.error('中止：本机未检测到 cqg（作者本地工具，未随仓分发）。clean-oversize 是 cqg 专有能力。')
+    console.error('裸 git 手工替代（先完整备份 .git）：')
+    console.error(`  git filter-repo --invert-paths --path <误提交的大文件路径> --threshold ${THRESHOLD}`)
+    console.error(`  随后 git push ${PUSH_PLATFORM} --force main / --force --tags（remote 名按本机配置）`)
+    console.error('或安装 cqg 后重跑本命令（届时自动经 cqg 执行）。')
     return 1
   }
   const rollback = writeRollbackPoint(before)
