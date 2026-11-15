@@ -3391,44 +3391,6 @@ button.panelSearchCount:hover {
 }
 .featureCopy:hover:not(:disabled) { color: var(--aek-accent-ink, var(--aek-accent)); background: var(--aek-accent-soft); border-color: transparent; }
 
-/* X5: the shell install self-check card (about panel). The shell's preload
-   bridge exposes `window.aekShell`; the card is hidden in a plain browser. */
-.shellInstallCard { margin: 14px 0; }
-.shellInstallHint { color: var(--aek-text-muted); font-size: 12px; margin: 4px 0 10px; }
-.shellInstallRow { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; }
-.shellInstallRow input[type='checkbox'] { accent-color: var(--aek-accent); flex: none; }
-.shellInstallLabel { flex: 1; }
-.shellInstallVer { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--aek-text-muted); }
-.shellInstallMissing { font-size: 12px; color: var(--aek-text-muted); }
-.shellInstallActions { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
-.shellInstallOutput {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 140px;
-  overflow: auto;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--aek-accent-soft);
-  margin: 8px 0;
-}
-.shellInstallPrompt { position: relative; margin: 14px 0 4px; }
-.shellInstallPromptTitle { font-size: 12px; font-weight: 600; color: var(--aek-text-muted); margin-bottom: 6px; }
-.shellInstallPrompt pre {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-  padding: 10px 34px 10px 10px;
-  border-radius: 6px;
-  background: var(--aek-accent-soft);
-  margin: 0;
-}
-.shellInstallPrompt .featureCopy { position: absolute; top: 6px; right: 6px; }
-.shellInstallBackend { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 6px; color: var(--aek-text-muted); }
 /* X2 item 17: the bucket icon in the group title. */
 .pluginGroupTitle { display: flex; align-items: center; gap: 6px; }
 /* X2 item 7: the operation pipeline block — step chips + a real percentage

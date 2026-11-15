@@ -150,6 +150,21 @@ const LOOPBACK_URL = `http://${bindHost()}:${String(WEB_PORT)}`
  * same one.
  */
 let shellUrl = CANONICAL_URL
+// X5b first-run onboarding (user ruling 2026-11-16): until the user has
+// walked the `/setup` wizard at least once, fresh launches land on it.
+// The "seen" flag is the data-root preference (`<slotHome>/preferences/
+// aek-home.json`, C11 rule — never localStorage), so the shell's first-run
+// check needs no live backend: a missing file or key means "never seen".
+{
+  let setupSeen = false
+  try {
+    const prefs = JSON.parse(readFileSync(join(slotHome(SLOT), 'preferences', 'aek-home.json'), 'utf8')) as Record<string, unknown>
+    setupSeen = prefs['aek-home.shellSetupSeen'] === true
+  } catch {
+    setupSeen = false
+  }
+  if (!setupSeen) shellUrl += '/setup'
+}
 const CDP_PORT = Number(process.env.AEK_CDP_PORT ?? packaged?.cdpPort ?? SLOT_CFG.cdpPort)
 // Title bar: keep the ORIGINAL native frame (R10) but WITHOUT any text in it
 // (2026-11-09 follow-up). `title: ''` plus blocking `page-title-updated` keeps
@@ -928,6 +943,12 @@ function probeBinary(name: string, args: string[]): string | undefined {
 
 function registerShellInstallIpc(): void {
   ipcMain.handle('aek-shell:install-status', async () => {
+    // X5b: the AEK system skill (`aek-usage` — the general install/deploy/
+    // use/develop manual). The setup wizard's agent section points at this
+    // ABSOLUTE path instead of inlining the whole procedure; the skill is
+    // seeded into every slot's hub by `scripts/aek/seed-system-skills.mjs`.
+    // Data-root-relative resolution, no hardcoded absolute paths (AGENTS §4).
+    const systemSkillPath = join(slotHome(SLOT), 'skill-manager', 'aek-system-skill', 'aek-usage')
     const status = {
       node: probeBinary('node', ['--version']),
       pnpm: probeBinary('pnpm', ['--version']),
@@ -936,6 +957,7 @@ function registerShellInstallIpc(): void {
       aekpm: probeBinary('aekpm', ['--version']),
       aekws: probeBinary('aekws', ['--version']),
       aeksm: probeBinary('aeksm', ['--version']),
+      skillPath: existsSync(systemSkillPath) ? systemSkillPath : undefined,
       backendUp: false,
       checkedAt: Date.now(),
     }

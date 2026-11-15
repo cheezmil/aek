@@ -1,0 +1,469 @@
+/* X5b: first-run setup wizard (/setup) + the top-right "components missing"
+   notice. Design language per aekws research (NN/G checkbox guidelines:
+   rounded SQUARE + checkmark, never circles; checkmark stroke, not a bare
+   filled box; freefrontend checkmark-animation snippets): 18px rounded-4px
+   box, 1.5px border, hover border darkening, accent fill + white 45° tick,
+   2px offset focus ring. Notice spec (Kombai/UX StackExchange): corner
+   placement, one line + one action, no focus steal, role="status". */
+
+/* ------------------------------------------------ page frame ---- */
+.wizard {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  background: var(--aek-bg);
+  padding: 48px 24px 64px;
+}
+
+.wizardBody {
+  width: 100%;
+  max-width: 560px;
+}
+
+.wizardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+/* chrome-free wizard = its own language toggle (same preference as the
+   console footer). */
+.localeToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--aek-text-secondary);
+  background: var(--aek-surface);
+  border: 1px solid var(--aek-border);
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.localeToggle:hover {
+  color: var(--aek-text);
+  border-color: var(--aek-border-strong);
+}
+
+.localeToggle:focus-visible {
+  outline: 2px solid var(--aek-accent);
+  outline-offset: 1px;
+}
+
+.wizardSubtitle {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--aek-text-secondary);
+  margin: 0;
+}
+
+/* ------------------------------------------------ sections ---- */
+.section {
+  background: var(--aek-surface);
+  border: 1px solid var(--aek-border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 2px rgb(24 24 27 / 0.04);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.sectionNum {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--aek-accent-ink);
+  background: var(--aek-accent-soft);
+  border: 1px solid var(--aek-accent-border);
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--aek-text);
+}
+
+/* ------------------------------------------------ rows ---- */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 0;
+}
+
+.rowLabel {
+  font-size: 13.5px;
+  color: var(--aek-text);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rowValue {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--aek-text-secondary);
+  /* Short version only (see shortVersion): no clipping, the full probe
+     string lives in the tooltip. */
+  white-space: nowrap;
+}
+
+.chipMissing {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--aek-danger);
+  background: var(--aek-danger-soft);
+  border: 1px solid var(--aek-danger-border);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.backendRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 2px;
+}
+
+.backendOk,
+.backendDown {
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.backendOk {
+  color: var(--aek-success);
+}
+
+.backendDown {
+  color: var(--aek-danger);
+}
+
+/* ------------------------------------------------ custom checkbox (research spec) ---- */
+.check {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+  border: 1.5px solid var(--aek-border-strong);
+  border-radius: 4px;
+  background: var(--aek-surface);
+  cursor: pointer;
+  position: relative;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.check:hover {
+  border-color: var(--aek-text-muted);
+}
+
+.check:checked {
+  background: var(--aek-accent);
+  border-color: var(--aek-accent);
+}
+
+/* the checkmark stroke: a 45°-rotated right+bottom border, top-left placed */
+.check:checked::after {
+  content: '';
+  position: absolute;
+  left: 4.5px;
+  top: 1.5px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.check:focus-visible {
+  outline: 2px solid var(--aek-accent);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------ actions + result ---- */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 4px;
+}
+
+.noticeLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin: 10px 0 0;
+}
+
+.noticeSuccess {
+  color: var(--aek-success);
+  background: var(--aek-success-soft);
+  border: 1px solid var(--aek-success-border);
+}
+
+.noticeError {
+  color: var(--aek-danger);
+  background: var(--aek-danger-soft);
+  border: 1px solid var(--aek-danger-border);
+}
+
+.output {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: var(--aek-surface-subtle);
+  border: 1px solid var(--aek-border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--aek-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow: auto;
+}
+
+/* ------------------------------------------------ agent prompt ---- */
+.promptBlock {
+  border: 1px solid var(--aek-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--aek-surface-subtle);
+}
+
+.promptHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* ------------------------------------------------ footer / ready ---- */
+.readyLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--aek-success);
+  padding: 6px 0;
+}
+
+.footer {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ------------------------------------------------ collapsible component list ---- */
+.listToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 2px 0 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.listToggle:hover .sectionTitle {
+  color: var(--aek-text);
+}
+
+.listToggle:focus-visible {
+  outline: 2px solid var(--aek-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.summaryChip {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--aek-text-secondary);
+  background: var(--aek-surface-hover);
+  border: 1px solid var(--aek-border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+.chev {
+  color: var(--aek-text-muted);
+  transition: transform 140ms ease;
+}
+
+.chevOpen {
+  color: var(--aek-text-muted);
+  transform: rotate(180deg);
+  transition: transform 140ms ease;
+}
+
+/* installed-row green check icon (never a checkbox, never an emoji) */
+.iconCheck {
+  color: var(--aek-success);
+  flex: 0 0 18px;
+  margin-left: 1px;
+}
+
+/* ------------------------------------------------ always-visible action buttons ---- */
+.actionBtn {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--aek-accent-ink);
+  background: var(--aek-accent-soft);
+  border: 1px solid var(--aek-accent-border);
+  border-radius: 7px;
+  padding: 5px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease;
+}
+
+.actionBtn:hover:not(:disabled) {
+  background: var(--aek-accent-border);
+}
+
+.actionBtn:focus-visible {
+  outline: 2px solid var(--aek-accent);
+  outline-offset: 1px;
+}
+
+.actionBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ------------------------------------------------ agent section ---- */
+.agentLine {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--aek-text-secondary);
+  margin: 0 0 10px;
+}
+
+/* the AEK system skill path: mono, WRAPS fully — no clipping, ever. */
+.pathRow {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--aek-text);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ------------------------------------------------ top-right notice (console) ---- */
+.floatNotice {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 340px;
+  background: var(--aek-surface);
+  border: 1px solid var(--aek-border-strong);
+  border-radius: 12px;
+  box-shadow:
+    0 4px 16px rgb(24 24 27 / 0.1),
+    0 1px 3px rgb(24 24 27 / 0.08);
+  padding: 10px 12px;
+  animation: noticeIn 180ms ease-out;
+}
+
+@keyframes noticeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.floatNoticeIcon {
+  color: var(--aek-accent);
+  display: grid;
+  place-items: center;
+}
+
+.floatNoticeText {
+  font-size: 12.5px;
+  color: var(--aek-text);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.floatNoticeClose {
+  color: var(--aek-text-muted);
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border-radius: 6px;
+}
+
+.floatNoticeClose:hover {
+  color: var(--aek-text);
+  background: var(--aek-surface-hover);
+}
+
+/* ------------------------------------------------ no-shell placeholder ---- */
+.placeholder {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--aek-bg);
+}
+
+.placeholderCard {
+  background: var(--aek-surface);
+  border: 1px solid var(--aek-border);
+  border-radius: 14px;
+  padding: 28px 32px;
+  max-width: 420px;
+  text-align: center;
+}
+
+.placeholderTitle {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.placeholderBody {
+  font-size: 13px;
+  color: var(--aek-text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}

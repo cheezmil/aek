@@ -67,6 +67,13 @@ export const PREF_KEYS = {
    * path. Copy buttons always copy the raw path, never the display form.
    */
   pathStyle: 'aek-home.pathStyle',
+  /**
+   * X5b: whether the user has walked the /setup first-run wizard at least
+   * once. The shell's main process reads the same `<AEK_HOME>/preferences/
+   * aek-home.json` (no localStorage, per the C11 rule) to decide whether a
+   * fresh launch opens `/setup` or the console.
+   */
+  shellSetupSeen: 'aek-home.shellSetupSeen',
 } as const
 
 /** One storable setting value (JSON primitive, enforced by the host). */

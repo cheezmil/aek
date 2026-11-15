@@ -31,6 +31,7 @@ import {
 import { PluginSubNav } from './PluginSubNav.tsx'
 import { RuntimeModePanel } from './RuntimeModePanel.tsx'
 import { AboutPanel, PluginsPanel } from './InfoPanels.tsx'
+import { SetupWizard, SetupNotice } from './Setup.tsx'
 import { sidebarCssVars } from './settings-schema.ts'
 import { css, cx } from './styles.ts'
 import { useInventory } from './useInventory.ts'
@@ -306,7 +307,29 @@ function Console() {
  * @param _props - retained for API compatibility.
  * @returns the application root.
  */
+/**
+ * X5b: the app-level route split. The /setup first-run wizard (macOS
+ * setup-assistant style) replaces the whole console; every other path
+ * renders the console as before. The split lives ABOVE both providers'
+ * consumers so the wizard keeps i18n + prefs. Back/forward (and the
+ * notice's pushState + manual popstate) move between the two.
+ */
+function normalizePath(pathname: string): string {
+  return pathname.replace(/^\/+/, '').replace(/\/+$/, '')
+}
+
 export function AekHome(_props: AekHomeProps) {
+  const [route, setRoute] = useState(() => normalizePath(window.location.pathname))
+  useEffect(() => {
+    const onPop = (): void => {
+      setRoute(normalizePath(window.location.pathname))
+    }
+    window.addEventListener('popstate', onPop)
+    return () => {
+      window.removeEventListener('popstate', onPop)
+    }
+  }, [])
+  const isSetup = route === 'setup'
   return (
     <PrefProvider>
       <I18nProvider>
@@ -315,7 +338,17 @@ export function AekHome(_props: AekHomeProps) {
             other local web UI. Only mounted on the legacy origin, so the
             canonical path pays no extra request. */}
         {isLegacyLoopback(window.location.hostname) ? <CanonicalHostRedirect /> : null}
-        <Console />
+        {isSetup
+          ? (
+            <SetupWizard
+              onDone={() => {
+                window.history.pushState(null, '', '/')
+                setRoute('')
+              }}
+            />
+          )
+          : <Console />}
+        {!isSetup ? <SetupNotice /> : null}
       </I18nProvider>
     </PrefProvider>
   )

@@ -18,6 +18,8 @@ declare global {
         aekpm?: string
         aekws?: string
         aeksm?: string
+        /** X5b: absolute path of the AEK system skill (aek-usage manual), when seeded. */
+        skillPath?: string
         backendUp: boolean
         checkedAt: number
       }>

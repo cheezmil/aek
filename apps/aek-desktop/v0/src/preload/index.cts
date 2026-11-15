@@ -21,6 +21,13 @@ export interface ShellInstallStatus {
   aekpm?: string
   aekws?: string
   aeksm?: string
+  /**
+   * X5b: the absolute path of the AEK system skill (`aek-usage`, the general
+   * install/deploy/use/develop manual seeded into every slot's hub). The
+   * setup wizard's agent section references this path instead of inlining
+   * the procedure; `undefined` when the hub has no copy yet.
+   */
+  skillPath?: string
   /** Whether the slot's web backend answered on its canonical port. */
   backendUp: boolean
   checkedAt: number
