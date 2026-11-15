@@ -86,6 +86,13 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
   if (cachedElectron) {
     console.log(`[builder] using cached Electron archive: ${cachedElectron}`)
   }
+  // X5: electron-builder validates foreign-platform config blocks against a
+  // restricted schema (a `linux`/`win` key on a mac build must be `null`),
+  // so each host OS only carries ITS platform block. CI runners match their
+  // OS 1:1 (mac job on macos-latest, etc.), local mac builds stay as before.
+  const hostDarwin = process.platform === 'darwin'
+  const hostWin = process.platform === 'win32'
+  const hostLinux = process.platform === 'linux'
   return {
     appId: s.appId,
     productName: s.productName,
@@ -99,54 +106,62 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
       'package.json',
     ],
     asar: true,
-    mac: {
-      icon: 'resources/icon.icns',
-      category: 'public.app-category.productivity',
-      // R20: macOS requires a declared reason before an app can appear in
-      // System Settings → Privacy & Security → Accessibility. The prompt shown
-      // by `isTrustedAccessibilityClient(true)` uses this string.
-      extendInfo: {
-        NSAccessibilityUsageDescription: 'AEK needs Accessibility access so you can explicitly enable desktop automation and verify developer-tool shortcuts.',
+    ...(hostDarwin ? {
+      mac: {
+        icon: 'resources/icon.icns',
+        category: 'public.app-category.productivity',
+        // R20: macOS requires a declared reason before an app can appear in
+        // System Settings → Privacy & Security → Accessibility. The prompt
+        // shown by `isTrustedAccessibilityClient(true)` uses this string.
+        extendInfo: {
+          NSAccessibilityUsageDescription: 'AEK needs Accessibility access so you can explicitly enable desktop automation and verify developer-tool shortcuts.',
+        },
+        hardenedRuntime: true,
+        entitlements: 'entitlements.plist',
+        entitlementsInherit: 'entitlements.plist',
+        // Resolved at build time from the local keychain. NEVER a hardcoded
+        // fingerprint (that would only work on one developer's machine), and
+        // NEVER adhoc: assertBuildIdentity() fails the build with a setup
+        // guide. CI cloud builds (AEK_CI_UNSIGNED=1) ship unsigned
+        // artifacts: the end user re-signs locally with their own
+        // self-signed dev identity.
+        identity: buildIdentity.identity,
+        forceCodeSigning: !ciUnsigned,
+        // X5: both architectures for the cloud release (a plain `--mac`
+        // build now yields two DMGs; local deep-signing still works
+        // per-arch — the local `--arm64` CLI flag restricts it).
+        target: {
+          target: 'dmg',
+          arch: ['x64', 'arm64'],
+        },
       },
-      hardenedRuntime: true,
-      entitlements: 'entitlements.plist',
-      entitlementsInherit: 'entitlements.plist',
-      // Resolved at build time from the local keychain. NEVER a hardcoded
-      // fingerprint (that would only work on one developer's machine), and
-      // NEVER adhoc: assertBuildIdentity() fails the build with a setup guide.
-      // CI cloud builds (AEK_CI_UNSIGNED=1) ship unsigned artifacts: the end
-      // user re-signs locally with their own self-signed dev identity.
-      identity: buildIdentity.identity,
-      forceCodeSigning: !ciUnsigned,
-      // X5: both architectures for the cloud release (a plain `--mac` build
-      // now yields two DMGs; local deep-signing still works per-arch).
-      target: {
-        target: 'dmg',
-        arch: ['x64', 'arm64'],
+    } : {}),
+    ...(hostWin ? {
+      win: {
+        icon: 'resources/icon.png',
+        // NSIS installers are x86-64 only — NSIS cannot target Windows on
+        // ARM (electron-builder issue #5461), so arm64 ships as a portable
+        // executable (an x64 NSIS runs on arm64 Windows via emulation, but
+        // we ship a real arm64 binary for it).
+        target: [
+          { target: 'nsis', arch: ['x64'] },
+          { target: 'portable', arch: ['arm64'] },
+        ],
       },
-    },
-    win: {
-      icon: 'resources/icon.png',
-      // NSIS installers are x86-64 only — NSIS cannot target Windows on ARM
-      // (electron-builder issue #5461), so arm64 ships as a portable
-      // executable (an x64 NSIS runs on arm64 Windows via emulation, but we
-      // ship a real arm64 binary for it).
-      target: [
-        { target: 'nsis', arch: ['x64'] },
-        { target: 'portable', arch: ['arm64'] },
-      ],
-    },
-    linux: {
-      icon: 'resources/icon.png',
-      // fpm (deb) metadata: the app package.json carries no author/homepage
-      // (private dev package), so give the .deb a neutral maintainer.
-      maintainer: 'AEK maintainers <aek@example.com>',
-      homepage: 'https://github.com/cheezmil/aek',
-      target: [
-        { target: 'AppImage', arch: ['x64', 'arm64'] },
-        { target: 'deb', arch: ['x64', 'arm64'] },
-      ],
-    },
+    } : {}),
+    ...(hostLinux ? {
+      linux: {
+        icon: 'resources/icon.png',
+        // fpm (deb) metadata: the app package.json carries no author/homepage
+        // (private dev package), so give the .deb a neutral maintainer.
+        maintainer: 'AEK maintainers <aek@example.com>',
+        homepage: 'https://github.com/cheezmil/aek',
+        target: [
+          { target: 'AppImage', arch: ['x64', 'arm64'] },
+          { target: 'deb', arch: ['x64', 'arm64'] },
+        ],
+      },
+    } : {}),
     dmg: {
       format: 'ULFO',
     },
