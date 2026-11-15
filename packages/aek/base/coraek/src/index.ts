@@ -21,6 +21,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { CapabilitySupervisor } from '../external-supervisor.mjs'
+import { markHostRestartOps } from '../ops.mjs'
+import { resolveAekHome } from '../home.mjs'
 import { registerCapabilityApi } from './capability-api.ts'
 import { registerRuntimeApi } from './runtime-api.ts'
 import { registerAiReleaseApi } from './ai-release-api.ts'
@@ -54,6 +56,12 @@ const ANNOUNCED_ROOTS = new WeakSet<Context>()
  * @param ctx - plugin context carrying the webServer service.
  */
 export function apply(ctx: Context): void {
+  // X2: this host process just started — any operation that was waiting on
+  // the host itself to restart (an in-host plugin's restart) is now applied.
+  // Best-effort: a ledger read failure must never block plugin boot.
+  try {
+    markHostRestartOps(resolveAekHome())
+  } catch { /* the ledger is advisory; never fatal to boot */ }
   const supervisor = new CapabilitySupervisor()
   registerCapabilityApi(ctx, { supervisor })
   registerRuntimeApi(ctx, { supervisor })

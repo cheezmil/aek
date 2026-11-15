@@ -38,6 +38,31 @@ export interface HalfState {
   shellKind?: 'dev' | 'prod' | null
 }
 
+/**
+ * An in-flight half action with its operator-visible pipeline (X2 item 7):
+ * the "how far is that" state — which step the control is on, when it
+ * started, and what outcome the UI is waiting for. Resolved by the health
+ * poll: when the expected liveness arrives the op closes as `done`, when
+ * the deadline passes it closes as `stalled` (the host may be mid-restart;
+ * the operator can dismiss or re-poll).
+ */
+export interface InFlightInstance {
+  /** The same key as `busy` (`slot:half:action`). */
+  key: string
+  /** `start` / `stop` / `restart`. */
+  action: HalfAction
+  /** Which half. */
+  half: Half
+  /** Which slot. */
+  slot: 'aek' | 'next'
+  /** Epoch ms the request was sent. */
+  startedAt: number
+  /** 'requested' → 'applied' → closed. */
+  phase: 'requested' | 'applied'
+  /** Final outcome, once closed (`undefined` while in flight). */
+  outcome?: 'done' | 'stalled' | 'failed'
+}
+
 /** Health payload. */
 export interface HealthPayload {
   /** Host accepted the probe. */
@@ -66,6 +91,10 @@ export interface InstanceState {
   error: string | undefined
   /** In-flight control, keyed `slot:half:action`. */
   busy: string | undefined
+  /** The X2 in-flight pipeline: every half action with its stage, live. */
+  inFlight: InFlightInstance[]
+  /** Close one in-flight op manually (the operator gave up waiting). */
+  dismiss: (key: string) => void
   /** Force a full re-read. */
   refresh: () => void
   /** Run one half action. */
@@ -126,8 +155,38 @@ export function useInstances(): InstanceState {
   const [health, setHealth] = useState<HealthPayload | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
   const [busy, setBusy] = useState<string | undefined>(undefined)
+  const [inFlight, setInFlight] = useState<InFlightInstance[]>([])
   const [revision, setRevision] = useState(0)
   const signature = useRef<string>('')
+
+  /**
+   * X2 item 7: the "how far is that" close-out — when the expected liveness
+   * shows up in a health read, the in-flight op is done; when it never
+   * arrives within the deadline, it is `stalled` (the backend is mid-restart),
+   * not a silent spinner.
+   */
+  const resolveInFlight = (payload: HealthPayload): void => {
+    setInFlight((current) => {
+      const next: InFlightInstance[] = []
+      for (const op of current) {
+        if (op.outcome !== undefined) { next.push(op); continue }
+        // The liveness flip of the target half is the "done" signal; the
+        // `hasOwn` guard keeps the read honest when a slot key is absent.
+        const target: boolean | undefined = Object.hasOwn(payload.slots, op.slot) ? payload.slots[op.slot][op.half] : undefined
+        const want = op.action === 'stop' ? false : true
+        if (target !== undefined && target === want) {
+          next.push({ ...op, outcome: 'done' })
+          continue
+        }
+        if (Date.now() - op.startedAt > 60_000) {
+          next.push({ ...op, outcome: 'stalled' })
+          continue
+        }
+        next.push(op)
+      }
+      return next
+    })
+  }
 
   useEffect(() => {
     const cancelledRef = { current: false }
@@ -137,6 +196,7 @@ export function useInstances(): InstanceState {
         if (!cancelledRef.current) {
           setHealth(next)
           setError(undefined)
+          resolveInFlight(next)
         }
         if (force || next.signature !== signature.current) {
           signature.current = next.signature
@@ -144,7 +204,11 @@ export function useInstances(): InstanceState {
           if (!cancelledRef.current) setStatus(full)
         }
       } catch (cause) {
-        if (!cancelledRef.current) setError(messageOf(cause))
+        // A failed health read while an op is in flight is itself progress:
+        // the backend went away mid-restart (or is still booting).
+        if (!cancelledRef.current) {
+          setError(messageOf(cause))
+        }
       }
     }
     void pull(true)
@@ -163,22 +227,37 @@ export function useInstances(): InstanceState {
     }
   }, [revision])
 
-  const refresh = useCallback(() =>{  setRevision(value => value + 1) }, [])
+  const refresh = useCallback((): void => {
+    setRevision(value => value + 1)
+  }, [])
+
+  /** Manually close one in-flight op (the operator stopped waiting). */
+  const dismiss = useCallback((key: string): void => {
+    setInFlight(current => current.filter(op => op.key !== key || op.outcome === undefined))
+  }, [])
 
   const act = useCallback((slot: 'aek' | 'next', half: Half, action: HalfAction) => {
     const key = `${slot}:${half}:${action}`
     setBusy(key)
     setError(undefined)
+    // X2 item 7: the request lands in the in-flight pipeline — the row's
+    // step chips follow it from `requested` to `applied` to a live outcome.
+    setInFlight(current => [
+      ...current.filter(op => op.key !== key),
+      { key, action, half, slot, startedAt: Date.now(), phase: 'requested' as const },
+    ])
     void postInstance(slot, half, action)
       .then(() => {
         setBusy(undefined)
+        setInFlight(current => current.map(op => (op.key === key ? { ...op, phase: 'applied' as const } : op)))
         setRevision(value => value + 1)
       })
       .catch((cause: unknown) => {
         setError(messageOf(cause))
         setBusy(undefined)
+        setInFlight(current => current.map(op => (op.key === key ? { ...op, outcome: 'failed' as const } : op)))
       })
   }, [])
 
-  return { status, health, error, busy, refresh, act }
+  return { status, health, error, busy, inFlight, dismiss, refresh, act }
 }

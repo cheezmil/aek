@@ -250,9 +250,10 @@ describe('capability api routes', () => {
         runtimePackages: [{ id: 'aek-websearch', manifest: { name: '@cheezmil/aek-websearch', version: '1.0.0', license: 'Apache-2.0', aek: { runtime: { share: true, isolate: { bin: 'bin/isolate.mjs' } } } }, packageDir: '/opt/fixture/aek-websearch' }],
       })
       // The boot is fire-and-forget; one macrotask later the calls are in.
+      // X2: the process is registered under its RUNTIME container key.
       await new Promise(resolve => setTimeout(resolve, 20))
-      expect(registered).toEqual(['aek-websearch'])
-      expect(started).toEqual(['aek-websearch'])
+      expect(registered).toEqual(['runtime1'])
+      expect(started).toEqual(['runtime1'])
       harness.stopAll()
     } finally {
       rmSync(home, { recursive: true, force: true })

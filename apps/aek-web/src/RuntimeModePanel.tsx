@@ -22,10 +22,10 @@ import { useI18n } from './i18n.tsx'
 import { formatDisplayPath, parsePathStyle } from './paths.ts'
 import { PREF_KEYS, usePref } from './preferences.tsx'
 import { css, cx } from './styles.ts'
-import { CopyButton, PanelCard, Spinner } from './ui-kit.tsx'
+import { CopyButton, PanelCard, Spinner, ToggleSwitch } from './ui-kit.tsx'
 import type { SlotEndpoint } from './useConsoleFacts.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
-import type { Half, HalfAction } from './useInstances.ts'
+import type { Half, HalfAction, InFlightInstance } from './useInstances.ts'
 import { useInstances } from './useInstances.ts'
 import { useAiRelease } from './useAiRelease.ts'
 
@@ -175,6 +175,15 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
     }
   }
 
+  /** Restart every half that is currently up (the middle of the toolbar trio). */
+  const restartAll = (): void => {
+    for (const slot of SLOTS) {
+      for (const half of ['web', 'shell'] as const) {
+        if (halfOn(slot, half)) state.act(slot, half, 'restart')
+      }
+    }
+  }
+
   /** Stop every half that is currently up. */
   const stopAll = (): void => {
     for (const slot of SLOTS) {
@@ -184,18 +193,33 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
     }
   }
 
-  /** Select-all on one card: any half down → start the missing ones, else stop both. */
-  const toggleSlot = (slot: Slot): void => {
-    const web = halfOn(slot, 'web')
-    const shell = halfOn(slot, 'shell')
-    if (web && shell) {
-      state.act(slot, 'web', 'stop')
-      state.act(slot, 'shell', 'stop')
-      return
+  /** Start every half of one slot that is down. */
+  const startSlot = (slot: Slot): void => {
+    for (const half of ['web', 'shell'] as const) {
+      if (!halfOn(slot, half)) state.act(slot, half, 'start')
     }
-    if (!web) state.act(slot, 'web', 'start')
-    if (!shell) state.act(slot, 'shell', 'start')
   }
+
+  /** Restart every half of one slot that is up. */
+  const restartSlot = (slot: Slot): void => {
+    for (const half of ['web', 'shell'] as const) {
+      if (halfOn(slot, half)) state.act(slot, half, 'restart')
+    }
+  }
+
+  /** Stop every half of one slot that is up. */
+  const stopSlot = (slot: Slot): void => {
+    for (const half of ['web', 'shell'] as const) {
+      if (halfOn(slot, half)) state.act(slot, half, 'stop')
+    }
+  }
+
+  /**
+   * X2 item 13: the in-flight pipeline of one slot — the same step-chip
+   * language as the roster's operation pipelines (requested → applied → the
+   * live outcome), with a done-over-total percentage.
+   */
+  const inFlightOf = (slot: Slot): InFlightInstance[] => state.inFlight.filter(op => op.slot === slot && op.outcome === undefined)
 
   return (
     <PanelCard>
@@ -206,9 +230,16 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
             {t('runtime.default')}
           </span>
           <span className={css.instanceToolbarActions}>
+            {/* X2 item 13: the whole-stop button carries the SAME THREE icons
+                (start / restart / stop) as the per-half rows — one control
+                set for all components, no lone icon. */}
             <button type="button" className={css.toolbarButton} onClick={startAll} title={t('runtime.startAll')}>
               <Icon name="play" size={14} />
               {t('runtime.startAll')}
+            </button>
+            <button type="button" className={css.toolbarButton} onClick={restartAll} title={t('runtime.restartAll')}>
+              <Icon name="refresh" size={14} />
+              {t('runtime.restartAll')}
             </button>
             <button type="button" className={css.toolbarButton} onClick={stopAll} title={t('runtime.stopAll')}>
               <Icon name="stop" size={14} />
@@ -224,7 +255,6 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
             const running = web || shell
             const endpoint = endpointFor(slot)
             const name = slot === 'aek' ? t('runtime.aek') : t('runtime.next')
-            const allOn = web && shell
             return (
               <li key={slot} className={cx(css.instanceCard, running && css.instanceCardOn)}>
                 <div className={css.instanceHead}>
@@ -237,15 +267,38 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                       <span className={css.runtimeDot} />
                       {running ? t('runtime.running') : t('runtime.stopped')}
                     </span>
-                    <button
-                      type="button"
-                      className={cx(css.halfButton, css.selectAllButton)}
-                      onClick={() =>{  toggleSlot(slot) }}
-                      title={allOn ? tf('runtime.stopAllSlot', { name }) : tf('runtime.startAllSlot', { name })}
-                      aria-label={allOn ? tf('runtime.stopAllSlot', { name }) : tf('runtime.startAllSlot', { name })}
-                    >
-                      <Icon name={allOn ? 'stop' : 'play'} size={14} />
-                    </button>
+                    <span className={css.halfActions}>
+                      <button
+                        type="button"
+                        className={cx(css.halfButton, !web || !shell ? css.halfButtonOn : undefined)}
+                        onClick={() => { startSlot(slot) }}
+                        disabled={web && shell}
+                        title={tf('runtime.startAllSlot', { name })}
+                        aria-label={tf('runtime.startAllSlot', { name })}
+                      >
+                        <Icon name="play" size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className={cx(css.halfButton, running ? css.halfButtonOn : undefined)}
+                        onClick={() => { restartSlot(slot) }}
+                        disabled={!running}
+                        title={tf('runtime.restartAllSlot', { name })}
+                        aria-label={tf('runtime.restartAllSlot', { name })}
+                      >
+                        <Icon name="refresh" size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className={cx(css.halfButton, running ? css.halfButtonOn : undefined)}
+                        onClick={() => { stopSlot(slot) }}
+                        disabled={!running}
+                        title={tf('runtime.stopAllSlot', { name })}
+                        aria-label={tf('runtime.stopAllSlot', { name })}
+                      >
+                        <Icon name="stop" size={14} />
+                      </button>
+                    </span>
                   </span>
                 </div>
 
@@ -270,6 +323,34 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                     onRestart={() =>{  state.act(slot, 'shell', 'restart') }}
                   />
                 </ul>
+
+                {/* X2 item 7: the in-flight pipeline — the "how far is that"
+                    progress for this card's live controls (3-step, percented). */}
+                {inFlightOf(slot).length > 0
+                  ? (
+                    <ul className={css.inFlightList}>
+                      {inFlightOf(slot).map((op) => {
+                        const applied = op.phase === 'applied'
+                        const percent = applied ? 66 : 33
+                        const halfName = op.half === 'web' ? t('runtime.web') : t('runtime.shell')
+                        return (
+                          <li key={op.key} className={css.inFlightRow}>
+                            <span className={css.inFlightLabel}>
+                              {tf(op.action === 'restart' ? 'runtime.half.restart' : (op.action === 'stop' ? 'runtime.half.stop' : 'runtime.half.start'), { label: halfName })}
+                            </span>
+                            <span className={css.inFlightSteps}>
+                              <span className={css.inFlightStepDone}>{t('runtime.inFlight.requested')}</span>
+                              <span className={applied ? css.inFlightStepDone : css.inFlightStepActive}>{t('runtime.inFlight.applied')}</span>
+                              <span className={css.inFlightStepPending}>{t('runtime.inFlight.live')}</span>
+                            </span>
+                            <span className={css.inFlightPercent}>{String(percent)}%</span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )
+                  : null}
+
 
                 <ul className={css.endpointList}>
                   {endpoint !== undefined
@@ -326,17 +407,14 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
             <div className={css.aiReleaseBox}>
               <div className={css.aiReleaseHead}>
                 <span className={css.aiReleaseTitle}>{t('runtime.aiRelease.title')}</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={aiRelease.allowed === true}
-                  aria-label={t('runtime.aiRelease.title')}
-                  className={cx(css.toggle, aiRelease.allowed === true && css.toggleOn)}
-                  disabled={aiRelease.busy || aiRelease.allowed === undefined}
-                  onClick={() =>{  void aiRelease.setAllowed(aiRelease.allowed !== true) }}
-                >
-                  <span className={css.toggleKnob} />
-                </button>
+                {/* X2 item 15: the standard `ToggleSwitch` base style (the
+                    custom knob/toggle-on pair is gone). */}
+                <ToggleSwitch
+                  checked={aiRelease.allowed === true}
+                  locked={aiRelease.busy || aiRelease.allowed === undefined}
+                  onChange={(next) => { void aiRelease.setAllowed(next) }}
+                  label={t('runtime.aiRelease.title')}
+                />
               </div>
               <p className={css.aiReleaseDesc}>{t('runtime.aiRelease.desc')}</p>
               <span className={css.aiReleaseState}>

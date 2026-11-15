@@ -55,6 +55,7 @@ import { basename, dirname, join } from 'node:path'
 import { aekBackupsPath, resolveAekHome } from './home.mjs'
 import { DEFAULT_DIRS, manifestFor, renderManifest, resolveDir } from './paths.mjs'
 import { pruneBackups, snapshotStamp } from './backups.mjs'
+import { runtimesV2MigrationWrites } from './runtimes.mjs'
 
 /** File inside a data root holding the integer schema version. */
 export const SCHEMA_FILE = '.schema-version'
@@ -64,7 +65,7 @@ export const SCHEMA_FILE = '.schema-version'
  * be tagged with that same number, and the two are checked against each other
  * below so a forgotten bump cannot ship.
  */
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 /**
  * What a step produces for one file.
@@ -291,8 +292,40 @@ const manifestAlign = {
   },
 }
 
+/**
+ * X2: the runtime store went from "one capability per isolated process,
+ * keyed by capability" to "numbered runtime containers that may host
+ * SEVERAL capabilities, keyed by runtime" (`runtime-modes.json` v3 with
+ * `assignments` + `containers`, labels re-keyed to the runtime id, the
+ * supervisor `capabilities.json` rows re-keyed to their runtime). Both files
+ * travel together; the pure writer lives in `runtimes.mjs` (unit-testable,
+ * idempotent — a v2-shaped document answers zero writes).
+ *
+ * @type {Step}
+ */
+const runtimesV2 = {
+  version: 4,
+  id: 'runtimes-v2',
+  title: 'runtime-modes.json v2 多租户运行时（assignments + containers）+ capabilities.json 按运行时重键',
+  run(ctx) {
+    const runtimeModesFile = join(ctx.home, 'runtime-modes.json')
+    const capabilitiesFile = join(ctx.home, 'capabilities.json')
+    const writes = runtimesV2MigrationWrites({
+      runtimeModesText: ctx.read(runtimeModesFile),
+      runtimeModesPath: runtimeModesFile,
+      capabilitiesText: ctx.read(capabilitiesFile),
+      capabilitiesPath: capabilitiesFile,
+    })
+    for (const write of writes) {
+      if (write.file === runtimeModesFile) write.before = ctx.read(runtimeModesFile)
+      if (write.file === capabilitiesFile) write.before = ctx.read(capabilitiesFile)
+    }
+    return writes
+  },
+}
+
 /** Ordered transforms. Sorted by `version`, each exactly one more than the last. */
-export const STEPS = [registrySourceNormalize, manifestAlign]
+export const STEPS = [registrySourceNormalize, manifestAlign, runtimesV2]
 
 // A step tagged with a version this build does not claim would never run, and a
 // gap in the chain would skip data forever. Both are programming errors, so

@@ -54,6 +54,10 @@
       "types": "./schema.d.mts",
       "default": "./schema.mjs"
     },
+    "./ops": {
+      "types": "./ops.d.mts",
+      "default": "./ops.mjs"
+    },
     "./plugin-meta": {
       "types": "./plugin-meta.d.mts",
       "default": "./plugin-meta.mjs"

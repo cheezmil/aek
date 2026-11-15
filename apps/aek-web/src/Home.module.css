@@ -3142,7 +3142,7 @@ button.panelSearchCount:hover {
    was about. The label column is the only fluid one (minmax(0,1fr) + ellipsis). */
 .rtRow {
   display: grid;
-  grid-template-columns: 22px 88px minmax(0, 1fr) 64px minmax(140px, 220px) auto;
+  grid-template-columns: 22px minmax(0, 1fr) 64px minmax(120px, 240px) auto;
   column-gap: var(--aek-space-2);
   align-items: center;
   border: 1px solid var(--aek-border);
@@ -3275,3 +3275,141 @@ button.panelSearchCount:hover {
   height: 20px;
   display: block;
 }
+
+/* X2 round: the runtime confirmation strip (the inline floating confirm that
+   replaces the banned native window.confirm). */
+.rtRowConfirm { grid-template-columns: 22px minmax(0, 1fr) auto auto; background: var(--aek-danger-soft, #fef2f2); border-color: var(--aek-danger-border, #fecaca); }
+.rtConfirmText { font-size: 12px; color: var(--aek-danger, #dc2626); overflow-wrap: anywhere; }
+.rtConfirmOk { color: var(--aek-danger, #dc2626); border-color: var(--aek-danger-border, #fecaca); font-size: 12px; padding: 2px 8px; line-height: 1.4; }
+/* X2: the runtime PICKER (every existing container + search) — the move
+   target surface of a plugin's runtime line. */
+.rtPickerWrap { position: relative; display: inline-flex; }
+.rtPicker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--aek-space-2);
+  padding: var(--aek-space-2);
+  border: 1px solid var(--aek-border-strong);
+  border-radius: var(--aek-radius-md);
+  background: var(--aek-surface);
+  box-shadow: var(--aek-shadow-lg);
+}
+.rtPickerSearch {
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--aek-border);
+  border-radius: 6px;
+  background: var(--aek-surface-subtle);
+  color: var(--aek-text);
+}
+.rtPickerList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow-y: auto; }
+.rtPickerItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--aek-space-2);
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--aek-text);
+}
+.rtPickerItem:hover { background: var(--aek-surface-hover); }
+.rtPickerItemCurrent { background: var(--aek-accent-soft); color: var(--aek-accent-ink, var(--aek-accent)); cursor: default; }
+.rtPickerItemCurrent:hover { background: var(--aek-accent-soft); }
+.rtPickerLabel { display: inline-flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.rtPickerMeta { font-weight: 400; font-size: 11px; color: var(--aek-text-muted); }
+.rtPickerEmpty { color: var(--aek-text-muted); font-size: 12px; padding: 4px 8px; }
+.rtPickerBusy { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--aek-text-muted); }
+/* X2 item 18: the occupied-runtime-memory chip on the per-plugin runtime line. */
+.pluginMemChip { margin-left: auto; }
+/* X2 items 11 + 16: the lock + copy sit in the TITLE row (never in the button
+   cluster). */
+.featureTitle { display: flex; align-items: center; gap: 6px; }
+.featureTitleName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.featureTitleLock { color: var(--aek-text-muted); flex: 0 0 auto; }
+/* X2 item 17: the bucket icon in the group title. */
+.pluginGroupTitle { display: flex; align-items: center; gap: 6px; }
+/* X2 item 7: the operation pipeline block — step chips + a real percentage
+   bar (supersedes the "spinners only" doc note). */
+.opsBlock { margin: var(--aek-space-2) 0; }
+.opsTitle {
+  margin: 0 0 var(--aek-space-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--aek-text-muted);
+}
+.opsList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--aek-space-2); }
+.opsRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--aek-border);
+  border-radius: 8px;
+  background: var(--aek-surface);
+}
+.opsRowFailed { border-color: var(--aek-danger-border, #fecaca); }
+.opsRowTop { display: flex; align-items: center; gap: var(--aek-space-2); }
+.opsRowTitle { flex: 1 1 auto; font-size: 12px; font-weight: 600; color: var(--aek-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opsRowState { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
+.opsRowRunning { background: var(--aek-accent-soft); color: var(--aek-accent-ink, var(--aek-accent)); }
+.opsRowDone { background: var(--aek-success-soft); color: var(--aek-text-success, #16a34a); }
+.opsRowFailed.opsRowState { background: var(--aek-danger-soft, #fef2f2); color: var(--aek-danger, #dc2626); }
+.opsRowPercent { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--aek-text-muted); min-width: 34px; text-align: right; }
+.opsBar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--aek-range-rest, var(--aek-surface-subtle));
+  overflow: hidden;
+}
+.opsBarFill { display: block; height: 100%; border-radius: 999px; background: var(--aek-accent); transition: width 0.3s var(--aek-ease, ease); }
+.opsBarFailed .opsBarFill { background: var(--aek-danger, #dc2626); }
+.opsSteps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.opsStep {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--aek-border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--aek-text-muted);
+  background: var(--aek-surface-subtle);
+}
+.opsStepDone { color: var(--aek-text-success, #16a34a); border-color: var(--aek-success-border, var(--aek-border)); background: var(--aek-success-soft); }
+.opsStepActive { color: var(--aek-accent-ink, var(--aek-accent)); border-color: var(--aek-accent-border, var(--aek-accent)); background: var(--aek-accent-soft); }
+.opsStepPending { color: var(--aek-text-muted); }
+.opsStepFailed { color: var(--aek-danger, #dc2626); border-color: var(--aek-danger-border, #fecaca); background: var(--aek-danger-soft, #fef2f2); }
+.opsPendingHost { display: flex; align-items: center; justify-content: space-between; gap: var(--aek-space-2); font-size: 11px; color: var(--aek-text-muted); }
+.opsNote { font-size: 11px; color: var(--aek-text-muted); overflow-wrap: anywhere; }
+.opsNoteFailed { color: var(--aek-danger, #dc2626); }
+/* X2 item 7 (instances): the in-flight pipeline under each slot card. */
+.inFlightList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.inFlightRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) 1fr auto;
+  align-items: center;
+  gap: var(--aek-space-2);
+  padding: 4px 8px;
+  border: 1px dashed var(--aek-border-strong);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--aek-text-secondary);
+}
+.inFlightLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.inFlightSteps { display: flex; gap: 8px; }
+.inFlightStepDone { color: var(--aek-text-success, #16a34a); }
+.inFlightStepActive { color: var(--aek-accent-ink, var(--aek-accent)); }
+.inFlightStepPending { color: var(--aek-text-muted); }
+.inFlightPercent { font-variant-numeric: tabular-nums; color: var(--aek-text-muted); min-width: 34px; text-align: right; }
+/* X2 item 13: the card-level three-icon cluster reuses the half-row styling;
+   the toolbar trio does the same. */
+.halfActions { display: inline-flex; align-items: center; gap: 4px; }

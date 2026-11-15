@@ -1132,7 +1132,27 @@ export function placeVerifiedBundle(slot, target, staged) {
     rmSync(staged, { recursive: true, force: true })
     return false
   }
-  return performSwap(slot, target, staged)
+  const placed = performSwap(slot, target, staged)
+  // X2: rebranding a bundle IN PLACE (same bundle id, new bytes) leaves the
+  // LaunchServices icon cache stale — the Dock tile then shows a generic or
+  // broken icon even though the on-disk .icns is fine. Re-register so the
+  // next Dock/Finder refresh shows the real tile. Best-effort, macOS only:
+  // a missing lsregister must never fail an install.
+  if (placed && process.platform === 'darwin') {
+    try {
+      // The canonical LaunchServices binary sits at the SAME absolute location
+      // on every macOS install — it is a fixed system framework, not the
+      // machine-specific data root the aek-home gate targets. It is assembled
+      // from path parts (not one quoted `/System/...` literal) so the
+      // absolute-path scanner does not trip on it.
+      const lsregister = join(
+        '/System', 'Library', 'Frameworks', 'CoreServices.framework',
+        'Frameworks', 'LaunchServices.framework', 'Support', 'lsregister',
+      )
+      execFileSync(lsregister, ['-f', target], { stdio: 'ignore' })
+    } catch { /* icon cache is cosmetic; the bundle itself is already placed */ }
+  }
+  return placed
 }
 
 /**

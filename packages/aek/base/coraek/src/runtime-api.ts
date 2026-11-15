@@ -4,25 +4,33 @@
  *
  * Protocol surface (registered on the `webServer` seam, unregistered on
  * disposal — the same seam convention as `capability-api.ts`):
- *   - `GET  /api/aek/runtimes`   the numbered snapshot: runtime 1 = the
- *     shared host runtime (this process), runtimes 2..N = the isolated
- *     capability processes; live memory readings (host = process.memoryUsage,
- *     isolated = whole-process RSS, never an invented per-module split);
- *     `isolatable` = the add candidates; `pluginMemory` = the per-plugin
- *     view with honest calibers.
- *   - `POST /api/aek/runtimes`   body `{ op, capability, label?, confirm: true }`:
- *     `op: 'add'`    — move a capability into an isolated runtime (persist
- *                      the user-select choice, then register + start its
- *                      process live under the shared supervisor);
- *     `op: 'remove'` — stop the process and move it back to the shared host;
- *     `op: 'rename'` — persist an operator label for the runtime row.
+ *   - `GET  /api/aek/runtimes`   the v2 snapshot (X2): runtime 0 = the shared
+ *     host runtime (this process), runtimes 1..N = the isolated containers
+ *     (several capabilities per process); live memory readings (host =
+ *     process.memoryUsage, isolated = whole-process RSS, never an invented
+ *     per-module split); `isolatable` = the movable candidates;
+ *     `pluginMemory` = the per-plugin view with honest calibers + its
+ *     container.
+ *   - `POST /api/aek/runtimes`   X2 body `{ op, confirm: true, ... }`:
+ *     `op: 'add'`    — create a NEW runtime container (`label` = optional
+ *                      custom name, blank = auto `runtime{n}`); a legacy
+ *                      `{ capability }` payload assigns that capability into
+ *                      the new container;
+ *     `op: 'move'`   — `{ capability, runtime }` move one plugin into an
+ *                      EXISTING container (or `runtime0` = the shared host);
+ *     `op: 'remove'` — `{ runtime }` delete a container (members go back to
+ *                      the host); legacy `{ capability }` moves it home;
+ *     `op: 'rename'` — `{ runtime, label }` persist an operator label.
  *     Every mutating call without `confirm: true` answers 428, mirroring the
- *     console's write-confirm rule (the capabilities/stop route).
+ *     console's write-confirm rule. Each mutation appends an operation-ledger
+ *     entry (the "how far is that action" pipeline, `GET /api/aek/ops`).
+ *   - `GET  /api/aek/ops`       the operation ledger (newest first, the
+ *     console's progress surface — the "queued … and then what?" answer).
  *
  * This module is node-builtin-free on purpose: coraek's main tsconfig is a
  * CLIENT shape (no ambient `node` types), so all filesystem / process I/O
- * lives in `runtimes.mjs` (the zero-dep package-root module, the same split
- * as `capability-api.ts` + `external-supervisor.mjs`).
+ * lives in `runtimes.mjs` / `ops.mjs` (the zero-dep package-root modules,
+ * the same split as `capability-api.ts` + `external-supervisor.mjs`).
  *
  * @module @cheezmil/coraek/runtime-api
  */
@@ -30,16 +38,36 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { CapabilitySupervisor } from '../external-supervisor.mjs'
 import {
-  bootIsolateRuntimePackages,
+  createRuntime,
   discoverAekSiblingPackages,
+  moveCapability,
+  readRuntimeDocV2,
+  removeRuntime,
+  startRuntimeGroup,
+  stopRuntimeGroup,
   writeRuntimeMode,
   type DiscoveredAekPackage,
 } from '../runtime.mjs'
 import { runtimesSnapshot, writeRuntimeLabel, type RuntimesSnapshot, type SupervisorRow } from '../runtimes.mjs'
+import { appendOp, listOps, updateOp } from '../ops.mjs'
 import { resolveAekHome } from '../home.mjs'
 
 /** Routes owned by this module. */
 export const RUNTIMES_API_PATH = '/api/aek/runtimes'
+
+/** The operation ledger route (the "how far is that action" surface). */
+export const OPS_API_PATH = '/api/aek/ops'
+
+/** The discovered capability packages for this host (the POST paths' input). */
+function discoverPackages(): DiscoveredAekPackage[] {
+  // The client-shaped tsconfig has no ambient `node` types: reach `process`
+  // through globalThis (an empty cwd is the no-op case).
+  const hostProcess = (globalThis as unknown as { process?: { cwd?: () => string } }).process
+  return discoverAekSiblingPackages(
+    import.meta.url,
+    typeof hostProcess?.cwd === 'function' ? hostProcess.cwd() : '',
+  )
+}
 
 /**
  * A narrow structural spelling of the response the seam passes to a handler
@@ -182,7 +210,7 @@ export function registerRuntimeApi(
           if (req.method === 'GET') {
             try {
               const snapshot = await snapshotOf(aekHome, supervisor)
-              sendJson(res, 200, { protocol: 'aek-runtimes/1', ...snapshot })
+              sendJson(res, 200, { protocol: 'aek-runtimes/2', ...snapshot })
             } catch {
               sendJson(res, 502, { code: 'runtimes-failed', message: 'the runtime state is unreadable' })
             }
@@ -194,13 +222,12 @@ export function registerRuntimeApi(
           }
           const body = await readJsonBody(req)
           if (body === undefined) {
-            sendJson(res, 400, { code: 'bad-request', message: 'body { op, capability, label?, confirm: true } is required' })
+            sendJson(res, 400, { code: 'bad-request', message: 'body { op, confirm: true, ... } is required' })
             return
           }
           const op = typeof body.op === 'string' ? body.op : undefined
-          const capability = typeof body.capability === 'string' ? body.capability : undefined
-          if (op === undefined || capability === undefined) {
-            sendJson(res, 400, { code: 'bad-request', message: 'body { op, capability, label?, confirm: true } is required' })
+          if (op === undefined) {
+            sendJson(res, 400, { code: 'bad-request', message: 'body { op, confirm: true, ... } is required' })
             return
           }
           if (body.confirm !== true) {
@@ -212,71 +239,231 @@ export function registerRuntimeApi(
             })
             return
           }
+          const capability = typeof body.capability === 'string' ? body.capability : undefined
+          const runtime = typeof body.runtime === 'string' ? body.runtime : undefined
           try {
             if (op === 'add') {
-              const snapshot = await snapshotOf(aekHome, supervisor)
-              if (!snapshot.isolatable.includes(capability)) {
-                sendJson(res, 409, {
-                  code: 'not-isolatable',
-                  message: `'${capability}' is not an isolatable TS/JS capability (no in-process part to move, or it is already isolated)`,
+              // X2: `add` creates a NEW runtime container. The body's `label`
+              // is the container name (blank = the auto `runtime{n}` number).
+              // A LEGACY client still sends `{ capability }` — that shape
+              // gets a fresh container of its own, so old stable builds keep
+              // working against the v2 store.
+              const label = typeof body.label === 'string' ? body.label : ''
+              const created = createRuntime(aekHome, label)
+              if (!created.ok || created.runtimeId === undefined) {
+                sendJson(res, 502, { code: 'store-write-failed', problems: created.problems })
+                return
+              }
+              const packages = discoverPackages()
+              const opEntry = appendOp(aekHome, {
+                kind: 'runtime-add',
+                title: created.runtimeId,
+                owner: 'coraek',
+                steps: [
+                  { label: '持久化运行时', state: 'done' },
+                  { label: '启动进程', state: 'active' },
+                  { label: '运行中', state: 'pending' },
+                ],
+              })
+              const spawned = await startRuntimeGroup({ supervisor, aekHome, packages, runtimeId: created.runtimeId })
+              if (spawned.ok === false) {
+                updateOp(aekHome, opEntry.id, {
+                  status: 'failed',
+                  steps: [
+                    { label: '持久化运行时', state: 'done' },
+                    { label: '启动进程', state: 'failed' },
+                    { label: '运行中', state: 'pending' },
+                  ],
+                  note: spawned.problem,
                 })
+                sendJson(res, 502, { code: 'spawn-failed', ...spawned, opId: opEntry.id, note: 'the runtime was created; its process will start at the next host boot' })
                 return
               }
-              const persisted = writeRuntimeMode(aekHome, capability, 'isolate')
-              if (!persisted.ok) {
-                sendJson(res, 502, { code: 'store-write-failed', ...persisted })
-                return
-              }
-              // T round: an optional custom runtime name travels on the same
-              // call (blank = the capability id stays the label).
-              const addLabel = typeof body.label === 'string' ? body.label : ''
-              if (addLabel.length > 0) {
-                const labeled = writeRuntimeLabel(aekHome, capability, addLabel)
-                if (!labeled.ok) {
-                  sendJson(res, 400, { code: 'bad-request', ...labeled })
+              // A legacy capability payload: assign it into the new container
+              // (the custom-bin exclusivity rule is enforced inside).
+              let assignNote: string | undefined
+              if (capability !== undefined) {
+                const target = packages.find(pkg => pkg.id === capability)
+                const doc = readRuntimeDocV2(aekHome)
+                const targetMembers = packages
+                  .filter(pkg => pkg.id !== capability && doc.modes[pkg.id] === 'isolate' && doc.assignments[pkg.id] === created.runtimeId)
+                  .map(pkg => ({ id: pkg.id, manifest: pkg.manifest }))
+                const moved = moveCapability(aekHome, capability, created.runtimeId, {
+                  pkg: target !== undefined ? { manifest: target.manifest, packageDir: target.packageDir } : undefined,
+                  targetMembers,
+                })
+                if (!moved.ok) {
+                  // The container exists but the assignment was refused: undo it.
+                  stopRuntimeGroup({ supervisor, aekHome, runtimeId: created.runtimeId })
+                  removeRuntime(aekHome, created.runtimeId)
+                  updateOp(aekHome, opEntry.id, { status: 'failed', note: moved.problems?.join('; ') })
+                  sendJson(res, 409, { code: 'assign-failed', ...moved })
                   return
                 }
+                const respawned = await startRuntimeGroup({ supervisor, aekHome, packages, runtimeId: created.runtimeId })
+                if (respawned.ok === false) assignNote = respawned.problem
               }
-              // Register + start the process LIVE under the shared supervisor
-              // (the boot-time switch's single-package form).
-              const hostProcess = (globalThis as unknown as { process?: { cwd?: () => string } }).process
-              const packages = discoverAekSiblingPackages(
-                import.meta.url,
-                typeof hostProcess?.cwd === 'function' ? hostProcess.cwd() : '',
-              )
+              updateOp(aekHome, opEntry.id, {
+                status: 'done',
+                steps: [
+                  { label: '持久化运行时', state: 'done' },
+                  { label: '启动进程', state: 'done' },
+                  { label: '运行中', state: 'done' },
+                ],
+                ...(assignNote !== undefined ? { note: assignNote } : {}),
+              })
+              sendJson(res, 200, { protocol: 'aek-runtimes/2', opId: opEntry.id, ...await snapshotOf(aekHome, supervisor) })
+            } else if (op === 'move') {
+              if (capability === undefined || runtime === undefined) {
+                sendJson(res, 400, { code: 'bad-request', message: 'body { op: "move", capability, runtime, confirm: true } is required' })
+                return
+              }
+              const doc = readRuntimeDocV2(aekHome)
+              const source = doc.assignments[capability]
+              const hostTarget = runtime === 'runtime0' || runtime === 'host'
+              if (!hostTarget && doc.containers[runtime] !== true && !Object.values(doc.assignments).includes(runtime)) {
+                sendJson(res, 409, { code: 'unknown-runtime', message: `'${runtime}' does not exist: create it first` })
+                return
+              }
+              const packages = discoverPackages()
               const target = packages.find(pkg => pkg.id === capability)
-              const results = target !== undefined
-                ? await bootIsolateRuntimePackages({ supervisor, aekHome, packages: [target] })
-                : { [capability]: { ok: false, problem: 'capability package not discoverable' } }
-              const result = results[capability]
-              if (result !== undefined && result.ok === false) {
-                // The choice persisted (it takes effect on the next boot too),
-                // but the live spawn failed — report it, don't pretend.
-                sendJson(res, 502, { code: 'spawn-failed', ...result, note: 'the choice was persisted; the process will start at the next host boot' })
+              const targetMembers = hostTarget ? [] : packages
+                .filter(pkg => pkg.id !== capability && doc.modes[pkg.id] === 'isolate' && doc.assignments[pkg.id] === runtime)
+                .map(pkg => ({ id: pkg.id, manifest: pkg.manifest }))
+              const moved = moveCapability(aekHome, capability, hostTarget ? 'runtime0' : runtime, {
+                pkg: target !== undefined ? { manifest: target.manifest, packageDir: target.packageDir } : undefined,
+                targetMembers,
+              })
+              if (!moved.ok) {
+                sendJson(res, 409, { code: 'assign-failed', ...moved })
                 return
               }
-              sendJson(res, 200, await snapshotOf(aekHome, supervisor))
+              const opEntry = appendOp(aekHome, {
+                kind: 'runtime-move',
+                title: `${capability} → ${hostTarget ? 'runtime0' : runtime}`,
+                owner: 'coraek',
+                steps: [
+                  { label: '持久化分配', state: 'done' },
+                  { label: '切换进程', state: 'active' },
+                ],
+              })
+              // Live: the TARGET container re-spawns when its attach changes
+              // (a custom-bin member took over, or a new member arrived).
+              let spawnNote: string | undefined
+              if (!hostTarget && source !== runtime) {
+                const targetResult = await startRuntimeGroup({ supervisor, aekHome, packages, runtimeId: runtime })
+                if (targetResult.ok === false) spawnNote = targetResult.problem
+              }
+              // The SOURCE container: an IMPLICIT one that is now empty stops;
+              // an explicit (console-created) one keeps its process (the user
+              // asked for that container to exist).
+              if (source !== undefined && source !== runtime) {
+                const now = readRuntimeDocV2(aekHome)
+                const implicit = now.containers[source] !== true
+                const empty = !Object.values(now.assignments).includes(source)
+                if (implicit && empty) {
+                  const stopped = await stopRuntimeGroup({ supervisor, aekHome, runtimeId: source })
+                  if (stopped.ok === false && stopped.problem !== undefined) spawnNote = stopped.problem
+                }
+              }
+              updateOp(aekHome, opEntry.id, {
+                status: spawnNote !== undefined ? 'failed' : 'done',
+                steps: [
+                  { label: '持久化分配', state: 'done' },
+                  { label: '切换进程', state: spawnNote !== undefined ? 'failed' : 'done' },
+                ],
+                ...(spawnNote !== undefined ? { note: spawnNote } : {}),
+              })
+              sendJson(res, 200, {
+                protocol: 'aek-runtimes/2',
+                opId: opEntry.id,
+                ...(spawnNote !== undefined ? { note: spawnNote } : {}),
+                ...await snapshotOf(aekHome, supervisor),
+              })
             } else if (op === 'remove') {
-              const stopped = await supervisor.stop(capability)
-              const persisted = writeRuntimeMode(aekHome, capability, 'share')
-              if (!stopped.ok || !persisted.ok) {
-                sendJson(res, 502, { code: 'remove-failed', stop: stopped, persist: persisted })
+              // X2: `remove` deletes a RUNTIME container (members back to the
+              // host). A LEGACY client still sends `{ capability }` — that
+              // moves the capability to the shared host and prunes the
+              // container it owned.
+              const targetId = runtime ?? capability
+              if (targetId === undefined) {
+                sendJson(res, 400, { code: 'bad-request', message: 'body { op: "remove", runtime | capability, confirm: true } is required' })
                 return
               }
-              sendJson(res, 200, await snapshotOf(aekHome, supervisor))
+              if (runtime === undefined) {
+                // Legacy: move the capability home; the implicit container it
+                // owned is pruned with it.
+                const stopped = await supervisor.stop(targetId)
+                const persisted = writeRuntimeMode(aekHome, targetId, 'share')
+                if (!stopped.ok || !persisted.ok) {
+                  sendJson(res, 502, { code: 'remove-failed', stop: stopped, persist: persisted })
+                  return
+                }
+                sendJson(res, 200, await snapshotOf(aekHome, supervisor))
+                return
+              }
+              const stopped = await stopRuntimeGroup({ supervisor, aekHome, runtimeId: targetId })
+              const removed = removeRuntime(aekHome, targetId)
+              if (!removed.ok) {
+                sendJson(res, 409, { code: 'remove-failed', ...removed })
+                return
+              }
+              const opEntry = appendOp(aekHome, {
+                kind: 'runtime-remove',
+                title: targetId,
+                owner: 'coraek',
+                steps: [
+                  { label: '停止进程', state: stopped.ok === false ? 'failed' : 'done' },
+                  { label: '插件移回宿主', state: 'done' },
+                ],
+                status: stopped.ok === false ? 'failed' : 'done',
+                ...(stopped.problem !== undefined ? { note: stopped.problem } : {}),
+              })
+              sendJson(res, 200, { protocol: 'aek-runtimes/2', opId: opEntry.id, ...await snapshotOf(aekHome, supervisor) })
             } else if (op === 'rename') {
               const label = typeof body.label === 'string' ? body.label : ''
-              const result = writeRuntimeLabel(aekHome, capability, label)
+              // X2: labels key off the RUNTIME id. A legacy `{ capability }`
+              // renames the runtime the capability lives in.
+              const target = runtime ?? (capability !== undefined
+                ? (readRuntimeDocV2(aekHome).assignments[capability] ?? 'runtime0')
+                : undefined)
+              if (target === undefined) {
+                sendJson(res, 400, { code: 'bad-request', message: 'body { op: "rename", runtime, label, confirm: true } is required' })
+                return
+              }
+              const result = writeRuntimeLabel(aekHome, target, label)
               if (!result.ok) {
                 sendJson(res, 400, { code: 'bad-request', ...result })
                 return
               }
-              sendJson(res, 200, await snapshotOf(aekHome, supervisor))
+              const opEntry = appendOp(aekHome, {
+                kind: 'runtime-rename',
+                title: target,
+                owner: 'coraek',
+                status: 'done',
+                steps: [{ label: '持久化名称', state: 'done' }],
+              })
+              sendJson(res, 200, { protocol: 'aek-runtimes/2', opId: opEntry.id, ...await snapshotOf(aekHome, supervisor) })
             } else {
-              sendJson(res, 400, { code: 'bad-request', message: `unknown op '${op}' — try: add, remove, rename` })
+              sendJson(res, 400, { code: 'bad-request', message: `unknown op '${op}' — try: add, move, remove, rename` })
             }
           } catch {
             sendJson(res, 502, { code: 'runtimes-failed', message: 'the runtime state is unreadable' })
+          }
+        },
+      }),
+      server.register({
+        kind: 'exact',
+        path: OPS_API_PATH,
+        handler: (req, res) => {
+          if (req.method !== 'GET') {
+            sendJson(res, 405, { code: 'method-not-allowed', message: 'GET' })
+            return
+          }
+          try {
+            sendJson(res, 200, { protocol: 'aek-ops/1', ops: listOps(aekHome) })
+          } catch {
+            sendJson(res, 502, { code: 'ops-failed', message: 'the operation ledger is unreadable' })
           }
         },
       }),

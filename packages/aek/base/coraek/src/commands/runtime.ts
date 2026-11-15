@@ -44,6 +44,9 @@ import {
   resolveRuntimeMode,
   hasExternalManifest,
   isAutoIsolatable,
+  readRuntimeDocV2,
+  startRuntimeGroup,
+  stopRuntimeGroup,
 } from '../../runtime.mjs'
 import { runtimesSnapshot, processRss } from '../../runtimes.mjs'
 import { resolveAekHome } from '../../home.mjs'
@@ -245,12 +248,43 @@ export default class RuntimeCommand extends Command {
         return
       }
       case 'remove': {
-        // Stop the isolated process (best effort: the shared on-disk store
-        // carries the pid, so a signal reaches the host-spawned child) and
-        // move the capability back to the shared host runtime.
+        // X2: the capability lives in a numbered RUNTIME container (several
+        // capabilities may share one process). Removing it: persist `share`,
+        // then re-settle the container — stop it when it was implicit and is
+        // now empty, re-spawn it when members remain or the operator created
+        // it explicitly.
         if (id === undefined) this.error('usage: aek runtime remove <id> --confirm')
         if (!flags.confirm) this.error('remove is a write operation: re-run with --confirm')
-        const stop = await supervisor.stop(id)
+        const doc = readRuntimeDocV2(aekHome)
+        const runtimeId = doc.assignments[id]
+        let stop: { ok: boolean; runtimeId?: string; problem?: string } = { ok: true }
+        const packages = [...manifests.entries()].map(([capability, manifest]) => ({ id: capability, manifest }))
+        if (runtimeId !== undefined) {
+          const persisted = writeRuntimeMode(aekHome, id, 'share')
+          if (!persisted.ok) {
+            this.log(flags.json
+              ? JSON.stringify({ persist: persisted })
+              : `FAILED — ${persisted.problems.join('; ')}`)
+            process.exitCode = 1
+            return
+          }
+          const now = readRuntimeDocV2(aekHome)
+          const others = Object.keys(now.assignments).filter(capability => now.assignments[capability] === runtimeId)
+          const implicit = now.containers[runtimeId] !== true
+          if (others.length === 0 && implicit) {
+            stop = await stopRuntimeGroup({ supervisor, aekHome, runtimeId })
+          } else {
+            const settled = await startRuntimeGroup({ supervisor, aekHome, packages, runtimeId })
+            stop = { ok: settled.ok, runtimeId: settled.runtimeId, problem: settled.problem }
+          }
+          this.log(flags.json
+            ? JSON.stringify({ stop, persist: { ok: true, problems: [] } })
+            : `removed — '${id}' is back on the shared host runtime (${runtimeId} ${others.length > 0 || !implicit ? 'still hosts other members' : 'stopped'})`)
+          return
+        }
+        // Legacy pre-X2 store (no assignment map yet): stop the capability
+        // key directly, as before.
+        stop = await supervisor.stop(id)
         const result = writeRuntimeMode(aekHome, id, 'share')
         this.log(flags.json
           ? JSON.stringify({ stop, persist: result })

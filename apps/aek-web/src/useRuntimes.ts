@@ -1,9 +1,13 @@
 /**
- * The "运行时与内存" page's live source of truth (S round):
- * `GET /api/aek/runtimes` + the single mutating `POST`, both served by the
- * coraek host half (`@cheezmil/coraek` runtime API). The numbered view, the
- * live memory readings and the isolatable list are read on the host at
- * request time, never baked into the client bundle.
+ * The "运行时与内存" page's live source of truth (X2: v2 multi-tenant
+ * runtime containers): `GET /api/aek/runtimes` + the mutating `POST`s,
+ * both served by the coraek host half (`@cheezmil/coraek` runtime API).
+ *
+ * Runtimes are FIRST-CLASS CONTAINERS that may host several plugins in one
+ * process: `runtime0` is the shared host process, `runtime1..N` are the
+ * isolated containers. The numbered view, the live memory readings and the
+ * movable list are read on the host at request time, never baked into the
+ * client bundle.
  *
  * `unsupported` is a 404: an older host without the route must still render
  * the rest of the page — the section hides itself, it never invents data.
@@ -12,18 +16,18 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-/** The host route publishing the numbered runtime view. */
+/** The host route publishing the v2 runtime view. */
 export const RUNTIMES_API = '/api/aek/runtimes'
 
-/** One runtime row (the host row always carries number 1). */
+/** One runtime row (the host row always carries id `runtime0`, number 0). */
 export interface RuntimeRow {
-  /** Capability id (absent on the host row). */
-  id?: string
-  /** 1-based position in the numbered list. */
+  /** The runtime id (`runtime0` = the shared host process). */
+  id: string
+  /** 0-based position in the numbered list. */
   number: number
-  /** `host` (shared) or `isolated` (a capability process). */
+  /** `host` (shared) or `isolated` (a runtime container). */
   kind: 'host' | 'isolated'
-  /** Display name (the operator label or the id). */
+  /** Display name (the operator label or the runtime id). */
   label: string
   /** `running` / `stopped`. */
   state: 'running' | 'stopped'
@@ -43,23 +47,24 @@ export interface PluginMemoryEntry {
   value?: number
   /** Always `bytes`. */
   unit: 'bytes'
-  /** `process-rss` or `in-host-shared` (counted toward the host total). */
+  /** `process-rss` (the container's whole process) or `in-host-shared`. */
   caliber: 'process-rss' | 'in-host-shared'
+  /** The RUNTIME container the plugin lives in (isolated entries only). */
+  runtimeId?: string
   /**
-   * The source bucket the package lives in (the user's disk classification,
-   * T round): `plugins` / `public` / `base` / `extensions`. Absent on
-   * older hosts that predate the field.
+   * The source bucket the package lives in (the user's disk classification):
+   * `plugins` / `public` / `base` / `extensions`. Absent on older hosts.
    */
   bucket?: 'plugins' | 'public' | 'base' | 'extensions'
 }
 
-/** The complete numbered runtime snapshot. */
+/** The complete v2 runtime snapshot. */
 export interface RuntimesSnapshot {
-  /** Runtime 1: the shared host runtime. */
+  /** Runtime 0: the shared host runtime. */
   host: RuntimeRow
-  /** Runtimes 2..N: the isolated capability processes. */
+  /** Runtimes 1..N: the isolated runtime containers. */
   runtimes: RuntimeRow[]
-  /** Capabilities that support `isolate` but currently share (add candidates). */
+  /** Capabilities that support `isolate` but currently share (move candidates). */
   isolatable: string[]
   /** The host's `process.platform` — drives the per-OS memory wording. */
   platform?: string
@@ -75,39 +80,50 @@ export interface RuntimesState {
   error: string | undefined
   /** True when the host has no route (an older build): hide the section. */
   unsupported: boolean
-  /** The in-flight mutation key (`add:<id>` / `remove:<id>` / `rename:<id>`), or undefined. */
+  /** The in-flight mutation key, or undefined. */
   busy: string | undefined
   /** Force a fresh read. */
   refresh: () => void
   /**
-   * Persist an isolatable capability into its own runtime (428-confirmed on
-   * the host). The optional label is a custom runtime name (T round); when
-   * blank the capability id stays the display name.
+   * Create a NEW runtime container. The optional label is the custom runtime
+   * name; blank = the auto `runtime{n}` number (the X2 add row: no capability
+   * picker, no confirmation — the name input + the ＋ button only).
    */
-  addRuntime: (id: string, label?: string) => Promise<void>
-  /** Stop a capability's process and move it back to the shared host. */
-  removeRuntime: (id: string) => Promise<void>
+  addRuntime: (label?: string) => Promise<void>
+  /** Move ONE plugin into an EXISTING runtime container (`runtime0` = the shared host). */
+  movePlugin: (capability: string, runtime: string) => Promise<void>
+  /** Delete a runtime container: its plugins go back to the shared host. */
+  removeRuntime: (runtimeId: string) => Promise<void>
   /** Persist an operator label for one runtime row. */
-  renameRuntime: (id: string, label: string) => Promise<void>
+  renameRuntime: (runtimeId: string, label: string) => Promise<void>
 }
 
-/** One POST mutation of the runtime API. */
-async function mutate(op: 'add' | 'remove' | 'rename', capability: string, label?: string): Promise<void> {
+/** One POST mutation of the v2 runtime API. */
+async function mutate(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const response = await fetch(RUNTIMES_API, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ op, capability, label, confirm: true }),
+    body: JSON.stringify({ ...body, confirm: true }),
   })
   if (response.status === 404) throw new Error('404')
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  const parsed = await response.json().catch(() => ({})) as Record<string, unknown>
+  if (!response.ok) {
+    const message = typeof parsed.message === 'string' ? parsed.message : `HTTP ${response.status}`
+    throw new Error(message)
+  }
+  return parsed
 }
 
 /**
- * The live numbered-runtime hook.
+ * The live v2 runtime hook.
  * @param refreshSignal - a number bump re-reads the snapshot.
+ * @param pollMs - when > 0, re-read on this interval while mounted. Two hook
+ *   INSTANCES (the 运行时 section and the plugin rows) do not share state, so
+ *   a mutation through one must become visible in the other without a manual
+ *   refresh; a gentle poll keeps them honest.
  * @returns the state.
  */
-export function useRuntimes(refreshSignal = 0): RuntimesState {
+export function useRuntimes(refreshSignal = 0, pollMs = 0): RuntimesState {
   const [snapshot, setSnapshot] = useState<RuntimesSnapshot | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
   const [unsupported, setUnsupported] = useState(false)
@@ -141,38 +157,56 @@ export function useRuntimes(refreshSignal = 0): RuntimesState {
     refresh()
   }, [refresh, refreshSignal])
 
-  const addRuntime = useCallback(async (id: string, label?: string): Promise<void> => {
-    setBusy(`add:${id}`)
+  // Gentle background poll while mounted: keeps OTHER hook instances on the
+  // same page honest (a mutation through one instance must show up in the
+  // plugin rows without a manual refresh click).
+  useEffect(() => {
+    if (!pollMs || pollMs <= 0) return
+    const timer = setInterval(() => { refresh() }, pollMs)
+    return () => { clearInterval(timer) }
+  }, [pollMs, refresh])
+
+  const addRuntime = useCallback(async (label?: string): Promise<void> => {
+    setBusy('add')
     try {
-      // T round: the optional custom name travels on the same call; the host
-      // persists it as the runtime label (blank = the id stays the label).
+      // X2: the add row is a bare NAME input — blank = the auto number.
       const trimmed = typeof label === 'string' ? label.trim() : ''
-      await mutate('add', id, trimmed.length > 0 ? trimmed : undefined)
+      await mutate({ op: 'add', ...(trimmed.length > 0 ? { label: trimmed } : {}) })
       refresh()
     } finally {
       setBusy(undefined)
     }
   }, [refresh])
 
-  const removeRuntime = useCallback(async (id: string): Promise<void> => {
-    setBusy(`remove:${id}`)
+  const movePlugin = useCallback(async (capability: string, runtime: string): Promise<void> => {
+    setBusy(`move:${capability}:${runtime}`)
     try {
-      await mutate('remove', id)
+      await mutate({ op: 'move', capability, runtime })
       refresh()
     } finally {
       setBusy(undefined)
     }
   }, [refresh])
 
-  const renameRuntime = useCallback(async (id: string, label: string): Promise<void> => {
-    setBusy(`rename:${id}`)
+  const removeRuntime = useCallback(async (runtimeId: string): Promise<void> => {
+    setBusy(`remove:${runtimeId}`)
     try {
-      await mutate('rename', id, label)
+      await mutate({ op: 'remove', runtime: runtimeId })
       refresh()
     } finally {
       setBusy(undefined)
     }
   }, [refresh])
 
-  return { snapshot, error, unsupported, busy, refresh, addRuntime, removeRuntime, renameRuntime }
+  const renameRuntime = useCallback(async (runtimeId: string, label: string): Promise<void> => {
+    setBusy(`rename:${runtimeId}`)
+    try {
+      await mutate({ op: 'rename', runtime: runtimeId, label })
+      refresh()
+    } finally {
+      setBusy(undefined)
+    }
+  }, [refresh])
+
+  return { snapshot, error, unsupported, busy, refresh, addRuntime, movePlugin, removeRuntime, renameRuntime }
 }

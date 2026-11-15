@@ -27,6 +27,9 @@ import type { Context } from '@cheezmil/coraek/types'
 import { resolveAekHome } from '@cheezmil/coraek/home'
 import { SLOT_NAMES, slotConfig, slotHome, webUrl } from '@cheezmil/coraek/slots'
 import { readPluginMeta } from '@cheezmil/coraek/plugin-meta'
+import { CapabilitySupervisor } from '@cheezmil/coraek/external-supervisor'
+import { discoverAekSiblingPackages, readRuntimeDocV2, startRuntimeGroup, stopRuntimeGroup } from '@cheezmil/coraek/runtime'
+import { appendOp, updateOp } from '@cheezmil/coraek/ops'
 import { ACCESS_API_PATH, accessGuard, accessView, writeAccess } from './access.ts'
 import type { AccessUpdate } from './access.ts'
 
@@ -737,23 +740,80 @@ export function registerConsole(ctx: Context): void {
         sendJson(res, 200, { ok: true, id, enabled: action === 'enable', status: 'saved' })
         return
       }
-      // `restart` stays a queued intent: the cordis runtime owns plugin
-      // lifecycles, so restarting is deferred to the launcher.
-      const file = join(resolveAekHome(), 'plugin-actions.json')
-      let queue: unknown[] = []
-      try {
-        const parsed = JSON.parse(readFileSync(file, 'utf-8')) as unknown
-        if (Array.isArray(parsed)) queue = parsed
-      } catch { /* first action creates the file */ }
-      queue.push({ id, action, at: new Date().toISOString(), status: 'queued' })
-      try {
-        mkdirSync(dirname(file), { recursive: true })
-        writeFileSync(file, JSON.stringify(queue.slice(-200), null, 2) + '\n', 'utf-8')
-      } catch {
-        sendJson(res, 500, { code: 'queue-failed', message: 'could not persist the action' })
+      // X2: `restart` is no longer a dead-letter queue entry. Two honest
+      // outcomes, both tracked in the operation ledger (GET /api/aek/ops):
+      //  - the plugin lives in an ISOLATED runtime container → restart that
+      //    container's process LIVE (stop + start under the supervisor);
+      //  - the plugin runs IN THE HOST → it cannot be restarted without
+      //    restarting this process; the action is queued with
+      //    `pendingHostRestart` and the host's boot hook closes it.
+      const aekHome = resolveAekHome()
+      const doc = readRuntimeDocV2(aekHome)
+      const runtimeId = doc.assignments[id]
+      if (runtimeId !== undefined) {
+        const supervisor = new CapabilitySupervisor()
+        const opEntry = appendOp(aekHome, {
+          kind: 'plugin-restart',
+          title: `${id} · restart`,
+          owner: 'aek-websearch',
+          steps: [
+            { label: 'stopping the process', state: 'active' },
+            { label: 'starting the process', state: 'pending' },
+            { label: 'running', state: 'pending' },
+          ],
+        })
+        try {
+          const stopped = await stopRuntimeGroup({ supervisor, aekHome, runtimeId })
+          const packages = discoverAekSiblingPackages(import.meta.url)
+          const started = await startRuntimeGroup({ supervisor, aekHome, packages, runtimeId })
+          if (started.ok) {
+            updateOp(aekHome, opEntry.id, {
+              status: 'done',
+              steps: [
+                { label: 'stopping the process', state: 'done' },
+                { label: 'starting the process', state: 'done' },
+                { label: 'running', state: 'done' },
+              ],
+            })
+            sendJson(res, 200, { ok: true, id, action, status: 'done', opId: opEntry.id })
+          } else {
+            updateOp(aekHome, opEntry.id, {
+              status: 'failed',
+              steps: [
+                { label: 'stopping the process', state: stopped.ok === false ? 'failed' : 'done' },
+                { label: 'starting the process', state: 'failed' },
+                { label: 'running', state: 'pending' },
+              ],
+              note: started.problem ?? (stopped.problem ?? 'the restart failed'),
+            })
+            sendJson(res, 200, { ok: false, id, action, status: 'failed', opId: opEntry.id, problem: started.problem ?? stopped.problem })
+          }
+        } catch {
+          updateOp(aekHome, opEntry.id, {
+            status: 'failed',
+            steps: [
+              { label: 'stopping the process', state: 'failed' },
+              { label: 'starting the process', state: 'pending' },
+              { label: 'running', state: 'pending' },
+            ],
+            note: 'the runtime state is unreadable',
+          })
+          sendJson(res, 502, { ok: false, id, action, status: 'failed', opId: opEntry.id, code: 'restart-failed', message: 'the runtime state is unreadable' })
+        }
         return
       }
-      sendJson(res, 200, { ok: true, id, action, status: 'queued' })
+      const queuedOp = appendOp(aekHome, {
+        kind: 'plugin-restart-host',
+        title: `${id} · restart`,
+        owner: 'aek-websearch',
+        pendingHostRestart: true,
+        steps: [
+          { label: 'queued', state: 'done' },
+          { label: 'waiting for the backend restart', state: 'active' },
+          { label: 'done', state: 'pending' },
+        ],
+      })
+      sendJson(res, 200, { ok: true, id, action, status: 'queued', opId: queuedOp.id, pendingHostRestart: true })
     },
   }), 'aek-websearch: plugin action queue')
 }

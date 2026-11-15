@@ -15,8 +15,20 @@
  *   (the console UI is the static aek-web app), so every switch is toggleable
  *   today.
  * - About marks `apps/web`, `apps/cli`, `apps/aek-desktop` as ENTRY POINTS.
- * - Every collection is an unordered `<ul>/<li>` (user rule). No progress
- *   bars: refresh states use `Spinner`.
+ * - Every collection is an unordered `<ul>/<li>` (user rule). Refresh
+ *   states use `Spinner`; long-running ACTIONS carry the X2 operation
+ *   pipelines (step chips + a percentage bar, `useOps` / `OpsPipeline`) —
+ *   the old "spinners only, no progress bars" note is superseded.
+ *
+ * X2 round changes:
+ * - The 入口 section moved INTO the 插件与程序 card (next to the roster it
+ *   launches); the base-environment list is gone (the roster's base bucket
+ *   shows those packages now).
+ * - The lock icon travels with the title row (never between the switch and
+ *   the buttons); a copy icon sits right after every feature title.
+ * - The per-plugin runtime line shows the occupied memory and the runtime
+ *   PICKER (every existing container + search) instead of a bare "move to
+ *   an isolated process" button.
  *
  * @module @cheezmil/aek-home/src/client/InfoPanels
  */
@@ -35,6 +47,9 @@ import { useConsoleFacts } from './useConsoleFacts.ts'
 import type { PluginBucket, PluginEntry } from './useConsoleFacts.ts'
 import { useCapabilities } from './useCapabilities.ts'
 import { useRuntimes } from './useRuntimes.ts'
+import { useOps } from './useOps.ts'
+import { fetchRuntime } from './useRuntimeMode.ts'
+import { postInstance } from './useInstances.ts'
 import { RuntimesBlock, fmtBytes } from './RuntimesPanel.tsx'
 
 /** Panels handled here. */
@@ -853,82 +868,301 @@ const BUCKET_ORDER: readonly PluginBucket[] = ['plugins', 'public', 'base', 'ext
  * @param bucket - the group's bucket.
  * @returns the header's i18n key.
  */
-function bucketKeyOf(bucket: PluginBucket): string {
+// Scanner-visible: the i18n dead-key gate only sees t()/tf() LITERAL
+// arguments, so the bucket titles resolve through direct t() calls here.
+function bucketTitleOf(bucket: PluginBucket, t: (key: string) => string): string {
   switch (bucket) {
     case 'public':
-      return 'plugins.bucket.public'
+      return t('plugins.bucket.public')
     case 'base':
-      return 'plugins.bucket.base'
+      return t('plugins.bucket.base')
     case 'extensions':
-      return 'plugins.bucket.extensions'
+      return t('plugins.bucket.extensions')
     default:
-      return 'plugins.bucket.plugins'
+      return t('plugins.bucket.plugins')
   }
 }
 
 /**
- * The per-plugin runtime line (T round): WHERE this package currently runs —
- * the old "所驻插件" table's content, now inside each roster row — plus the
- * move actions (into an isolated process / back to the shared host).
+ * X2 item 17: the category icon — the stacked-layers icon is reserved for the
+ * REAL coraek plugins (the `plugins` bucket); every other category gets its
+ * own mark, so the row and the group header agree on what a category is.
+ * @param bucket - the source bucket.
+ * @returns the icon name.
+ */
+function bucketIconOf(bucket: PluginBucket): string {
+  switch (bucket) {
+    case 'public':
+      return 'book'
+    case 'base':
+      return 'shield'
+    case 'extensions':
+      return 'puzzle'
+    default:
+      return 'layers'
+  }
+}
+
+/**
+ * The X2 runtime picker: the "move to a runtime" floating surface — EVERY
+ * existing runtime container (the shared host + the isolated ones), each
+ * with its live state, its member count and a search box over the names.
+ * Replaces the old "移入独立进程" button (which could only open a NEW
+ * runtime); the move TARGET is picked here.
+ * @param rt - the live snapshot.
+ * @param current - the runtime the plugin is in right now.
+ * @param onPick - the picked runtime id.
+ * @param busy - disables the list while a mutation is in flight.
+ * @returns the picker body.
+ */
+function RuntimePicker({ rt, current, onPick, busy }: {
+  rt: NonNullable<ReturnType<typeof useRuntimes>['snapshot']>
+  current: string
+  onPick: (runtime: string) => void
+  busy: string | undefined
+}): ReactNode {
+  const { t } = useI18n()
+  const [needle, setNeedle] = useState('')
+  const rows = [rt.host, ...rt.runtimes]
+  const q = needle.trim().toLowerCase()
+  const visible = q.length === 0
+    ? rows
+    : rows.filter(row => [row.id, row.label].join(' ').toLowerCase().includes(q))
+  return (
+    <div className={css.rtPicker} role="listbox" aria-label={t('plugins.runtime.picker')}>
+      <input
+        className={css.rtPickerSearch}
+        value={needle}
+        onChange={(event) => { setNeedle(event.target.value) }}
+        placeholder={t('plugins.runtime.pickerSearch')}
+        aria-label={t('plugins.runtime.pickerSearch')}
+      />
+      <ul className={css.rtPickerList}>
+        {visible.length === 0
+          ? <li className={css.rtPickerEmpty}>{t('common.noMatch')}</li>
+          : visible.map((row) => {
+            const here = row.id === current
+            return (
+              <li
+                key={row.id}
+                className={cx(css.rtPickerItem, here ? css.rtPickerItemCurrent : undefined)}
+                role="option"
+                aria-selected={here}
+                onClick={() => { if (!here) onPick(row.id) }}
+              >
+                <span className={css.rtPickerLabel}>
+                  {row.label}
+                  <span className={css.rtPickerMeta}>
+                    {row.plugins.length > 0 ? `${row.plugins.length}` : ''}
+                    {row.state === 'running' ? t('runtimes.state.running') : t('runtimes.state.stopped')}
+                  </span>
+                </span>
+                {here ? <Icon name="check" size={13} /> : <Icon name="chevronDown" size={13} />}
+              </li>
+            )
+          })}
+      </ul>
+      {busy !== undefined ? <div className={css.rtPickerBusy}><Spinner size={12} />{t('plugins.runtime.pickerBusy')}</div> : null}
+    </div>
+  )
+}
+
+/**
+ * The per-plugin runtime line (X2): WHERE this package currently runs — the
+ * live container row (the host or one of the isolated containers, several
+ * plugins per container allowed) — the occupied memory reading, and the
+ * runtime PICKER (every existing container + search). No native dialogs:
+ * the picker and the host's error answers are the whole decision surface.
  * @param plugin - the roster row.
  * @param rt - the live runtime snapshot (or undefined while loading / older host).
- * @param term - the per-OS memory term (`RSS` / `工作集`), already translated.
- * @param onIsolate - move the package into its own process (confirmed by the caller).
- * @param onHost - stop the package's process and move it back to the host.
+ * @param term - the per-OS memory term, already translated.
+ * @param onMove - move the package into the picked runtime.
  * @param busy - the in-flight runtime mutation key, when any.
  * @returns the line (or nothing when the host has no runtime route).
  */
-function PluginRuntimeLine({ plugin, rt, term, onIsolate, onHost, busy }: {
+function PluginRuntimeLine({ plugin, rt, term, onMove, busy }: {
   plugin: PluginEntry
   rt: ReturnType<typeof useRuntimes>['snapshot']
   term: string
-  onIsolate: (id: string) => void
-  onHost: (id: string) => void
+  onMove: (id: string, runtime: string) => void
   busy: string | undefined
 }): ReactNode {
   const { t, tf } = useI18n()
+  const [pickerOpen, setPickerOpen] = useState(false)
   if (rt === undefined) return null
-  const isoRow = rt.runtimes.find(row => row.id === plugin.id)
-  const isolated = isoRow !== undefined
-  if (isolated) {
-    const row = isoRow as { number: number; state: 'running' | 'stopped'; pid: number | null; memory?: { rss?: number } }
-    return (
-      <div className={css.pluginRuntimeLine}>
-        <span className={cx(css.rtChip, row.state === 'running' ? css.rtStateRunning : undefined)}>rt{String(row.number)}</span>
-        <span className={css.pluginRuntimeText}>
-          {tf('plugins.runtime.lineIsolated', { n: String(row.number) })}
-          {' · '}
-          {t(row.state === 'running' ? 'runtimes.state.running' : 'runtimes.state.stopped')}
-          {row.memory?.rss !== undefined ? ` · ${term} ${fmtBytes(row.memory.rss)} · pid ${row.pid ?? '—'}` : ''}
-        </span>
-        <button
-          type="button"
-          className={css.pluginRuntimeMove}
-          disabled={busy !== undefined}
-          onClick={() => { onHost(plugin.id) }}
-        >
-          {t('plugins.runtime.moveHost')}
-        </button>
-      </div>
-    )
-  }
-  const isolatable = rt.isolatable.includes(plugin.id)
+  // The v2 host fills `pluginMemory` for every discovered capability, so the
+  // entry itself is always present; its VALUE is optional (in-host entries
+  // carry no per-plugin reading).
+  const mem = rt.pluginMemory[plugin.id]
+  const runtimeId = mem.runtimeId ?? 'runtime0'
+  const row = runtimeId === 'runtime0'
+    ? rt.host
+    : rt.runtimes.find(candidate => candidate.id === runtimeId)
+  const isolatedRow = row !== undefined && row.kind === 'isolated' ? row : undefined
+  const resolved = row ?? rt.host
+  const occupant = mem.value ?? (isolatedRow?.memory?.rss ?? (resolved.kind === 'host' ? rt.host.memory?.rss : undefined))
+  const moveTargets = [rt.host, ...rt.runtimes].filter(candidate => candidate.id !== runtimeId)
   return (
     <div className={css.pluginRuntimeLine}>
-      <span className={css.rtChip}>rt1</span>
-      <span className={css.pluginRuntimeText}>{t('plugins.runtime.lineHost')}</span>
-      {isolatable
+      <span className={cx(css.rtChip, resolved.state === 'running' ? css.rtStateRunning : undefined)}>
+        runtime{String(resolved.number)}
+      </span>
+      <span className={css.pluginRuntimeText}>
+        {isolatedRow !== undefined
+          ? tf('plugins.runtime.lineIsolated', { n: String(isolatedRow.number) })
+          : t('plugins.runtime.lineHost')}
+        {` · ${t(resolved.state === 'running' ? 'runtimes.state.running' : 'runtimes.state.stopped')}`}
+        {mem.caliber === 'in-host-shared' ? ` · ${t('plugins.runtime.memSharedHost')}` : ''}
+      </span>
+      {/* X2 item 18: the occupied runtime memory reading (the container's
+          process RSS for isolated entries; the host total for shared ones). */}
+      <span className={cx(css.rtChip, css.pluginMemChip)}>
+        {occupant !== undefined ? `${term} ${fmtBytes(occupant)}` : t('plugins.runtime.memSharedHost')}
+      </span>
+      {moveTargets.length > 0
         ? (
-          <button
-            type="button"
-            className={css.pluginRuntimeMove}
-            disabled={busy !== undefined}
-            onClick={() => { onIsolate(plugin.id) }}
-          >
-            {t('plugins.runtime.moveIsolate')}
-          </button>
+          <span className={css.rtPickerWrap}>
+            <button
+              type="button"
+              className={css.pluginRuntimeMove}
+              disabled={busy !== undefined}
+              onClick={() => { setPickerOpen(open => !open) }}
+              aria-expanded={pickerOpen}
+            >
+              {t('plugins.runtime.picker')}
+              <Icon name="chevronDown" size={13} />
+            </button>
+            {pickerOpen
+              ? (
+                <RuntimePicker
+                  rt={rt}
+                  current={runtimeId}
+                  busy={busy}
+                  onPick={(target) => {
+                    setPickerOpen(false)
+                    onMove(plugin.id, target)
+                  }}
+                />
+              )
+              : null}
+          </span>
         )
         : null}
+    </div>
+  )
+}
+
+/**
+ * X2 item 7: the operation pipeline surface — the "how far is that" block.
+ * Every plugin restart / runtime edit appends a step pipeline to the host's
+ * ledger (`useOps` polls it); this renders the live ops with their step
+ * chips + a real percentage bar, and gives the host-restart ops the one
+ * button that actually moves them (restart the backend that serves this
+ * console — the web half of its slot).
+ * @param ops - the ledger, newest first (undefined before the first read).
+ * @param progressOf - the done-over-total fraction of one op.
+ * @param onNotice - report the restart request's outcome.
+ * @param onRefresh - re-read the ledger.
+ * @returns the block (or nothing when the ledger is empty).
+ */
+function OpsPipeline({ ops, progressOf, onNotice, onRefresh }: {
+  ops: import('./useOps.ts').OpEntry[] | undefined
+  progressOf: (op: import('./useOps.ts').OpEntry) => number
+  onNotice: (message: string, tone: 'success' | 'error') => void
+  onRefresh: () => void
+}): ReactNode {
+  const { t, tf } = useI18n()
+  const opsStateTitle = (status: OpEntry['status']): string => (status === 'running' ? t('plugins.ops.state.running') : status === 'failed' ? t('plugins.ops.state.failed') : t('plugins.ops.state.done'))
+
+  const [restarting, setRestarting] = useState(false)
+  if (ops === undefined || ops.length === 0) return null
+  // Live ops first, then the most recently finished ones (capped, the host
+  // trims the ledger to 100 entries anyway).
+  const live = ops.filter(op => op.status === 'running')
+  const settled = ops.filter(op => op.status !== 'running').slice(0, 3)
+  const rows = [...live, ...settled]
+  /** The step's tone class (a literal map, so the dead-class scanner stays happy). */
+  const stepClassOf = (state: string): string => {
+    switch (state) {
+      case 'done':
+        return css.opsStepDone
+      case 'failed':
+        return css.opsStepFailed
+      case 'active':
+        return css.opsStepActive
+      default:
+        return css.opsStepPending
+    }
+  }
+  const restartNow = async (op: import('./useOps.ts').OpEntry): Promise<void> => {
+    setRestarting(true)
+    try {
+      const status = await fetchRuntime()
+      // The ledger belongs to the backend serving this console: restart its
+      // web half — the host's boot hook closes the pending op.
+      await postInstance(status.current.slot, 'web', 'restart')
+      onNotice(tf('plugins.ops.restarted', { title: op.title }), 'success')
+      onRefresh()
+    } catch (cause: unknown) {
+      onNotice(cause instanceof Error ? cause.message : String(cause), 'error')
+    } finally {
+      setRestarting(false)
+    }
+  }
+  return (
+    <div className={css.opsBlock} aria-label={t('plugins.ops.title')}>
+      <h3 className={css.opsTitle}>{t('plugins.ops.title')}</h3>
+      <ul className={css.opsList}>
+        {rows.map((op) => {
+          const percent = Math.round(progressOf(op) * 100)
+          return (
+            <li key={op.id} className={cx(css.opsRow, op.status === 'failed' ? css.opsRowFailed : undefined)}>
+              <div className={css.opsRowTop}>
+                <span className={css.opsRowTitle}>{op.title}</span>
+                <span className={cx(css.opsRowState, op.status === 'running' ? css.opsRowRunning : (op.status === 'failed' ? css.opsRowFailed : css.opsRowDone))}>
+                  {opsStateTitle(op.status)}
+                </span>
+                <span className={css.opsRowPercent}>{String(percent)}%</span>
+              </div>
+              <div className={css.opsBar} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+                <span className={cx(css.opsBarFill, op.status === 'failed' ? css.opsBarFailed : undefined)} style={{ width: `${String(percent)}%` }} />
+              </div>
+              <ul className={css.opsSteps}>
+                {op.steps.map((step, index) => (
+                  <li key={index} className={cx(css.opsStep, stepClassOf(step.state))}>
+                    {step.state === 'done'
+                      ? <Icon name="check" size={11} />
+                      : step.state === 'failed'
+                        ? <Icon name="alert" size={11} />
+                        : step.state === 'active'
+                          ? <Icon name="refresh" size={11} />
+                          : null}
+                    <span>{step.label}</span>
+                  </li>
+                ))}
+              </ul>
+              {op.pendingHostRestart && op.status === 'running'
+                ? (
+                  <div className={css.opsPendingHost}>
+                    <span>{t('plugins.ops.pendingHostRestart')}</span>
+                    <button
+                      type="button"
+                      className={css.secondaryButton}
+                      disabled={restarting}
+                      onClick={() => { void restartNow(op) }}
+                    >
+                      {t('plugins.ops.restartNow')}
+                    </button>
+                  </div>
+                )
+                : null}
+              {op.note !== undefined && op.note !== ''
+                ? <div className={cx(css.opsNote, op.status === 'failed' ? css.opsNoteFailed : undefined)}>{op.note}</div>
+                : null}
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }
@@ -940,7 +1174,9 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   // T round: the numbered runtime view lives IN this card (the standalone
   // 运行时与内存 section is gone); the per-plugin runtime lines come from
   // the same live snapshot.
-  const { snapshot: rtSnapshot, busy: rtBusy, addRuntime, removeRuntime } = useRuntimes(refreshSignal)
+  const { snapshot: rtSnapshot, busy: rtBusy, movePlugin: movePluginMut } = useRuntimes(refreshSignal, 3000)
+  // X2 item 7: the operation ledger — the "how far is that" pipelines.
+  const { ops, progressOf, refresh: refreshOps } = useOps(refreshSignal)
 
   // Sidebar-row refresh (Q round): re-scan the plugin directory.
   useEffect(() => {
@@ -1037,26 +1273,28 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   }
 
   /**
-   * T round: move one package into an isolated process runtime — the
-   * destructive direction (a new process starts) gets the confirm.
+   * X2: move one package into the picked RUNTIME container (the floating
+   * picker is the decision surface — no native confirmation, the host
+   * answers 409/428 with a reason that the notice line renders).
    * @param id - package directory name.
+   * @param runtime - target runtime id (`runtime0` = the shared host).
    */
-  const moveIsolate = (id: string): void => {
+  const movePlugin = (id: string, runtime: string): void => {
     const plugin = allPlugins.find(candidate => candidate.id === id)
     const name = plugin !== undefined ? displayName(plugin.packageName) : id
-    if (window.confirm(tf('plugins.runtime.moveIsolateConfirm', { name }))) void addRuntime(id)
-  }
-
-  /**
-   * T round: stop one package's isolated process and move it back to the
-   * shared host (the memory-lean direction — still confirmed: the process
-   * dies).
-   * @param id - package directory name.
-   */
-  const moveHost = (id: string): void => {
-    const plugin = allPlugins.find(candidate => candidate.id === id)
-    const name = plugin !== undefined ? displayName(plugin.packageName) : id
-    if (window.confirm(tf('plugins.runtime.moveHostConfirm', { name }))) void removeRuntime(id)
+    setPending(`move:${id}`)
+    setNotice(undefined)
+    void movePluginMut(id, runtime)
+      .then(() => {
+        setNotice({ message: tf('plugins.runtime.moved', { name, runtime }), tone: 'success' })
+      })
+      .catch((cause: unknown) => {
+        setNotice({ message: cause instanceof Error ? cause.message : String(cause), tone: 'error' })
+      })
+      .finally(() => {
+        setPending(undefined)
+        facts.refresh()
+      })
   }
 
   return (
@@ -1080,9 +1318,41 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
         {/* T round: the numbered runtime view is part of this card now —
             the 运行时与内存 section no longer exists on its own. */}
         <RuntimesBlock refreshSignal={refreshSignal} />
+        {/* X2 item 7: the live operation pipelines (progress + percentage). */}
+        <OpsPipeline
+          ops={ops}
+          progressOf={progressOf}
+          onNotice={(message, tone) => { setNotice({ message, tone }) }}
+          onRefresh={() => { refreshOps(); facts.refresh() }}
+        />
+        {/* X2 item 9: the 入口 section moved out of the 关于 card into THIS
+            card — the entry points sit next to the plugins they launch. */}
+        {(facts.facts?.entries ?? []).length > 0
+          ? (
+            <div>
+              <h3 className={css.pluginGroupTitle}>
+                <Icon name="activity" size={14} />
+                <span>{t('about.entries')}</span>
+              </h3>
+              <ul className={css.entryList}>
+                {(facts.facts?.entries ?? []).map(entry => (
+                  <li key={entry.id} className={css.entryRow}>
+                    <span className={css.entryIcon}><Icon name={entry.id === 'aek-desktop' ? 'layout' : (entry.id === 'cli' ? 'terminal' : 'activity')} size={16} /></span>
+                    <span className={css.entryName}>{entry.id}</span>
+                    <span className={css.entryTag}>{t('about.entry.tag')}</span>
+                    <span className={css.entryDesc}>{entry.description}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+          : null}
         {grouped.map(group => (
           <div key={group.bucket}>
-            <h3 className={css.pluginGroupTitle}>{t(bucketKeyOf(group.bucket))}</h3>
+            <h3 className={css.pluginGroupTitle}>
+              <Icon name={bucketIconOf(group.bucket)} size={14} />
+              <span>{bucketTitleOf(group.bucket, t)}</span>
+            </h3>
             <ul className={css.pluginList}>
               {group.items.map((plugin) => {
                 // T round: only cordis-loadable parts are switchable; the
@@ -1093,9 +1363,16 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                 return (
                   <li key={plugin.id} className={css.pluginItem}>
                     <div className={css.pluginHead}>
-                      <span className={css.featureIcon}><Icon name="layers" size={18} /></span>
+                      {/* X2 item 17: the category icon (layers = real coraek plugins only). */}
+                      <span className={css.featureIcon}><Icon name={bucketIconOf(plugin.bucket ?? 'plugins')} size={18} /></span>
                       <div className={css.pluginText}>
-                        <div className={css.featureTitle}>{displayName(plugin.packageName)}</div>
+                        {/* X2 items 11 + 16: the lock travels with the title (never in the
+                            button cluster), and the copy icon sits right after the name. */}
+                        <div className={css.featureTitle}>
+                          <span className={css.featureTitleName}>{displayName(plugin.packageName)}</span>
+                          <CopyButton value={plugin.packageName} size={12} label={t('common.copy')} />
+                          {plugin.locked ? <Icon name="lock" size={13} className={css.featureTitleLock} /> : null}
+                        </div>
                         {/* N2 fix: the merged row was one undifferentiated line
                             ("TypeScript · CSS AEK home surface: …" — no separators,
                             chips jammed against the version). Now: version + A1/A2 +
@@ -1120,18 +1397,13 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                           plugin={plugin}
                           rt={rtSnapshot}
                           term={term}
-                          onIsolate={moveIsolate}
-                          onHost={moveHost}
+                          onMove={movePlugin}
                           busy={rtBusy}
                         />
                       </div>
-                      {/* Fixed three-column cluster (switch | lock slot | restart) so the
-                          switch sits at the SAME x on every row. The lock slot is always
-                          rendered: with an inline-flex cluster the locked rows carried one
-                          extra child and the whole group slid left, which is exactly the
-                          "排版错乱" the user saw on 2026-11-09. T round: non-switchable
-                          rows keep the slot (empty) so the grid never drifts; their
-                          read-only state reads as a chip on the text line instead. */}
+                      {/* Two-column cluster (switch | actions): the lock icon moved to the
+                          title row (X2 item 11 — it never sits between the switch and the
+                          buttons), so the grid no longer drifts on locked rows. */}
                       <div className={css.pluginActions}>
                         {switchable
                           ? <ToggleSwitch
@@ -1141,12 +1413,6 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                             label={plugin.locked ? t('plugins.switch.locked.root') : (plugin.enabled ? t('plugins.switch.on') : t('plugins.switch.off'))}
                           />
                           : <span className={css.pluginSwitchSlot} aria-hidden="true" />}
-                        <span
-                          className={css.pluginLockIcon}
-                          title={plugin.locked ? t('plugins.switch.locked.root') : undefined}
-                        >
-                          {plugin.locked ? <Icon name="lock" size={14} /> : null}
-                        </span>
                         {switchable
                           ? PLUGIN_ACTIONS.map(action => (
                             <button
@@ -1278,12 +1544,9 @@ export function AboutPanel({
   const showExternalSection = providers.length > 0 || runtimeChoices.length > 0
   const snapshot = inventory.snapshot
   const plugins = snapshot?.packages.filter(pkg => pkg.group === 'plugin') ?? []
-  const base = snapshot?.packages.filter(pkg => pkg.group === 'base') ?? []
-  const entryLabel: Record<string, string> = {
-    'aek-web': t('about.entry.aek-web'),
-    cli: t('about.entry.cli'),
-    'aek-desktop': t('about.entry.desktop'),
-  }
+  // X2 items 9 + 10: the 入口 section moved INTO the 插件与程序 card
+  // (PluginsPanel), and the base-environment list is gone (the base bucket of
+  // the roster carries it now).
   // Classification + languages are scanned on the host (never hardcoded in
   // the client bundle); match them onto the inventory rows by package name.
   const stackByPackage = new Map(
@@ -1327,25 +1590,7 @@ export function AboutPanel({
         </ul>
 
         <div className={css.divider} />
-        <h3 className={css.sectionTitle}>{t('about.entries')}</h3>
-        <ul className={css.entryList}>
-          {(facts.facts?.entries ?? []).map(entry => (
-            <li key={entry.id} className={css.entryRow}>
-              <span className={css.entryIcon}><Icon name={entry.id === 'aek-desktop' ? 'layout' : (entry.id === 'cli' ? 'terminal' : 'activity')} size={16} /></span>
-              <span className={css.entryName}>{entry.id}</span>
-              <span className={css.entryTag}>{t('about.entry.tag')}</span>
-              <span className={css.entryDesc}>{entryLabel[entry.id] ?? entry.description}</span>
-            </li>
-          ))}
-        </ul>
-
-        {/* N round: when the About content is embedded in the 插件与程序管理
-            page the "AEK 插件" read-only list is dropped — the operational
-            plugin list (PluginsPanel, with the A1/A2 chip + languages merged
-            into each row) already shows the SAME packages; two lists of the
-            same content were exactly the "分类混乱" the user complained
-            about. The base-environment list STAYS (coraek is not in the
-            operational plugin list). */}
+        {/* X2 item 9: the 入口 section now lives in the 插件与程序 card. */}
         {!compactPlugins ? (
           <>
             <div className={css.divider} />
@@ -1374,19 +1619,8 @@ export function AboutPanel({
           </>
         ) : null}
 
-        <div className={css.divider} />
-        <h3 className={css.sectionTitle}>{t('about.group.base')}</h3>
-        <ul className={css.packageList}>
-          {base.map(pkg => (
-            <li key={pkg.name} className={css.packageRow}>
-              <span className={css.providerName}>{displayName(pkg.name)}</span>
-              <span className={css.countChip}>{pkg.version}</span>
-              <span className={css.badge}>{installKindLabel(pkg.kind)}</span>
-            </li>
-          ))}
-        </ul>
-        {base.length === 0 ? <div className={css.emptyState}>{t('about.empty')}</div> : null}
-
+        {/* X2 item 10: the base-environment list is gone — the roster's base
+            bucket shows those packages with their category icon. */}
         {/* EXTERNAL capability providers: shown when the host reports at least
             one ACTUALLY-external (isolate-topology) provider, or when the
             operator has selective runtime-mode choices. The "external

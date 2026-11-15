@@ -5,8 +5,11 @@
  * The helpers here render `<ul>/<li>` only; there is no `<ol>` anywhere in the
  * console. Copy buttons, spinners, loading bars and the in-page search box are
  * shared so the runtime, settings, skills, prompts and websearch surfaces
- * look and behave identically. There is deliberately NO progress bar: the
- * user asked for spinners only (2026-11-09 round).
+ * look and behave identically. Spinners stay for REFRESH / LOAD states only;
+ * long-running ACTIONS carry the X2 operation pipelines (step chips + a
+ * percentage bar, see `useOps` / `InfoPanels.OpsPipeline`) — the old
+ * "spinners only, no progress bar" note (2026-11-09) is superseded by the
+ * 2026-11-15 X2 round.
  *
  * @module @cheezmil/aek-home/src/client/ui-kit
  */

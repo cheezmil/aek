@@ -610,6 +610,13 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
     // No arming here: the deadline is armed at the main-process load DECISION
     // sites (`showApp`, `createWindow`, the forced-reload path), because the
     // `[aek-boot]` line lands BEFORE this event.
+    // X2 item 12: the Cmd/Ctrl+Shift+C inspect reads the LAST MOUSE POSITION
+    // the page tracked; inject the tracker once per page (idempotent — the
+    // page keeps the listener across SPA route changes, so a re-injection on
+    // a later navigation is a no-op).
+    void win.webContents.executeJavaScript(
+      'if (!window.__aekInspectArmed__) { window.__aekInspectArmed__ = true; window.addEventListener("mousemove", (event) => { window.__aekInspectPos__ = { x: event.clientX, y: event.clientY } }, { passive: true }) }',
+    ).catch(() => { /* a mid-navigation renderer must not log noise */ })
   })
 
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
@@ -672,6 +679,11 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
  *
  * The menu also carries the standard edit roles: without them, copy/paste
  * shortcuts in the console's text inputs would have no native binding.
+ *
+ * X2: Cmd/Ctrl+Shift+C additionally starts the Chrome-style "Inspect Element"
+ * flow (docked DevTools + inspect at the last tracked mouse position; see
+ * `inspectElement`). No native dialog is ever opened — the webui is the
+ * only surface.
  */
 function registerApplicationMenu(): void {
   const isMac = process.platform === 'darwin'
@@ -684,6 +696,43 @@ function registerApplicationMenu(): void {
     const target = (win !== undefined && 'webContents' in win ? win as BrowserWindow : undefined)
       ?? BrowserWindow.getFocusedWindow()
     target?.webContents.toggleDevTools()
+  }
+  /**
+   * X2 item 12: make Cmd/Ctrl+Shift+C "Inspect Element" work like Chrome's —
+   * the shortcut opens the DevTools docked right and starts the element
+   * inspect at the LAST MOUSE POSITION the page tracked. `webContents` has no
+   * `mouse-move` event (verified with aekws against the Electron docs; the
+   * only documented cursor API is `sendInputEvent` emulation), so the main
+   * process injects an idempotent mousemove tracker at every load
+   * (`did-finish-load`) and reads `window.__aekInspectPos__` on demand,
+   * falling back to the content-area center. No native dialog is involved:
+   * the inspect lives inside the docked DevTools view.
+   */
+  const inspectElement = (_item: Electron.MenuItem, win: Electron.BaseWindow | undefined): void => {
+    const target = (win !== undefined && 'webContents' in win ? win as BrowserWindow : undefined)
+      ?? BrowserWindow.getFocusedWindow()
+    const contents = target?.webContents
+    if (contents === undefined || contents.isDestroyed()) return
+    void (async (): Promise<void> => {
+      if (!contents.isDevToolsOpened()) {
+        contents.openDevTools({ mode: 'right' })
+        // The Elements panel needs a beat to attach before the inspect mode.
+        await new Promise<void>((resolve) => { setTimeout(() => { resolve() }, 250) })
+      }
+      let position: { x: number; y: number } | undefined
+      try {
+        position = await contents.executeJavaScript(
+          'window.__aekInspectPos__ || { x: Math.floor(window.innerWidth / 2), y: Math.floor(window.innerHeight / 2) }',
+        ) as { x: number; y: number }
+      } catch {
+        // The renderer is mid-navigation: the center fallback below still lands
+        // the inspect somewhere useful instead of dropping the shortcut.
+      }
+      contents.inspectElement(
+        Math.max(0, Math.floor(position?.x ?? 0)),
+        Math.max(0, Math.floor(position?.y ?? 0)),
+      )
+    })()
   }
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
@@ -704,6 +753,8 @@ function registerApplicationMenu(): void {
         // Accelerators on hidden items still fire (Electron keyboard-shortcuts
         // docs), so the Chrome-combo equivalents stay one keypress away.
         { label: '', visible: false, accelerator: 'CmdOrCtrl+Shift+I', click: toggleDevTools },
+        // X2 item 12: the Chrome-combo "Inspect Element" shortcut (Cmd/Ctrl+Shift+C).
+        { label: '', visible: false, accelerator: 'CmdOrCtrl+Shift+C', click: inspectElement },
         ...(isMac ? [{ label: '', visible: false, accelerator: 'F12', click: toggleDevTools }] : []),
       ],
     },

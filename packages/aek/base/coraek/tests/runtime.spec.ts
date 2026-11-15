@@ -23,6 +23,8 @@ import {
   isAutoIsolatable,
   genericIsolateBin,
   hostPackageDir,
+  readRuntimeDocV2,
+  writeRuntimeDocV2,
 } from '../runtime.mjs'
 import { runtimeMetaOf } from '../plugin-meta.mjs'
 
@@ -267,7 +269,7 @@ describe('runtime boot switch (discover + bootIsolateRuntimePackages)', () => {
     }
   })
 
-  it('boots only stored isolates; registers with an absolute spawn command', async () => {
+  it('boots only stored isolates; registers with an absolute spawn command (X2: under its RUNTIME key)', async () => {
     const root = mkdtempSync(join(tmpdir(), 'aek-runtime-boot-'))
     try {
       const home = join(root, 'home')
@@ -287,17 +289,137 @@ describe('runtime boot switch (discover + bootIsolateRuntimePackages)', () => {
       const fakeSupervisor = {
         register: async (id: string) => { registered.push(id); return { ok: true, problems: [] as string[] } },
         start: async (id: string) => { started.push(id); return { ok: true, state: 'running' } },
+        list: async () => ({}),
       }
       const results = await bootIsolateRuntimePackages({
         supervisor: fakeSupervisor as never,
         aekHome: home,
         packages: [{ id: 'aek-websearch', manifest, packageDir: pkgDir }],
       })
-      expect(registered).toEqual(['aek-websearch'])
-      expect(started).toEqual(['aek-websearch'])
-      expect(results['aek-websearch']?.ok).toBe(true)
+      // X2: the process is registered under its RUNTIME container id
+      // (the first auto-numbered one is runtime1), never the capability id.
+      expect(registered).toEqual(['runtime1'])
+      expect(started).toEqual(['runtime1'])
+      expect(results['runtime1']?.ok).toBe(true)
       // share-stored / undeclared ids never reach the supervisor.
       expect(registered).not.toContain('other-capability')
+      expect(Object.keys(results)).not.toContain('aek-websearch')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('several capabilities in ONE container register a SINGLE process (X2 multi-tenant)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'aek-runtime-boot-'))
+    try {
+      const home = join(root, 'home')
+      const pkgDirA = join(root, 'aek-prompt-manager')
+      const pkgDirB = join(root, 'aek-websearch')
+      mkdirSync(pkgDirA, { recursive: true })
+      mkdirSync(pkgDirB, { recursive: true })
+      const manifestA = { name: '@cheezmil/aek-prompt-manager', version: '0.1.0', main: './lib/index.js', aek: { distribution: 'A2' } }
+      const manifestB = { name: '@cheezmil/aek-websearch', version: '1.0.0', main: './lib/index.js', aek: { distribution: 'A1' } }
+      // Both isolate, both assigned to the SAME explicit container.
+      const doc = readRuntimeDocV2(home)
+      doc.modes['aek-prompt-manager'] = 'isolate'
+      doc.modes['aek-websearch'] = 'isolate'
+      doc.assignments['aek-prompt-manager'] = 'runtime1'
+      doc.assignments['aek-websearch'] = 'runtime1'
+      doc.containers['runtime1'] = true
+      doc.labels['runtime1'] = 'aek-mixed'
+      writeRuntimeDocV2(home, doc)
+
+      const registered: string[] = []
+      const declared: Record<string, unknown> = {}
+      const fakeSupervisor = {
+        register: async (id: string, descriptor: unknown) => {
+          registered.push(id)
+          declared[id] = descriptor
+          return { ok: true, problems: [] as string[] }
+        },
+        start: async (): Promise<{ ok: boolean; state?: string }> => ({ ok: true, state: 'running' }),
+        list: async () => ({}),
+      }
+      const results = await bootIsolateRuntimePackages({
+        supervisor: fakeSupervisor as never,
+        aekHome: home,
+        packages: [
+          { id: 'aek-prompt-manager', manifest: manifestA, packageDir: pkgDirA },
+          { id: 'aek-websearch', manifest: manifestB, packageDir: pkgDirB },
+        ],
+      })
+      // ONE process for the whole container, labelled by the operator name.
+      expect(registered).toEqual(['runtime1'])
+      expect(results['runtime1']?.ok).toBe(true)
+      const descriptor = declared['runtime1'] as { name: string; members: string[]; attach: { command: string } }
+      expect(descriptor.name).toBe('aek-mixed')
+      expect(descriptor.members).toEqual(['aek-prompt-manager', 'aek-websearch'])
+      // Both members are generic-isolatable → the generic runner, cwd the
+      // first member's dir.
+      expect(descriptor.attach.command).toBe('node')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a custom-bin member owns its whole container: the declared bin spawns it (X2)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'aek-runtime-boot-'))
+    try {
+      const home = join(root, 'home')
+      const pkgDir = join(root, 'aek-websearch')
+      mkdirSync(pkgDir, { recursive: true })
+      const manifest = {
+        name: '@cheezmil/aek-websearch',
+        version: '1.0.0',
+        main: './lib/index.js',
+        aek: { runtime: { share: true, isolate: { bin: 'bin/custom.mjs' } } },
+      }
+      expect(writeRuntimeMode(home, 'aek-websearch', 'isolate').ok).toBe(true)
+      const declared: Record<string, unknown> = {}
+      const fakeSupervisor = {
+        register: async (id: string, descriptor: unknown) => {
+          declared[id] = descriptor as Record<string, unknown>
+          return { ok: true, problems: [] as string[] }
+        },
+        start: async (): Promise<{ ok: boolean; state?: string }> => ({ ok: true, state: 'running' }),
+        list: async () => ({}),
+      }
+      await bootIsolateRuntimePackages({
+        supervisor: fakeSupervisor as never,
+        aekHome: home,
+        packages: [{ id: 'aek-websearch', manifest, packageDir: pkgDir }],
+      })
+      const attach = (declared['runtime1'] as { attach: { command: string } }).attach
+      // The declared bin stays relative (gate: shell-free, resolved via cwd).
+      expect(attach.command).toBe('bin/custom.mjs')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('prunes stale v1 capability-keyed provider rows on boot (X2 cutover)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'aek-runtime-boot-'))
+    try {
+      const home = join(root, 'home')
+      const pkgDir = join(root, 'aek-websearch')
+      mkdirSync(pkgDir, { recursive: true })
+      const manifest = { name: '@cheezmil/aek-websearch', version: '1.0.0', main: './lib/index.js', aek: { runtime: { share: true, isolate: { bin: 'bin/x.mjs' } } } }
+      expect(writeRuntimeMode(home, 'aek-websearch', 'isolate').ok).toBe(true)
+      const unregistered: string[] = []
+      const fakeSupervisor = {
+        register: async (): Promise<{ ok: boolean; problems: string[] }> => ({ ok: true, problems: [] }),
+        start: async (): Promise<{ ok: boolean; state?: string }> => ({ ok: true, state: 'running' }),
+        list: async () => ({ 'aek-websearch': {} }),
+        unregister: async (id: string) => { unregistered.push(id); return { ok: true } },
+      }
+      await bootIsolateRuntimePackages({
+        supervisor: fakeSupervisor as never,
+        aekHome: home,
+        packages: [{ id: 'aek-websearch', manifest, packageDir: pkgDir }],
+      })
+      // The v1 row (capability key) is unregistered; the v2 container row is
+      // the one that owns the process now.
+      expect(unregistered).toEqual(['aek-websearch'])
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -324,14 +446,15 @@ describe('runtime boot switch (discover + bootIsolateRuntimePackages)', () => {
           return { ok: true, problems: [] as string[] }
         },
         start: async (): Promise<{ ok: boolean; state?: string }> => ({ ok: true, state: 'running' }),
+        list: async () => ({}),
       }
       const results = await bootIsolateRuntimePackages({
         supervisor: fakeSupervisor as never,
         aekHome: home,
         packages: [{ id: 'aek-quick-prompt', manifest, packageDir: pkgDir }],
       })
-      expect(results['aek-quick-prompt']?.ok).toBe(true)
-      const attach = declared['aek-quick-prompt']?.attach as { command: string; args: string[]; cwd?: string }
+      expect(results['runtime1']?.ok).toBe(true)
+      const attach = (declared['runtime1'] as { attach: { command: string; args: string[]; cwd?: string } }).attach
       // The generic runner is `node <coraek absolute bin>`: the command must
       // stay a relative executable name (the supervisor attach contract), so
       // the absolute runner path travels as an argv token, forward-slashed
@@ -371,9 +494,9 @@ describe('runtime boot switch (discover + bootIsolateRuntimePackages)', () => {
         aekHome: home,
         packages: [{ id: 'aek-websearch', manifest, packageDir: pkgDir }],
       })
-      const attach = declared['aek-websearch']?.attach as { command: string }
+      const attach = (declared['runtime1'] as { attach?: { command: string } })?.attach
       // The declared bin stays relative (gate: shell-free, resolved via cwd).
-      expect(attach.command).toBe('bin/custom.mjs')
+      expect(attach?.command).toBe('bin/custom.mjs')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -394,7 +517,7 @@ describe('runtime boot switch (discover + bootIsolateRuntimePackages)', () => {
         aekHome: home,
         packages: [{ id: 'coraek', manifest, packageDir: hostPackageDir() }],
       })
-      expect(results['coraek']?.ok).toBe(false)
+      expect(results['runtime1']?.ok).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -414,8 +537,8 @@ describe('runtime boot switch (discover + bootIsolateRuntimePackages)', () => {
         aekHome: home,
         packages: [{ id: 'no-bin', manifest: { name: 'no-bin', version: '0.1.0', aek: {} }, packageDir: root }],
       })
-      expect(results['no-bin']?.ok).toBe(false)
-      expect(String(results['no-bin']?.problem)).toContain('bin')
+      expect(results['runtime1']?.ok).toBe(false)
+      expect(String(results['runtime1']?.problem)).toContain('bin')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
