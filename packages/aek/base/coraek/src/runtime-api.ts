@@ -312,7 +312,10 @@ export function registerRuntimeApi(
                 ],
                 ...(assignNote !== undefined ? { note: assignNote } : {}),
               })
-              sendJson(res, 200, { protocol: 'aek-runtimes/2', opId: opEntry.id, ...await snapshotOf(aekHome, supervisor) })
+              // X4: the new container's id rides back in the response body so
+              // a client can chain "new dedicated runtime → move this plugin in"
+              // without diffing snapshots; older clients simply ignore it.
+              sendJson(res, 200, { protocol: 'aek-runtimes/2', opId: opEntry.id, runtimeId: created.runtimeId, ...await snapshotOf(aekHome, supervisor) })
             } else if (op === 'move') {
               if (capability === undefined || runtime === undefined) {
                 sendJson(res, 400, { code: 'bad-request', message: 'body { op: "move", capability, runtime, confirm: true } is required' })

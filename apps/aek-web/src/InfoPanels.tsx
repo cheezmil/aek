@@ -915,10 +915,11 @@ function bucketIconOf(bucket: PluginBucket): string {
  * @param busy - disables the list while a mutation is in flight.
  * @returns the picker body.
  */
-function RuntimePicker({ rt, current, onPick, busy }: {
+function RuntimePicker({ rt, current, onPick, onCarveOut, busy }: {
   rt: NonNullable<ReturnType<typeof useRuntimes>['snapshot']>
   current: string
   onPick: (runtime: string) => void
+  onCarveOut?: () => void | Promise<void>
   busy: string | undefined
 }): ReactNode {
   const { t } = useI18n()
@@ -938,6 +939,24 @@ function RuntimePicker({ rt, current, onPick, busy }: {
         aria-label={t('plugins.runtime.pickerSearch')}
       />
       <ul className={css.rtPickerList}>
+        {/* X4: the one-click "carve out" — a fresh auto-numbered dedicated
+            container for THIS plugin (the in-host reading is shared, so the
+            only way to see its OWN number is to give it its own process). */}
+        {onCarveOut !== undefined
+          ? (
+            <li
+              className={cx(css.rtPickerItem, busy !== undefined ? css.rtPickerItemDisabled : undefined)}
+              role="option"
+              aria-selected={false}
+              onClick={() => { if (busy === undefined) void onCarveOut() }}
+            >
+              <span className={css.rtPickerLabel}>
+                {t('plugins.runtime.carveOut')}
+              </span>
+              <Icon name="plus" size={13} />
+            </li>
+          )
+          : null}
         {visible.length === 0
           ? <li className={css.rtPickerEmpty}>{t('common.noMatch')}</li>
           : visible.map((row) => {
@@ -980,19 +999,23 @@ function RuntimePicker({ rt, current, onPick, busy }: {
  * @param busy - the in-flight runtime mutation key, when any.
  * @returns the line (or nothing when the host has no runtime route).
  */
-function PluginRuntimeLine({ plugin, rt, term, onMove, busy }: {
+function PluginRuntimeLine({ plugin, rt, term, onMove, onCarveOut, busy }: {
   plugin: PluginEntry
   rt: ReturnType<typeof useRuntimes>['snapshot']
   term: string
   onMove: (id: string, runtime: string) => void
+  onCarveOut?: () => void | Promise<void>
   busy: string | undefined
 }): ReactNode {
   const { t, tf } = useI18n()
   const [pickerOpen, setPickerOpen] = useState(false)
   if (rt === undefined) return null
-  // The v2 host fills `pluginMemory` for every discovered capability, so the
-  // entry itself is always present; its VALUE is optional (in-host entries
-  // carry no per-plugin reading).
+  // X4: the chip carries the REAL whole-process reading of the process this
+  // plugin lives in — never a borrowed or invented number. In-host plugins
+  // share ONE V8 heap with the host (Node.js has no per-module memory
+  // ledger), so their reading is the host process's measured RSS plus a
+  // plain-language WHY on hover; a container plugin shows its container's
+  // whole-process reading, saying so (and listing cohabitants) when shared.
   const mem = rt.pluginMemory[plugin.id]
   const runtimeId = mem.runtimeId ?? 'runtime0'
   const row = runtimeId === 'runtime0'
@@ -1000,12 +1023,26 @@ function PluginRuntimeLine({ plugin, rt, term, onMove, busy }: {
     : rt.runtimes.find(candidate => candidate.id === runtimeId)
   const isolatedRow = row !== undefined && row.kind === 'isolated' ? row : undefined
   const resolved = row ?? rt.host
-  // X3: the reading belongs to the container's WHOLE process (several plugins
-  // may share it) — never to the host total: in-host plugins have no reading
-  // of their own and say so with words instead of a borrowed number.
-  const occupant = mem.value ?? isolatedRow?.memory?.rss
-  const sharedContainer = isolatedRow !== undefined && isolatedRow.plugins.length > 1
+  const inHost = isolatedRow === undefined
+  const reading = mem.value ?? isolatedRow?.memory?.rss
+  const sharedContainer = !inHost && isolatedRow.plugins.length > 1
+  // X4: the one-click escape hatch only makes sense for in-host plugins
+  // (a container plugin already has its own process).
+  const carveOutable = inHost && onCarveOut !== undefined
   const moveTargets = [rt.host, ...rt.runtimes].filter(candidate => candidate.id !== runtimeId)
+  const hostReading = rt.host.memory?.rss
+  const chip = inHost
+    ? (hostReading !== undefined
+      ? `${t('plugins.runtime.memSharedHost')} · ${term} ${fmtBytes(hostReading)}`
+      : t('plugins.runtime.memSharedHost'))
+    : (sharedContainer
+      ? `${t('plugins.runtime.memSharedContainer')} (${String(isolatedRow.plugins.length)})${reading !== undefined ? ` · ${term} ${fmtBytes(reading)}` : ''}`
+      : `${t('plugins.runtime.memOwnContainer')}${reading !== undefined ? ` · ${term} ${fmtBytes(reading)}` : ''}`)
+  const chipTitle = inHost
+    ? tf('plugins.runtime.memHostTip', { n: String(Math.max(0, rt.host.plugins.length - 1)) })
+    : sharedContainer
+      ? tf('plugins.runtime.memContainerTip', { n: String(isolatedRow.plugins.length), names: isolatedRow.plugins.join(', ') })
+      : undefined
   return (
     <div className={css.pluginRuntimeLine}>
       <span className={cx(css.rtChip, resolved.state === 'running' ? css.rtStateRunning : undefined)}>
@@ -1017,15 +1054,12 @@ function PluginRuntimeLine({ plugin, rt, term, onMove, busy }: {
           : t('plugins.runtime.lineHost')}
         {` · ${t(resolved.state === 'running' ? 'runtimes.state.running' : 'runtimes.state.stopped')}`}
       </span>
-      {/* X3: the chip only carries a REAL reading — the container's whole
-          process (several plugins may share it, then it says so); an in-host
-          plugin has no number of its own and shows the words instead. */}
-      <span className={cx(css.rtChip, css.pluginMemChip)}>
-        {occupant !== undefined
-          ? `${term} ${fmtBytes(occupant)}${sharedContainer ? ` · ${t('plugins.runtime.memSharedContainer')}` : ''}`
-          : t('plugins.runtime.memSharedHost')}
+      {/* X4: the number is always a real measured reading; the hover carries
+          the WHY (in-host sharing / container cohabitation) in plain words. */}
+      <span className={cx(css.rtChip, css.pluginMemChip)} title={chipTitle}>
+        {chip}
       </span>
-      {moveTargets.length > 0
+      {(moveTargets.length > 0 || carveOutable)
         ? (
           <span className={css.rtPickerWrap}>
             <button
@@ -1043,11 +1077,17 @@ function PluginRuntimeLine({ plugin, rt, term, onMove, busy }: {
                 <RuntimePicker
                   rt={rt}
                   current={runtimeId}
-                  busy={busy}
                   onPick={(target) => {
                     setPickerOpen(false)
                     onMove(plugin.id, target)
                   }}
+                  onCarveOut={carveOutable
+                    ? () => {
+                      setPickerOpen(false)
+                      void onCarveOut()
+                    }
+                    : undefined}
+                  busy={busy}
                 />
               )
               : null}
@@ -1180,7 +1220,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   // T round: the numbered runtime view lives IN this card (the standalone
   // 运行时与内存 section is gone); the per-plugin runtime lines come from
   // the same live snapshot.
-  const { snapshot: rtSnapshot, busy: rtBusy, movePlugin: movePluginMut } = useRuntimes(refreshSignal, 3000)
+  const { snapshot: rtSnapshot, busy: rtBusy, addRuntime: addRuntimeMut, movePlugin: movePluginMut } = useRuntimes(refreshSignal, 3000)
   // X2 item 7: the operation ledger — the "how far is that" pipelines.
   const { ops, progressOf, refresh: refreshOps } = useOps(refreshSignal)
 
@@ -1303,6 +1343,38 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
       })
   }
 
+  /**
+   * X4: the one-click "carve out" — create a fresh auto-numbered dedicated
+   * runtime container (no label) and move THIS plugin into it, so its chip
+   * stops showing the shared host reading and shows its OWN container
+   * process's measured RSS. Chains the two existing mutations (the hook's
+   * busy gate already serializes them); the move's notice pipeline reports.
+   * Only offered for in-host plugins — a container plugin already has its
+   * own process.
+   * @param id - the plugin id.
+   * @returns the async action, or undefined when not applicable.
+   */
+  const carveOutFor = (id: string): (() => Promise<void>) | undefined => {
+    const entry = rtSnapshot?.pluginMemory[id]
+    if (entry !== undefined && entry.runtimeId !== undefined && entry.runtimeId !== 'runtime0') return undefined
+    if (rtSnapshot === undefined) return undefined
+    return async () => {
+      setPending(`carve-out:${id}`)
+      setNotice(undefined)
+      try {
+        const created = await addRuntimeMut()
+        // Older hosts don't echo the created id: derive it (the add auto-
+        // numbers from the CURRENT max, and this snapshot is pre-add).
+        const nextNumber = rtSnapshot.runtimes.reduce((max, candidate) => Math.max(max, candidate.number), -1) + 1
+        const target = created ?? `runtime${String(nextNumber)}`
+        movePlugin(id, target)
+      } catch (cause: unknown) {
+        setNotice({ message: cause instanceof Error ? cause.message : String(cause), tone: 'error' })
+        setPending(undefined)
+      }
+    }
+  }
+
   return (
     <PanelCard>
       <div className={css.cardBody}>
@@ -1406,6 +1478,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                           rt={rtSnapshot}
                           term={term}
                           onMove={movePlugin}
+                          onCarveOut={carveOutFor(plugin.id)}
                           busy={rtBusy}
                         />
                       </div>

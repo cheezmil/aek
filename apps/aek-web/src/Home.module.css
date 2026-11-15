@@ -3365,6 +3365,8 @@ button.panelSearchCount:hover {
 .rtPickerLabel { display: inline-flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .rtPickerMeta { font-weight: 400; font-size: 11px; color: var(--aek-text-muted); }
 .rtPickerEmpty { color: var(--aek-text-muted); font-size: 12px; padding: 4px 8px; }
+/* X4: a mutation in flight (the add behind "carve out") visually disables the picker rows. */
+.rtPickerItemDisabled { opacity: 0.5; pointer-events: none; }
 .rtPickerBusy { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--aek-text-muted); }
 /* X2 item 18: the occupied-runtime-memory chip on the per-plugin runtime line. */
 .pluginMemChip { margin-left: auto; }

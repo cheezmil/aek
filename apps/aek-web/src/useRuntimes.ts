@@ -88,8 +88,11 @@ export interface RuntimesState {
    * Create a NEW runtime container. The optional label is the custom runtime
    * name; blank = the auto `runtime{n}` number (the X2 add row: no capability
    * picker, no confirmation — the name input + the ＋ button only).
+   * X4: resolves the created container's id (the host's `add` response), so a
+   * caller can chain "new dedicated runtime → move this plugin into it" in
+   * one action; `undefined` when the host is older than that field.
    */
-  addRuntime: (label?: string) => Promise<void>
+  addRuntime: (label?: string) => Promise<string | undefined>
   /** Move ONE plugin into an EXISTING runtime container (`runtime0` = the shared host). */
   movePlugin: (capability: string, runtime: string) => Promise<void>
   /** Delete a runtime container: its plugins go back to the shared host. */
@@ -166,13 +169,15 @@ export function useRuntimes(refreshSignal = 0, pollMs = 0): RuntimesState {
     return () => { clearInterval(timer) }
   }, [pollMs, refresh])
 
-  const addRuntime = useCallback(async (label?: string): Promise<void> => {
+  const addRuntime = useCallback(async (label?: string): Promise<string | undefined> => {
     setBusy('add')
     try {
       // X2: the add row is a bare NAME input — blank = the auto number.
       const trimmed = typeof label === 'string' ? label.trim() : ''
-      await mutate({ op: 'add', ...(trimmed.length > 0 ? { label: trimmed } : {}) })
+      const parsed = await mutate({ op: 'add', ...(trimmed.length > 0 ? { label: trimmed } : {}) })
       refresh()
+      // X4: the host echoes the created container's id (older hosts: absent).
+      return typeof parsed.runtimeId === 'string' ? parsed.runtimeId : undefined
     } finally {
       setBusy(undefined)
     }
