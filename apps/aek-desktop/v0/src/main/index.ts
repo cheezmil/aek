@@ -975,12 +975,20 @@ function registerShellInstallIpc(): void {
   ipcMain.handle('aek-shell:install-selected', (_event, packages: unknown) => {
     const safe = Array.isArray(packages) ? packages.filter((p): p is string => typeof p === 'string' && (INSTALLABLE_PKGS as readonly string[]).includes(p)) : []
     if (safe.length === 0) return { ok: false, tool: '', output: 'no allow-listed package selected' }
-    const tool = probeBinary('pnpm', ['--version']) !== undefined ? 'pnpm' : 'npm'
-    const args = tool === 'pnpm' ? ['add', '-g', ...safe] : ['install', '-g', ...safe]
+    // pnpm is the only supported package manager (user ruling: npm/yarn are
+    // not allowed — the pnpm store layout and the AEK toolchain assume it).
+    if (probeBinary('pnpm', ['--version']) === undefined) {
+      return {
+        ok: false,
+        tool: 'pnpm',
+        output: 'pnpm not found. pnpm is required (npm/yarn are not supported). Install it with: curl -fsSL https://get.pnpm.io/install.sh | sh',
+      }
+    }
+    const args = ['add', '-g', ...safe]
     // Run from the user's home dir: a global install launched from inside
     // an AEK repo checkout would hit the workspace root and fail with
     // "workspace packages were not loaded into the store".
-    const child = spawn(tool, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: homedir() })
+    const child = spawn('pnpm', args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: homedir() })
     let output = ''
     const onChunk = (chunk: Buffer): void => {
       output += chunk.toString('utf8')

@@ -30,7 +30,7 @@ export const SHELL_INSTALL_ROWS: {
   pkg?: string
 }[] = [
   { key: 'node', labelKey: 'about.shellInstall.node', field: 'node' },
-  { key: 'pkgMgr', labelKey: 'about.shellInstall.pkgMgr', field: 'pnpm', fallback: 'npm' },
+  { key: 'pkgMgr', labelKey: 'about.shellInstall.pkgMgr', field: 'pnpm' },
   { key: 'aek', labelKey: 'about.shellInstall.cli', field: 'aek', pkg: '@cheezmil/coraek' },
   { key: 'aekpm', labelKey: 'about.shellInstall.prompt', field: 'aekpm', pkg: '@cheezmil/aek-prompt-manager' },
   { key: 'aekws', labelKey: 'about.shellInstall.websearch', field: 'aekws', pkg: '@cheezmil/aek-websearch' },

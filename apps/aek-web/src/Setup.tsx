@@ -3,18 +3,20 @@
  * floating notice.
  *
  * Third-round ruling (2026-11-16 05:3x): the wizard carries NO choices at
- * all — opening the shell AUTO-INSTALLS the base environment (`pnpm add -g
- * @cheezmil/coraek`, npm fallback; Node.js itself is never auto-installed,
- * a missing runtime just says so). Free selection of the optional AEK
- * components (aekpm / aekws / aeksm) lives INSIDE the console (the
- * component-install panel), reached via "Continue to console".
+ * all — opening the shell AUTO-INSTALLS the base environment (pnpm is the
+ * only package manager; npm/yarn are not supported, and Node.js itself is
+ * never auto-installed, a missing runtime just says so). When the base
+ * environment ends up ready the wizard CONTINUES ON ITS OWN into the
+ * webui — it only lingers (manual entry button) when Node.js is missing
+ * or the install failed. Free selection of the optional AEK components
+ * (aekpm / aekws / aeksm) lives INSIDE the webui (the component-install
+ * panel), reached automatically or via the manual entry.
  *
  * Failure path = copyable log: the install output is shown with a copy
  * button so the user hands it to their agent ("let your agent solve it")
  * — the only support loop that needs no assumptions about the machine.
  */
-import { useEffect, useRef } from 'react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CopyButton } from './ui-kit.tsx'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
@@ -50,6 +52,11 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
   const { t, tf, locale, setLocale } = useI18n()
   const { available, status, result, pending, install } = useShellInstall()
   const [, setSetupSeen] = usePref(PREF_KEYS.shellSetupSeen, false, parseBool)
+  const nodeMissing = status?.node === undefined
+  const baseInstalling = pending && result === undefined
+  const baseFailed = result !== undefined && !result.ok && !pending
+  const baseOk = status?.aek !== undefined || (result?.ok === true && !pending)
+
   // Third-round ruling: the base environment installs itself — one-shot
   // auto-install when the host CLI probe came back empty (Node present).
   const autoStarted = useRef(false)
@@ -61,6 +68,23 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
     void install(['@cheezmil/coraek'])
   }, [status, install])
 
+  // Third-round ruling: when the base environment is ready (already
+  // installed, or our auto-install just finished) the wizard continues
+  // ON ITS OWN — no button click. It only lingers for the manual entry
+  // when Node.js is missing or the install failed.
+  const [autoGone, setAutoGone] = useState(false)
+  useEffect(() => {
+    const readyNow = baseOk && !nodeMissing && !baseFailed && !autoGone
+    if (!readyNow) return
+    const timer = setTimeout(() => {
+      setAutoGone(true)
+      continueToConsole()
+    }, result?.ok === true && autoStarted.current ? 1200 : 800)
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [baseOk, nodeMissing, baseFailed, autoGone, result])
+
   // Not inside the desktop shell: the bridge (and its probes) do not exist.
   if (!available) {
     return (
@@ -71,11 +95,6 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
       </div>
     )
   }
-
-  const nodeMissing = status?.node === undefined
-  const baseInstalling = pending && result === undefined
-  const baseFailed = result !== undefined && !result.ok && !pending
-  const baseOk = status?.aek !== undefined || (result?.ok === true && !pending)
 
   const continueToConsole = (): void => {
     setSetupSeen(true)
@@ -119,7 +138,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                   <span className={css.sectionTitle}>{t('setup.section.runtime')}</span>
                 </div>
                 <StatusRow label={t('about.shellInstall.node')} value={status.node} />
-                <StatusRow label={t('about.shellInstall.pkgMgr')} value={status.pnpm ?? status.npm} />
+                <StatusRow label={t('about.shellInstall.pkgMgr')} value={status.pnpm} />
                 <div className={css.backendRow}>
                   <Icon name={status.backendUp ? 'check' : 'alert'} size={14} className={status.backendUp ? css.backendOk : css.backendDown} />
                   <span className={status.backendUp ? css.backendOk : css.backendDown}>
@@ -188,7 +207,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                   )}
               </section>
 
-              {baseOk
+              {baseOk && !autoGone
                 ? (
                   <p className={css.readyLineFinal} role="status">
                     <Icon name="check" size={14} />
@@ -197,16 +216,20 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                 )
                 : null}
 
-              <footer className={css.footer}>
-                <button
-                  type="button"
-                  className={css.actionBtn}
-                  style={{ fontSize: 13.5, padding: '7px 16px' }}
-                  onClick={continueToConsole}
-                >
-                  {t('setup.continue')}
-                </button>
-              </footer>
+              {baseFailed || nodeMissing
+                ? (
+                  <footer className={css.footer}>
+                    <button
+                      type="button"
+                      className={css.actionBtn}
+                      style={{ fontSize: 13.5, padding: '7px 16px' }}
+                      onClick={continueToConsole}
+                    >
+                      {t('setup.continue')}
+                    </button>
+                  </footer>
+                )
+                : null}
             </>
           )}
       </div>

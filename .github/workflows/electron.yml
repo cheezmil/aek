@@ -61,6 +61,12 @@ jobs:
         with:
           name: electron-mac
           path: apps/aek-desktop/v0/dist/aek/
+          # Keep only the newest set, for 7 days: one build uploads ~0.9 GB,
+          # and the free plan's artifact-storage quota is only 500 MB/month
+          # (2026 docs, shared with Packages) — 90-day default retention would
+          # block the next upload mid-month. Files survive in the release.
+          retention-days: 7
+          delete-older-artifacts: true
 
   # ---------------------------------------------------------- windows ----
   build-win:
@@ -92,6 +98,8 @@ jobs:
         with:
           name: electron-win
           path: apps/aek-desktop/v0/dist/aek/
+          retention-days: 7
+          delete-older-artifacts: true
 
   # ----------------------------------------------------------- linux ----
   build-linux:
@@ -122,6 +130,8 @@ jobs:
         with:
           name: electron-linux
           path: apps/aek-desktop/v0/dist/aek/
+          retention-days: 7
+          delete-older-artifacts: true
 
   # --------------------------------------------------------- release ----
   publish:
