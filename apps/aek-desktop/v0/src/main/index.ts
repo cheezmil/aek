@@ -338,20 +338,27 @@ async function backendAlive(): Promise<boolean> {
 
 /**
  * The page shown while the backend is unreachable.
- * @returns a data: URL carrying the reconnecting notice.
+ * W round: a real status card (who, which port, what happens next, the manual
+ * fallback) instead of a near-white "Reconnecting…" note — after a reboot the
+ * backend lags the shell by about a minute, and the window must say so.
+ * @returns a data: URL carrying the waiting notice.
  */
 function reconnectingPage(): string {
   const html = [
     '<!doctype html><meta charset="utf-8"><title>AEK</title>',
-    '<body style="font:14px -apple-system,sans-serif;padding:3rem;color:#222;',
-    'font-family:-apple-system,BlinkMacSystemFont,sans-serif">',
-    '<h2 style="font-size:1.1rem;margin-bottom:.4rem">Reconnecting…</h2>',
-    `<p style="color:#666;margin:0">The ${SLOT_CFG.productName} backend on port ${WEB_PORT} is not responding.`,
-    'This window will reload automatically once it is back.</p>',
-    '<div id="dot" style="margin-top:1.5rem;width:10px;height:10px;border-radius:50%;',
-    'background:#888;animation:p 1s infinite"></div>',
+    '<body style="margin:0;min-height:100vh;display:grid;place-items:center;',
+    'background:#fafafa;font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#222">',
+    '<div style="max-width:26rem;padding:2rem">',
+    `<h1 style="font-size:1.05rem;margin:0 0 .5rem">${SLOT_CFG.productName} — waiting for the backend</h1>`,
+    `<p style="color:#666;margin:0 0 1rem">The web backend on port ${WEB_PORT} is not answering.`,
+    ' On this machine it starts automatically — this window reloads itself as soon as it is back.',
+    ' If it is still blank after a couple of minutes, press ⌘R or quit and reopen the app.</p>',
+    '<div style="display:flex;gap:.4rem;align-items:center;color:#888;font-size:.85rem">',
+    '<div style="width:10px;height:10px;border-radius:50%;background:#888;animation:p 1s infinite"></div>',
+    'Retrying…',
+    '</div>',
     '<style>@keyframes p{0%,100%{opacity:.25}50%{opacity:1}}</style>',
-    '</body>',
+    '</div></body>',
   ].join('')
   return 'data:text/html;charset=utf-8,' + encodeURIComponent(html)
 }
@@ -377,6 +384,20 @@ function reconnectingPage(): string {
  */
 const BOOT_GRACE_MS = 15_000
 const MAX_CONSECUTIVE_FORCED_RELOADS = 3
+/**
+ * W round: when the load finished but `#root` is still empty at the grace
+ * deadline, give the renderer this much extra time (once, per armed load)
+ * before counting a forced reload — a cold host's first request can mount
+ * slowly, and a false reload is what fed the old terminal give-up.
+ */
+const BOOT_RECHECK_MS = 5_000
+/**
+ * W round: after a recovery load (recoveryPending), do not issue another full
+ * page load for this long — the healthy-boot probe clears the counters once
+ * the app actually mounts; without the cooldown the 1s probe tick would
+ * reload the page every second until it did.
+ */
+const RECOVERY_COOLDOWN_MS = 5_000
 
 function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void } {
   let showingReconnect = false
@@ -386,14 +407,96 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
   let lastBootOkAt = 0
   /** When the most recent app-URL load was decided by the main process (ms). */
   let lastAppLoadAt = 0
+  /** When the most recent load reported did-finish-load (ms). */
+  let lastFinishLoadAt = 0
   /** Consecutive forced reloads since the last healthy boot. */
   let forcedReloads = 0
   /** The one-shot boot deadline for the current load. */
   let bootTimer: NodeJS.Timeout | undefined
+  /** One bounded mount recheck per armed deadline (W round: a finished load on
+   *  a cold host can still be mounting when the 15s grace fires). */
+  let mountRechecksLeft = 0
+  /**
+   * W round: exceeding the reload bound is NO LONGER terminal. It schedules a
+   * recovery: the per-second probe reloads the app URL the moment the backend
+   * answers, and any healthy-boot signal clears the counters. The 2026-11-15
+   * post-reboot white screen was the old terminal state: backend healthy,
+   * window blank, watcher no longer capable of acting.
+   */
+  let recoveryPending = false
 
   const disarmBootWatch = (): void => {
     if (bootTimer !== undefined) clearTimeout(bootTimer)
     bootTimer = undefined
+    bootSettleArmed = false
+  }
+
+  /** Healthy boot observed: clear every failure counter in one place. */
+  const noteBootOk = (): void => {
+    lastBootOkAt = Date.now()
+    forcedReloads = 0
+    recoveryPending = false
+  }
+
+  /**
+   * The boot-deadline settlement for the current load: healthy → clear; not
+   * mounted but the load finished → one bounded 5s recheck; still not →
+   * force a reload (bounded) or schedule a recovery.
+   */
+  const settleBootProbe = async (): Promise<void> => {
+    if (stopped || win.isDestroyed()) return
+    // A healthy boot since THIS load means nothing to do.
+    if (lastBootOkAt >= lastAppLoadAt) {
+      recoveryPending = false
+      return
+    }
+    // R round: ask the renderer whether the app actually mounted. `#root`
+    // is the mount node of every page generation this shell loads (the
+    // legacy dsh shell and aek-web both render into it). The probe rejects
+    // when the renderer is dead or mid-navigation — read that as "not
+    // mounted yet", never as "healthy".
+    let mounted = 0
+    try {
+      mounted = Number(
+        await win.webContents.executeJavaScript(
+          'document.querySelector("#root")?.children.length ?? 0',
+        ),
+      )
+    } catch {
+      // Dead renderer: the probe cannot prove a healthy boot.
+    }
+    if (mounted > 0) {
+      noteBootOk()
+      return
+    }
+    // W round: the load itself completed but the mount is not observable yet
+    // (a freshly started host serving a large bundle can still be mounting
+    // when the grace fires). One bounded recheck before counting a reload.
+    if (lastFinishLoadAt >= lastAppLoadAt && mountRechecksLeft > 0) {
+      mountRechecksLeft -= 1
+      bootSettleArmed = true
+      bootTimer = setTimeout(() => { bootSettleArmed = false; void settleBootProbe() }, BOOT_RECHECK_MS)
+      return
+    }
+    if (forcedReloads >= MAX_CONSECUTIVE_FORCED_RELOADS) {
+      recoveryPending = true
+      log.warn(
+        'renderer silent-failure: recovery pending — the window re-loads automatically as soon as the backend answers',
+        { attempts: forcedReloads },
+      )
+      return
+    }
+    forcedReloads += 1
+    log.warn('renderer silent-failure: no [aek-boot] after app load — forcing reload', {
+      attempt: forcedReloads,
+      shellUrl,
+    })
+    console.log(`[main] renderer silent-failure — forcing reload (attempt ${String(forcedReloads)})`)
+    // Reload bypasses the HTTP cache so a poisoned bundle cannot survive.
+    // (Electron's `reloadIgnoringCache` is fire-and-forget: it returns
+    // void, not a promise.)
+    win.webContents.reloadIgnoringCache()
+    armBootWatch()
   }
 
   /**
@@ -404,70 +507,36 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
    * both needed a manual app restart because the renderer could die or stall
    * while the backend stayed up, which the reconnect watcher never sees.
    *
-   * R round (2026-11-15): a healthy boot is now proven two ways — the legacy
-   * `[aek-boot] module system created` console line OR a non-empty `#root`
-   * mount probe. The aek-web-generation page is a standalone React app that
-   * mounts into `#root` WITHOUT booting the dsh client module system, so the
-   * module-system line never lands and the line-only check false-fired on
-   * every load of the new page (2026-11-15 white screens: 3 forced reloads +
-   * "giving up" per launch while the UI actually rendered; the page itself
-   * logged `[aek-boot] boot stalled … queued:1`). Both page generations mount
-   * into `#root`, so the probe is universal. A dead renderer rejects the
-   * probe and is treated as unmounted, keeping the original self-heal path.
+   * R round (2026-11-15): a healthy boot is proven by the legacy
+   * `[aek-boot] module system created` console line OR the `#root` mount
+   * probe (see {@link settleBootProbe}); see the W-round note on
+   * `recoveryPending` for the no-terminal-state rule.
    */
   const armBootWatch = (): void => {
     disarmBootWatch()
     lastAppLoadAt = Date.now()
-    bootTimer = setTimeout(async (): Promise<void> => {
-      bootTimer = undefined
-      if (stopped || win.isDestroyed()) return
-      // A healthy boot since THIS load means nothing to do.
-      if (lastBootOkAt >= lastAppLoadAt) {
-        forcedReloads = 0
-        return
-      }
-      // R round: ask the renderer whether the app actually mounted. `#root`
-      // is the mount node of every page generation this shell loads (the
-      // legacy dsh shell and aek-web both render into it). The probe rejects
-      // when the renderer is dead or mid-navigation — read that as "not
-      // mounted yet", never as "healthy".
-      let mounted = 0
-      try {
-        mounted = Number(
-          await win.webContents.executeJavaScript(
-            'document.querySelector("#root")?.children.length ?? 0',
-          ),
-        )
-      } catch {
-        // Dead renderer: the probe cannot prove a healthy boot.
-      }
-      if (mounted > 0) {
-        lastBootOkAt = Date.now()
-        forcedReloads = 0
-        return
-      }
-      if (forcedReloads >= MAX_CONSECUTIVE_FORCED_RELOADS) {
-        log.error('renderer silent-failure: giving up after consecutive forced reloads — manual restart needed', {
-          attempts: forcedReloads,
-        })
-        return
-      }
-      forcedReloads += 1
-      log.warn('renderer silent-failure: no [aek-boot] after app load — forcing reload', {
-        attempt: forcedReloads,
-        shellUrl,
-      })
-      console.log(`[main] renderer silent-failure — forcing reload (attempt ${String(forcedReloads)})`)
-      // Reload bypasses the HTTP cache so a poisoned bundle cannot survive.
-      // (Electron's `reloadIgnoringCache` is fire-and-forget: it returns
-      // void, not a promise.)
-      win.webContents.reloadIgnoringCache()
-      armBootWatch()
-    }, BOOT_GRACE_MS)
+    mountRechecksLeft = 1
+    bootSettleArmed = true
+    bootTimer = setTimeout(() => { bootSettleArmed = false; void settleBootProbe() }, BOOT_GRACE_MS)
   }
 
+  /** When the main process last loaded the app URL for recovery (ms). Keeps
+   *  the pending-recovery path from issuing a new full page load on every
+   *  one-second probe tick before the healthy boot clears the counters. */
+  let lastRecoveryLoadAt = 0
+  /** True while a boot-deadline settlement for the CURRENT load is still
+   *  pending (armed, not yet settled). While set, the recovery path must
+   *  NOT issue another full load: the armed settlement is the only thing
+   *  that can prove the load mounted. Without this gate the 5s recovery
+   *  cooldown re-loads faster than the 15s grace can settle, so a healthy
+   *  page is interrupted mid-mount forever (observed 2026-11-15 W round:
+   *  endless 5s reload loop after a poisoned-build recovery). */
+  let bootSettleArmed = false
+
   const showReconnect = (): void => {
-    if (showingReconnect) return
+    // W round: also guard against the flag being stale in the reverse
+    // direction (already on the reconnect page, flag not set).
+    if (showingReconnect || win.webContents.getURL().startsWith('data:')) return
     showingReconnect = true
     log.warn('backend down — showing reconnecting page', { shellUrl })
     disarmBootWatch()
@@ -475,8 +544,15 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
   }
 
   const showApp = (): void => {
-    if (!showingReconnect) return
+    // W round: recover from the reconnect page OR from a pending recovery
+    // (the post-give-up state). The old gate (`showingReconnect` alone)
+    // could wedge the watcher: flag false, document broken, backend up —
+    // nothing ever called loadURL again.
+    if (!showingReconnect && !recoveryPending) return
+    if (recoveryPending && bootSettleArmed) return
+    if (recoveryPending && Date.now() - lastRecoveryLoadAt < RECOVERY_COOLDOWN_MS) return
     showingReconnect = false
+    if (recoveryPending) lastRecoveryLoadAt = Date.now()
     log.info('backend up — loading shell', { shellUrl })
     void win.loadURL(shellUrl).catch(() => { /* the window may be gone */ })
     // The app URL is (re)loading now: arm the boot deadline from the moment
@@ -489,6 +565,15 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
 
   const probe = async (): Promise<void> => {
     if (stopped || win.isDestroyed()) return
+    // W round: resync the flag with the ACTUAL document before deciding.
+    // The 2026-11-15 reboot incident left the window white for minutes
+    // because a stale `showingReconnect` kept this probe from ever calling
+    // showApp again while the backend was healthy.
+    if (win.webContents.getURL().startsWith('data:')) {
+      showingReconnect = true
+    } else if (!recoveryPending) {
+      showingReconnect = false
+    }
     const alive = await backendAlive()
     if (alive) {
       showApp()
@@ -506,7 +591,7 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
     // V round: a healthy module-system line is the renderer's "I booted"
     // signal; the boot watcher trusts only this one marker.
     if (message.includes('[aek-boot] module system created')) {
-      lastBootOkAt = Date.now()
+      noteBootOk()
     }
     if (level === 3) log.error(`renderer console: ${message}`, { line, source })
     else if (level === 2) log.warn(`renderer console: ${message}`, { line, source })
@@ -519,6 +604,9 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
     // comes from the webContents itself.
     const url = win.webContents.getURL()
     log.info('did-finish-load', { url })
+    // W round: the mount recheck in settleBootProbe only fires when the load
+    // itself completed — remember WHEN, per load generation.
+    lastFinishLoadAt = Date.now()
     // No arming here: the deadline is armed at the main-process load DECISION
     // sites (`showApp`, `createWindow`, the forced-reload path), because the
     // `[aek-boot]` line lands BEFORE this event.
@@ -542,7 +630,14 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
   })
 
   win.on('unresponsive', () => {
-    log.warn('window unresponsive')
+    // Electron docs: a reload in a NEW process recovers an unstable renderer.
+    // W round: the old handler only logged, which left a wedged renderer with
+    // no self-heal. The boot watch bounds the reload loop (forcedReloads /
+    // recoveryPending), so a repeat unresponsive event cannot loop forever.
+    if (recoveryPending) return
+    log.warn('window unresponsive — forcing a reload')
+    win.webContents.reloadIgnoringCache()
+    armBootWatch()
   })
   win.on('responsive', () => {
     log.info('window responsive')

@@ -266,6 +266,22 @@ function verify(devMode, json) {
     })
   }
 
+  {
+    // W round: at most ONE AEK desktop shell per slot (the production install
+    // and a slot's dev-variant bundle count as the same slot). The check is
+    // read-only; duplicates are resolved by the operator, not by this gate.
+    const shells = spawnSync(NODE, [join(HERE, 'shell-instances.mjs'), '--check'], {
+      cwd: ROOT, encoding: 'utf8', timeout: 30_000,
+    })
+    checks.push({
+      rule: 'shell-single-instance',
+      ok: shells.status === 0,
+      detail: shells.status === 0
+        ? '每槽至多一个壳主进程'
+        : ((shells.stderr ?? '') + (shells.stdout ?? '')).trim().split('\n').join(' '),
+    })
+  }
+
   // ── Dual-tree rules (S round): current must be crash-proof against dev edits.
   // The stable tree is the detached linked worktree; when it is not resolvable
   // (pre-migration single-tree layout) the rules skip with a note.
