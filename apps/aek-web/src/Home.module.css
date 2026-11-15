@@ -1062,6 +1062,12 @@ body {
 .featureIcon {
   flex: 0 0 auto;
   color: var(--aek-accent);
+  /* X3: .pluginHead is flex-start aligned — the 18px bucket icon sat on the
+     text block's top edge, one line of half-leading ABOVE the title's optical
+     center ("图标和标题行没水平对齐"). Nudge it down so the icon's center
+     matches the 13px title row's center (quantified against the dev-shell
+     screenshot, X3-2). */
+  margin-top: 2px;
 }
 
 .featureTitle {
@@ -2559,20 +2565,20 @@ button.panelSearchCount:hover {
 .pluginText { flex: 1 1 auto; min-width: 0; padding-right: var(--aek-space-2); }
 .pluginItem > .tagList { margin-top: 10px; }
 /* The switch states the plugin's current condition; the restart icon is the
-   only remaining separate action. NOTE: an old `.pluginActions` rule further
-   down this file (`flex-wrap: wrap; margin-top: 10px`, from the text-button
-   era) used to win over this one and pushed the restart icon onto a second
-   line in rows with a long description. It is gone — keep only this rule. */
-/* Three FIXED columns: switch | lock slot | restart. The lock slot is always
-   present (empty when the plugin is not locked) so the switch lands on the same
-   x in every row — with the old `inline-flex` cluster the locked rows had one
-   extra child and the group slid ~150px left. */
+   only remaining separate action. X3: the grid is TWO columns now (switch |
+   restart) — the middle 16px lock slot belonged to the pre-X2 layout where
+   the lock icon lived between switch and buttons. X2 moved the lock into
+   the title row and left the JSX with two children on a THREE-track grid:
+   the 32px restart button landed on the 16px middle track, centered,
+   overflowing both sides and jamming the switch ("挨的太近了"). Two tracks
+   + a real gap; the empty second cell of read-only rows keeps every row's
+   switch on the same x. */
 .pluginActions {
   display: grid;
-  grid-template-columns: 38px 16px 32px;
+  grid-template-columns: 38px 32px;
   align-items: center;
   justify-items: center;
-  gap: var(--aek-space-2);
+  gap: 12px;
   flex: 0 0 auto;
 }
 .pluginLockIcon {
@@ -3137,12 +3143,18 @@ button.panelSearchCount:hover {
 }
 .rtList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--aek-space-2); }
 /* T round: the row was a free flex line (chips jammed, columns drifting).
-   It is now a fixed grid so number / kind / label / state / memory / actions
-   land in the SAME columns on every row — the layout the "瞎了吗" complaint
-   was about. The label column is the only fluid one (minmax(0,1fr) + ellipsis). */
+   It is now a fixed grid so number / label / state / memory / actions land
+   in the SAME columns on every row — the layout the "瞎了吗" complaint was
+   about. The label column is the only fluid one (minmax(0,1fr) + ellipsis).
+   X3: every .rtRow is its OWN grid container (the list is a flex column of
+   row boxes), so a trailing `auto` track resolved to 0px on the host row
+   but ~72px on a row carrying the action buttons — the 1fr label column
+   absorbed the difference and the state / memory tracks started at a
+   different x on each row ("两个列表没对齐"). The actions track is FIXED
+   (two 24px ghost buttons + 4px gap = 52px) so every row shares tracks. */
 .rtRow {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) 64px minmax(120px, 240px) auto;
+  grid-template-columns: 22px minmax(0, 1fr) 64px minmax(120px, 240px) 52px;
   column-gap: var(--aek-space-2);
   align-items: center;
   border: 1px solid var(--aek-border);
@@ -3150,6 +3162,31 @@ button.panelSearchCount:hover {
   padding: 8px 10px;
   background: var(--aek-surface);
 }
+/* X3: compact ghost action icons for the runtime rows — the generic 34px
+   bordered .iconButton filled the row height and made the actions track
+   ~72px wide; 24px ghosts keep the row quiet (the border only on hover). */
+.rtActionIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--aek-text-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.rtActionIcon:hover:not(:disabled) { color: var(--aek-accent-ink, var(--aek-accent)); background: var(--aek-accent-soft); }
+.rtActionIcon:disabled { opacity: 0.45; cursor: default; }
+.rtActionDanger:hover:not(:disabled) { color: var(--aek-danger, #dc2626); background: var(--aek-danger-soft, #fef2f2); }
+/* X3: the in-row rename field — the input + the two ghost buttons share the
+   label track (one flex line), keeping every row on the same five tracks. */
+.rtLabelEdit { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.rtLabelEdit .rtLabelInput { flex: 1 1 auto; width: auto; }
 .rtNumber {
   text-align: center;
   font-size: 12px;
@@ -3279,6 +3316,9 @@ button.panelSearchCount:hover {
 /* X2 round: the runtime confirmation strip (the inline floating confirm that
    replaces the banned native window.confirm). */
 .rtRowConfirm { grid-template-columns: 22px minmax(0, 1fr) auto auto; background: var(--aek-danger-soft, #fef2f2); border-color: var(--aek-danger-border, #fecaca); }
+/* X3: the confirm strip's 确认 / 取消 are TEXT buttons — the generic 34px
+   fixed .iconButton box squashed them; give them their natural width. */
+.rtRowConfirm .iconButton { width: auto; min-width: 48px; }
 .rtConfirmText { font-size: 12px; color: var(--aek-danger, #dc2626); overflow-wrap: anywhere; }
 .rtConfirmOk { color: var(--aek-danger, #dc2626); border-color: var(--aek-danger-border, #fecaca); font-size: 12px; padding: 2px 8px; line-height: 1.4; }
 /* X2: the runtime PICKER (every existing container + search) — the move
@@ -3333,6 +3373,21 @@ button.panelSearchCount:hover {
 .featureTitle { display: flex; align-items: center; gap: 6px; }
 .featureTitleName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .featureTitleLock { color: var(--aek-text-muted); flex: 0 0 auto; }
+/* X3: the copy button in the title row is a compact GHOST — the generic
+   .iconButton (34×34, bordered, filled) read as a door in the 13px title
+   line ("图标太大了"). Border + background only on hover, ~18px tall so the
+   12px glyph sits optically inline with the name. */
+.featureCopy {
+  width: auto;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--aek-text-muted);
+}
+.featureCopy:hover:not(:disabled) { color: var(--aek-accent-ink, var(--aek-accent)); background: var(--aek-accent-soft); border-color: transparent; }
 /* X2 item 17: the bucket icon in the group title. */
 .pluginGroupTitle { display: flex; align-items: center; gap: 6px; }
 /* X2 item 7: the operation pipeline block — step chips + a real percentage

@@ -348,11 +348,14 @@ describe('runtime boot switch (discover + bootIsolateRuntimePackages)', () => {
           { id: 'aek-websearch', manifest: manifestB, packageDir: pkgDirB },
         ],
       })
-      // ONE process for the whole container, labelled by the operator name.
+      // ONE process for the whole container. X3-6a: the descriptor `name` is
+      // the machine identity (ASCII runtime id); the operator label is a pure
+      // display string and must never become the name — a CJK label ("提示管理")
+      // used to break NAME_RE validation and kill the container's boot.
       expect(registered).toEqual(['runtime1'])
       expect(results['runtime1']?.ok).toBe(true)
       const descriptor = declared['runtime1'] as { name: string; members: string[]; attach: { command: string } }
-      expect(descriptor.name).toBe('aek-mixed')
+      expect(descriptor.name).toBe('runtime1')
       expect(descriptor.members).toEqual(['aek-prompt-manager', 'aek-websearch'])
       // Both members are generic-isolatable → the generic runner, cwd the
       // first member's dir.
@@ -360,6 +363,22 @@ describe('runtime boot switch (discover + bootIsolateRuntimePackages)', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+
+  it('CJK operator label keeps a valid machine name (X3-6a regression)', async () => {
+    const { resolveRuntimeGroupAttach } = await import('../runtime.mjs')
+    const external = await import('../external.mjs')
+    const group = {
+      runtimeId: 'runtime2',
+      label: '提示管理',
+      members: [{ id: 'aek-prompt-manager', manifest: { name: '@cheezmil/aek-prompt-manager', version: '0.1.0' }, packageDir: '/tmp/fixture' }],
+    }
+    const attach = resolveRuntimeGroupAttach(group as never)
+    // The machine name stays the ASCII runtime id…
+    expect(attach.descriptor.name).toBe('runtime2')
+    // …so the descriptor passes strict validation with a CJK label in play.
+    const validated = external.validateDescriptor(attach.descriptor)
+    expect(validated.ok).toBe(true)
   })
 
   it('a custom-bin member owns its whole container: the declared bin spawns it (X2)', async () => {

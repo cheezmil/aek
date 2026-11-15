@@ -1000,7 +1000,11 @@ function PluginRuntimeLine({ plugin, rt, term, onMove, busy }: {
     : rt.runtimes.find(candidate => candidate.id === runtimeId)
   const isolatedRow = row !== undefined && row.kind === 'isolated' ? row : undefined
   const resolved = row ?? rt.host
-  const occupant = mem.value ?? (isolatedRow?.memory?.rss ?? (resolved.kind === 'host' ? rt.host.memory?.rss : undefined))
+  // X3: the reading belongs to the container's WHOLE process (several plugins
+  // may share it) — never to the host total: in-host plugins have no reading
+  // of their own and say so with words instead of a borrowed number.
+  const occupant = mem.value ?? isolatedRow?.memory?.rss
+  const sharedContainer = isolatedRow !== undefined && isolatedRow.plugins.length > 1
   const moveTargets = [rt.host, ...rt.runtimes].filter(candidate => candidate.id !== runtimeId)
   return (
     <div className={css.pluginRuntimeLine}>
@@ -1012,12 +1016,14 @@ function PluginRuntimeLine({ plugin, rt, term, onMove, busy }: {
           ? tf('plugins.runtime.lineIsolated', { n: String(isolatedRow.number) })
           : t('plugins.runtime.lineHost')}
         {` · ${t(resolved.state === 'running' ? 'runtimes.state.running' : 'runtimes.state.stopped')}`}
-        {mem.caliber === 'in-host-shared' ? ` · ${t('plugins.runtime.memSharedHost')}` : ''}
       </span>
-      {/* X2 item 18: the occupied runtime memory reading (the container's
-          process RSS for isolated entries; the host total for shared ones). */}
+      {/* X3: the chip only carries a REAL reading — the container's whole
+          process (several plugins may share it, then it says so); an in-host
+          plugin has no number of its own and shows the words instead. */}
       <span className={cx(css.rtChip, css.pluginMemChip)}>
-        {occupant !== undefined ? `${term} ${fmtBytes(occupant)}` : t('plugins.runtime.memSharedHost')}
+        {occupant !== undefined
+          ? `${term} ${fmtBytes(occupant)}${sharedContainer ? ` · ${t('plugins.runtime.memSharedContainer')}` : ''}`
+          : t('plugins.runtime.memSharedHost')}
       </span>
       {moveTargets.length > 0
         ? (
@@ -1367,10 +1373,12 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                       <span className={css.featureIcon}><Icon name={bucketIconOf(plugin.bucket ?? 'plugins')} size={18} /></span>
                       <div className={css.pluginText}>
                         {/* X2 items 11 + 16: the lock travels with the title (never in the
-                            button cluster), and the copy icon sits right after the name. */}
+                            button cluster), and the copy icon sits right after the name.
+                            X3: the copy button is a COMPACT ghost (the generic 34px bordered
+                            .iconButton reads as a door in the 13px title line). */}
                         <div className={css.featureTitle}>
                           <span className={css.featureTitleName}>{displayName(plugin.packageName)}</span>
-                          <CopyButton value={plugin.packageName} size={12} label={t('common.copy')} />
+                          <CopyButton value={plugin.packageName} size={12} label={t('common.copy')} className={css.featureCopy} />
                           {plugin.locked ? <Icon name="lock" size={13} className={css.featureTitleLock} /> : null}
                         </div>
                         {/* N2 fix: the merged row was one undifferentiated line

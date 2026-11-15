@@ -86,8 +86,13 @@ function RuntimeRowView({ row, host, term, onRename, onRemove, busy }: {
   return (
     <li className={css.rtRow}>
       <span className={css.rtNumber}>{String(row.number)}</span>
+      {/* X3: the rename field lives INSIDE the label column (input + two
+          compact buttons on one line) so every row keeps the same five
+          tracks — the old markup put ✓ / ✕ as free children and the grid
+          wrapped them onto a second line, drifting the state / memory
+          columns against the other rows. */}
       {renaming && !host ? (
-        <>
+        <span className={css.rtLabelEdit}>
           <input
             className={css.rtLabelInput}
             value={draft}
@@ -101,9 +106,9 @@ function RuntimeRowView({ row, host, term, onRename, onRemove, busy }: {
             }}
             aria-label={row.id}
           />
-          <button type="button" className={css.iconButton} onClick={() => { onRename(row.id, draft.trim()); setRenaming(false) }}>✓</button>
-          <button type="button" className={css.iconButton} onClick={() => { setRenaming(false) }}>✕</button>
-        </>
+          <button type="button" className={css.rtActionIcon} onClick={() => { onRename(row.id, draft.trim()); setRenaming(false) }} title={t('runtimes.confirmOk')}>✓</button>
+          <button type="button" className={css.rtActionIcon} onClick={() => { setRenaming(false) }} title={t('runtimes.confirmCancel')}>✕</button>
+        </span>
       ) : (
         <span className={css.rtLabel} title={row.label}>{row.label}</span>
       )}
@@ -113,14 +118,14 @@ function RuntimeRowView({ row, host, term, onRename, onRemove, busy }: {
         <span className={css.rtActions}>
           <button
             type="button"
-            className={css.iconButton}
+            className={css.rtActionIcon}
             title={t('runtimes.rename')}
             onClick={() => { setDraft(row.label); setRenaming(true) }}
             disabled={busy !== undefined}
           >✎</button>
           <button
             type="button"
-            className={cx(css.iconButton, css.chipOff)}
+            className={cx(css.rtActionIcon, css.rtActionDanger)}
             title={t('runtimes.remove')}
             onClick={() => { setConfirming(true) }}
             disabled={busy !== undefined}
@@ -180,7 +185,7 @@ export function RuntimesBlock({ refreshSignal }: { refreshSignal: number }): Rea
         />
         <button
           type="button"
-          className={css.iconButton}
+          className={css.rtActionIcon}
           title={t('runtimes.add')}
           disabled={busy !== undefined}
           onClick={() => {

@@ -599,7 +599,13 @@ export function resolveRuntimeGroupAttach(group) {
     const block = manifest.aek?.runtime
     const descriptor = {
       protocol: 'aek-capability/1',
-      name: group.label ?? runtimeId,
+      // X3-6a: the descriptor `name` is the MACHINE identity (the supervisor's
+      // registration key) and must satisfy NAME_RE — so it is ALWAYS the
+      // ASCII runtime id, never the operator label. `group.label` is a pure
+      // UI display string (persisted in the `labels` map, read back by
+      // `runtimesSnapshot`); feeding it here made a CJK label ("提示管理")
+      // fail descriptor validation and kill the container's boot relaunch.
+      name: runtimeId,
       version: typeof manifest.version === 'string' ? manifest.version : '0.0.0',
       ...(typeof block?.isolate?.spdx === 'string' && block.isolate.spdx.length > 0
         ? { spdx: block.isolate.spdx }
@@ -630,7 +636,10 @@ export function resolveRuntimeGroupAttach(group) {
   }
   const descriptor = {
     protocol: 'aek-capability/1',
-    name: group.label ?? runtimeId,
+    // X3-6a: machine name = the ASCII runtime id, never the operator label
+    // (the label is a display string and may be CJK — see the custom-bin
+    // descriptor above).
+    name: runtimeId,
     version: '0.0.0',
     capabilities: capabilities.length > 0 ? capabilities : [{ id: 'web' }],
     attach: { kind: 'jsonrpc-stdio', command: 'node', args: [runner], cwd },
