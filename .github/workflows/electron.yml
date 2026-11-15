@@ -134,13 +134,14 @@ jobs:
 
       - name: Flatten + keep only the distributable artifacts
         run: |
+          # download-artifact placed each artifact at release/<artifact-name>/
           mkdir -p release/staging
           for d in electron-mac electron-win electron-linux; do
-            cp -r "$d"/. release/staging/
+            cp -r "release/$d"/. release/staging/
           done
-          # drop the unpacked app dirs (the installers/archives contain them)
-          rm -rf release/staging/mac-arm64 release/staging/mac-x64 \
-                release/staging/win-unpacked release/staging/win-arm64
+          # drop every unpacked app dir under any builder naming (mac-*/win-*-unpacked/
+          # linux-*-unpacked, ...): only the distributable files go to the release
+          find release/staging -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
           ls -lh release/staging
 
       - uses: softprops/action-gh-release@v2
