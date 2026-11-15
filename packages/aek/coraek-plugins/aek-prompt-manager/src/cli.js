@@ -7,6 +7,7 @@
 import process from 'node:process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { resolveAekHome } from '@cheezmil/coraek/home';
 
 import { PLATFORMS, SUPPORTED_IDS } from './platforms.js';
@@ -38,10 +39,22 @@ import {
 const CMD = 'aekpm';
 const SOURCES = [MAPPING_SOURCE, ONLY_PATCH_SOURCE];
 const COMMANDS = ['init', 'patch', 'map', 'apply', 'remove', 'status', 'pr', 'project-rules', 'use'];
+// Resolves `../package.json` from this file in every context (dev source tree,
+// installed npm package) — same contract as the aek / aekws CLIs.
+const cliRequire = createRequire(import.meta.url);
 
 async function main() {
   try {
     const args = process.argv.slice(2);
+    // `--version` / `-V`: same output shape as `aek --version` (coraek), so
+    // the desktop shell's install self-check — which probes every aek* CLI
+    // with `spawnSync(bin, ['--version'])` — detects an installed aekpm
+    // instead of reporting it missing.
+    if (args.includes('--version') || args.includes('-V')) {
+      const pkg = cliRequire('../package.json');
+      console.log(`${pkg.name}/${pkg.version} ${process.platform}-${process.arch} node-v${process.version.slice(1)}`);
+      return;
+    }
     const { command, commandArgs, help } = parseArgs(args);
     if (help) { printUsage(); return; }
 
@@ -360,6 +373,7 @@ Commands:
 
 Options:
   -h, --help      Show this help
+  -V, --version   Show the package version
 
 Supported tools (${supported}):
 ${PLATFORMS.map((p) => `  ${p.id.padEnd(14)} ${p.globalPromptLabel(p.id)}`).join('\n')}

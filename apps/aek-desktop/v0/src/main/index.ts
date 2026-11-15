@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, Menu, screen, session, shell, systemPreferences } from 'electron'
 import { spawn, spawnSync } from 'node:child_process'
-import type { ShellInstallResult } from '../preload/index.js'
+import type { ShellInstallResult } from '../preload/index.cts'
 import { dirname, join } from 'node:path'
+import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { resolveAekHome } from '@cheezmil/coraek/home'
@@ -954,7 +955,10 @@ function registerShellInstallIpc(): void {
     if (safe.length === 0) return { ok: false, tool: '', output: 'no allow-listed package selected' }
     const tool = probeBinary('pnpm', ['--version']) !== undefined ? 'pnpm' : 'npm'
     const args = tool === 'pnpm' ? ['add', '-g', ...safe] : ['install', '-g', ...safe]
-    const child = spawn(tool, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    // Run from the user's home dir: a global install launched from inside
+    // an AEK repo checkout would hit the workspace root and fail with
+    // "workspace packages were not loaded into the store".
+    const child = spawn(tool, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: homedir() })
     let output = ''
     const onChunk = (chunk: Buffer): void => {
       output += chunk.toString('utf8')
@@ -983,7 +987,10 @@ app.whenReady().then(() => {
   // document. Electron 44: `session.registerPreloadScript` replaces the
   // removed `setPreloadScript`; it must run after the app is ready and the
   // script path must be absolute (packaged: inside the asar).
-  const preloadPath = join(APP_ROOT, 'preload', 'index.js')
+  // `.cts` forces CommonJS emission: the package is `"type": "module"`
+  // (Electron 44 ESM main), but a SANDBOXED preload script cannot load ESM
+  // ("Cannot use import statement outside a module").
+  const preloadPath = join(APP_ROOT, 'preload', 'index.cjs')
   if (existsSync(preloadPath)) {
     session.defaultSession.registerPreloadScript({ filePath: preloadPath, id: 'aek-shell-bridge', type: 'frame' })
   }

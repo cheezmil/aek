@@ -1,5 +1,7 @@
 /**
- * X5: the shell-side bridge for the install self-check card.
+ * X5: the shell-side bridge for the install self-check card. Emitted as
+ * CommonJS (`.cts`): the package is `"type": "module"` (Electron 44 ESM
+ * main), but a sandboxed preload script cannot load ESM.
  *
  * The web console is a remote document (http://aek.localhost:1685), so the
  * renderer cannot probe the user's environment itself — only the shell's
