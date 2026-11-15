@@ -154,8 +154,9 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
         icon: 'resources/icon.png',
         // fpm (deb) metadata: the app package.json carries no author/homepage
         // (private dev package), so give the .deb a neutral maintainer.
+        // (`homepage` is NOT a linux option in electron-builder 26.17 — it
+        // would fail the config schema.)
         maintainer: 'AEK maintainers <aek@example.com>',
-        homepage: 'https://github.com/cheezmil/aek',
         target: [
           { target: 'AppImage', arch: ['x64', 'arm64'] },
           { target: 'deb', arch: ['x64', 'arm64'] },
