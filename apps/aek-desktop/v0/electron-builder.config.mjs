@@ -73,9 +73,14 @@ function findCachedElectronArchive() {
  * @returns {import('electron-builder').Configuration} the configuration.
  */
 export function createElectronBuilderConfig(slot = resolveSlot()) {
+  // X5: cloud builds (GitHub Actions, manual trigger) produce UNSIGNED
+  // artifacts — no local keychain / no Developer ID there. The signing
+  // identity is asserted at CONFIGURATION time only for local builds;
+  // AEK_CI_UNSIGNED=1 opts into the unsigned CI profile (identity null).
+  const ciUnsigned = process.env.AEK_CI_UNSIGNED === '1'
   // Refuse adhoc signing at CONFIGURATION time — before electron-builder
   // writes a single byte. Throws a friendly certificate-setup guide.
-  const buildIdentity = assertBuildIdentity()
+  const buildIdentity = ciUnsigned ? { identity: null } : assertBuildIdentity()
   const s = slotConfig(slot)
   const cachedElectron = findCachedElectronArchive()
   if (cachedElectron) {
@@ -109,12 +114,34 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
       // Resolved at build time from the local keychain. NEVER a hardcoded
       // fingerprint (that would only work on one developer's machine), and
       // NEVER adhoc: assertBuildIdentity() fails the build with a setup guide.
+      // CI cloud builds (AEK_CI_UNSIGNED=1) ship unsigned artifacts: the end
+      // user re-signs locally with their own self-signed dev identity.
       identity: buildIdentity.identity,
-      forceCodeSigning: true,
+      forceCodeSigning: !ciUnsigned,
+      // X5: both architectures for the cloud release (a plain `--mac` build
+      // now yields two DMGs; local deep-signing still works per-arch).
       target: {
         target: 'dmg',
-        arch: ['arm64'],
+        arch: ['x64', 'arm64'],
       },
+    },
+    win: {
+      icon: 'resources/icon.png',
+      // NSIS installers are x86-64 only — NSIS cannot target Windows on ARM
+      // (electron-builder issue #5461), so arm64 ships as a portable
+      // executable (an x64 NSIS runs on arm64 Windows via emulation, but we
+      // ship a real arm64 binary for it).
+      target: [
+        { target: 'nsis', arch: ['x64'] },
+        { target: 'portable', arch: ['arm64'] },
+      ],
+    },
+    linux: {
+      icon: 'resources/icon.png',
+      target: [
+        { target: 'AppImage', arch: ['x64', 'arm64'] },
+        { target: 'deb', arch: ['x64', 'arm64'] },
+      ],
     },
     dmg: {
       format: 'ULFO',

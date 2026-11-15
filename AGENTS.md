@@ -24,6 +24,7 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
 - **cordis 运行时架构必须完整保留**：`vendor/**`、`packages/typert/**`、4 个 `cordis-*` 扩展、`packages/aek/base/coraek/**`、cordis 契约脚本与测试。
 - **唯一真源**：`scripts/aek/upstream/scope.mjs`（`KEEP` / `DROP` / `DOC_GATES` 三张表）。改边界先改它，再跑 `node scripts/aek/upstream/scope.mjs --check`。
 - 已裁决：`.github/` **不恢复**（aek 没有 GitHub Actions）；`docs/` 治理层已删 251 文件 / 4.7MB，只剩 2 个文件。
+  （**X5 轮 2026-11-16 用户裁定修订**：允许**新增且仅新增** electron 云构建 workflow（`.github/workflows/electron*.yml`，多平台矩阵产物进 GitHub release、手动触发）；dsh 治理层 CI 仍然绝不搬回。）
 - **禁止为了让保留下来的 dsh 门禁变绿，而搬回 dsh 的文档 / CI / 测试夹具。** 这是本项目反复踩过的坑。
 - `docs/cordis-api/inherited.md` 不是文档站页面，是 typert 测试逐字节比对的 **cordis 契约快照**，必须保留。
 
@@ -116,6 +117,7 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
 - **已知上游缺陷**：`packages/experimental/ptc-runtime-python` 的 CPython worker 在 macOS 上会因宿主被硬杀变成孤儿并吃满一核（dsh 上游 Discussion #6661，2026-09 起 open 未修；父死后 Node 侧的 `dispose()` / 进程组信号全部不执行）。主防线是 `py/bootstrap.py` 的 `_start_orphan_watchdog()`（父 pid 变化即退出），**不要删、不要绕过**；它是独立 Python 子进程，cordis 插件层在架构上管不到，属于「实在解决不了才直接改源码」的例外。
 - 长时间 / 全量测试收尾执行 `node scripts/aek/process-guard.mjs --check` 做只读巡检；发现残留用 `--kill --yes`（SIGTERM 优雅退出，不自动升级 SIGKILL）。改动 Python 引导逻辑后必须跑 `--selftest`（含对照组）确认看门狗仍有效。
 - **「以后手动检查」不算解决方案**。反复出现 ≥2 次的环境问题，必须有自动生效的机制（子进程自检、入口隔离等），手动巡检只能当辅助；还要先上网查上游 issue 与开源方案，别只从本机现象推原因。
+- **壳重打包 = 仅 electron 层变更才做（X5 轮 2026-11-16 用户裁定）**：壳 asar 只含 electron main/preload（`lib/**` + package.json，≈13.7MB），**不含 webui**——壳窗口 `loadURL(1685)`，UI 由 1685 从稳定树 HTTP 服务。webui / 宿主代码改动（绝大多数轮）**零 electron 打包 / 签名 / 壳重拉**：release 换血 1685 → 在跑的壳自动重载出新 UI（W 轮 reconnect watcher）。仅当 electron 层（`apps/aek-desktop/v0/{src,lib,electron-builder.config.mjs,package.json}` + electron 版本）变更才跑 `desktop.mjs install` 重打包；`isBuildFresh` 指纹恰好只含这些输入，「fresh 即跳打包」是正确行为，**不要加 install-marker 之类的强制重打包机制**（曾误加，commit `309f5c4c` 已 revert）。壳重打包不是 release 必做步。
 - 跑重 CPU 的自检 / 验证脚本时**不要和带短超时的测试并行**（dsh 上游存在 5s 超时用例，CPU 被抢会假红）。串行跑；出现超时先单独复跑该用例，再判断是不是回归。
 
 ### AI 自动发布开关（硬规则，2026-11-15 S7 用户立规）

@@ -1,0 +1,152 @@
+# X5 (2026-11-16, user ruling): cloud-build the Electron shell on GitHub.
+#
+#   - The release carries ELECTRON artifacts only (webui/host ship via npm,
+#     not here).
+#   - All three platforms, each in x64 AND arm64:
+#       mac:    DMG x64 + DMG arm64
+#       windows: NSIS installer x64 + portable exe arm64
+#                (NSIS cannot target Windows-on-ARM — electron-builder #5461)
+#       linux:  AppImage + deb, each x64 and arm64
+#   - Artifacts go to the GITHUB release (never Gitea).
+#   - NEVER triggered by push. Manual `workflow_dispatch` only; the prompter
+#     (`node scripts/aek/electron-cloud.mjs`) tells a developer WHEN a cloud
+#     build is actually needed (the electron layer changed since the last one).
+#
+# Unsigned by design: cloud artifacts have no Developer ID / no local
+# keychain. macOS end users re-sign locally (self-signed dev identity) or
+# right-click → open; Windows SmartScreen applies to unsigned installers.
+name: electron-cloud-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'GitHub release tag (aek-* style, e.g. aek-0dda685)'
+        required: true
+        default: 'aek-cloud'
+
+permissions:
+  contents: write # create the GitHub release + upload artifacts
+
+jobs:
+  # ---------------------------------------------------------------- mac ----
+  build-mac:
+    runs-on: macos-latest # arm64 runner; the x64 DMG is a cross-build (the
+    # app is pure JS — no native modules to cross-compile)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.16.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # tsc → lib/ (the only thing the asar ships besides package.json)
+      - run: pnpm --filter aek-desktop build
+
+      - name: Package DMG (x64 + arm64, unsigned)
+        run: pnpm --filter aek-desktop exec electron-builder build --mac --config electron-builder.config.mjs
+        env:
+          AEK_SLOT: aek
+          AEK_CI_UNSIGNED: '1'
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-mac
+          path: apps/aek-desktop/v0/dist/aek/
+
+  # ---------------------------------------------------------- windows ----
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.16.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter aek-desktop build
+
+      # NSIS x64 + portable arm64 (see the win target note in the builder
+      # config: NSIS is x86-64 only, so arm64 ships as a portable exe)
+      - name: Package NSIS x64 + portable arm64 (unsigned)
+        run: pnpm --filter aek-desktop exec electron-builder build --win --config electron-builder.config.mjs
+        env:
+          AEK_SLOT: aek
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-win
+          path: apps/aek-desktop/v0/dist/aek/
+
+  # ----------------------------------------------------------- linux ----
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.16.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter aek-desktop build
+
+      # AppImage + deb, each x64 and arm64 (cross-arch is safe: pure JS app)
+      - name: Package AppImage + deb (x64 + arm64)
+        run: pnpm --filter aek-desktop exec electron-builder build --linux --config electron-builder.config.mjs
+        env:
+          AEK_SLOT: aek
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-linux
+          path: apps/aek-desktop/v0/dist/aek/
+
+  # --------------------------------------------------------- release ----
+  publish:
+    needs: [build-mac, build-win, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+
+      - name: Flatten + keep only the distributable artifacts
+        run: |
+          mkdir -p release/staging
+          for d in electron-mac electron-win electron-linux; do
+            cp -r "$d"/. release/staging/
+          done
+          # drop the unpacked app dirs (the installers/archives contain them)
+          rm -rf release/staging/mac-arm64 release/staging/mac-x64 \
+                release/staging/win-unpacked release/staging/win-arm64
+          ls -lh release/staging
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          draft: false
+          generate_release_notes: false
+          files: |
+            release/staging/**/*
