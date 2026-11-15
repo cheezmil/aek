@@ -1,4 +1,6 @@
-import { app, BrowserWindow, Menu, screen, shell, systemPreferences } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, screen, session, shell, systemPreferences } from 'electron'
+import { spawn, spawnSync } from 'node:child_process'
+import type { ShellInstallResult } from '../preload/index'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -891,6 +893,93 @@ function createWindow() {
   // did-finish-load — see `showApp`).
   stopWatching.arm()
 }
+
+/**
+ * X5 (2026-11-16): the shell-side install self-check.
+ *
+ * The web console is a remote document (the slot's web server URL), so it
+ * cannot probe the user's environment — only this process can. Two fixed
+ * channels, bridged through `src/preload/index.ts` (`window.aekShell`):
+ *
+ *   aek-shell:install-status  — read-only PATH/version probes + backend ping
+ *   aek-shell:install-selected — global install of ALLOW-LISTED packages only
+ *
+ * No native dialogs (AGENTS §5): all results come back as data; the renderer
+ * renders the checklist, the progress and the agent-prompt copy block.
+ */
+const INSTALLABLE_PKGS = [
+  '@cheezmil/coraek',
+  '@cheezmil/aek-prompt-manager',
+  '@cheezmil/aek-websearch',
+  '@cheezmil/aek-skill-manager',
+] as const
+
+/** `spawnSync` without a shell: the binary must already be on PATH. */
+function probeBinary(name: string, args: string[]): string | undefined {
+  try {
+    const result = spawnSync(name, args, { timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    const out = (result.stdout ?? '').trim()
+    return result.status === 0 && out !== '' ? out.split('\n')[0] : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function registerShellInstallIpc(): void {
+  const preloadPath = join(APP_ROOT, 'preload', 'index.js')
+  if (existsSync(preloadPath)) session.defaultSession.setPreloadScript(preloadPath)
+
+  ipcMain.handle('aek-shell:install-status', async () => {
+    const status = {
+      node: probeBinary('node', ['--version']),
+      pnpm: probeBinary('pnpm', ['--version']),
+      npm: probeBinary('npm', ['--version']),
+      aek: probeBinary('aek', ['--version']),
+      aekpm: probeBinary('aekpm', ['--version']),
+      aekws: probeBinary('aekws', ['--version']),
+      aeksm: probeBinary('aeksm', ['--version']),
+      backendUp: false,
+      checkedAt: Date.now(),
+    }
+    // Ping this slot's canonical backend (the URL the window loads) with a
+    // hard cap — a dead backend must not stall the checklist.
+    try {
+      const answer = await fetch(CANONICAL_URL, { signal: AbortSignal.timeout(2000) })
+      status.backendUp = answer.status < 500
+    } catch {
+      status.backendUp = false
+    }
+    return status
+  })
+
+  ipcMain.handle('aek-shell:install-selected', (_event, packages: unknown) => {
+    const safe = Array.isArray(packages) ? packages.filter((p): p is string => typeof p === 'string' && (INSTALLABLE_PKGS as readonly string[]).includes(p)) : []
+    if (safe.length === 0) return { ok: false, tool: '', output: 'no allow-listed package selected' }
+    const tool = probeBinary('pnpm', ['--version']) !== undefined ? 'pnpm' : 'npm'
+    const args = tool === 'pnpm' ? ['add', '-g', ...safe] : ['install', '-g', ...safe]
+    const child = spawn(tool, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let output = ''
+    const onChunk = (chunk: Buffer): void => {
+      output += chunk.toString('utf8')
+      if (output.length > 12000) child.kill() // keep the reply bounded
+    }
+    child.stdout?.on('data', onChunk)
+    child.stderr?.on('data', onChunk)
+    const timer = setTimeout(() => child.kill(), 5 * 60_000)
+    return new Promise<ShellInstallResult>((resolve) => {
+      child.on('close', (code) => {
+        clearTimeout(timer)
+        resolve({ ok: code === 0, tool, output: output.trim().slice(-4000) })
+      })
+      child.on('error', (error: Error) => {
+        clearTimeout(timer)
+        resolve({ ok: false, tool, output: `spawn failed: ${error.message}` })
+      })
+    })
+  })
+}
+
+registerShellInstallIpc()
 
 app.whenReady().then(() => {
   // T round: the first log line of every boot — what this shell is, where it

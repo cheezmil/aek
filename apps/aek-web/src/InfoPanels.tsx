@@ -47,6 +47,7 @@ import { useConsoleFacts } from './useConsoleFacts.ts'
 import type { PluginBucket, PluginEntry } from './useConsoleFacts.ts'
 import { useCapabilities } from './useCapabilities.ts'
 import { useRuntimes } from './useRuntimes.ts'
+import { useShellInstall } from './useShellInstall.ts'
 import { useOps } from './useOps.ts'
 import { fetchRuntime } from './useRuntimeMode.ts'
 import { postInstance } from './useInstances.ts'
@@ -1601,6 +1602,147 @@ function installKindLabel(kind: 'dev' | 'build' | 'global' | 'npm' | undefined):
 }
 
 /** @returns the About page with the three entry points marked. */
+/**
+ * X5: the install self-check rows. `field` reads the shell-probed status;
+ * `pkg` (when set) makes the row installable — its package is what the
+ * "install selected" action sends to the shell's allow-listed installer.
+ */
+type ShellInstallField = 'node' | 'pnpm' | 'npm' | 'aek' | 'aekpm' | 'aekws' | 'aeksm'
+
+const SHELL_INSTALL_ROWS: {
+  key: string
+  labelKey: string
+  field: ShellInstallField
+  fallback?: ShellInstallField
+  pkg?: string
+}[] = [
+  { key: 'node', labelKey: 'about.shellInstall.node', field: 'node' },
+  { key: 'pkgMgr', labelKey: 'about.shellInstall.pkgMgr', field: 'pnpm', fallback: 'npm' },
+  { key: 'aek', labelKey: 'about.shellInstall.cli', field: 'aek', pkg: '@cheezmil/coraek' },
+  { key: 'aekpm', labelKey: 'about.shellInstall.prompt', field: 'aekpm', pkg: '@cheezmil/aek-prompt-manager' },
+  { key: 'aekws', labelKey: 'about.shellInstall.websearch', field: 'aekws', pkg: '@cheezmil/aek-websearch' },
+  { key: 'aeksm', labelKey: 'about.shellInstall.skill', field: 'aeksm', pkg: '@cheezmil/aek-skill-manager' },
+]
+
+function ShellInstallCard() {
+  const { t, tf } = useI18n()
+  const { available, status, result, pending, install } = useShellInstall()
+  const [selected, setSelected] = useState<Record<string, boolean | undefined>>({})
+
+  // The card only exists inside the shell (the preload bridge).
+  if (!available) return null
+
+  const valueOf = (row: (typeof SHELL_INSTALL_ROWS)[number]): string | undefined => {
+    if (status === undefined) return undefined
+    return status[row.field] ?? (row.fallback !== undefined ? status[row.fallback] : undefined)
+  }
+  const missingPkgs = SHELL_INSTALL_ROWS
+    .filter(row => row.pkg !== undefined && (status === undefined || status[row.field] === undefined))
+    .map(row => row.pkg as string)
+
+  // First probe lands: default the checkboxes to everything missing.
+  useEffect(() => {
+    if (status !== undefined && Object.keys(selected).length === 0) {
+      const next: Record<string, boolean> = {}
+      for (const row of SHELL_INSTALL_ROWS) if (row.pkg !== undefined && status[row.field] === undefined) next[row.key] = true
+      setSelected(next)
+    }
+  }, [status, selected])
+
+  const promptText =
+    missingPkgs.length > 0
+      ? tf('about.shellInstall.agentBody', { list: missingPkgs.join(' ') })
+      : t('about.shellInstall.allInstalled')
+
+  return (
+    <div className={css.shellInstallCard}>
+      <div className={css.shellInstallHint}>{t('about.shellInstall.hint')}</div>
+      {status !== undefined
+        ? (
+          <div>
+            {SHELL_INSTALL_ROWS.map((row) => {
+              const value = valueOf(row)
+              return (
+                <div key={row.key} className={css.shellInstallRow}>
+                  {row.pkg !== undefined
+                    ? (
+                      <input
+                        type="checkbox"
+                        checked={selected[row.key] === true}
+                        onChange={(event) => {
+                          setSelected(prev => ({ ...prev, [row.key]: event.target.checked }))
+                        }}
+                      />
+                    )
+                    : null}
+                  <span className={css.shellInstallLabel}>{t(row.labelKey)}</span>
+                  {value !== undefined
+                    ? <span className={css.shellInstallVer}>{value}</span>
+                    : <span className={css.shellInstallMissing}>{t('about.shellInstall.missing')}</span>}
+                </div>
+              )
+            })}
+            <div className={css.shellInstallBackend}>
+              <Icon name={status.backendUp ? 'check' : 'alert'} size={14} />
+              <span>{status.backendUp ? t('about.shellInstall.backendUp') : t('about.shellInstall.backendDown')}</span>
+            </div>
+            {missingPkgs.length > 0
+              ? (
+                <div className={css.shellInstallActions}>
+                  <button
+                    type="button"
+                    className={css.pluginRuntimeMove}
+                    onClick={() => {
+                      const next: Record<string, boolean> = {}
+                      for (const row of SHELL_INSTALL_ROWS) {
+                        if (row.pkg !== undefined && status[row.field] === undefined) next[row.key] = true
+                      }
+                      setSelected(next)
+                    }}
+                  >
+                    {t('about.shellInstall.selectAll')}
+                  </button>
+                  <button
+                    type="button"
+                    className={css.primaryButton}
+                    disabled={pending || missingPkgs.length === 0}
+                    onClick={() => {
+                      void install(missingPkgs.filter((pkg) => {
+                        const row = SHELL_INSTALL_ROWS.find(r => r.pkg === pkg)
+                        return row !== undefined && selected[row.key] === true
+                      }))
+                    }}
+                  >
+                    {pending ? t('about.shellInstall.pending') : t('about.shellInstall.installSelected')}
+                  </button>
+                </div>
+              )
+              : null}
+            {result !== undefined
+              ? (
+                <>
+                  <p className={cx(css.noticeLine, result.ok ? css.noticeSuccess : css.noticeError)} role="status">
+                    <Icon name={result.ok ? 'check' : 'alert'} size={14} />
+                    <span>{tf(result.ok ? 'about.shellInstall.done' : 'about.shellInstall.failed', { tool: result.tool })}</span>
+                  </p>
+                  {result.output !== ''
+                    ? <pre className={css.shellInstallOutput}>{result.output}</pre>
+                    : null}
+                </>
+              )
+              : null}
+          </div>
+        )
+        : <div className={css.loadingState}>{t('about.loading')}</div>}
+      <div className={css.shellInstallPrompt}>
+        <div className={css.shellInstallPromptTitle}>{t('about.shellInstall.agentTitle')}</div>
+        <CopyButton value={promptText} size={14} label={t('common.copy')} className={css.featureCopy} />
+        <pre>{promptText}</pre>
+      </div>
+    </div>
+  )
+}
+
 export function AboutPanel({
   inventory, refreshSignal, compactPlugins = false,
 }: { inventory: InventoryState; refreshSignal: number; compactPlugins?: boolean }) {
@@ -1669,6 +1811,10 @@ export function AboutPanel({
             <span className={css.infoValue}>{snapshot?.source ?? '—'}</span>
           </li>
         </ul>
+
+        {/* X5: the shell-side install self-check (checklist + agent prompt
+            copy block). Inert outside the shell — renders nothing. */}
+        <ShellInstallCard />
 
         <div className={css.divider} />
         {/* X2 item 9: the 入口 section now lives in the 插件与程序 card. */}

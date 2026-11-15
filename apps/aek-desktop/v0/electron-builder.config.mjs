@@ -138,6 +138,10 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
     },
     linux: {
       icon: 'resources/icon.png',
+      // fpm (deb) metadata: the app package.json carries no author/homepage
+      // (private dev package), so give the .deb a neutral maintainer.
+      maintainer: 'AEK maintainers <aek@example.com>',
+      homepage: 'https://github.com/cheezmil/aek',
       target: [
         { target: 'AppImage', arch: ['x64', 'arm64'] },
         { target: 'deb', arch: ['x64', 'arm64'] },
