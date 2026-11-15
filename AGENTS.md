@@ -89,6 +89,7 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
 - 成品必须在 **Spotlight 和 Finder 里显示为 `AEK.app`**，不能是默认的「Electron」。
 - 本地 macOS 开发只准用 **自签名开发证书 / 自定义开发签名身份（self-signed development identity）**——在钥匙串里自己创建，可用 `AEK_SIGN_IDENTITY` 指定名字或 SHA-1；未指定时从 `security find-identity -v -p codesigning` 自动发现自定义身份（Apple 签发的 `Apple Development` / `Developer ID` 会被跳过）。**禁止 adhoc「临时匿名」签名**：`node scripts/aek/verify-build-rules.mjs` 在编译期（tsc / electron-builder / host 启动）就拦下，并返回友好提示引导开发者在本地创建自签名开发证书（`node scripts/aek/signing-identity.mjs guide`）。**证书名与指纹绝不写进源码**——每个开发者一张，项目面向全球用户。打开时不能出现「无法打开，你应该将它移到废纸篓」。
 - **只能有一个 AEK.app 实例**：开发测试启动新实例前必须先终止旧实例，不允许出现多个并排 / 重复。
+- **webui 调试面 = Electron 壳，禁止系统浏览器（2026-11-15 用户立规）**：调试 / 验收 AEK 的 web UI 一律走槽自己的壳（`next` 槽 = 开发壳，CDP 端口可用，`capture-ui.mjs` 截图就驱动它；`current` 槽 = 成品壳）。Windows / macOS 视为必有桌面，直接起壳；Linux 自动检测桌面环境（`DISPLAY` / `WAYLAND_DISPLAY` / `XDG_SESSION_TYPE`，任一非空 = 有桌面），有桌面起壳、纯命令行跳过（只打印 URL）。`dev-web` 已内建：`next` 槽宿主强制 `--no-open` + 复用运行中的开发壳 / 自动起壳（`--no-shell` 逃生门）；服务器场景（裸 `aek web` 部署）保留上游开浏览器行为，不属于「调试」。
 - 启动、重启、验证优先写 **`.mjs` 脚本**，不要每次手敲长命令。
 - macOS 一律 **arm64** 原生，不用 Intel/x86 转译（除非该依赖确实只有 x86 版本）。
 

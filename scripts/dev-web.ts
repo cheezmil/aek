@@ -19,7 +19,7 @@
  * MUST NOT run beside `pnpm run build` or `build:artifacts`: they write the same `lib/` and
  * `aek-web/dist/` trees. The build stage here finishes before any watcher starts.
  *
- * Usage: `pnpm run dev:web [--skip-build] [--no-serve] [--poll[=ms]] [aek web arguments]`.
+ * Usage: `pnpm run dev:web [--skip-build] [--no-serve] [--no-shell] [--poll[=ms]] [aek web arguments]`.
  * `--skip-build` requires the artifact tree from a prior `build` or `build:artifacts`: every
  * watcher is incremental over the previous stage's output and none of them
  * bootstraps a missing tree. `--no-serve` keeps only the watchers, for a
@@ -27,7 +27,19 @@
  * (default 500ms): network mounts (weka) deliver no inotify events, so native
  * watching sees the initial build only and never a source change. Polling has
  * to reach tsc too — a native-watching tsc never re-emits `lib/types`, which
- * strands the other two stages on stale input.
+ * strands the other two stages on stale input. `--no-shell` keeps the debug
+ * flow off the Electron shell entirely (the host still skips the system
+ * browser; start the shell yourself with `node scripts/aek/arbiter.mjs
+ * start-half next shell`).
+ *
+ * U round: the webui debug surface is the slot's Electron shell, never the
+ * system browser. When serving for the `next` slot (or `AEK_SLOT=next`), the
+ * `aek web` stage is forced `--no-open` and the script reuses the running dev
+ * shell (CDP port) or launches one — Windows/macOS always have a desktop,
+ * Linux auto-detects one (DISPLAY / WAYLAND_DISPLAY / XDG_SESSION_TYPE) and a
+ * headless setup simply skips the shell. The prod `aek` slot keeps the
+ * upstream open-browser behavior: a server-facing host has no shell to debug
+ * against.
  *
  * Shutdown: Ctrl+C reaches every stage through the terminal's process group, so
  * the script only waits for them and escalates survivors; SIGTERM is addressed
@@ -86,6 +98,8 @@ export interface DevWebArguments {
   readonly serve: boolean
   /** Source-watcher polling interval in milliseconds; undefined selects native watching. */
   readonly pollInterval: number | undefined
+  /** U round: when true the debug flow leaves the Electron shell alone (no reuse, no launch). */
+  readonly noShell: boolean
   /** Arguments forwarded verbatim to `aek web`, in order. */
   readonly appArgs: readonly string[]
 }
@@ -94,9 +108,9 @@ export interface DevWebArguments {
 const DEFAULT_POLL_INTERVAL = 500
 
 /**
- * Parse the script's command line. `--skip-build`, `--no-serve`, and `--poll[=ms]`
- * belong to this script; a bare `--` is dropped; every other token is forwarded
- * to `aek web`.
+ * Parse the script's command line. `--skip-build`, `--no-serve`, `--no-shell`,
+ * and `--poll[=ms]` belong to this script; a bare `--` is dropped; every other
+ * token is forwarded to `aek web`.
  * @param argv - arguments after the script path.
  * @returns the resolved flags and forwarded arguments.
  * @throws Error when `--poll` carries a non-positive or non-integer interval, or
@@ -105,6 +119,7 @@ const DEFAULT_POLL_INTERVAL = 500
 export function parseDevWebArguments(argv: readonly string[]): DevWebArguments {
   let skipBuild = false
   let serve = true
+  let noShell = false
   let pollInterval: number | undefined
   const appArgs: string[] = []
   for (const arg of argv) {
@@ -112,6 +127,7 @@ export function parseDevWebArguments(argv: readonly string[]): DevWebArguments {
     if (arg === '--') continue
     if (arg === '--skip-build') skipBuild = true
     else if (arg === '--no-serve') serve = false
+    else if (arg === '--no-shell') noShell = true
     else if (arg === '--poll' || arg.startsWith('--poll=')) {
       pollInterval = arg === '--poll' ? DEFAULT_POLL_INTERVAL : Number(arg.slice('--poll='.length))
       if (!Number.isInteger(pollInterval) || pollInterval <= 0) throw new Error(`dev-web: invalid --poll interval "${arg}"`)
@@ -120,7 +136,104 @@ export function parseDevWebArguments(argv: readonly string[]): DevWebArguments {
   if (!serve && appArgs.length > 0) {
     throw new Error(`dev-web: --no-serve leaves no aek web process for ${appArgs[0] ?? ''}`)
   }
-  return { skipBuild, serve, pollInterval, appArgs }
+  return { skipBuild, serve, pollInterval, noShell, appArgs }
+}
+
+/**
+ * U round: the webui debug surface is the slot's Electron shell, never the
+ * system browser. Windows and macOS always have a desktop; Linux auto-detects
+ * a desktop environment (a running X or Wayland session) and a headless setup
+ * skips the shell.
+ * @param environment - the environment whose desktop markers are checked.
+ * @param platform - the platform to decide for (injectable for tests).
+ * @returns true when an Electron shell is a sensible debug surface here.
+ */
+export function isDesktopEnvironment(
+  environment: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  switch (platform) {
+    case 'win32':
+    case 'darwin':
+      return true
+    case 'linux':
+      return [environment.DISPLAY, environment.WAYLAND_DISPLAY, environment.XDG_SESSION_TYPE]
+        .some(value => value !== undefined && value !== '')
+    default:
+      return false
+  }
+}
+
+/**
+ * U round: the debug-flow host never opens the system browser (the shell is
+ * the debug surface); forwarded arguments already carrying `--no-open` are
+ * kept untouched.
+ * @param appArgs - the caller's `aek web` arguments.
+ * @returns the arguments the host stage receives.
+ */
+export function devWebHostArgs(appArgs: readonly string[]): string[] {
+  return appArgs.includes('--no-open') ? [...appArgs] : [...appArgs, '--no-open']
+}
+
+/**
+ * U round: reuse the running dev shell or launch one, without ever failing the
+ * dev loop — a missing shell only means the operator debugs via the printed
+ * URL. Non-blocking: the watchers and the host keep running while this polls.
+ * @param options - slot, ports, and the `--no-shell` choice.
+ */
+async function manageDevShell(options: { slot: string; webPort: number; cdpPort: number; noShell: boolean }): Promise<void> {
+  if (options.noShell) {
+    console.log(`dev-web: --no-shell — leaving the Electron shell alone (start it yourself: node scripts/aek/arbiter.mjs start-half ${options.slot} shell)`)
+    return
+  }
+  const hostReady = await httpUp(`http://127.0.0.1:${options.webPort}`, 20_000)
+  if (!hostReady) {
+    console.warn(`dev-web: host ${options.webPort} did not answer within 20s — skipping the dev shell launch`)
+    return
+  }
+  if (await httpUp(`http://127.0.0.1:${options.cdpPort}/json/version`, 3_000, 500)) {
+    console.log(`dev-web: dev shell already running (CDP ${options.cdpPort}) — reusing it`)
+    return
+  }
+  if (!isDesktopEnvironment()) {
+    console.log(`dev-web: headless (no desktop environment detected) — skipping the Electron shell; open http://127.0.0.1:${options.webPort} manually`)
+    return
+  }
+  const shared = await import('./aek/shared-logic.mjs')
+  const { launchShellForSlot } = shared
+  let shell
+  try {
+    shell = launchShellForSlot(options.slot)
+  } catch (error) {
+    console.warn(`dev-web: dev shell launch threw (${String(error)}) — continuing without it`)
+    return
+  }
+  if (shell === null) {
+    console.warn('dev-web: dev shell launch unavailable (bundle missing or not branded) — continuing without it')
+    return
+  }
+  console.log(`dev-web: dev shell launched (CDP ${options.cdpPort}); the system browser stays closed in the debug flow`)
+}
+
+/**
+ * Poll an HTTP endpoint until it answers or the deadline passes.
+ * @param url - the endpoint to probe.
+ * @param timeoutMs - the whole poll window.
+ * @param intervalMs - the gap between probes.
+ * @returns true as soon as one probe succeeds.
+ */
+async function httpUp(url: string, timeoutMs: number, intervalMs = 500): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(1_500) })
+      if (res.ok) return true
+    } catch {
+      // Connection refused / timeout: not up yet (or down).
+    }
+    if (Date.now() > deadline) return false
+    await new Promise(resolve => setTimeout(resolve, intervalMs))
+  }
 }
 
 /**
@@ -418,9 +531,24 @@ if (isMain) {
     // The same launch vector as the `aek web` command, so the served Host runs
     // from source exactly as `aek web` would.
     if (options.serve) {
+      // U round: the debug flow's host never opens the system browser — but only
+      // for the dev slot. A prod-slot host (`AEK_SLOT=aek`) serves a server
+      // deployment where the default browser IS the debug surface, so it keeps
+      // the upstream open behavior.
+      const shellSlot = process.env.AEK_SLOT ?? 'next'
+      const hostArgs = shellSlot === 'next' ? devWebHostArgs(options.appArgs) : options.appArgs
       spawnStage(supervisor, 'aek web', process.execPath, [
-        '--import', 'tsx/esm', 'apps/cli/src/bin.ts', 'web', ...options.appArgs,
+        '--import', 'tsx/esm', 'apps/cli/src/bin.ts', 'web', ...hostArgs,
       ], false)
+      if (shellSlot === 'next') {
+        // Reuse or launch the slot's dev shell without blocking the loop:
+        // watchers and host keep serving while this polls.
+        const shared = await import('./aek/shared-logic.mjs')
+        const slot = shared.SLOTS.next
+        if (slot !== undefined) {
+          void manageDevShell({ slot: 'next', webPort: slot.webPort, cdpPort: slot.cdpPort, noShell: options.noShell })
+        }
+      }
     }
     console.log(
       `dev-web: watching ${String(pluginDirs.length)} client plugin packages`

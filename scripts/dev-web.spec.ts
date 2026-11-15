@@ -5,9 +5,11 @@ import { describe, expect, it } from 'vitest'
 import type { TsdownBundle } from 'tsdown'
 import { writeClientBuildRecord } from './client-build-environment.ts'
 import {
+  devWebHostArgs,
   devWebBuildEnvironment,
   discoverLibraryDirs,
   discoverPluginDirs,
+  isDesktopEnvironment,
   parseDevWebArguments,
   StageSupervisor,
   watchClientPlugins,
@@ -76,7 +78,7 @@ describe('StageSupervisor', () => {
 
 describe('parseDevWebArguments', () => {
   it('builds, serves, and watches natively by default', () => {
-    expect(parseDevWebArguments([])).toEqual({ skipBuild: false, serve: true, pollInterval: undefined, appArgs: [] })
+    expect(parseDevWebArguments([])).toEqual({ skipBuild: false, serve: true, pollInterval: undefined, noShell: false, appArgs: [] })
   })
 
   it('reads the polling interval with its 500ms default', () => {
@@ -90,7 +92,7 @@ describe('parseDevWebArguments', () => {
 
   it('separates its own flags from the arguments forwarded to dsh web', () => {
     expect(parseDevWebArguments(['--skip-build', '--poll', '--no-open', '--port', '8080'])).toEqual({
-      skipBuild: true, serve: true, pollInterval: 500, appArgs: ['--no-open', '--port', '8080'],
+      skipBuild: true, serve: true, pollInterval: 500, noShell: false, appArgs: ['--no-open', '--port', '8080'],
     })
   })
 
@@ -98,13 +100,56 @@ describe('parseDevWebArguments', () => {
     expect(parseDevWebArguments(['--no-serve', '--skip-build'])).toMatchObject({ serve: false, skipBuild: true })
   })
 
+  it('leaves the Electron shell alone with --no-shell', () => {
+    expect(parseDevWebArguments(['--no-shell']).noShell).toBe(true)
+    expect(parseDevWebArguments(['--no-shell', '--no-open']).appArgs).toEqual(['--no-open'])
+  })
+
   it('ignores the separator pnpm run forwards verbatim', () => {
     expect(parseDevWebArguments(['--', '--no-open']).appArgs).toEqual(['--no-open'])
     expect(parseDevWebArguments(['--no-serve', '--'])).toMatchObject({ serve: false, appArgs: [] })
   })
 
-  it('rejects dsh web arguments when no server is started', () => {
-    expect(() => parseDevWebArguments(['--no-serve', '--no-open'])).toThrow('--no-serve leaves no dsh web process for --no-open')
+  it('rejects aek web arguments when no server is started', () => {
+    expect(() => parseDevWebArguments(['--no-serve', '--no-open'])).toThrow('--no-serve leaves no aek web process for --no-open')
+  })
+})
+
+describe('isDesktopEnvironment (U round: the shell is the webui debug surface)', () => {
+  it('always treats Windows and macOS as desktop', () => {
+    expect(isDesktopEnvironment({}, 'win32')).toBe(true)
+    expect(isDesktopEnvironment({}, 'darwin')).toBe(true)
+  })
+
+  it.each([
+    { env: { DISPLAY: 'x0' }, label: 'DISPLAY' },
+    { env: { WAYLAND_DISPLAY: 'wayland-0' }, label: 'WAYLAND_DISPLAY' },
+    { env: { XDG_SESSION_TYPE: 'wayland' }, label: 'XDG_SESSION_TYPE' },
+  ])('detects a linux desktop from $label', ({ env }) => {
+    expect(isDesktopEnvironment(env, 'linux')).toBe(true)
+  })
+
+  it('treats a headless linux (no desktop markers) as non-desktop', () => {
+    expect(isDesktopEnvironment({}, 'linux')).toBe(false)
+    expect(isDesktopEnvironment({ DISPLAY: '', WAYLAND_DISPLAY: '', XDG_SESSION_TYPE: '' }, 'linux')).toBe(false)
+  })
+
+  it('is conservative on unknown platforms', () => {
+    expect(isDesktopEnvironment({}, 'freebsd')).toBe(false)
+  })
+})
+
+describe('devWebHostArgs (U round: the debug host never opens the system browser)', () => {
+  it('forces --no-open when the caller did not pass it', () => {
+    expect(devWebHostArgs(['--port', '1687'])).toEqual(['--port', '1687', '--no-open'])
+  })
+
+  it('keeps an explicit --no-open untouched', () => {
+    expect(devWebHostArgs(['--no-open', '--port', '1687'])).toEqual(['--no-open', '--port', '1687'])
+  })
+
+  it('adds --no-open to an empty argument list', () => {
+    expect(devWebHostArgs([])).toEqual(['--no-open'])
   })
 })
 
