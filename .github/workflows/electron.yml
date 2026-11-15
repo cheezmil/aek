@@ -7,6 +7,14 @@
 #       windows: NSIS installer x64 + portable exe arm64
 #                (NSIS cannot target Windows-on-ARM — electron-builder #5461)
 #       linux:  AppImage + deb, each x64 and arm64
+#   - Artifact file names are self-describing, one scheme for all eight
+#     files (set in electron-builder.config.mjs):
+#       AEK-<ver>-mac-x64.dmg / -mac-arm64.dmg
+#       AEK-<ver>-win-x64-setup.exe / -win-arm64-portable.exe
+#       AEK-<ver>-linux-x64.AppImage / -linux-arm64.AppImage
+#       AEK-<ver>-linux-x64.deb / -linux-arm64.deb
+#     (previously the default builder templates mixed three naming
+#     schemes and dropped the arch on the default arch — unreadable)
 #   - Artifacts go to the GITHUB release (never Gitea).
 #   - NEVER triggered by push. Manual `workflow_dispatch` only; the prompter
 #     (`node scripts/aek/electron-cloud.mjs`) tells a developer WHEN a cloud
@@ -152,6 +160,11 @@ jobs:
           # drop every unpacked app dir under any builder naming (mac-*/win-*-unpacked/
           # linux-*-unpacked, ...): only the distributable files go to the release
           find release/staging -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
+          # drop the CI debug dump + any differential-update blockmaps (they are
+          # off in the builder config — no auto-update channel — the *.blockmap
+          # wildcard stays as a guard against a future electron-builder turning
+          # them back on by default)
+          rm -f release/staging/builder-debug.yml release/staging/*.blockmap
           ls -lh release/staging
 
       - uses: softprops/action-gh-release@v2

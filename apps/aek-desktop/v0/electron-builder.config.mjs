@@ -130,10 +130,17 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
         // X5: both architectures for the cloud release (a plain `--mac`
         // build now yields two DMGs; local deep-signing still works
         // per-arch — the local `--arm64` CLI flag restricts it).
-        target: {
-          target: 'dmg',
-          arch: ['x64', 'arm64'],
-        },
+        //
+        // Explicit per-arch artifact names: electron-builder's default
+        // template drops the arch suffix on the *default* arch, which is
+        // how one release ended up with "AEK-0.1.0.dmg" +
+        // "AEK-0.1.0-arm64.dmg" — nobody reading the release page could
+        // tell which file was for which machine. One scheme for every
+        // artifact: `<product>-<version>-<platform>-<arch>.<ext>`.
+        target: [
+          { target: 'dmg', arch: 'x64', artifactName: '${productName}-${version}-mac-x64.dmg' },
+          { target: 'dmg', arch: 'arm64', artifactName: '${productName}-${version}-mac-arm64.dmg' },
+        ],
       },
     } : {}),
     ...(hostWin ? {
@@ -143,9 +150,14 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
         // ARM (electron-builder issue #5461), so arm64 ships as a portable
         // executable (an x64 NSIS runs on arm64 Windows via emulation, but
         // we ship a real arm64 binary for it).
+        //
+        // Explicit artifact names: both Windows files are .exe and neither
+        // default name carries the arch or the install mode, so label the
+        // NSIS installer `-win-x64-setup.exe` and the portable arm64 binary
+        // `-win-arm64-portable.exe`.
         target: [
-          { target: 'nsis', arch: ['x64'] },
-          { target: 'portable', arch: ['arm64'] },
+          { target: 'nsis', arch: 'x64', artifactName: '${productName}-${version}-win-x64-setup.exe' },
+          { target: 'portable', arch: 'arm64', artifactName: '${productName}-${version}-win-arm64-portable.exe' },
         ],
       },
     } : {}),
@@ -157,14 +169,32 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
         // (`homepage` is NOT a linux option in electron-builder 26.17 — it
         // would fail the config schema.)
         maintainer: 'AEK maintainers <aek@example.com>',
+        // Explicit artifact names: the default templates are per-target
+        // (deb uses dpkg's `name_version_arch` style, AppImage drops the
+        // default-arch suffix), so one release mixed three naming
+        // schemes. Everything here is `AEK-<ver>-linux-<arch>.<ext>`;
+        // the .deb file name is cosmetic (dpkg/apt read the control
+        // section, not the file name), so "x64" instead of dpkg's
+        // "amd64" is safe and consistent with the other platforms.
         target: [
-          { target: 'AppImage', arch: ['x64', 'arm64'] },
-          { target: 'deb', arch: ['x64', 'arm64'] },
+          { target: 'AppImage', arch: 'x64', artifactName: '${productName}-${version}-linux-x64.AppImage' },
+          { target: 'AppImage', arch: 'arm64', artifactName: '${productName}-${version}-linux-arm64.AppImage' },
+          { target: 'deb', arch: 'x64', artifactName: '${productName}-${version}-linux-x64.deb' },
+          { target: 'deb', arch: 'arm64', artifactName: '${productName}-${version}-linux-arm64.deb' },
         ],
       },
     } : {}),
+    // No auto-update channel exists (AEK ships via the npm slot + the host
+    // backend, electron-updater is not in the app), so the differential-
+    //update blockmaps electron-builder writes next to the DMG and the NSIS
+    // installer are dead weight — and they leak into the cloud release.
+    // (AppImage/deb targets in 26.17 don't emit blockmaps at all.)
     dmg: {
       format: 'ULFO',
+      writeUpdateInfo: false,
+    },
+    nsis: {
+      differentialPackage: false,
     },
     extraResources: [
       {
