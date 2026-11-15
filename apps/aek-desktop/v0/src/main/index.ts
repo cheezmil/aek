@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, screen, session, shell, systemPreferences } from 'electron'
 import { spawn, spawnSync } from 'node:child_process'
-import type { ShellInstallResult } from '../preload/index'
+import type { ShellInstallResult } from '../preload/index.js'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -926,9 +926,6 @@ function probeBinary(name: string, args: string[]): string | undefined {
 }
 
 function registerShellInstallIpc(): void {
-  const preloadPath = join(APP_ROOT, 'preload', 'index.js')
-  if (existsSync(preloadPath)) session.defaultSession.setPreloadScript(preloadPath)
-
   ipcMain.handle('aek-shell:install-status', async () => {
     const status = {
       node: probeBinary('node', ['--version']),
@@ -982,6 +979,14 @@ function registerShellInstallIpc(): void {
 registerShellInstallIpc()
 
 app.whenReady().then(() => {
+  // X5: inject the `window.aekShell` bridge into the (remote) web console
+  // document. Electron 44: `session.registerPreloadScript` replaces the
+  // removed `setPreloadScript`; it must run after the app is ready and the
+  // script path must be absolute (packaged: inside the asar).
+  const preloadPath = join(APP_ROOT, 'preload', 'index.js')
+  if (existsSync(preloadPath)) {
+    session.defaultSession.registerPreloadScript({ filePath: preloadPath, id: 'aek-shell-bridge', type: 'frame' })
+  }
   // T round: the first log line of every boot — what this shell is, where it
   // points, and which channel built it. A white screen is read from here
   // forward: boot → backend probes → load events → renderer console.
