@@ -218,7 +218,7 @@ export function registerRuntimeApi(
               if (!snapshot.isolatable.includes(capability)) {
                 sendJson(res, 409, {
                   code: 'not-isolatable',
-                  message: `'${capability}' does not support an isolated runtime (no spawnable aek.runtime.isolate.bin)`,
+                  message: `'${capability}' is not an isolatable TS/JS capability (no in-process part to move, or it is already isolated)`,
                 })
                 return
               }
@@ -226,6 +226,16 @@ export function registerRuntimeApi(
               if (!persisted.ok) {
                 sendJson(res, 502, { code: 'store-write-failed', ...persisted })
                 return
+              }
+              // T round: an optional custom runtime name travels on the same
+              // call (blank = the capability id stays the label).
+              const addLabel = typeof body.label === 'string' ? body.label : ''
+              if (addLabel.length > 0) {
+                const labeled = writeRuntimeLabel(aekHome, capability, addLabel)
+                if (!labeled.ok) {
+                  sendJson(res, 400, { code: 'bad-request', ...labeled })
+                  return
+                }
               }
               // Register + start the process LIVE under the shared supervisor
               // (the boot-time switch's single-package form).

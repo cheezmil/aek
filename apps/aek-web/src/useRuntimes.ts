@@ -45,6 +45,12 @@ export interface PluginMemoryEntry {
   unit: 'bytes'
   /** `process-rss` or `in-host-shared` (counted toward the host total). */
   caliber: 'process-rss' | 'in-host-shared'
+  /**
+   * The source bucket the package lives in (the user's disk classification,
+   * T round): `plugins` / `public` / `base` / `extensions`. Absent on
+   * older hosts that predate the field.
+   */
+  bucket?: 'plugins' | 'public' | 'base' | 'extensions'
 }
 
 /** The complete numbered runtime snapshot. */
@@ -55,6 +61,8 @@ export interface RuntimesSnapshot {
   runtimes: RuntimeRow[]
   /** Capabilities that support `isolate` but currently share (add candidates). */
   isolatable: string[]
+  /** The host's `process.platform` — drives the per-OS memory wording. */
+  platform?: string
   /** One row per discovered capability. */
   pluginMemory: Record<string, PluginMemoryEntry>
 }
@@ -71,8 +79,12 @@ export interface RuntimesState {
   busy: string | undefined
   /** Force a fresh read. */
   refresh: () => void
-  /** Persist an isolatable capability into its own runtime (428-confirmed on the host). */
-  addRuntime: (id: string) => Promise<void>
+  /**
+   * Persist an isolatable capability into its own runtime (428-confirmed on
+   * the host). The optional label is a custom runtime name (T round); when
+   * blank the capability id stays the display name.
+   */
+  addRuntime: (id: string, label?: string) => Promise<void>
   /** Stop a capability's process and move it back to the shared host. */
   removeRuntime: (id: string) => Promise<void>
   /** Persist an operator label for one runtime row. */
@@ -129,10 +141,13 @@ export function useRuntimes(refreshSignal = 0): RuntimesState {
     refresh()
   }, [refresh, refreshSignal])
 
-  const addRuntime = useCallback(async (id: string): Promise<void> => {
+  const addRuntime = useCallback(async (id: string, label?: string): Promise<void> => {
     setBusy(`add:${id}`)
     try {
-      await mutate('add', id)
+      // T round: the optional custom name travels on the same call; the host
+      // persists it as the runtime label (blank = the id stays the label).
+      const trimmed = typeof label === 'string' ? label.trim() : ''
+      await mutate('add', id, trimmed.length > 0 ? trimmed : undefined)
       refresh()
     } finally {
       setBusy(undefined)

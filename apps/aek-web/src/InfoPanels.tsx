@@ -32,7 +32,10 @@ import { css, cx } from './styles.ts'
 import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner, ToggleSwitch } from './ui-kit.tsx'
 import type { InventoryState } from './useInventory.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
+import type { PluginBucket, PluginEntry } from './useConsoleFacts.ts'
 import { useCapabilities } from './useCapabilities.ts'
+import { useRuntimes } from './useRuntimes.ts'
+import { RuntimesBlock, fmtBytes } from './RuntimesPanel.tsx'
 
 /** Panels handled here. */
 export type InfoPanelId = 'plugins' | 'settings' | 'websearchSettings' | 'about'
@@ -725,10 +728,10 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
                       : null}
                   </div>
                   {restore.phase === 'backedUp'
-                    ? <p className={css.noticeLine}><Icon name="check" size={14} />{t('settings.backupDone')}</p>
+                    ? <p className={cx(css.noticeLine, css.noticeNeutral)}><Icon name="check" size={14} />{t('settings.backupDone')}</p>
                     : null}
                   {restore.phase === 'restored'
-                    ? <p className={css.noticeLine}><Icon name="check" size={14} />{t('settings.restored')}</p>
+                    ? <p className={cx(css.noticeLine, css.noticeNeutral)}><Icon name="check" size={14} />{t('settings.restored')}</p>
                     : null}
                   {restore.phase === 'noBackup'
                     ? <p className={css.errorBanner}><Icon name="alert" size={16} /><span>{t('settings.noBackup')}</span></p>
@@ -838,10 +841,106 @@ const PLUGIN_ACTIONS: readonly PluginAction[] = [
   { id: 'restart', icon: 'refresh', labelKey: 'plugins.action.restart' },
 ]
 
+/**
+ * The user's disk-layout bucket order (2026-11-15 T round): the swappable
+ * coraek plugin set first, then the read-only roster facts.
+ */
+const BUCKET_ORDER: readonly PluginBucket[] = ['plugins', 'public', 'base', 'extensions']
+
+/**
+ * The bucket-group header key (a literal switch, so the i18n dead-key
+ * scanner sees every key at each site).
+ * @param bucket - the group's bucket.
+ * @returns the header's i18n key.
+ */
+function bucketKeyOf(bucket: PluginBucket): string {
+  switch (bucket) {
+    case 'public':
+      return 'plugins.bucket.public'
+    case 'base':
+      return 'plugins.bucket.base'
+    case 'extensions':
+      return 'plugins.bucket.extensions'
+    default:
+      return 'plugins.bucket.plugins'
+  }
+}
+
+/**
+ * The per-plugin runtime line (T round): WHERE this package currently runs —
+ * the old "所驻插件" table's content, now inside each roster row — plus the
+ * move actions (into an isolated process / back to the shared host).
+ * @param plugin - the roster row.
+ * @param rt - the live runtime snapshot (or undefined while loading / older host).
+ * @param term - the per-OS memory term (`RSS` / `工作集`), already translated.
+ * @param onIsolate - move the package into its own process (confirmed by the caller).
+ * @param onHost - stop the package's process and move it back to the host.
+ * @param busy - the in-flight runtime mutation key, when any.
+ * @returns the line (or nothing when the host has no runtime route).
+ */
+function PluginRuntimeLine({ plugin, rt, term, onIsolate, onHost, busy }: {
+  plugin: PluginEntry
+  rt: ReturnType<typeof useRuntimes>['snapshot']
+  term: string
+  onIsolate: (id: string) => void
+  onHost: (id: string) => void
+  busy: string | undefined
+}): ReactNode {
+  const { t, tf } = useI18n()
+  if (rt === undefined) return null
+  const isoRow = rt.runtimes.find(row => row.id === plugin.id)
+  const isolated = isoRow !== undefined
+  if (isolated) {
+    const row = isoRow as { number: number; state: 'running' | 'stopped'; pid: number | null; memory?: { rss?: number } }
+    return (
+      <div className={css.pluginRuntimeLine}>
+        <span className={cx(css.rtChip, row.state === 'running' ? css.rtStateRunning : undefined)}>rt{String(row.number)}</span>
+        <span className={css.pluginRuntimeText}>
+          {tf('plugins.runtime.lineIsolated', { n: String(row.number) })}
+          {' · '}
+          {t(row.state === 'running' ? 'runtimes.state.running' : 'runtimes.state.stopped')}
+          {row.memory?.rss !== undefined ? ` · ${term} ${fmtBytes(row.memory.rss)} · pid ${row.pid ?? '—'}` : ''}
+        </span>
+        <button
+          type="button"
+          className={css.pluginRuntimeMove}
+          disabled={busy !== undefined}
+          onClick={() => { onHost(plugin.id) }}
+        >
+          {t('plugins.runtime.moveHost')}
+        </button>
+      </div>
+    )
+  }
+  const isolatable = rt.isolatable.includes(plugin.id)
+  return (
+    <div className={css.pluginRuntimeLine}>
+      <span className={css.rtChip}>rt1</span>
+      <span className={css.pluginRuntimeText}>{t('plugins.runtime.lineHost')}</span>
+      {isolatable
+        ? (
+          <button
+            type="button"
+            className={css.pluginRuntimeMove}
+            disabled={busy !== undefined}
+            onClick={() => { onIsolate(plugin.id) }}
+          >
+            {t('plugins.runtime.moveIsolate')}
+          </button>
+        )
+        : null}
+    </div>
+  )
+}
+
 /** @returns the plugin management page. */
 export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   const { t, tf } = useI18n()
   const facts = useConsoleFacts()
+  // T round: the numbered runtime view lives IN this card (the standalone
+  // 运行时与内存 section is gone); the per-plugin runtime lines come from
+  // the same live snapshot.
+  const { snapshot: rtSnapshot, busy: rtBusy, addRuntime, removeRuntime } = useRuntimes(refreshSignal)
 
   // Sidebar-row refresh (Q round): re-scan the plugin directory.
   useEffect(() => {
@@ -849,7 +948,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   }, [refreshSignal, facts.refresh])
   const { prefs } = useSettings()
   const [query, setQuery] = useState('')
-  const [notice, setNotice] = useState<string | undefined>(undefined)
+  const [notice, setNotice] = useState<{ message: string; tone: 'success' | 'error' } | undefined>(undefined)
   const [pending, setPending] = useState<string | undefined>(undefined)
   /**
    * The row whose switch was flipped towards "off" and is waiting for the
@@ -860,10 +959,20 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   const [confirming, setConfirming] = useState<string | undefined>(undefined)
   const confirmDisable = prefs[CONFIRM_DISABLE_KEY] !== false
   const needle = query.trim().toLowerCase()
-  const plugins = (facts.facts?.plugins ?? []).filter((plugin) => {
+  const allPlugins = (facts.facts?.plugins ?? [])
+  const plugins = allPlugins.filter((plugin) => {
     if (needle.length === 0) return true
     return [plugin.id, plugin.packageName, plugin.description, plugin.version].join(' ').toLowerCase().includes(needle)
   })
+  // T round: the roster is grouped by the user's disk bucket (older hosts
+  // report no bucket → every row lands in the `plugins` group).
+  const grouped = BUCKET_ORDER
+    .map(bucket => ({ bucket, items: plugins.filter(plugin => (plugin.bucket ?? 'plugins') === bucket) }))
+    .filter(group => group.items.length > 0)
+  // T round: the per-OS memory term (win32 = working set; darwin/linux = RSS).
+  const term = rtSnapshot?.platform === 'win32'
+    ? t('runtimes.memTerm.win32')
+    : t('runtimes.memTerm.posix')
 
   /** @param id - plugin directory name. @param action - requested action. */
   const act = (id: string, action: PluginAction['id']): void => {
@@ -875,8 +984,12 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
       body: JSON.stringify({ id, action }),
     })
       .then(async response => await response.json() as { status?: string; message?: string; reason?: string })
-      .then((data) =>{  setNotice(`${displayName(id)} · ${data.status ?? data.message ?? data.reason ?? 'ok'}`) })
-      .catch((cause: unknown) =>{  setNotice(cause instanceof Error ? cause.message : String(cause)) })
+      .then((data) => {
+        setNotice({ message: `${displayName(id)} · ${data.status ?? data.message ?? data.reason ?? 'ok'}`, tone: 'success' })
+      })
+      .catch((cause: unknown) => {
+        setNotice({ message: cause instanceof Error ? cause.message : String(cause), tone: 'error' })
+      })
       .finally(() => {
         setPending(undefined)
         facts.refresh()
@@ -912,108 +1025,171 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
     })
       .then(async response => await response.json() as { status?: string; message?: string; reason?: string })
       .then((data) => {
-        setNotice(`${displayName(id)} · ${data.status ?? data.message ?? data.reason ?? 'ok'}`)
+        setNotice({ message: `${displayName(id)} · ${data.status ?? data.message ?? data.reason ?? 'ok'}`, tone: 'success' })
       })
-      .catch((cause: unknown) =>{  setNotice(cause instanceof Error ? cause.message : String(cause)) })
+      .catch((cause: unknown) => {
+        setNotice({ message: cause instanceof Error ? cause.message : String(cause), tone: 'error' })
+      })
       .finally(() => {
         setPending(undefined)
         facts.refresh()
       })
   }
 
+  /**
+   * T round: move one package into an isolated process runtime — the
+   * destructive direction (a new process starts) gets the confirm.
+   * @param id - package directory name.
+   */
+  const moveIsolate = (id: string): void => {
+    const plugin = allPlugins.find(candidate => candidate.id === id)
+    const name = plugin !== undefined ? displayName(plugin.packageName) : id
+    if (window.confirm(tf('plugins.runtime.moveIsolateConfirm', { name }))) void addRuntime(id)
+  }
+
+  /**
+   * T round: stop one package's isolated process and move it back to the
+   * shared host (the memory-lean direction — still confirmed: the process
+   * dies).
+   * @param id - package directory name.
+   */
+  const moveHost = (id: string): void => {
+    const plugin = allPlugins.find(candidate => candidate.id === id)
+    const name = plugin !== undefined ? displayName(plugin.packageName) : id
+    if (window.confirm(tf('plugins.runtime.moveHostConfirm', { name }))) void removeRuntime(id)
+  }
+
   return (
     <PanelCard>
       <div className={css.cardBody}>
         <PanelSearch value={query} onChange={setQuery} placeholder={t('plugins.search')} count={facts.loading ? undefined : plugins.length} />
-        {notice !== undefined ? <p className={css.noticeLine}>{notice}</p> : null}
+        {notice !== undefined
+          ? (
+            <p className={cx(css.noticeLine, notice.tone === 'success' ? css.noticeSuccess : css.noticeError)} role="status">
+              <Icon name={notice.tone === 'success' ? 'check' : 'alert'} size={14} />
+              <span>{notice.message}</span>
+            </p>
+          )
+          : null}
         {facts.error !== undefined
           ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{tf('about.error', { message: facts.error })}</span></div>
           : null}
         {plugins.length === 0 && !facts.loading
           ? <div className={css.emptyState}>{t('common.noMatch')}</div>
           : null}
-        <ul className={css.pluginList}>
-          {plugins.map(plugin => (
-            <li key={plugin.id} className={css.pluginItem}>
-              <div className={css.pluginHead}>
-                <span className={css.featureIcon}><Icon name="layers" size={18} /></span>
-                <div className={css.pluginText}>
-                  <div className={css.featureTitle}>{displayName(plugin.packageName)}</div>
-                  {/* N2 fix: the merged row was one undifferentiated line
-                      ("TypeScript · CSS AEK home surface: …" — no separators,
-                      chips jammed against the version). Now: version + A1/A2 +
-                      languages read as distinct chips on ONE line, and the
-                      (long, colon-carrying) description gets its own line
-                      below — the same two-line rhythm as the row above it. */}
-                  <div className={css.featureText}>
-                    <span className={css.countChip}>{plugin.version}</span>
-                    {plugin.distribution !== ''
-                      ? <span className={css.stackChip}>{plugin.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
+        {/* T round: the numbered runtime view is part of this card now —
+            the 运行时与内存 section no longer exists on its own. */}
+        <RuntimesBlock refreshSignal={refreshSignal} />
+        {grouped.map(group => (
+          <div key={group.bucket}>
+            <h3 className={css.pluginGroupTitle}>{t(bucketKeyOf(group.bucket))}</h3>
+            <ul className={css.pluginList}>
+              {group.items.map((plugin) => {
+                // T round: only cordis-loadable parts are switchable; the
+                // host-identity / library / bundle rows are read-only roster
+                // facts (older hosts report no flag → switchable, the old
+                // behavior).
+                const switchable = plugin.switchable !== false
+                return (
+                  <li key={plugin.id} className={css.pluginItem}>
+                    <div className={css.pluginHead}>
+                      <span className={css.featureIcon}><Icon name="layers" size={18} /></span>
+                      <div className={css.pluginText}>
+                        <div className={css.featureTitle}>{displayName(plugin.packageName)}</div>
+                        {/* N2 fix: the merged row was one undifferentiated line
+                            ("TypeScript · CSS AEK home surface: …" — no separators,
+                            chips jammed against the version). Now: version + A1/A2 +
+                            languages read as distinct chips on ONE line, and the
+                            (long, colon-carrying) description gets its own line
+                            below — the same two-line rhythm as the row above it. */}
+                        <div className={css.featureText}>
+                          <span className={css.countChip}>{plugin.version}</span>
+                          {plugin.distribution !== ''
+                            ? <span className={css.stackChip}>{plugin.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
+                            : null}
+                          {switchable ? null : <span className={css.stackChip}>{t('plugins.switch.readonly')}</span>}
+                          {plugin.languages.length > 0
+                            ? <span className={css.stackText} title={plugin.languages.join(' · ')}>{plugin.languages.join(' · ')}</span>
+                            : null}
+                        </div>
+                        {plugin.description !== ''
+                          ? <div className={css.featureDesc}>{plugin.description}</div>
+                          : null}
+                        {/* T round: where this package runs (its runtime line). */}
+                        <PluginRuntimeLine
+                          plugin={plugin}
+                          rt={rtSnapshot}
+                          term={term}
+                          onIsolate={moveIsolate}
+                          onHost={moveHost}
+                          busy={rtBusy}
+                        />
+                      </div>
+                      {/* Fixed three-column cluster (switch | lock slot | restart) so the
+                          switch sits at the SAME x on every row. The lock slot is always
+                          rendered: with an inline-flex cluster the locked rows carried one
+                          extra child and the whole group slid left, which is exactly the
+                          "排版错乱" the user saw on 2026-11-09. T round: non-switchable
+                          rows keep the slot (empty) so the grid never drifts; their
+                          read-only state reads as a chip on the text line instead. */}
+                      <div className={css.pluginActions}>
+                        {switchable
+                          ? <ToggleSwitch
+                            checked={plugin.enabled}
+                            locked={plugin.locked}
+                            onChange={(next) =>{  requestToggle(plugin.id, next) }}
+                            label={plugin.locked ? t('plugins.switch.locked.root') : (plugin.enabled ? t('plugins.switch.on') : t('plugins.switch.off'))}
+                          />
+                          : <span className={css.pluginSwitchSlot} aria-hidden="true" />}
+                        <span
+                          className={css.pluginLockIcon}
+                          title={plugin.locked ? t('plugins.switch.locked.root') : undefined}
+                        >
+                          {plugin.locked ? <Icon name="lock" size={14} /> : null}
+                        </span>
+                        {switchable
+                          ? PLUGIN_ACTIONS.map(action => (
+                            <button
+                              key={action.id}
+                              type="button"
+                              className={css.pluginIconButton}
+                              disabled={pending !== undefined}
+                              onClick={() =>{  act(plugin.id, action.id) }}
+                              title={t(action.labelKey)}
+                              aria-label={`${t(action.labelKey)} · ${displayName(plugin.packageName)}`}
+                            >
+                              <Icon name={action.icon} size={18} />
+                            </button>
+                          ))
+                          : <span aria-hidden="true" />}
+                      </div>
+                    </div>
+                    <CapabilityTags caps={plugin.capabilities} />
+                    {confirming === plugin.id
+                      ? (
+                        <div className={css.pluginConfirm} role="alertdialog" aria-label={t('plugins.confirm.ok')}>
+                          <span className={css.pluginConfirmText}>{tf('plugins.confirm.text', { name: displayName(plugin.packageName) })}</span>
+                          <span className={css.pluginConfirmActions}>
+                            <button type="button" className={css.secondaryButton} onClick={() =>{  setConfirming(undefined) }}>
+                              {t('plugins.confirm.cancel')}
+                            </button>
+                            <button
+                              type="button"
+                              className={cx(css.primaryButton, css.dangerButton)}
+                              onClick={() => { setConfirming(undefined); toggle(plugin.id, false) }}
+                            >
+                              {t('plugins.confirm.ok')}
+                            </button>
+                          </span>
+                        </div>
+                      )
                       : null}
-                    {plugin.languages.length > 0
-                      ? <span className={css.stackText} title={plugin.languages.join(' · ')}>{plugin.languages.join(' · ')}</span>
-                      : null}
-                  </div>
-                  {plugin.description !== ''
-                    ? <div className={css.featureDesc}>{plugin.description}</div>
-                    : null}
-                </div>
-                {/* Fixed three-column cluster (switch | lock slot | restart) so the
-                    switch sits at the SAME x on every row. The lock slot is always
-                    rendered: with an inline-flex cluster the locked rows carried one
-                    extra child and the whole group slid left, which is exactly the
-                    "排版错乱" the user saw on 2026-11-09. */}
-                <div className={css.pluginActions}>
-                  <ToggleSwitch
-                    checked={plugin.enabled}
-                    locked={plugin.locked}
-                    onChange={(next) =>{  requestToggle(plugin.id, next) }}
-                    label={plugin.locked ? t('plugins.switch.locked.root') : (plugin.enabled ? t('plugins.switch.on') : t('plugins.switch.off'))}
-                  />
-                  <span
-                    className={css.pluginLockIcon}
-                    title={plugin.locked ? t('plugins.switch.locked.root') : undefined}
-                  >
-                    {plugin.locked ? <Icon name="lock" size={14} /> : null}
-                  </span>
-                  {PLUGIN_ACTIONS.map(action => (
-                    <button
-                      key={action.id}
-                      type="button"
-                      className={css.pluginIconButton}
-                      disabled={pending !== undefined}
-                      onClick={() =>{  act(plugin.id, action.id) }}
-                      title={t(action.labelKey)}
-                      aria-label={`${t(action.labelKey)} · ${displayName(plugin.packageName)}`}
-                    >
-                      <Icon name={action.icon} size={18} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <CapabilityTags caps={plugin.capabilities} />
-              {confirming === plugin.id
-                ? (
-                  <div className={css.pluginConfirm} role="alertdialog" aria-label={t('plugins.confirm.ok')}>
-                    <span className={css.pluginConfirmText}>{tf('plugins.confirm.text', { name: displayName(plugin.packageName) })}</span>
-                    <span className={css.pluginConfirmActions}>
-                      <button type="button" className={css.secondaryButton} onClick={() =>{  setConfirming(undefined) }}>
-                        {t('plugins.confirm.cancel')}
-                      </button>
-                      <button
-                        type="button"
-                        className={cx(css.primaryButton, css.dangerButton)}
-                        onClick={() => { setConfirming(undefined); toggle(plugin.id, false) }}
-                      >
-                        {t('plugins.confirm.ok')}
-                      </button>
-                    </span>
-                  </div>
+                  </li>
                 )
-                : null}
-            </li>
-          ))}
-        </ul>
+              })}
+            </ul>
+          </div>
+        ))}
       </div>
     </PanelCard>
   )

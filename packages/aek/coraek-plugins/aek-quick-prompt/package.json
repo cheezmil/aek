@@ -11,7 +11,8 @@
     "localOnly": true,
     "cordis": true,
     "dsh": false,
-    "description": "A2 local-only plugin. It is deliberately excluded from every npm / release publish path; do not change its class without the user's explicit permission."
+    "description": "A2 local-only plugin. It is deliberately excluded from every npm / release publish path; do not change its class without the user's explicit permission.",
+    "bucket": "plugins"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

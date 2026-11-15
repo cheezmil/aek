@@ -20,7 +20,10 @@ export interface AppEntry {
   entry: true
 }
 
-/** One scanned plugin. */
+/** The source buckets of the user's disk layout (T round). */
+export type PluginBucket = 'plugins' | 'public' | 'base' | 'extensions'
+
+/** One scanned AEK package. */
 export interface PluginEntry {
   id: string
   packageName: string
@@ -33,6 +36,18 @@ export interface PluginEntry {
   locked: boolean
   /** Why it is locked; empty for normal plugins. */
   lockReason: '' | 'root' | 'api'
+  /**
+   * Whether the enable switch is offered at all (T round): only
+   * cordis-loadable packages are switchable; host-identity / library /
+   * bundle rows are read-only roster facts. Absent on older hosts, where
+   * every listed row is switchable.
+   */
+  switchable?: boolean
+  /**
+   * The bucket this package lives in (the user's disk classification,
+   * T round). Absent on older hosts.
+   */
+  bucket?: PluginBucket
   /** Declared audience: A1 (public) / A2 (local only), empty when invalid. */
   distribution: 'A1' | 'A2' | ''
   /** Detected implementation languages, most source files first. */

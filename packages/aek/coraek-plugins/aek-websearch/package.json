@@ -50,7 +50,8 @@
       "aek-websearch"
     ],
     "description": "Standalone CLI for web search + optional Cordis plugin for dsh web profile",
-    "distribution": "A1"
+    "distribution": "A1",
+    "bucket": "plugins"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.0"

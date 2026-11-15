@@ -58,9 +58,17 @@ export interface AppEntry {
   entry: true
 }
 
-/** One scanned AEK plugin and its capability tags. */
+/**
+ * The source buckets of the user's disk layout (2026-11-15 T round):
+ * `plugins` = the swappable coraek plugin set, `public` = publicly
+ * distributed libraries, `base` = the coraek host identity layer,
+ * `extensions` = the on-hold target-extension bundles.
+ */
+export type PluginBucket = 'plugins' | 'public' | 'base' | 'extensions'
+
+/** One scanned AEK package and its capability tags. */
 export interface PluginEntry {
-  /** Directory name under `packages/aek/coraek-plugins`. */
+  /** Directory name under the package's bucket. */
   id: string
   /** Package name from package.json. */
   packageName: string
@@ -81,6 +89,19 @@ export interface PluginEntry {
   locked: boolean
   /** Why it is locked: `root` meant "this plugin IS the console UI". */
   lockReason: '' | 'root'
+  /**
+   * Whether the enable switch is offered at all. Only cordis-loadable
+   * packages (`aek.cordis: true`) are switchable; host-identity, library
+   * and bundle rows are read-only facts in the roster.
+   */
+  switchable: boolean
+  /**
+   * The bucket this package lives in (the user's disk classification). An
+   * explicit `aek.bucket` manifest field always wins; the flat install
+   * layout has no directory position, so it falls back to `plugins` when
+   * the manifest does not declare one.
+   */
+  bucket: PluginBucket
   /** Declared audience: A1 (public) / A2 (local only), empty when invalid. */
   distribution: 'A1' | 'A2' | ''
   /** Detected implementation languages, most source files first. */
@@ -118,9 +139,9 @@ export interface ConsoleFacts {
   home: string
   /** The three entry-point apps. */
   entries: AppEntry[]
-  /** Everything inside the coraek plugins directory. */
+  /** Everything under the AEK package tree, bucket-classified (T round). */
   plugins: PluginEntry[]
-  /** Absolute path of that directory, resolved on the host (copyable). */
+  /** Absolute path of the scanned package tree root, resolved on the host (copyable). */
   pluginsDir: string
   /** Per-slot URLs and ports. */
   endpoints: SlotEndpoint[]
@@ -285,41 +306,171 @@ function writeDisabledPlugins(ids: ReadonlySet<string>): boolean {
 }
 
 /**
- * Scan EVERY directory in the coraek plugins folder (not a hardcoded roster).
- * S round: a directory WITHOUT its own `package.json` is build residue
- * (e.g. a deleted plugin's leftover `lib/` / `node_modules/` dirs in a pinned
- * tree), not a plugin — it must never produce a row.
+ * The bucket map for a top-level component of `packages/aek` (the user's
+ * disk layout, 2026-11-15 T round). Unknown components fall back to the
+ * `plugins` bucket.
+ * @param name - the directory name directly under `packages/aek`.
+ * @returns the bucket.
+ */
+function bucketForComponent(name: string): PluginBucket {
+  switch (name) {
+    case 'coraek-plugins':
+      return 'plugins'
+    case 'public':
+      return 'public'
+    case 'base':
+      return 'base'
+    case 'target-extensions':
+      return 'extensions'
+    default:
+      return 'plugins'
+  }
+}
+
+const PLUGIN_BUCKETS: readonly PluginBucket[] = ['plugins', 'public', 'base', 'extensions']
+
+/**
+ * The manifest-declared bucket, when present and valid (it always wins over
+ * the directory-position derivation).
+ * @param manifest - parsed package.json.
+ * @returns the declared bucket, or undefined.
+ */
+function declaredBucket(manifest: Record<string, unknown>): PluginBucket | undefined {
+  const aek = manifest.aek
+  if (aek === null || typeof aek !== 'object') return undefined
+  const value = (aek as Record<string, unknown>).bucket
+  return typeof value === 'string' && PLUGIN_BUCKETS.includes(value as PluginBucket)
+    ? value as PluginBucket
+    : undefined
+}
+
+/**
+ * List child directories INCLUDING symlinks (the install layout reaches the
+ * workspace packages through `node_modules/@cheezmil` links), ignoring
+ * dotfiles.
+ * @param dir - directory to list.
+ * @returns stable-sorted child names.
+ */
+function listDirectories(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter(entry => (entry.isDirectory() || entry.isSymbolicLink()) && !entry.name.startsWith('.'))
+      .map(entry => entry.name)
+      .sort()
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Collect every AEK package directory with its bucket (2026-11-15 T round:
+ * the roster is NOT just the swappable plugin set — it is the whole package
+ * tree, so the console stops presenting host-identity / library / bundle
+ * rows as "coraek plugins").
+ *
+ * - DEV LAYOUT: walk `packages/aek/**` (depth 3, `node_modules` skipped),
+ *   bucket = the top-level component (`coraek-plugins` → `plugins`,
+ *   `public` → `public`, `base` → `base`, `target-extensions` →
+ *   `extensions`).
+ * - INSTALL LAYOUT (no checkout root): the `@cheezmil` scope dir two levels
+ *   above this module — the coraek discovery convention — with the bucket
+ *   read from the manifest (flat layout, no directory position).
+ *
+ * The S1 filter applies to every layout: a directory WITHOUT its own
+ * `package.json` is build residue, never a roster row.
+ *
+ * @returns the roster of { dir, id, bucket, manifest }, sorted by id.
+ */
+function scanPackageDirs(): Array<{ dir: string; id: string; bucket: PluginBucket; manifest: Record<string, unknown> }> {
+  const found = new Map<string, { dir: string; id: string; bucket: PluginBucket; manifest: Record<string, unknown> }>()
+  const add = (dir: string, id: string, bucket: PluginBucket): void => {
+    if (found.has(id)) return
+    const manifestFile = join(dir, 'package.json')
+    if (!existsSync(manifestFile)) return // the S1 residue filter
+    const manifest = readManifest(manifestFile)
+    found.set(id, { dir, id, bucket: declaredBucket(manifest) ?? bucket, manifest })
+  }
+  const walk = (dir: string, depth: number, bucket: PluginBucket): void => {
+    for (const name of listDirectories(dir)) {
+      if (name === 'node_modules' || name.startsWith('.')) continue
+      const child = join(dir, name)
+      add(child, name, bucket)
+      if (depth < 3) {
+        // At the tree root the child IS a bucket component; deeper, the
+        // bucket context is inherited.
+        walk(child, depth + 1, depth === 0 ? bucketForComponent(name) : bucket)
+      }
+    }
+  }
+
+  const devRoot = join(ROOT, 'packages', 'aek')
+  if (existsSync(devRoot)) {
+    walk(devRoot, 0, 'plugins')
+  } else {
+    const scopeDir = installScopeDir()
+    for (const name of listDirectories(scopeDir)) {
+      add(join(scopeDir, name), name, 'plugins')
+    }
+  }
+  return [...found.values()].sort((a, b) => a.id.localeCompare(b.id))
+}
+
+/**
+ * The `@cheezmil` scope dir two levels above this module's compiled
+ * location (`lib/console.js` → up two), the install-layout fallback for
+ * `scanPackageDirs` (the coraek discovery convention; no hardcoded paths).
+ * @returns the absolute scope dir.
+ */
+function installScopeDir(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), '..', '..', '@cheezmil')
+}
+
+/**
+ * The scanned package-tree root (dev: `packages/aek`, install: the scope
+ * dir) — a copyable absolute path for the About page.
+ * @returns the root dir.
+ */
+function packageTreeRoot(): string {
+  const devRoot = join(ROOT, 'packages', 'aek')
+  return existsSync(devRoot) ? devRoot : installScopeDir()
+}
+
+/**
+ * Scan the AEK package tree into roster rows. Every row carries its bucket
+ * and whether the enable switch is offered at all: only cordis-loadable
+ * packages (`aek.cordis: true`) are switchable — the host-identity, library
+ * and bundle rows are read-only facts, never presented as swappable
+ * "coraek plugins".
  * @returns the plugin roster.
  */
 function scanPlugins(): PluginEntry[] {
-  const base = join(ROOT, 'packages', 'aek', 'coraek-plugins')
   const disabled = readDisabledPlugins()
   // One bounded, cached scan (directory entries + file extensions only, no
   // source file is ever opened) supplies the audience class and languages for
   // the About page. See @cheezmil/coraek/plugin-meta.
   const metaByName = new Map(readPluginMeta(ROOT).map(meta => [meta.packageName, meta]))
-  return childDirectories(base)
-    .filter(id => existsSync(join(base, id, 'package.json')))
-    .map((id) => {
-      const manifest = readManifest(join(base, id, 'package.json'))
-      const lockReason = LOCKED_PLUGINS[id] ?? ''
-      const name = typeof manifest.name === 'string' ? manifest.name : id
-      const meta = metaByName.get(name)
-      return {
-        id,
-        packageName: name,
-        version: typeof manifest.version === 'string' ? manifest.version : '',
-        description: typeof manifest.description === 'string' ? manifest.description : '',
-        capabilities: capabilitiesOf(manifest, id),
-        // A locked plugin is always reported as enabled: its flag is meaningless.
-        enabled: lockReason !== '' || !disabled.has(id),
-        locked: lockReason !== '',
-        lockReason,
-        distribution: meta?.distribution.ok ? (meta.distribution.value === 'A2' ? 'A2' : 'A1') : '',
-        languages: meta?.languages.languages ?? [],
-        primaryLanguage: meta?.languages.primary ?? 'unknown',
-      }
-    })
+  return scanPackageDirs().map(({ id, bucket, manifest }) => {
+    const lockReason = LOCKED_PLUGINS[id] ?? ''
+    const name = typeof manifest.name === 'string' ? manifest.name : id
+    const aek = manifest.aek
+    const meta = metaByName.get(name)
+    return {
+      id,
+      packageName: name,
+      version: typeof manifest.version === 'string' ? manifest.version : '',
+      description: typeof manifest.description === 'string' ? manifest.description : '',
+      capabilities: capabilitiesOf(manifest, id),
+      // A locked plugin is always reported as enabled: its flag is meaningless.
+      enabled: lockReason !== '' || !disabled.has(id),
+      locked: lockReason !== '',
+      lockReason,
+      switchable: aek !== null && typeof aek === 'object' && (aek as Record<string, unknown>).cordis === true,
+      bucket,
+      distribution: meta?.distribution.ok ? (meta.distribution.value === 'A2' ? 'A2' : 'A1') : '',
+      languages: meta?.languages.languages ?? [],
+      primaryLanguage: meta?.languages.primary ?? 'unknown',
+    }
+  })
 }
 
 /**
@@ -380,7 +531,7 @@ export function readConsoleFacts(): ConsoleFacts {
     home: homedir(),
     entries: scanEntries(),
     plugins: scanPlugins(),
-    pluginsDir: join(ROOT, 'packages', 'aek', 'coraek-plugins'),
+    pluginsDir: packageTreeRoot(),
     endpoints: endpoints(),
     skillPath: skillPath(),
     permissions: {

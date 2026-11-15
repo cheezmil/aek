@@ -23,8 +23,8 @@
  * @module @cheezmil/coraek/runtime
  */
 
-import { readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync, realpathSync } from 'node:fs'
+import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /** The only two runtime topologies a capability can run in. */
@@ -68,8 +68,13 @@ export function hasExternalManifest(manifest) {
 
 /**
  * Which topologies does this capability *support*?
- * - external wrappers (② / ③): `isolate` only.
- * - class ①: always `share`; `isolate` only if `aek.runtime.isolate` is declared.
+ * - external wrappers (② / ③): `isolate` only (license / runtime forcing).
+ * - class ① TS/JS capabilities: `share` AND `isolate` AUTOMATICALLY —
+ *   the operator's rule (T round): the ts/js part of a plugin must be
+ *   isolatable WITHOUT the package declaring anything; `aek.runtime.isolate`
+ *   is an OPTIONAL override that supplies a custom spawnable bin (the
+ *   coraek-shipped generic runner covers every undeclared package, see
+ *   {@link resolveIsolateAttach}).
  * @param {unknown} manifest
  * @returns {{ canShare: boolean, canIsolate: boolean }}
  */
@@ -77,9 +82,138 @@ export function effectiveModes(manifest) {
   if (hasExternalManifest(manifest)) {
     return { canShare: false, canIsolate: true }
   }
-  const rt = manifest && typeof manifest === 'object' ? manifest.aek?.runtime : undefined
-  const canIsolate = !!rt && typeof rt === 'object' && rt.isolate !== null && typeof rt.isolate === 'object'
-  return { canShare: true, canIsolate }
+  return { canShare: true, canIsolate: true }
+}
+
+/**
+ * Does the manifest carry a JS in-process entry (`main` or a string
+ * `exports["."]` pointing at a .js/.mjs/.cjs file)? Bundle / patch-yaml
+ * packages (coraek-profile, aek-for-dsh) report false — there is no
+ * in-process part to move.
+ * @param {unknown} manifest - a parsed `package.json`.
+ * @returns {boolean}
+ */
+export function hasInProcessEntry(manifest) {
+  if (manifest === null || typeof manifest !== 'object') return false
+  const jsEntry = (value) => typeof value === 'string' && /\.(mjs|cjs|js)$/u.test(value)
+  const main = jsEntry(manifest.main) ? manifest.main : undefined
+  if (main !== undefined) return true
+  const dot = manifest.exports?.['.']
+  if (dot !== undefined) {
+    if (typeof dot === 'string') return jsEntry(dot)
+    if (dot !== null && typeof dot === 'object') {
+      return (jsEntry(dot.default) ? dot.default : undefined) !== undefined
+        || (jsEntry(dot.import) ? dot.import : undefined) !== undefined
+    }
+  }
+  return false
+}
+
+/**
+ * The built in-process entry points checked on disk when the manifest does
+ * NOT declare `main` / `exports` (some A2 local-only plugins ship a built
+ * `lib/index.js` without putting a main field in the manifest — the host
+ * still loads them in-process, so the TS/JS part is there).
+ * @type {readonly string[]}
+ */
+const JS_ENTRY_CANDIDATES = ['lib/index.js', 'index.js', 'lib/index.mjs', 'lib/index.cjs', 'dist/index.js']
+
+/**
+ * Is this capability a class ① AUTOMATICALLY-isolatable one? True when it is
+ * not an external wrapper, carries a JS in-process part (a manifest entry,
+ * or a built entry present on disk when the manifest declares none), and is
+ * not the host package itself (a package cannot be a child of its own host
+ * runtime).
+ *
+ * `hostDir` is the coraek package dir the running host came from
+ * (`hostPackageDir()`); pass `''` in a context with no host layout to
+ * disable the self-exclusion (tests). `packageDir` empty = no disk
+ * fallback (the pure-manifest behavior, used by CLI contexts without a
+ * host layout).
+ *
+ * @param {unknown} manifest - a parsed `package.json`.
+ * @param {string} [packageDir] - the capability's package dir.
+ * @param {string} [hostDir] - the host's own package dir.
+ * @returns {boolean}
+ */
+export function isAutoIsolatable(manifest, packageDir = '', hostDir = '') {
+  if (hasExternalManifest(manifest)) return false
+  if (hostDir !== '' && packageDir !== '' && sameDir(packageDir, hostDir)) return false
+  if (hasInProcessEntry(manifest)) return true
+  if (packageDir === '') return false
+  for (const candidate of JS_ENTRY_CANDIDATES) {
+    if (existsSync(join(packageDir, candidate))) return true
+  }
+  return false
+}
+
+/**
+ * Compare two directory paths through their resolved real paths (profile
+ * node_modules links make the same dir reachable under two spellings);
+ * fall back to the raw strings when either side cannot be resolved.
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+function sameDir(a, b) {
+  try {
+    return realpathSync(a) === realpathSync(b)
+  } catch {
+    return a === b
+  }
+}
+
+/**
+ * The coraek package dir the RUNNING host came from (the `..` above this
+ * module — runtime.mjs sits at the package root). Used for the host
+ * self-exclusion in {@link isAutoIsolatable}.
+ * @returns {string}
+ */
+export function hostPackageDir() {
+  try {
+    return realpathSync(dirname(fileURLToPath(import.meta.url)))
+  } catch {
+    return dirname(fileURLToPath(import.meta.url))
+  }
+}
+
+/**
+ * The generic class-① isolate runner shipped with coraek (T round): answers
+ * the `aek-capability/1` topology probes from the spawned capability's own
+ * package dir. Every TS/JS capability is isolatable WITHOUT declaring
+ * `aek.runtime.isolate`; a declared `aek.runtime.isolate.bin` always wins.
+ * @returns {string} absolute path to `bin/isolate-generic.mjs` (zero
+ *   hardcoded paths: derived from this module's own location).
+ */
+export function genericIsolateBin() {
+  return join(dirname(fileURLToPath(import.meta.url)), 'bin', 'isolate-generic.mjs')
+}
+
+/**
+ * Resolve what to spawn for one capability in `isolate` mode: the declared
+ * CUSTOM bin when present (relative, shell-free, resolved against the
+ * package dir via `attach.cwd`), else the coraek generic runner.
+ *
+ * The generic runner is spawned as `node <absolute-runner-path>`: the
+ * supervisor's attach contract requires `command` to be a RELATIVE
+ * shell-free executable name (an absolute path is rejected), while argv
+ * tokens may be absolute — and forward-slashed, since a backslash is a
+ * shell metacharacter in the token gate (Windows keeps working: node
+ * accepts `/` in paths). The runner itself is cwd-driven: it reads
+ * `./package.json` in the capability's dir (`attach.cwd`).
+ * @param {{ id: string, manifest: Record<string, unknown>, packageDir?: string }} pkg
+ * @returns {{ command: string, args: string[], cwd?: string, custom: boolean }}
+ */
+export function resolveIsolateAttach(pkg) {
+  const rt = pkg.manifest && typeof pkg.manifest === 'object' ? pkg.manifest.aek?.runtime : undefined
+  const declaredBin = rt !== null && typeof rt === 'object' && rt.isolate !== null && typeof rt.isolate === 'object' && typeof rt.isolate.bin === 'string' && rt.isolate.bin.length > 0
+    ? rt.isolate.bin
+    : undefined
+  if (declaredBin !== undefined) {
+    return { command: declaredBin, args: [], cwd: pkg.packageDir, custom: true }
+  }
+  const runner = genericIsolateBin().split(sep).join('/')
+  return { command: 'node', args: [runner], cwd: pkg.packageDir, custom: false }
 }
 
 /**
@@ -182,12 +316,19 @@ export function writeRuntimeMode(aekHome, id, mode) {
  * No hardcoded absolute paths: both are derived from the module's own
  * location / the process cwd at call time.
  *
+ * T round: every discovered package carries its source BUCKET — the
+ * `packages/aek/*` layout the user classifies by (coraek-plugins →
+ * `plugins`, public → `public`, base → `base`, target-extensions →
+ * `extensions`). An explicit `aek.bucket` manifest field always wins (the
+ * install layout is flat and cannot be derived); the dev layout derives it
+ * from the directory position.
+ *
  * @param {string} fromUrl - the compiled coraek host module's `import.meta.url`.
  * @param {string} [cwd] - working directory for the dev layout.
- * @returns {Array<{ id: string, manifest: Record<string, unknown>, packageDir: string }>}
+ * @returns {Array<{ id: string, manifest: Record<string, unknown>, packageDir: string, bucket?: string }>}
  */
 export function discoverAekSiblingPackages(fromUrl, cwd = process.cwd()) {
-  const byId = /** @type {Map<string, { id: string, manifest: Record<string, unknown>, packageDir: string }>} */ (new Map())
+  const byId = /** @type {Map<string, { id: string, manifest: Record<string, unknown>, packageDir: string, bucket?: string }>} */ (new Map())
 
   /** Collect one scope dir's children (symlinks followed by name). */
   const collectScope = (scopeDir) => {
@@ -196,7 +337,7 @@ export function discoverAekSiblingPackages(fromUrl, cwd = process.cwd()) {
       const packageDir = join(scopeDir, entry.name)
       const manifest = readManifest(packageDir)
       if (manifest === undefined) continue
-      byId.set(entry.name, { id: entry.name, manifest, packageDir })
+      byId.set(entry.name, { id: entry.name, manifest, packageDir, bucket: bucketOf(manifest) })
     }
   }
 
@@ -210,6 +351,16 @@ export function discoverAekSiblingPackages(fromUrl, cwd = process.cwd()) {
   walkRepoAek(join(cwd, 'packages', 'aek'), 3, byId)
 
   return [...byId.values()]
+}
+
+/**
+ * The manifest-declared bucket, when present and valid.
+ * @param {Record<string, unknown>} manifest
+ * @returns {string | undefined}
+ */
+function bucketOf(manifest) {
+  const declared = manifest.aek !== null && typeof manifest.aek === 'object' ? manifest.aek.bucket : undefined
+  return typeof declared === 'string' && declared.length > 0 ? declared : undefined
 }
 
 /**
@@ -230,13 +381,39 @@ function readManifest(packageDir) {
 }
 
 /**
+ * The dev-layout bucket map: the FIRST directory component below
+ * `packages/aek` is the user's classification (the 2026-11-15 T round
+ * layout). `target-extensions` is the fourth, on-hold target-extension
+ * bucket. Unknown first components fall back to `plugins`.
+ * @param {string} firstComponent
+ * @returns {string}
+ */
+function devLayoutBucket(firstComponent) {
+  switch (firstComponent) {
+    case 'coraek-plugins':
+      return 'plugins'
+    case 'public':
+      return 'public'
+    case 'base':
+      return 'base'
+    case 'target-extensions':
+      return 'extensions'
+    default:
+      return 'plugins'
+  }
+}
+
+/**
  * Walk `packages/aek/**` (depth-bounded, skipping node_modules) and record
- * every package that carries an `aek` manifest block.
+ * every package that carries an `aek` manifest block. The bucket is the
+ * top-level directory under `packages/aek` the package sits in (threaded
+ * down the recursion); an explicit `aek.bucket` manifest field wins.
  * @param {string} rootDir
  * @param {number} depth
- * @param {Map<string, { id: string, manifest: Record<string, unknown>, packageDir: string }>} out
+ * @param {Map<string, { id: string, manifest: Record<string, unknown>, packageDir: string, bucket?: string }>} out
+ * @param {string | undefined} bucket - the bucket context of this level.
  */
-function walkRepoAek(rootDir, depth, out) {
+function walkRepoAek(rootDir, depth, out, bucket) {
   let entries
   try {
     entries = readdirSync(rootDir, { withFileTypes: true })
@@ -249,9 +426,12 @@ function walkRepoAek(rootDir, depth, out) {
     const dir = join(rootDir, entry.name)
     const manifest = readManifest(dir)
     if (manifest !== undefined && !out.has(entry.name)) {
-      out.set(entry.name, { id: entry.name, manifest, packageDir: dir })
+      // The bucket at this level: the inherited context, else this entry's
+      // own name (a top-level bucket dir), else the `plugins` fallback.
+      const pkgBucket = bucketOf(manifest) ?? (bucket !== undefined ? bucket : devLayoutBucket(entry.name))
+      out.set(entry.name, { id: entry.name, manifest, packageDir: dir, bucket: pkgBucket })
     }
-    if (depth > 0) walkRepoAek(dir, depth - 1, out)
+    if (depth > 0) walkRepoAek(dir, depth - 1, out, bucket !== undefined ? bucket : devLayoutBucket(entry.name))
   }
 }
 
@@ -278,22 +458,21 @@ export async function bootIsolateRuntimePackages({ supervisor, aekHome, packages
     const block = manifest && typeof manifest === 'object' && manifest.aek !== null && typeof manifest.aek === 'object'
       ? manifest.aek.runtime
       : undefined
-    if (block === null || typeof block !== 'object' || !effectiveModes(manifest).canIsolate) {
-      // A stored isolate choice with no spawnable declaration is a config
-      // problem the host must surface, not silently ignore.
-      results[id] = { ok: false, problem: "stored 'isolate' choice but the package declares no spawnable aek.runtime.isolate.bin" }
-      continue
-    }
-    const bin = block.isolate && typeof block.isolate === 'object' ? block.isolate.bin : undefined
-    if (typeof bin !== 'string' || bin.length === 0) {
-      results[id] = { ok: false, problem: 'no spawnable aek.runtime.isolate.bin declared' }
+    // T round: the spawn entry resolves to the declared CUSTOM bin when the
+    // package supplies one, else the coraek generic runner — every TS/JS
+    // capability is isolatable without declaring anything.
+    const attach = resolveIsolateAttach({ id, manifest, packageDir })
+    if (!attach.custom && !isAutoIsolatable(manifest, packageDir, hostPackageDir())) {
+      // No JS in-process part to move (a bundle / patch-yaml package) and
+      // no custom bin: a stored isolate choice with nothing spawnable.
+      results[id] = { ok: false, problem: "stored 'isolate' choice but the package has no spawnable entry (no JS in-process part, no aek.runtime.isolate.bin)" }
       continue
     }
     const declared = {
       protocol: 'aek-capability/1',
       name: id,
       version: typeof manifest.version === 'string' ? manifest.version : '0.0.0',
-      ...(typeof block.isolate.spdx === 'string' && block.isolate.spdx.length > 0
+      ...(typeof block?.isolate?.spdx === 'string' && block.isolate.spdx.length > 0
         ? { spdx: block.isolate.spdx }
         : typeof manifest.license === 'string' ? { spdx: manifest.license } : {}),
       ...(typeof manifest.repository === 'string' ? { source: manifest.repository }
@@ -301,9 +480,12 @@ export async function bootIsolateRuntimePackages({ supervisor, aekHome, packages
           ? { source: manifest.repository.url }
           : {}),
       capabilities: Array.isArray(manifest.aek?.capabilities) ? manifest.aek.capabilities : [{ id: 'web' }],
-      // The gate keeps `command` a relative, shell-free name; the package dir
-      // travels as `attach.cwd` so the spawn lands in the package itself.
-      attach: { kind: 'jsonrpc-stdio', command: bin, args: [], cwd: packageDir },
+      // The custom bin stays a relative, shell-free name resolved against
+      // `attach.cwd`; the generic runner is `node <absolute coraek path>` —
+      // the command must be a relative executable name, the absolute path
+      // travels as an argv token (the capability's own dir is `attach.cwd`,
+      // so a relative command could not reach coraek's bin).
+      attach: { kind: 'jsonrpc-stdio', command: attach.command, args: attach.args, cwd: attach.cwd },
     }
     // In-tree class ① packages ship WITH the AEK distribution (maintained by
     // the AEK project, not installed/hand-maintained by the user) — mark them

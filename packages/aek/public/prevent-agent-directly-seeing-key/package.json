@@ -27,6 +27,7 @@
   },
   "license": "Apache-2.0",
   "aek": {
-    "distribution": "A1"
+    "distribution": "A1",
+    "bucket": "public"
   }
 }

@@ -23,7 +23,8 @@
   "aek": {
     "type": "dsh-bundle",
     "description": "coraek profile layer: declares which AEK plugins a web profile mounts; contains no runtime code",
-    "distribution": "A1"
+    "distribution": "A1",
+    "bucket": "base"
   },
   "dependencies": {
     "@cheezmil/aek-web": "workspace:*",

@@ -56,7 +56,8 @@
       "aek-prompt-manager"
     ],
     "description": "Standalone prompt-manager CLI (aekpm, primary interface) + optional Cordis plugin registering the ctx.promptManager host service for the dsh web profile (auxiliary face). The CLI and the host service run the SAME plain-JS engine.",
-    "distribution": "A1"
+    "distribution": "A1",
+    "bucket": "plugins"
   },
   "files": [
     "lib/",

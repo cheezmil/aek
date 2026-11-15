@@ -913,13 +913,33 @@ body {
 /* One transient result line after a plugin action. The static "here is how the
    switch works" paragraph that used to live above the roster is gone: the user
    does not want prose explaining the mechanism on the page (2026-11-09). */
+/* T round: the plain text line was an unreadable blob — it is now a tinted
+   pill (success / error variant classes set the color pair). */
 .noticeLine {
   display: flex;
   align-items: center;
   gap: var(--aek-space-2);
   margin: 0 0 var(--aek-space-3);
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   color: var(--aek-text-secondary);
   font-size: 12px;
+}
+/* A read-only statement (settings backup/restore notices): the neutral tone
+   is a quiet surface pill, not plain text. */
+.noticeNeutral {
+  background: var(--aek-surface-subtle);
+}
+.noticeSuccess {
+  border-color: var(--aek-surface-success-subtle, rgba(34, 197, 94, 0.25));
+  background: var(--aek-surface-success-subtle, rgba(34, 197, 94, 0.10));
+  color: var(--aek-text-success, #16a34a);
+}
+.noticeError {
+  border-color: var(--aek-danger-border);
+  background: var(--aek-danger-soft);
+  color: var(--aek-danger);
 }
 
 /* A plain statement, not a failure: the plugin is switched off on purpose. */
@@ -3102,26 +3122,48 @@ button.panelSearchCount:hover {
 }
 
 /* S round: the "运行时与内存" section (numbered runtimes + live memory). */
-.rtList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--aek-space-2); }
-.rtRow {
+/* T round: the runtime block is embedded in the 插件与程序 card (the
+   standalone 运行时与内存 section is gone) — the numbered rows, the per-OS
+   hint and the add row live as one quiet block. */
+.rtBlock {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--aek-space-2);
+  padding: var(--aek-space-3);
+  border: 1px solid var(--aek-border);
+  border-radius: var(--aek-radius-sm);
+  background: var(--aek-surface-subtle);
+  margin-bottom: var(--aek-space-3);
+}
+.rtList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--aek-space-2); }
+/* T round: the row was a free flex line (chips jammed, columns drifting).
+   It is now a fixed grid so number / kind / label / state / memory / actions
+   land in the SAME columns on every row — the layout the "瞎了吗" complaint
+   was about. The label column is the only fluid one (minmax(0,1fr) + ellipsis). */
+.rtRow {
+  display: grid;
+  grid-template-columns: 22px 88px minmax(0, 1fr) 64px minmax(140px, 220px) auto;
+  column-gap: var(--aek-space-2);
+  align-items: center;
   border: 1px solid var(--aek-border);
   border-radius: 8px;
   padding: 8px 10px;
   background: var(--aek-surface);
 }
 .rtNumber {
-  flex: 0 0 auto;
-  min-width: 18px;
   text-align: center;
   font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--aek-text-muted);
 }
-.rtLabel { font-size: 13px; font-weight: 600; }
+.rtLabel {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .rtLabelInput {
   font-size: 13px;
   font-weight: 600;
@@ -3130,50 +3172,34 @@ button.panelSearchCount:hover {
   border-radius: 4px;
   background: var(--aek-surface-subtle);
   color: var(--aek-text);
-  width: 180px;
+  width: 100%;
+  min-width: 0;
 }
 .rtChip {
-  flex: 0 0 auto;
   padding: 1px 8px;
   border: 1px solid var(--aek-border);
   border-radius: 999px;
   background: var(--aek-surface-subtle);
   color: var(--aek-text-muted);
   font-size: 11px;
+  justify-self: start;
 }
 .rtState {
-  flex: 0 0 auto;
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
+  justify-self: start;
 }
 .rtStateRunning { background: var(--aek-surface-success-subtle, rgba(34, 197, 94, 0.12)); color: var(--aek-text-success, #16a34a); }
 .rtStateStopped { background: var(--aek-surface-subtle); color: var(--aek-text-muted); }
 .rtMem {
-  flex: 0 0 auto;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--aek-text-muted);
+  overflow-wrap: anywhere;
 }
-.rtPlugins {
-  flex: 1 1 auto;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  min-width: 60px;
-}
-.rtActions { flex: 0 0 auto; display: flex; gap: 4px; margin-left: auto; }
-.rtPluginRow {
-  display: flex;
-  align-items: center;
-  gap: var(--aek-space-2);
-  padding: 4px 2px;
-  border-bottom: 1px solid var(--aek-border-soft, var(--aek-border));
-  font-size: 12px;
-}
-.rtPluginName { font-weight: 600; min-width: 140px; }
-.rtPluginRuntime { flex: 0 0 auto; color: var(--aek-text-muted); font-size: 11px; }
+.rtActions { display: flex; gap: 4px; justify-self: end; }
 .rtEmpty { color: var(--aek-text-muted); font-size: 12px; padding: 4px 0; }
 .rtAddRow { display: flex; align-items: center; gap: var(--aek-space-2); margin-top: var(--aek-space-2); }
 .rtSelect {
@@ -3184,4 +3210,68 @@ button.panelSearchCount:hover {
   border-radius: 6px;
   background: var(--aek-surface);
   color: var(--aek-text);
+}
+/* T round: the custom runtime name — the text box that replaces the old
+   "name comes from the capability id" limitation. */
+.rtNameInput {
+  flex: 1 1 160px;
+  min-width: 120px;
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--aek-border);
+  border-radius: 6px;
+  background: var(--aek-surface);
+  color: var(--aek-text);
+}
+/* T round: bucket group headers inside the 插件与程序 roster (the user's
+   disk classification — coraek-plugins / public / base / target-extensions). */
+.pluginGroupTitle {
+  margin: var(--aek-space-3) 0 var(--aek-space-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--aek-text-muted);
+}
+/* T round: the per-plugin runtime line — WHERE this package runs (the old
+   "所驻插件" table's content, now inside each roster row). */
+.pluginRuntimeLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--aek-space-2);
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--aek-text-muted);
+}
+.pluginRuntimeLine .rtChip { background: var(--aek-surface); }
+.pluginRuntimeText { font-size: 11px; color: var(--aek-text-muted); }
+.pluginRuntimeMove {
+  padding: 2px 8px;
+  border: 1px solid var(--aek-border);
+  border-radius: 999px;
+  background: var(--aek-surface);
+  color: var(--aek-text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.pluginRuntimeMove:hover { border-color: var(--aek-accent); color: var(--aek-accent-ink, var(--aek-accent)); }
+.pluginRuntimeMove:disabled { opacity: 0.5; cursor: default; }
+/* T round: read-only roster rows (host-identity / library / bundle buckets
+   are not switchable parts) get a quiet marker in the actions slot. */
+.pluginReadOnlyChip {
+  padding: 1px 8px;
+  border: 1px solid var(--aek-border);
+  border-radius: 999px;
+  background: var(--aek-surface-subtle);
+  color: var(--aek-text-muted);
+  font-size: 11px;
+}
+/* The empty switch slot on non-switchable rows: keeps the three-column
+   actions grid aligned across every row (the 排版错乱 fix from 2026-11-09). */
+.pluginSwitchSlot {
+  width: 38px;
+  height: 20px;
+  display: block;
 }

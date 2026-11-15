@@ -30,7 +30,6 @@ import {
 } from './nav-model.ts'
 import { PluginSubNav } from './PluginSubNav.tsx'
 import { RuntimeModePanel } from './RuntimeModePanel.tsx'
-import { RuntimesPanel } from './RuntimesPanel.tsx'
 import { AboutPanel, PluginsPanel } from './InfoPanels.tsx'
 import { sidebarCssVars } from './settings-schema.ts'
 import { css, cx } from './styles.ts'
@@ -248,8 +247,9 @@ function Console() {
     if (id === 'runtime') {
       // N round: the three stacked cards read as "排版混乱，分类混乱" — no
       // section titles, and the plugin list duplicated across two cards.
-      // The page now scans as three titled sections, and the About block
-      // drops its read-only plugin list (deduped into the operational one).
+      // T round: the 运行时与内存 section was folded INTO the 插件与程序 card
+      // (RuntimesBlock inside PluginsPanel) — the numbered rows live next to
+      // the roster they meter, so the page scans as two titled sections.
       const { t } = useI18n()
       return (
         <div>
@@ -257,7 +257,6 @@ function Console() {
             <h2 className={css.programsSectionTitle}>{t('panel.runtimeSection')}</h2>
             <RuntimeModePanel refreshSignal={signalFor('runtime')} />
           </section>
-          <RuntimesPanel refreshSignal={signalFor('runtime')} />
           <section className={css.programsSection}>
             <h2 className={css.programsSectionTitle}>{t('panel.pluginsSection')}</h2>
             <div className={css.programsSectionHint}>{t('about.stackHint')}</div>

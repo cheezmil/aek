@@ -1,15 +1,25 @@
 /**
- * 运行时与内存 — the numbered coraek runtime view (S round).
+ * 运行时 — the numbered coraek runtime view (S round, merged into the
+ * 插件与程序 card by the T round).
  *
  * Runtime 1 is always the shared host runtime (this console's own process);
  * runtimes 2..N are the isolated capability processes. Every number, pid,
  * label and memory reading is host-resolved (`GET /api/aek/runtimes`) — the
- * client only renders. Memory is live and honest: the host row is a
- * `process.memoryUsage()` reading, an isolated row is its whole-process RSS,
- * and an in-host plugin is reported as "counted toward the host runtime",
- * never an invented per-module split.
+ * client only renders.
  *
- * The section hides itself when the host has no route (an older build):
+ * T round changes:
+ * - The block is EMBEDDED in the 插件与程序 card (no standalone section):
+ *   the per-plugin "所驻插件" table is gone — each plugin row of the roster
+ *   carries its own runtime line (InfoPanels).
+ * - The per-OS memory wording: `win32` reports a **working set** reading,
+ *   `darwin` / `linux` report **RSS** — the term is chosen from the host's
+ *   `process.platform` (the snapshot carries it) and the hint explains the
+ *   term, instead of the old unexplained "RSS".
+ * - The add row takes a capability (isolatable list) + an OPTIONAL custom
+ *   runtime name; a blank name keeps the capability id (persisted as the
+ *   label on the host).
+ *
+ * The block hides itself when the host has no route (an older build):
  * `useRuntimes` reports `unsupported` and this component renders nothing.
  *
  * @module @cheezmil/aek-web/src/RuntimesPanel
@@ -22,14 +32,15 @@ import type { RuntimeRow } from './useRuntimes.ts'
 import { useRuntimes } from './useRuntimes.ts'
 
 /** Format one byte reading as a quiet `xx.x MB` (or the unknown marker). */
-function fmtBytes(bytes?: number): string {
+export function fmtBytes(bytes?: number): string {
   return bytes === undefined ? '—' : `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-/** One runtime row: number, kind, label (inline rename), state, memory, plugins, actions. */
-function RuntimeRowView({ row, host, onRename, onRemove, busy }: {
+/** One runtime row: number, kind, label (inline rename), state, memory, actions. */
+function RuntimeRowView({ row, host, term, onRename, onRemove, busy }: {
   row: RuntimeRow
   host: boolean
+  term: string
   onRename: (id: string, label: string) => void
   onRemove: (id: string) => void
   busy: string | undefined
@@ -39,8 +50,8 @@ function RuntimeRowView({ row, host, onRename, onRemove, busy }: {
   const [draft, setDraft] = useState('')
   const stateClass = row.state === 'running' ? css.rtStateRunning : css.rtStateStopped
   const memoryText = host
-    ? `${t('runtimes.memRss')} ${fmtBytes(row.memory?.rss)} · ${t('runtimes.memHeap')} ${fmtBytes(row.memory?.heapUsed)}`
-    : `${t('runtimes.memRss')} ${fmtBytes(row.memory?.rss)}`
+    ? `${term} ${fmtBytes(row.memory?.rss)} · ${t('runtimes.memHeap')} ${fmtBytes(row.memory?.heapUsed)}`
+    : `${term} ${fmtBytes(row.memory?.rss)}`
   return (
     <li className={css.rtRow}>
       <span className={css.rtNumber}>{String(row.number)}</span>
@@ -68,9 +79,6 @@ function RuntimeRowView({ row, host, onRename, onRemove, busy }: {
       )}
       <span className={cx(css.rtState, stateClass)}>{t(row.state === 'running' ? 'runtimes.state.running' : 'runtimes.state.stopped')}</span>
       <span className={css.rtMem}>{memoryText} · pid {row.pid ?? '—'}</span>
-      <span className={css.rtPlugins}>
-        {row.plugins.map(pluginId => <span key={pluginId} className={css.unknownChip}>{pluginId}</span>)}
-      </span>
       {!host && row.id !== undefined ? (
         <span className={css.rtActions}>
           <button
@@ -95,57 +103,33 @@ function RuntimeRowView({ row, host, onRename, onRemove, busy }: {
   )
 }
 
-/** The per-plugin memory table (the "哪些插件占用了多少内存" half). */
-function PluginMemoryTable({ pluginMemory, runtimes }: {
-  pluginMemory: Record<string, { value?: number; caliber: 'process-rss' | 'in-host-shared' }>
-  runtimes: RuntimeRow[]
-}): ReactNode {
-  const { t } = useI18n()
-  const entries = Object.entries(pluginMemory).sort(([a], [b]) => a.localeCompare(b))
-  if (entries.length === 0) return <div className={css.rtEmpty}>{t('runtimes.empty')}</div>
-  const runtimeOf = (pluginId: string): number => {
-    const row = runtimes.find(candidate => candidate.plugins.includes(pluginId))
-    return row !== undefined ? row.number : 1
-  }
-  return (
-    <div>
-      <h3 className={css.sectionTitle}>{t('runtimes.plugins')}</h3>
-      {entries.map(([pluginId, entry]) => (
-        <div key={pluginId} className={css.rtPluginRow}>
-          <span className={css.rtPluginName}>{pluginId}</span>
-          <span className={css.rtPluginRuntime}>
-            {entry.caliber === 'in-host-shared'
-              ? t('plugins.mem.inHost')
-              : `${t('plugins.mem.process')} · ${t('runtimes.memRss')} ${fmtBytes(entry.value)}`}
-          </span>
-          <span className={css.rtMem}>rt{String(runtimeOf(pluginId))}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 /**
- * The numbered runtime section.
+ * The embedded runtime block: the numbered rows, the add row (capability +
+ * optional custom name) and the per-OS hint. Rendered INSIDE the 插件与程序
+ * card (T round), never as a standalone section.
  * @param refreshSignal - a number bump re-reads the snapshot.
- * @returns the section (or nothing on an older host).
+ * @returns the block (or nothing on an older host).
  */
-export function RuntimesPanel({ refreshSignal }: { refreshSignal: number }): ReactNode {
+export function RuntimesBlock({ refreshSignal }: { refreshSignal: number }): ReactNode {
   const { t } = useI18n()
   const { snapshot, unsupported, busy, addRuntime, removeRuntime, renameRuntime } = useRuntimes(refreshSignal)
   const [pendingAdd, setPendingAdd] = useState('')
+  const [pendingName, setPendingName] = useState('')
   if (unsupported || snapshot === undefined) return null
   const rows = [snapshot.host, ...snapshot.runtimes]
+  const isWin32 = snapshot.platform === 'win32'
+  const hint = isWin32 ? t('runtimes.hint.win32') : t('runtimes.hint.posix')
+  const term = isWin32 ? t('runtimes.memTerm.win32') : t('runtimes.memTerm.posix')
   return (
-    <section className={css.programsSection}>
-      <h2 className={css.programsSectionTitle}>{t('panel.runtimesSection')}</h2>
-      <div className={css.hint}>{t('runtimes.hint')}</div>
+    <div className={css.rtBlock}>
+      <div className={css.hint}>{hint}</div>
       <ul className={css.rtList}>
         {rows.map(row => (
           <RuntimeRowView
             key={row.kind === 'host' ? 'host' : (row.id as string)}
             row={row}
             host={row.kind === 'host'}
+            term={term}
             onRename={(id, label) => { void renameRuntime(id, label) }}
             onRemove={(id) => { void removeRuntime(id) }}
             busy={busy}
@@ -163,6 +147,20 @@ export function RuntimesPanel({ refreshSignal }: { refreshSignal: number }): Rea
           <option value="">{t('runtimes.add')}…</option>
           {snapshot.isolatable.map(id => <option key={id} value={id}>{id}</option>)}
         </select>
+        <input
+          className={css.rtNameInput}
+          value={pendingName}
+          onChange={(event) => { setPendingName(event.target.value) }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && pendingAdd !== '' && busy === undefined) {
+              if (window.confirm(t('runtimes.addConfirm'))) void addRuntime(pendingAdd, pendingName)
+              setPendingAdd('')
+              setPendingName('')
+            }
+          }}
+          placeholder={t('runtimes.addNamePlaceholder')}
+          aria-label={t('runtimes.addNamePlaceholder')}
+        />
         <button
           type="button"
           className={css.iconButton}
@@ -170,12 +168,12 @@ export function RuntimesPanel({ refreshSignal }: { refreshSignal: number }): Rea
           disabled={pendingAdd === '' || busy !== undefined}
           onClick={() => {
             if (pendingAdd === '') return
-            if (window.confirm(t('runtimes.addConfirm'))) void addRuntime(pendingAdd)
+            if (window.confirm(t('runtimes.addConfirm'))) void addRuntime(pendingAdd, pendingName)
             setPendingAdd('')
+            setPendingName('')
           }}
         >＋</button>
       </div>
-      <PluginMemoryTable pluginMemory={snapshot.pluginMemory} runtimes={snapshot.runtimes} />
-    </section>
+    </div>
   )
 }

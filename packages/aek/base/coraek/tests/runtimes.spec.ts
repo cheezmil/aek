@@ -17,7 +17,7 @@ import {
   processRss,
   runtimesSnapshot,
 } from '../runtimes.mjs'
-import { writeRuntimeMode } from '../runtime.mjs'
+import { writeRuntimeMode, hostPackageDir } from '../runtime.mjs'
 
 /** One temp AEK home per test. */
 function freshHome(): string {
@@ -85,8 +85,8 @@ describe('runtimesSnapshot — the derived numbering', () => {
   it('isolated capabilities number 2..N in stable (sorted) order', () => {
     home = freshHome()
     const packages = [
-      { id: 'zeta-tool', manifest: { name: 'zeta-tool', aek: { runtime: { isolate: { bin: 'bin/zeta.mjs' } } } } },
-      { id: 'alpha-tool', manifest: { name: 'alpha-tool', aek: { runtime: { isolate: { bin: 'bin/alpha.mjs' } } } } },
+      { id: 'zeta-tool', manifest: { name: 'zeta-tool', main: './lib/index.js', aek: { runtime: { isolate: { bin: 'bin/zeta.mjs' } } } } },
+      { id: 'alpha-tool', manifest: { name: 'alpha-tool', main: './lib/index.js', aek: { runtime: { isolate: { bin: 'bin/alpha.mjs' } } } } },
     ]
     // Both user-selected isolate.
     writeRuntimeLabel(home, 'alpha-tool', '') // ensures the file exists (v2, empty maps)
@@ -102,7 +102,7 @@ describe('runtimesSnapshot — the derived numbering', () => {
 
   it('a stored isolate choice moves the capability into its own numbered runtime', () => {
     home = freshHome()
-    const pkg = { id: 'aek-websearch', manifest: { name: 'aek-websearch', aek: { runtime: { isolate: { bin: 'bin/isolate.mjs' } } } } }
+    const pkg = { id: 'aek-websearch', manifest: { name: 'aek-websearch', main: './lib/index.js', aek: { runtime: { isolate: { bin: 'bin/isolate.mjs' } } } } }
     // Persist the user-select isolate choice through the real store writer.
     writeRuntimeMode(home, 'aek-websearch', 'isolate')
     const snapshot = runtimesSnapshot({
@@ -124,10 +124,49 @@ describe('runtimesSnapshot — the derived numbering', () => {
 
   it('a shared but isolate-capable capability is an add candidate', () => {
     home = freshHome()
-    const pkg = { id: 'aek-websearch', manifest: { name: 'aek-websearch', aek: { runtime: { isolate: { bin: 'bin/isolate.mjs' } } } } }
+    const pkg = { id: 'aek-websearch', manifest: { name: 'aek-websearch', main: './lib/index.js', aek: { runtime: { isolate: { bin: 'bin/isolate.mjs' } } } } }
     const snapshot = runtimesSnapshot({ aekHome: home, packages: [pkg], supervisorRows: [] })
     expect(snapshot.isolatable).toEqual(['aek-websearch'])
     expect(snapshot.pluginMemory['aek-websearch']).toEqual({ value: undefined, unit: 'bytes', caliber: 'in-host-shared' })
+  })
+
+  it('an undeclared class ① capability with a JS entry is an add candidate automatically (T round)', () => {
+    home = freshHome()
+    const pkg = {
+      id: 'aek-quick-prompt',
+      manifest: { name: '@cheezmil/aek-quick-prompt', main: './lib/index.js', aek: { distribution: 'A2' } },
+      bucket: 'plugins',
+    }
+    const snapshot = runtimesSnapshot({ aekHome: home, packages: [pkg], supervisorRows: [] })
+    // No aek.runtime.isolate declaration anywhere: the auto-scope admits it.
+    expect(snapshot.isolatable).toEqual(['aek-quick-prompt'])
+    // The bucket rides on the per-plugin memory view entry.
+    expect(snapshot.pluginMemory['aek-quick-prompt']).toEqual({ value: undefined, unit: 'bytes', caliber: 'in-host-shared', bucket: 'plugins' })
+  })
+
+  it('a bundle package (patch-yaml main, no JS part) is not an add candidate', () => {
+    home = freshHome()
+    const pkg = { id: 'aek-for-dsh', manifest: { name: 'aek-for-dsh', main: 'cordis.patch.yml', aek: { type: 'dsh-bundle' } } }
+    const snapshot = runtimesSnapshot({ aekHome: home, packages: [pkg], supervisorRows: [] })
+    expect(snapshot.isolatable).toEqual([])
+  })
+
+  it('the host package is never an add candidate (self-exclusion)', () => {
+    home = freshHome()
+    const pkg = {
+      id: 'coraek',
+      manifest: { name: '@cheezmil/coraek', main: './lib/index.js', aek: {} },
+      packageDir: hostPackageDir(),
+      bucket: 'base',
+    }
+    const snapshot = runtimesSnapshot({ aekHome: home, packages: [pkg], supervisorRows: [] })
+    expect(snapshot.isolatable).toEqual([])
+  })
+
+  it('the snapshot carries the host platform for OS-specific memory wording', () => {
+    home = freshHome()
+    const snapshot = runtimesSnapshot({ aekHome: home, packages: [], supervisorRows: [] })
+    expect(snapshot.platform).toBe(process.platform)
   })
 
   it('an operator label overrides the row display name', () => {

@@ -20,7 +20,8 @@
   "aek": {
     "type": "dsh-bundle",
     "description": "DSh bundle: install once to give the profile access to all AEK plugins",
-    "distribution": "A1"
+    "distribution": "A1",
+    "bucket": "extensions"
   },
   "dependencies": {
     "@cheezmil/coraek": "^1.0.1",

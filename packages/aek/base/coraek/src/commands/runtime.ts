@@ -22,7 +22,12 @@
  *   status <id>                   one capability: stored choice, effective mode, reason
  *   set <id> share|isolate --confirm   persist the operator's selective choice
  *   create <id> --confirm         alias of `set <id> isolate` (validates the
- *                                  capability supports a spawnable isolate bin)
+ *                                  capability has a JS in-process part to
+ *                                  move — T round: every TS/JS capability is
+ *                                  automatically isolatable, no manifest
+ *                                  declaration needed; a custom bin via
+ *                                  aek.runtime.isolate.bin is an optional
+ *                                  override)
  *   remove <id> --confirm         stop the isolated process (best effort) and
  *                                  move the capability back to the shared host
  *
@@ -38,7 +43,7 @@ import {
   writeRuntimeMode,
   resolveRuntimeMode,
   hasExternalManifest,
-  effectiveModes,
+  isAutoIsolatable,
 } from '../../runtime.mjs'
 import { runtimesSnapshot, processRss } from '../../runtimes.mjs'
 import { resolveAekHome } from '../../home.mjs'
@@ -194,7 +199,9 @@ export default class RuntimeCommand extends Command {
           reason: eff.reason,
           supportsIsolate: (() => {
             const manifest = manifests.get(id)
-            return manifest !== undefined ? effectiveModes(manifest).canIsolate : true
+            if (manifest === undefined) return true
+            if (hasExternalManifest(manifest)) return true
+            return isAutoIsolatable(manifest)
           })(),
         }
         this.log(JSON.stringify(body, null, 2))
@@ -208,8 +215,9 @@ export default class RuntimeCommand extends Command {
           this.error(`cannot set '${id}' to share — it is ${eff.reason} (strong-copyleft / native capabilities are isolate-only)`)
         }
         const manifest = manifests.get(id)
-        if (manifest !== undefined && mode === 'isolate' && !effectiveModes(manifest).canIsolate) {
-          this.error(`cannot set '${id}' to isolate — the capability does not declare a spawnable aek.runtime.isolate.bin`)
+        if (manifest !== undefined && mode === 'isolate'
+          && !hasExternalManifest(manifest) && !isAutoIsolatable(manifest)) {
+          this.error(`cannot set '${id}' to isolate — it has no JS in-process part to move (a bundle / patch-yaml package)`)
         }
         if (!flags.confirm) this.error('set is a write operation: re-run with --confirm')
         const result = writeRuntimeMode(aekHome, id, mode as 'share' | 'isolate')
@@ -225,8 +233,8 @@ export default class RuntimeCommand extends Command {
         // create a second, host-untracked supervisor instance (never do that).
         if (id === undefined) this.error('usage: aek runtime create <id> --confirm')
         const manifest = manifests.get(id)
-        if (manifest !== undefined && !effectiveModes(manifest).canIsolate) {
-          this.error(`cannot create — '${id}' does not declare a spawnable aek.runtime.isolate.bin`)
+        if (manifest !== undefined && !hasExternalManifest(manifest) && !isAutoIsolatable(manifest)) {
+          this.error(`cannot create — '${id}' has no JS in-process part to move (a bundle / patch-yaml package)`)
         }
         if (!flags.confirm) this.error('create is a write operation: re-run with --confirm')
         const result = writeRuntimeMode(aekHome, id, 'isolate')

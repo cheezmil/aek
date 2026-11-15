@@ -7,7 +7,7 @@
 import { describe, expect, it, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import {
   RUNTIME_MODES,
   isStrongCopyleft,
@@ -19,6 +19,10 @@ import {
   runtimeModesPath,
   discoverAekSiblingPackages,
   bootIsolateRuntimePackages,
+  hasInProcessEntry,
+  isAutoIsolatable,
+  genericIsolateBin,
+  hostPackageDir,
 } from '../runtime.mjs'
 import { runtimeMetaOf } from '../plugin-meta.mjs'
 
@@ -71,10 +75,59 @@ describe('runtime mode model', () => {
       expect(effectiveModes(manifest)).toEqual({ canShare: false, canIsolate: true })
     })
 
-    it('plain class ① plugins are share-only unless aek.runtime.isolate is declared', () => {
-      expect(effectiveModes({ main: './lib/index.js', aek: { distribution: 'A1' } })).toEqual({ canShare: true, canIsolate: false })
+    it('class ① TS/JS capabilities are automatically isolatable (T round)', () => {
+      // No declaration needed: the generic coraek runner covers them; a
+      // declared aek.runtime.isolate.bin only swaps in a custom bin.
+      expect(effectiveModes({ main: './lib/index.js', aek: { distribution: 'A1' } })).toEqual({ canShare: true, canIsolate: true })
       expect(effectiveModes({ main: './lib/index.js', aek: { distribution: 'A1', runtime: { isolate: { bin: 'bin/x.mjs' } } } }))
         .toEqual({ canShare: true, canIsolate: true })
+    })
+  })
+
+  describe('hasInProcessEntry / isAutoIsolatable (T round auto-isolate scope)', () => {
+    it('a JS main or exports entry is an in-process part', () => {
+      expect(hasInProcessEntry({ main: './lib/index.js' })).toBe(true)
+      expect(hasInProcessEntry({ main: 'lib/index.mjs' })).toBe(true)
+      expect(hasInProcessEntry({ exports: { '.': './lib/index.js' } })).toBe(true)
+      expect(hasInProcessEntry({ exports: { '.': { default: './lib/index.js', types: './lib/index.d.ts' } } })).toBe(true)
+    })
+
+    it('a non-JS main (a bundle patch-yaml) is NOT', () => {
+      expect(hasInProcessEntry({ main: 'cordis.patch.yml' })).toBe(false)
+      expect(hasInProcessEntry({})).toBe(false)
+    })
+
+    it('class ① with a JS entry is auto-isolatable; external and entry-less are not', () => {
+      expect(isAutoIsolatable({ main: './lib/index.js' })).toBe(true)
+      expect(isAutoIsolatable({ main: 'cordis.patch.yml' })).toBe(false)
+      expect(isAutoIsolatable({ aek: { external: { spdx: 'AGPL-3.0-or-later', attach: { kind: 'jsonrpc-stdio', command: 'x' } } } })).toBe(false)
+    })
+
+    it('the host package is never a child of its own runtime', () => {
+      expect(isAutoIsolatable({ main: './lib/index.js' }, '/same/dir', '/same/dir')).toBe(false)
+      expect(isAutoIsolatable({ main: './lib/index.js' }, '/other/dir', '/same/dir')).toBe(true)
+    })
+
+    it('disk fallback: a built entry on disk counts when the manifest declares none', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'aek-autoiso-'))
+      try {
+        // Manifest quirk (aek-quick-prompt): no main / exports, but a built
+        // lib/index.js ships — the host still loads it in-process, so the
+        // TS/JS part is there even though the manifest says nothing.
+        expect(isAutoIsolatable({}, dir, '/host/dir')).toBe(false)
+        mkdirSync(join(dir, 'lib'), { recursive: true })
+        writeFileSync(join(dir, 'lib', 'index.js'), 'export {}')
+        expect(isAutoIsolatable({}, dir, '/host/dir')).toBe(true)
+        // A bundle dir with nothing built stays out of scope.
+        const empty = mkdtempSync(join(tmpdir(), 'aek-autoiso-empty-'))
+        try {
+          expect(isAutoIsolatable({}, empty, '/host/dir')).toBe(false)
+        } finally {
+          rmSync(empty, { recursive: true, force: true })
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
     })
   })
 
@@ -245,6 +298,103 @@ describe('runtime boot switch (discover + bootIsolateRuntimePackages)', () => {
       expect(results['aek-websearch']?.ok).toBe(true)
       // share-stored / undeclared ids never reach the supervisor.
       expect(registered).not.toContain('other-capability')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('falls back to the generic coraek runner for an undeclared class ① package (T round)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'aek-runtime-boot-'))
+    try {
+      const home = join(root, 'home')
+      const pkgDir = join(root, 'aek-quick-prompt')
+      mkdirSync(pkgDir, { recursive: true })
+      const manifest = {
+        name: '@cheezmil/aek-quick-prompt',
+        version: '0.1.0',
+        main: './lib/index.js',
+        aek: { distribution: 'A2' },
+      }
+      expect(writeRuntimeMode(home, 'aek-quick-prompt', 'isolate').ok).toBe(true)
+
+      const declared: Record<string, unknown> = {}
+      const fakeSupervisor = {
+        register: async (id: string, descriptor: unknown) => {
+          declared[id] = descriptor as Record<string, unknown>
+          return { ok: true, problems: [] as string[] }
+        },
+        start: async (): Promise<{ ok: boolean; state?: string }> => ({ ok: true, state: 'running' }),
+      }
+      const results = await bootIsolateRuntimePackages({
+        supervisor: fakeSupervisor as never,
+        aekHome: home,
+        packages: [{ id: 'aek-quick-prompt', manifest, packageDir: pkgDir }],
+      })
+      expect(results['aek-quick-prompt']?.ok).toBe(true)
+      const attach = declared['aek-quick-prompt']?.attach as { command: string; args: string[]; cwd?: string }
+      // The generic runner is `node <coraek absolute bin>`: the command must
+      // stay a relative executable name (the supervisor attach contract), so
+      // the absolute runner path travels as an argv token, forward-slashed
+      // (a backslash is a shell metacharacter in the token gate). The
+      // capability's dir is the spawn cwd.
+      expect(attach.command).toBe('node')
+      expect(attach.args).toEqual([genericIsolateBin().split(sep).join('/')])
+      expect(attach.cwd).toBe(pkgDir)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a custom declared bin always wins over the generic runner', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'aek-runtime-boot-'))
+    try {
+      const home = join(root, 'home')
+      const pkgDir = join(root, 'aek-websearch')
+      mkdirSync(pkgDir, { recursive: true })
+      const manifest = {
+        name: '@cheezmil/aek-websearch',
+        version: '1.0.0',
+        main: './lib/index.js',
+        aek: { runtime: { share: true, isolate: { bin: 'bin/custom.mjs' } } },
+      }
+      expect(writeRuntimeMode(home, 'aek-websearch', 'isolate').ok).toBe(true)
+      const declared: Record<string, unknown> = {}
+      const fakeSupervisor = {
+        register: async (id: string, descriptor: unknown) => {
+          declared[id] = descriptor as Record<string, unknown>
+          return { ok: true, problems: [] as string[] }
+        },
+        start: async (): Promise<{ ok: boolean; state?: string }> => ({ ok: true, state: 'running' }),
+      }
+      await bootIsolateRuntimePackages({
+        supervisor: fakeSupervisor as never,
+        aekHome: home,
+        packages: [{ id: 'aek-websearch', manifest, packageDir: pkgDir }],
+      })
+      const attach = declared['aek-websearch']?.attach as { command: string }
+      // The declared bin stays relative (gate: shell-free, resolved via cwd).
+      expect(attach.command).toBe('bin/custom.mjs')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('the host package is never booted as its own isolate (self-exclusion)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'aek-runtime-boot-'))
+    try {
+      const home = join(root, 'home')
+      const manifest = { name: '@cheezmil/coraek', main: './lib/index.js', aek: {} }
+      expect(writeRuntimeMode(home, 'coraek', 'isolate').ok).toBe(true)
+      const fakeSupervisor = {
+        register: async (): Promise<{ ok: boolean; problems: string[] }> => ({ ok: true, problems: [] }),
+        start: async (): Promise<{ ok: boolean; state?: string }> => ({ ok: true, state: 'running' }),
+      }
+      const results = await bootIsolateRuntimePackages({
+        supervisor: fakeSupervisor as never,
+        aekHome: home,
+        packages: [{ id: 'coraek', manifest, packageDir: hostPackageDir() }],
+      })
+      expect(results['coraek']?.ok).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

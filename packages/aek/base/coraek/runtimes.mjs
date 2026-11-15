@@ -33,7 +33,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { platform } from 'node:os'
 import { dirname } from 'node:path'
 
-import { resolveRuntimeMode, effectiveModes, runtimeModesPath } from './runtime.mjs'
+import { resolveRuntimeMode, runtimeModesPath, isAutoIsolatable, hostPackageDir } from './runtime.mjs'
 
 /**
  * The store document this module writes (adds `labels` beside the existing
@@ -142,7 +142,8 @@ export function processRss(pid) {
  *   host:      { number: 1, kind: 'host', label, state: 'running', pid, memory, plugins },
  *   runtimes:  [ { id, number, kind: 'isolated', label, state, pid, memory, plugins } ],
  *   isolatable: [ capability ids that support `isolate` but currently share ],
- *   pluginMemory: { [capabilityId]: { value?: number, unit: 'bytes', caliber } }
+ *   platform:  the host's process.platform,
+ *   pluginMemory: { [capabilityId]: { value?: number, unit: 'bytes', caliber, bucket? } }
  * }
  * ```
  */
@@ -196,22 +197,33 @@ export function runtimesSnapshot(input) {
   // Per-plugin memory view: in-host plugins are honest "shared" rows (the
   // number lives in the host total, never split per module); isolated
   // plugins carry their own process RSS (undefined when unreadable).
+  // T round: each entry carries its source BUCKET (the user's
+  // coraek-plugins / public / base / target-extensions classification) so
+  // the console groups the roster instead of flattening everything into
+  // "plugins".
   const pluginMemory = {}
   for (const pkg of sorted) {
     const eff = resolveRuntimeMode({ manifest: pkg.manifest, storedMode: doc.modes[pkg.id] })
-    if (eff.mode === 'isolate') {
-      const row = rowById.get(pkg.id)
-      const pid = row !== undefined && row.state === 'running' ? row.pid : undefined
-      const rss = pid !== undefined ? processRss(pid) : undefined
-      pluginMemory[pkg.id] = { value: rss, unit: 'bytes', caliber: 'process-rss' }
-    } else {
-      pluginMemory[pkg.id] = { value: undefined, unit: 'bytes', caliber: 'in-host-shared' }
-    }
+    const entry = eff.mode === 'isolate'
+      ? (() => {
+        const row = rowById.get(pkg.id)
+        const pid = row !== undefined && row.state === 'running' ? row.pid : undefined
+        const rss = pid !== undefined ? processRss(pid) : undefined
+        return { value: rss, unit: 'bytes', caliber: 'process-rss', bucket: pkg.bucket }
+      })()
+      : { value: undefined, unit: 'bytes', caliber: 'in-host-shared', bucket: pkg.bucket }
+    pluginMemory[pkg.id] = entry
   }
 
+  // T round: the ADD candidates are the class ① capabilities that are
+  // AUTOMATICALLY isolatable (a JS in-process part, not the host package
+  // itself, not an external wrapper) AND currently share — no manifest
+  // declaration needed (the coraek generic runner covers them).
+  const hostDir = hostPackageDir()
   const isolatable = sorted
-    .filter((pkg) => effectiveModes(pkg.manifest).canIsolate && resolveRuntimeMode({ manifest: pkg.manifest, storedMode: doc.modes[pkg.id] }).mode === 'share')
+    .filter((pkg) => isAutoIsolatable(pkg.manifest, pkg.packageDir, hostDir)
+      && resolveRuntimeMode({ manifest: pkg.manifest, storedMode: doc.modes[pkg.id] }).mode === 'share')
     .map((pkg) => pkg.id)
 
-  return { host, runtimes: isolated, isolatable, pluginMemory }
+  return { host, runtimes: isolated, isolatable, platform: process.platform, pluginMemory }
 }
