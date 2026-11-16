@@ -19,13 +19,13 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@cheezmil/coraek/types'
 import { resolveAekHome } from '@cheezmil/coraek/home'
-import { SLOT_NAMES, slotConfig, slotHome, webUrl } from '@cheezmil/coraek/slots'
+import { SLOT_NAMES, slotConfig, slotHome, webUrl, resolveSlot } from '@cheezmil/coraek/slots'
 import { readPluginMeta, scanLanguages, pluginClassOf } from '@cheezmil/coraek/plugin-meta'
 import { CapabilitySupervisor } from '@cheezmil/coraek/external-supervisor'
 import { discoverAekSiblingPackages, readRuntimeDocV2, startRuntimeGroup, stopRuntimeGroup } from '@cheezmil/coraek/runtime'
@@ -67,6 +67,20 @@ export interface AppEntry {
   languages: string[]
   /** Main implementation language. */
   primaryLanguage: string
+  /**
+   * Runtime memory fact for this entry (CC round, 2026-11-17). The console
+   * NEVER invents numbers: a measured reading ships only when a real process
+   * was read (`shell` + `running` + `rssMb`); when nothing can be measured
+   * the honest REASON ships instead (`in-shell` = the webui has no own
+   * process, it renders inside the shell; `transient` = the CLI runs and
+   * exits; `stopped` / `unavailable` = the shell is not running or the
+   * platform cannot be read). Absent on older hosts — the client renders
+   * nothing in that case.
+   */
+  memory?:
+    | { kind: 'shell'; state: 'running' | 'stopped' | 'unavailable'; rssMb?: number }
+    | { kind: 'in-shell' }
+    | { kind: 'transient' }
 }
 
 /**
@@ -220,6 +234,55 @@ function childDirectories(dir: string): string[] {
 }
 
 /**
+ * CC round (2026-11-17): the desktop shell's whole footprint as ONE measured
+ * number — or the honest reason why there is no number.
+ *
+ * The shell is NOT a host process: it is the user's `~/Applications/<app>`
+ * install (or the slot's dev-variant bundle under the slot data root) whose
+ * main process spawns Chromium helper processes. Every process whose
+ * command line starts with one of those two bundle paths is summed (RSS,
+ * KB → MB) — that sum is the honest "the app takes this much" reading.
+ * The bundle paths are derived from the slot table + `homedir()`, never
+ * from a machine-specific literal. `ps` is POSIX-only: on Windows the
+ * state is `unavailable` (never a guessed zero), a shell that is not
+ * running is `stopped`, and a failed / missing `ps` degrades to
+ * `unavailable` instead of failing the whole facts request.
+ * @param slot - the slot whose shell is being read (the host's own slot).
+ * @returns the shell memory fact for `kind: 'shell'` entries.
+ */
+function shellMemoryOf(slot: 'aek' | 'next'): { state: 'running' | 'stopped' | 'unavailable'; rssMb?: number } {
+  const cfg = slotConfig(slot)
+  const bundles = [
+    join(homedir(), 'Applications', `${cfg.productName}.app`),
+    join(slotHome(slot), 'dev', `${cfg.devAppName}.app`),
+  ]
+  if (process.platform === 'win32') return { state: 'unavailable' }
+  let out: string
+  try {
+    out = execFileSync('ps', ['-axo', 'pid=,rss=,command='], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+  } catch {
+    return { state: 'unavailable' }
+  }
+  let totalKb = 0
+  let found = false
+  for (const line of out.split('\n')) {
+    const columns = line.trim().split(/\s+/)
+    if (columns.length < 3) continue
+    const rssKb = Number(columns[1])
+    if (!Number.isFinite(rssKb) || rssKb <= 0) continue
+    const command = columns.slice(2).join(' ')
+    if (!bundles.some(bundle => command.startsWith(bundle))) continue
+    totalKb += rssKb
+    found = true
+  }
+  if (!found) return { state: 'stopped' }
+  return { state: 'running', rssMb: Math.round((totalKb / 1024) * 10) / 10 }
+}
+
+/**
  * Scan the product entry points. The set follows the CURRENT `apps/` layout:
  * S round renamed the console app directory from `web` to `aek-web` (B2), so
  * the entry is `aek-web` — a stale `web` directory is build residue, not an
@@ -248,6 +311,15 @@ function scanEntries(): AppEntry[] {
       const manifest = readManifest(join(manifestDir, 'package.json'))
       const cls = pluginClassOf(manifest)
       const languages = scanLanguages(manifestDir)
+      // CC round: the runtime memory fact, resolved per entry identity.
+      // Only the shell can be MEASURED (its own process group); the webui
+      // has no own process (it renders inside the shell) and the CLI is
+      // transient — both ship the honest reason, never an invented number.
+      const memory = id === 'aek-desktop'
+        ? { kind: 'shell' as const, ...shellMemoryOf(resolveSlot()) }
+        : id === 'aek-web'
+          ? { kind: 'in-shell' as const }
+          : { kind: 'transient' as const }
       return {
         id,
         packageName: typeof manifest.name === 'string' ? manifest.name : id,
@@ -257,6 +329,7 @@ function scanEntries(): AppEntry[] {
         distribution: cls.ok ? (cls.value === 'A2' ? 'A2' : 'A1') : '',
         languages: languages.languages,
         primaryLanguage: languages.primary,
+        memory,
       }
     })
 }

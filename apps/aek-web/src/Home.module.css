@@ -3237,6 +3237,11 @@ button.panelSearchCount:hover {
   background: var(--aek-surface-subtle);
   margin-bottom: var(--aek-space-3);
 }
+/* CC round: the hint is the FIRST element inside this bordered box — the
+   inherited .hint margin-top stacks on the box padding and reads as an
+   unexplained gap at the top of the card (user: "去掉这个上边距"). The box
+   padding already separates it from whatever is above. */
+.rtBlock .hint { margin-top: 0; }
 .rtList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--aek-space-2); }
 /* T round: the row was a free flex line (chips jammed, columns drifting).
    It is now a fixed grid so number / label / state / memory / actions land

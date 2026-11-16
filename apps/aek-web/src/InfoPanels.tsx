@@ -1504,10 +1504,16 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                   // languages) plus the description row — reusing the plugin
                   // row classes, so no new CSS. An older host without the
                   // chip fields simply renders no chip row.
+                  // CC round: the chip row gains the RUNTIME MEMORY fact —
+                  // the shell is measured (main + helpers, RSS sum), the
+                  // webui has no own process, the CLI is transient: every
+                  // row answers "where is this app's memory" with either a
+                  // real reading or the honest reason, never an invented 0.
                   const languages = entry.languages ?? []
                   const hasChips = (entry.version !== undefined && entry.version !== '')
                     || (entry.distribution !== undefined && entry.distribution !== '')
                     || languages.length > 0
+                    || entry.memory !== undefined
                   return (
                     <li key={entry.id} className={css.pluginItem}>
                       <div className={css.pluginHead}>
@@ -1529,6 +1535,22 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                                   : null}
                                 {languages.length > 0
                                   ? <span className={css.stackText} title={languages.join(' · ')}>{languages.join(' · ')}</span>
+                                  : null}
+                                {entry.memory?.kind === 'shell'
+                                  ? (entry.memory.state === 'running' && entry.memory.rssMb !== undefined
+                                    ? (
+                                      <>
+                                        <span className={css.countChip}>{tf('about.entry.mem.shell', { mb: entry.memory.rssMb })}</span>
+                                        <span className={css.stackText} title={t('about.entry.mem.shellNote')}>{t('about.entry.mem.shellNote')}</span>
+                                      </>
+                                    )
+                                    : <span className={css.countChip}>{entry.memory.state === 'stopped' ? t('about.entry.mem.shellStopped') : t('about.entry.mem.unavailable')}</span>)
+                                  : null}
+                                {entry.memory?.kind === 'in-shell'
+                                  ? <span className={css.countChip}>{t('about.entry.mem.inShell')}</span>
+                                  : null}
+                                {entry.memory?.kind === 'transient'
+                                  ? <span className={css.countChip}>{t('about.entry.mem.transient')}</span>
                                   : null}
                               </div>
                             )

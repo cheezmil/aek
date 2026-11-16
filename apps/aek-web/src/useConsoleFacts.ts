@@ -26,6 +26,16 @@ export interface AppEntry {
   languages?: string[]
   /** Main implementation language (AA round). */
   primaryLanguage?: string
+  /**
+   * Runtime memory fact (CC round; absent on older hosts, where the entry
+   * row renders no memory chip at all). Never an invented number: the
+   * `shell` reading is a real process sum (`rssMb` set only when `running`);
+   * the other states ship the honest reason instead of a fake zero.
+   */
+  memory?:
+    | { kind: 'shell'; state: 'running' | 'stopped' | 'unavailable'; rssMb?: number }
+    | { kind: 'in-shell' }
+    | { kind: 'transient' }
 }
 
 /** The source buckets of the user's disk layout (T round). */
