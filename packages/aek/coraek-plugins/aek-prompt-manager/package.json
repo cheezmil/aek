@@ -1,6 +1,6 @@
 {
   "name": "@cheezmil/aek-prompt-manager",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Manage the global prompt files of AI agent tools: injectable, patchable prompt blocks. The aekpm CLI is the primary face; an in-process ctx.promptManager Cordis host service is the auxiliary face (both run the same plain-JS engine).",
   "keywords": [
     "agent-prompt",
