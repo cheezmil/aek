@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url'
 import type { Context } from '@cheezmil/coraek/types'
 import { resolveAekHome } from '@cheezmil/coraek/home'
 import { SLOT_NAMES, slotConfig, slotHome, webUrl } from '@cheezmil/coraek/slots'
-import { readPluginMeta } from '@cheezmil/coraek/plugin-meta'
+import { readPluginMeta, scanLanguages, pluginClassOf } from '@cheezmil/coraek/plugin-meta'
 import { CapabilitySupervisor } from '@cheezmil/coraek/external-supervisor'
 import { discoverAekSiblingPackages, readRuntimeDocV2, startRuntimeGroup, stopRuntimeGroup } from '@cheezmil/coraek/runtime'
 import { appendOp, updateOp } from '@cheezmil/coraek/ops'
@@ -59,6 +59,14 @@ export interface AppEntry {
   description: string
   /** Always true here: these directories ARE the entry points. */
   entry: true
+  /** Version from its package.json, '' when the manifest declares none. */
+  version: string
+  /** Declared audience: A1 (public) / A2 (local only), '' when undeclared. */
+  distribution: 'A1' | 'A2' | ''
+  /** Detected implementation languages, most source files first. */
+  languages: string[]
+  /** Main implementation language. */
+  primaryLanguage: string
 }
 
 /**
@@ -216,6 +224,16 @@ function childDirectories(dir: string): string[] {
  * S round renamed the console app directory from `web` to `aek-web` (B2), so
  * the entry is `aek-web` — a stale `web` directory is build residue, not an
  * entry point. `plugin-market-generator` is a dev tool, never a product entry.
+ *
+ * Manifest lookup: `apps/<id>/package.json` with a FALLBACK to
+ * `apps/<id>/v0/package.json` — the Electron app keeps its versioned layout
+ * (`aek-desktop` has only `v0/`), so without the fallback the row degrades to
+ * the bare directory name with no version / description at all.
+ *
+ * AA round: the row carries the same "various info" as a plugin row —
+ * version, audience class and languages — resolved by the SAME host-side
+ * scans (`pluginClassOf` + `scanLanguages`) that feed the plugin roster, so
+ * the 入口 section reads as informative as the 插件 section below it.
  * @returns the entry list.
  */
 function scanEntries(): AppEntry[] {
@@ -223,12 +241,22 @@ function scanEntries(): AppEntry[] {
   return childDirectories(base)
     .filter(id => id === 'aek-web' || id === 'cli' || id === 'aek-desktop')
     .map((id) => {
-      const manifest = readManifest(join(base, id, 'package.json'))
+      const appDir = join(base, id)
+      const manifestDir = existsSync(join(appDir, 'package.json'))
+        ? appDir
+        : join(appDir, 'v0')
+      const manifest = readManifest(join(manifestDir, 'package.json'))
+      const cls = pluginClassOf(manifest)
+      const languages = scanLanguages(manifestDir)
       return {
         id,
         packageName: typeof manifest.name === 'string' ? manifest.name : id,
         description: typeof manifest.description === 'string' ? manifest.description : '',
         entry: true as const,
+        version: typeof manifest.version === 'string' ? manifest.version : '',
+        distribution: cls.ok ? (cls.value === 'A2' ? 'A2' : 'A1') : '',
+        languages: languages.languages,
+        primaryLanguage: languages.primary,
       }
     })
 }

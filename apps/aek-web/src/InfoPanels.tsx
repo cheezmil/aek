@@ -1502,14 +1502,53 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                 <span>{t('about.entries')}</span>
               </h3>
               <ul className={css.entryList}>
-                {(facts.facts?.entries ?? []).map(entry => (
-                  <li key={entry.id} className={css.entryRow}>
-                    <span className={css.entryIcon}><Icon name={entry.id === 'aek-desktop' ? 'layout' : (entry.id === 'cli' ? 'terminal' : 'activity')} size={16} /></span>
-                    <span className={css.entryName}>{entry.id}</span>
-                    <span className={css.entryTag}>{t('about.entry.tag')}</span>
-                    <span className={css.entryDesc}>{entry.description}</span>
-                  </li>
-                ))}
+                {(facts.facts?.entries ?? []).map((entry) => {
+                  // AA round: the entry rows carry the same "various info" as
+                  // the plugin rows below them — a title row (name + copy +
+                  // the 入口 tag) plus a chip row (version / A1-A2 class /
+                  // languages) plus the description row — reusing the plugin
+                  // row classes, so no new CSS. An older host without the
+                  // chip fields simply renders no chip row.
+                  const languages = entry.languages ?? []
+                  const hasChips = (entry.version !== undefined && entry.version !== '')
+                    || (entry.distribution !== undefined && entry.distribution !== '')
+                    || languages.length > 0
+                  return (
+                    <li key={entry.id} className={css.pluginItem}>
+                      <div className={css.pluginHead}>
+                        <span className={css.featureIcon}><Icon name={entry.id === 'aek-desktop' ? 'layout' : (entry.id === 'cli' ? 'terminal' : 'activity')} size={18} /></span>
+                        <div className={css.pluginText}>
+                          <div className={css.featureTitle}>
+                            <span className={css.featureTitleName}>{entry.id}</span>
+                            <CopyButton value={entry.packageName} size={12} label={t('common.copy')} className={css.featureCopy} />
+                            <span className={css.entryTag}>{t('about.entry.tag')}</span>
+                          </div>
+                          {hasChips
+                            ? (
+                              <div className={css.featureText}>
+                                {entry.version !== undefined && entry.version !== ''
+                                  ? <span className={css.countChip}>{entry.version}</span>
+                                  : null}
+                                {entry.distribution !== undefined && entry.distribution !== ''
+                                  ? <span className={css.stackChip}>{entry.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
+                                  : null}
+                                {languages.length > 0
+                                  ? <span className={css.stackText} title={languages.join(' · ')}>{languages.join(' · ')}</span>
+                                  : null}
+                              </div>
+                            )
+                            : null}
+                          {entry.description
+                            ? <div className={css.featureDesc}>{entry.description}</div>
+                            : null}
+                        </div>
+                        {/* The empty actions column keeps this row's text column
+                            the same width as the plugin rows under it. */}
+                        <div className={css.pluginActions} aria-hidden="true" />
+                      </div>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           )
@@ -1763,7 +1802,11 @@ export function AboutPanel({
             (Setup.tsx) — the About card was the wrong carrier (user ruling
             2026-11-16); no card here anymore. */}
 
-        <div className={css.divider} />
+        {/* AA round: the unconditional divider after the info block was
+            removed — every section below carries its OWN leading divider
+            (the plugin group, the external section), so two adjacent lines
+            can never render (in compact mode the plugin section is skipped
+            entirely, which left the two dividers stacked). */}
         {/* X2 item 9: the 入口 section now lives in the 插件与程序 card. */}
         {!compactPlugins ? (
           <>

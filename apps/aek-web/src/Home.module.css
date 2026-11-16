@@ -2732,7 +2732,7 @@ button.panelSearchCount:hover {
   background: var(--aek-accent-soft);
 }
 .pluginIconButton:disabled { opacity: 0.45; cursor: default; }
-.packageRow, .entryRow, .permRow {
+.packageRow, .permRow {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2753,8 +2753,6 @@ button.panelSearchCount:hover {
   font-size: 11px;
   line-height: 1.5;
 }
-.entryIcon { display: inline-flex; color: var(--aek-accent); }
-.entryName { font-weight: 700; color: var(--aek-text); }
 .entryTag {
   padding: 1px 8px;
   border-radius: 999px;
@@ -2763,7 +2761,6 @@ button.panelSearchCount:hover {
   color: var(--aek-accent-ink);
   font-size: 11px;
 }
-.entryDesc { flex: 1 1 auto; color: var(--aek-text-secondary); }
 .permIcon { display: inline-flex; color: var(--aek-accent); }
 .permName { font-weight: 700; color: var(--aek-text); min-width: 108px; }
 .permRow > .pathValue { flex: 1 1 auto; }

@@ -18,6 +18,14 @@ export interface AppEntry {
   packageName: string
   description: string
   entry: true
+  /** Version from its package.json (AA round); absent on older hosts. */
+  version?: string
+  /** Declared audience A1 / A2 (AA round); absent or '' when undeclared. */
+  distribution?: 'A1' | 'A2' | ''
+  /** Detected implementation languages, most source files first (AA round). */
+  languages?: string[]
+  /** Main implementation language (AA round). */
+  primaryLanguage?: string
 }
 
 /** The source buckets of the user's disk layout (T round). */

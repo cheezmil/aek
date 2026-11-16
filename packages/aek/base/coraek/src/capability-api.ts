@@ -30,7 +30,7 @@ import { CapabilitySupervisor } from '../external-supervisor.mjs'
 import {
   bootIsolateRuntimePackages,
   discoverAekSiblingPackages,
-  readRuntimeModes,
+  readRuntimeDocV2,
   isStrongCopyleft,
   type DiscoveredAekPackage,
 } from '../runtime.mjs'
@@ -188,7 +188,8 @@ export function registerCapabilityApi(
         handler: async (_req, res) => {
           try {
             const allRows = await supervisor.statusAll()
-            const choices = readRuntimeModes(aekHome)
+            const doc = readRuntimeDocV2(aekHome)
+            const choices = doc.modes
             // Y9: a supervisor registration only describes a capability that is
             // ACTUALLY external when its effective topology is `isolate`. A class ①
             // capability whose stored choice is `share` runs in-process (the cordis
@@ -197,9 +198,19 @@ export function registerCapabilityApi(
             // pid). List ONLY the rows that are really out-of-process, so the About
             // "external capabilities" section never claims an in-process, our-own
             // plugin is "a separate process, not part of the AEK host".
+            // AA round: the X2/v3 container runtimes (`runtime{n}` — the generic
+            // node runner or a class-① exclusive bin) are registered in the
+            // supervisor store UNDER THE RUNTIME id and are AEK's own
+            // infrastructure, not external ②/③ providers. Listing them under
+            // "external capabilities" rendered the wrong sentence ("not part of
+            // the AEK host process; provider license: not declared"), so the v3
+            // document's `containers` map — exactly the set of container ids —
+            // filters them out. Real ②/③ providers register under their own
+            // capability id (`aek external`) and never appear in `containers`.
+            const containerIds = new Set(Object.keys(doc.containers))
             const effectiveMode = (row: { id: string }) =>
               choices[row.id] === 'isolate' ? 'isolate' : choices[row.id] === 'share' ? 'share' : 'isolate'
-            const providers = allRows.filter(row => effectiveMode(row) === 'isolate')
+            const providers = allRows.filter(row => effectiveMode(row) === 'isolate' && !containerIds.has(row.id))
             sendJson(res, 200, {
               protocol: 'aek-capability/1',
               runtime: {
