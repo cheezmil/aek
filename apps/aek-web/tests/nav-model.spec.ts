@@ -12,7 +12,7 @@
  * @module aek-home/tests/nav-model.spec
  */
 import { describe, expect, it } from 'vitest'
-import { NAV, NAV_TOP, panelFamilyOf, subEntriesOf } from '../src/client/nav-model.ts'
+import { NAV, NAV_TOP, panelFamilyOf, subEntriesOf } from '../src/nav-model.ts'
 
 describe('nav-model: two-level rail contract', () => {
   it('lists every panel exactly once', () => {

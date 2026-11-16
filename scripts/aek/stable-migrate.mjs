@@ -437,8 +437,8 @@ if (!pnpmRun(STABLE_ROOT, ['exec', 'tsx', 'scripts/generate-typert.ts'])) fail('
 // Three task names cover the whole AEK runtime artifact surface (pnpm -r run
 // skips packages without a given script): build (tsc/tsdown libs, incl. the
 // aek-websearch oclif postbuild), build:cli (coraek oclif commands — the
-// `web` command oclif discovers from lib/commands), bundle (aek-home, which
-// only declares a `bundle` script but whose main points at lib/).
+// `web` command oclif discovers from lib/commands), bundle (historically
+// aek-home; no AEK package declares it anymore, so pnpm -r no-ops it).
 for (const task of ['build', 'build:cli', 'bundle']) {
   if (!pnpmRun(STABLE_ROOT, ['-r', '--filter', './packages/aek/**', 'run', task])) {
     fail(`stable 树 AEK 包 ${task} 失败（需 pnpm-workspace.yaml 的 ignoreWorkspaceCycles）；回滚：node scripts/aek/stable-migrate.mjs --rollback --yes`)

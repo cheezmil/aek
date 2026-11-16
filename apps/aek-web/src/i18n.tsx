@@ -4,9 +4,9 @@
  * Two flat dictionaries (zh-CN / en-US), a React context and a host-persisted
  * preference (C11: the locale itself is stored under `<AEK_HOME>/preferences/`,
  * never in localStorage). Deliberately no i18n library: the frontend stack
- * gate allows only React + Vite + TS + lightningcss + CSS Modules.
+ * gate (FF round) allows React + Vite + TS + Tailwind v4 + shadcn/ui.
  *
- * @module @cheezmil/aek-home/src/client/i18n
+ * @module @cheezmil/aek-web/src/i18n
  */
 import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'

@@ -28,7 +28,7 @@
  * Both states persist on the host (`aek-home.pluginRailHidden` /
  * `aek-home.pluginRailLabelsHidden`, comma lists in `nav-model.ts`).
  *
- * @module @cheezmil/aek-home/src/client/Sidebar
+ * @module @cheezmil/aek-web/src/Sidebar
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
@@ -39,9 +39,40 @@ import type { Locale } from './i18n.tsx'
 import { NAV, NAV_TOP, RAIL_HIDDEN_KEY, RAIL_LABELS_HIDDEN_KEY, panelFamilyOf, parseCommaList, subEntriesOf, toggleInCommaList, useLastSubMemory } from './nav-model.ts'
 import type { NavEntry, PanelId } from './nav-model.ts'
 import { parseBoolean, PREF_KEYS, usePrefLanded, usePref, useSettings } from './preferences.tsx'
-import { css, cx } from './styles.ts'
+import { cn } from '@/lib/utils'
 
 export type { PanelId } from './nav-model.ts'
+
+/* FF round: the old rail module classes, now literal Tailwind utilities (1:1
+   from Home.module.css L103-436 / L1860-2008). Mixed-time-scale transitions
+   and pseudo-element choreography live in index.css component helpers
+   (.aek-label-fade*, .aek-rail-item, .aek-drawer-group-compact, ...).
+   STATE overrides (compact) are applied as MUTUALLY EXCLUSIVE class sets —
+   never stacked, so utility-layer order can never pick a winner. */
+const RAIL_ITEM = 'aek-rail-item relative flex items-center h-10 w-full font-medium text-left whitespace-nowrap cursor-pointer text-text-secondary hover:text-text hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2'
+const RAIL_ITEM_GEOM_EXPANDED = 'rounded-(--aek-sidebar-radius) pl-(--aek-sidebar-pad-x) pr-(--aek-sidebar-pad-x) gap-(--aek-sidebar-icon-gap)'
+const RAIL_ITEM_GEOM_COMPACT = 'rounded-(--aek-sidebar-radius) gap-0 p-0 justify-center'
+const RAIL_ITEM_ACTIVE = 'text-accent-ink bg-accent-soft hover:text-accent-ink hover:bg-accent-soft before:content-[""] before:absolute before:left-0 before:top-2.25 before:bottom-2.25 before:w-0.75 before:rounded-r-aek-bar before:bg-primary'
+const NAV_ROW = 'group relative flex items-center gap-0.5 cursor-grab active:cursor-grabbing'
+const NAV_ROW_DROP_BEFORE = 'before:content-[""] before:absolute before:left-1 before:right-1 before:-top-0.75 before:h-0.5 before:rounded-3xs before:bg-primary before:shadow-aek-ring'
+const NAV_ROW_DROP_AFTER = 'after:content-[""] after:absolute after:left-1 after:right-1 after:-bottom-0.75 after:h-0.5 after:rounded-3xs after:bg-primary after:shadow-aek-ring'
+const ROW_ACTIONS = 'aek-row-actions absolute top-1/2 right-0.5 z-3 flex items-center gap-0.5 p-0.5 border border-border rounded-sm bg-card shadow-md opacity-0 pointer-events-none translate-x-1.5 -translate-y-1/2 transition-[opacity,transform] duration-150 ease-aek group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-x-0'
+const ROW_ICON_BUTTON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted cursor-pointer transition-[color,background-color,transform] duration-140 ease-aek hover:text-primary hover:bg-accent-soft'
+const LABEL_FADE = 'aek-label-fade'
+const LABEL_FADE_HIDDEN = 'aek-label-fade-hidden'
+const NAV_SEARCH_WRAP = 'relative flex items-center gap-2 h-9 mb-4 border border-border rounded-sm bg-surface-subtle transition-[border-color,background-color] duration-150 ease-aek focus-within:border-accent-border focus-within:bg-card'
+const NAV_SEARCH_ICON = 'inline-flex shrink-0 text-text-muted'
+const NAV_SEARCH_INPUT = 'min-w-0 h-full p-0 text-text bg-transparent border-0 outline-none text-xs-plus placeholder:text-text-muted transition-opacity duration-150 ease-aek'
+const NAV_SEARCH_CLEAR = 'absolute top-0.5 left-0.5 size-5 p-0 text-text-muted bg-transparent border-0 rounded-2xs cursor-pointer hover:text-text hover:bg-surface-hover'
+const NAV_NO_MATCH = 'p-3 text-text-muted text-xs text-center transition-opacity duration-150 ease-aek'
+const LOCALE_MENU_ITEM = 'flex items-center justify-between gap-2 w-full p-2 px-2.5 text-text-secondary bg-transparent border-0 rounded-sm text-xs-plus text-left cursor-pointer hover:text-text hover:bg-surface-hover'
+const LOCALE_MENU_ACTIVE = 'text-accent-ink bg-accent-soft font-semibold'
+const FOOTER_ICON_BUTTON = 'inline-flex items-center justify-center size-8.5 p-0 text-text-secondary bg-transparent border border-border rounded-sm cursor-pointer transition-[color,border-color,background-color] duration-150 ease-aek hover:text-primary hover:border-accent-border hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2'
+const DRAWER_GROUP = 'relative mt-3 before:content-[""] before:absolute before:top-0 before:left-1/2 before:-ml-3 before:w-6 before:h-px before:rounded-full before:bg-input before:opacity-0 before:pointer-events-none before:transition-opacity before:duration-140 before:ease-aek'
+const DRAWER_GROUP_COMPACT = 'mt-2 pt-2 aek-drawer-group-compact'
+const DRAWER_HEAD = 'flex items-center gap-1.5 w-full py-1 px-1.5 border-0 bg-transparent text-text-muted text-2xs font-bold tracking-aek-label uppercase cursor-pointer hover:text-text-secondary'
+const DRAWER_CARET = 'transition-transform duration-180 ease-aek'
+const DRAWER_LABEL = 'grow shrink text-left'
 
 /** Delay before a pointer hover starts the peek (hover intent). */
 
@@ -133,26 +164,29 @@ function logoVariantOf(raw: unknown): BrandVariant {
  * @param props - label, open state, toggle and rows.
  * @returns the group.
  */
-function DrawerGroup({ label, open, onToggle, children }: {
+function DrawerGroup({ label, open, onToggle, compact, children }: {
   label: string
   open: boolean
   onToggle: () => void
+  compact: boolean
   children: ReactNode
 }) {
   const { t } = useI18n()
   return (
-    <div className={css.drawerGroup}>
+    <div className={cn(DRAWER_GROUP, compact && DRAWER_GROUP_COMPACT)}>
+      {/* `.sidebarCompact .drawerHead { display: none }` — the thin centred
+          rule (aek-drawer-group-compact) replaces the caption in the rail. */}
       <button
         type="button"
-        className={css.drawerHead}
+        className={cn(DRAWER_HEAD, compact && 'hidden')}
         onClick={onToggle}
         aria-expanded={open}
         title={open ? t('nav.collapse') : t('nav.expand')}
       >
-        <Icon name="chevronDown" size={14} className={cx(css.drawerCaret, open && css.chevronOpen)} />
-        <span className={css.drawerLabel}>{label}</span>
+        <Icon name="chevronDown" size={14} className={cn(DRAWER_CARET, open && 'rotate-180')} />
+        <span className={DRAWER_LABEL}>{label}</span>
       </button>
-      {open ? <ul className={css.navList}>{children}</ul> : null}
+      {open ? <ul className='flex flex-col gap-(--aek-sidebar-gap) list-none m-0 p-0'>{children}</ul> : null}
     </div>
   )
 }
@@ -536,11 +570,11 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
       <li
         key={entry.id}
         data-panel={entry.id}
-        className={cx(
-          css.navRow,
-          dragId === entry.id && css.navRowDragging,
-          dropMark?.before === entry.id && dragId !== undefined && css.navRowDropBefore,
-          dropMark?.after === entry.id && dragId !== undefined && css.navRowDropAfter,
+        className={cn(
+          NAV_ROW,
+          dragId === entry.id && 'opacity-45',
+          dropMark?.before === entry.id && dragId !== undefined && NAV_ROW_DROP_BEFORE,
+          dropMark?.after === entry.id && dragId !== undefined && NAV_ROW_DROP_AFTER,
         )}
         draggable
         onDragStart={(event) =>{  handleDragStart(event, entry.id) }}
@@ -553,24 +587,29 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
             rail; double = toggle that rail's labels); plain rows select. */}
         <button
           type="button"
-          className={cx(css.navItem, rowActive && css.navItemActive)}
+          className={cn(
+            RAIL_ITEM,
+            compact ? RAIL_ITEM_GEOM_COMPACT : RAIL_ITEM_GEOM_EXPANDED,
+            rowActive && RAIL_ITEM_ACTIVE,
+            'grow shrink min-w-0',
+          )}
           aria-current={rowActive ? 'page' : undefined}
           onClick={(event) =>{  handleRowClick(entry, subIds, event.detail) }}
           title={`${t(entry.labelKey)} · ${t('nav.dragHint')}`}
         >
-          <span className={css.navIcon}><Icon name={entry.icon} size={18} /></span>
-          <span className={css.navLabel}>{t(entry.labelKey)}</span>
+          <span className='inline-flex shrink-0 items-center justify-center opacity-90'><Icon name={entry.icon} size={18} /></span>
+          <span className={cn(LABEL_FADE, 'flex-1 min-w-0 max-w-50 text-ellipsis', compact && cn(LABEL_FADE_HIDDEN, 'max-w-0 p-0'))}>{t(entry.labelKey)}</span>
         </button>
         {/* Y round: the refresh + pin actions no longer sit at the row's
             tail (the user: "别放到外面") — they live in ONE floating card
             that fades in on row hover (the base setting `navActionsFade`
             switches the fade on / off). Keyboard focus reveals it too. */}
-        <div className={css.rowActions}>
+        <div className={cn(ROW_ACTIONS, compact && 'hidden')}>
           {/* Q round: the refresh icon refreshes the page THIS row opens —
               even when that page is not active yet. */}
           <button
             type="button"
-            className={css.rowRefresh}
+            className={cn(ROW_ICON_BUTTON, 'hover:rotate-90')}
             onClick={() =>{  onRefresh(entry.id) }}
             title={t('nav.refresh')}
             aria-label={t('nav.refresh')}
@@ -579,7 +618,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
           </button>
           <button
             type="button"
-            className={cx(css.pinButton, pinnedNow && css.pinActive)}
+            className={cn(ROW_ICON_BUTTON, pinnedNow && 'text-primary')}
             onClick={() =>{  togglePin(entry.id) }}
             title={pinnedNow ? t('nav.unpin') : t('nav.pin')}
             aria-label={pinnedNow ? t('nav.unpin') : t('nav.pin')}
@@ -605,20 +644,29 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
 
   return (
     <aside
-      className={cx(
-        css.sidebar,
-        compact && css.sidebarCompact,
-        resized !== undefined && css.sidebarResizing,
-        !navActionsFade && css.sidebarNoFade,
+      className={cn(
+        'sticky top-0 flex flex-col h-screen basis-(--aek-sidebar-width) w-(--aek-sidebar-width) bg-card border-r border-border transition-[flex-basis,width,padding] duration-(--aek-sidebar-duration) ease-aek-out overflow-hidden z-2 text-(length:--aek-sidebar-font-size) tracking-(--aek-sidebar-letter-spacing)',
+        compact
+          ? 'basis-(--aek-sidebar-compact) w-(--aek-sidebar-compact) px-0'
+          : cn('px-(--aek-sidebar-pad-x)', 'max-[640px]:basis-(--aek-sidebar-compact) max-[640px]:w-(--aek-sidebar-compact)'),
+        resized !== undefined && 'aek-no-transition',
+        !navActionsFade && 'aek-nav-no-fade',
       )}
       style={compact ? undefined : ({ '--aek-sidebar-width': `${String(railWidth)}px` } as CSSProperties)}
       onMouseEnter={handlePointerEnter}
       onMouseLeave={handlePointerLeave}
     >
-      <div className={css.sidebarHeader}>
+      <div className={cn(
+        'flex items-center justify-between gap-2 h-18 min-h-18 py-(--aek-sidebar-pad-y) border-b border-border transition-[padding] duration-(--aek-sidebar-duration) ease-aek-out',
+        compact ? 'aek-sidebar-header-compact' : 'px-4',
+        'max-[640px]:flex-col max-[640px]:justify-center max-[640px]:gap-1 max-[640px]:h-22 max-[640px]:min-h-22 max-[640px]:p-0',
+      )}>
         <button
           type="button"
-          className={css.brandButton}
+          className={cn(
+            'aek-brand-button flex items-center min-w-0 p-0 text-inherit bg-transparent border-0 cursor-pointer transition-[gap] duration-(--aek-sidebar-duration) ease-aek-out focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-4 focus-visible:rounded-sm',
+            compact ? 'gap-0' : 'gap-3',
+          )}
           onClick={handleToggle}
           aria-label={brandLabel}
           aria-expanded={logoToggle ? !compact : undefined}
@@ -626,15 +674,15 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
           tabIndex={logoToggle ? 0 : -1}
         >
           {logoVisible
-            ? <BrandMark size={34} className={css.brandMark} variant={logoVariant} />
+            ? <BrandMark size={34} className='aek-brand-mark shrink-0 basis-8.5 w-8.5 h-8.5 block' variant={logoVariant} />
             : null}
           {brandText.length > 0
             ? (
-              <span className={css.brandText}>
-                <span className={css.brandTagline}>
+              <span className={cn(LABEL_FADE, 'flex flex-col min-w-0 max-w-45 whitespace-nowrap', compact && cn(LABEL_FADE_HIDDEN, 'max-w-0 p-0'), 'max-[640px]:hidden')}>
+                <span className='text-2xs tracking-aek-tagline text-text-muted'>
                   {brandText}
                   {currentSlot === 'next'
-                    ? <span className={css.slotBadge}>Next</span>
+                    ? <span className='inline-block ml-1.5 py-0.5 px-1.5 border border-accent-border rounded-full bg-accent-soft text-accent-ink text-3xs font-bold tracking-aek-label uppercase align-text-top'>Next</span>
                     : null}
                 </span>
               </span>
@@ -644,16 +692,32 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
       </div>
 
       <nav
-        className={cx(css.sidebarBody, hScroll && css.sidebarBodyHScroll)}
+        className={cn(
+          'aek-sidebar-body flex-1 overflow-auto transition-[padding] duration-(--aek-sidebar-duration) ease-aek-out',
+          compact ? 'py-4 px-2' : 'py-4 px-3',
+          hScroll && 'aek-sidebar-body-hscroll',
+          'max-[640px]:py-4 max-[640px]:px-2',
+        )}
         aria-label={t('nav.searchAria')}
         ref={navRef}
         onDragOver={handleRailDragOver}
         onDrop={handleRailDrop}
       >
-        <div className={css.navSearchWrap}>
-          <span className={css.navSearchIcon}><Icon name="search" size={16} /></span>
+        <div className={cn(
+          NAV_SEARCH_WRAP,
+          compact ? 'justify-center gap-0 p-0' : 'px-2',
+          compact && 'focus-within:justify-start focus-within:px-2',
+        )}>
+          <span className={NAV_SEARCH_ICON}><Icon name="search" size={16} /></span>
           <input
-            className={css.navSearchInput}
+            className={cn(
+              NAV_SEARCH_INPUT,
+              'flex-1 max-w-50',
+              compact && cn(
+                'grow-0 shrink basis-0 w-0 p-0 border-0 opacity-0 pointer-events-none max-w-0',
+                'focus-within:grow focus-within:shrink focus-within:w-auto focus-within:opacity-100',
+              ),
+            )}
             type="search"
             value={query}
             placeholder={t('nav.search')}
@@ -671,7 +735,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
             ? (
               <button
                 type="button"
-                className={css.navSearchClear}
+                className={cn(NAV_SEARCH_CLEAR, compact && 'basis-0 w-0 max-w-0 p-0 overflow-hidden opacity-0 pointer-events-none')}
                 onClick={() =>{  setQuery('') }}
                 title={t('nav.clear')}
                 aria-label={t('nav.clear')}
@@ -688,32 +752,35 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
         <div style={{ visibility: prefLanded ? 'visible' : 'hidden' }}>
           {pinnedRows.length > 0
             ? (
-              <DrawerGroup label={t('nav.group.pinned')} open={isOpen('pinned')} onToggle={() =>{  toggleGroup('pinned') }}>
+              <DrawerGroup label={t('nav.group.pinned')} open={isOpen('pinned')} onToggle={() =>{  toggleGroup('pinned') }} compact={compact}>
                 {pinnedRows.map(entry => renderRow(entry, true))}
               </DrawerGroup>
             )
             : null}
 
-          <DrawerGroup label={t('nav.group.plugins')} open={isOpen('plugins')} onToggle={() =>{  toggleGroup('plugins') }}>
+          <DrawerGroup label={t('nav.group.plugins')} open={isOpen('plugins')} onToggle={() =>{  toggleGroup('plugins') }} compact={compact}>
             {pluginRows.map(entry => renderRow(entry, false))}
           </DrawerGroup>
 
-          <DrawerGroup label={t('nav.group.other')} open={isOpen('other')} onToggle={() =>{  toggleGroup('other') }}>
+          <DrawerGroup label={t('nav.group.other')} open={isOpen('other')} onToggle={() =>{  toggleGroup('other') }} compact={compact}>
             {otherRows.map(entry => renderRow(entry, false))}
           </DrawerGroup>
 
           {filtered.length === 0
-            ? <div className={css.navNoMatch}>{t('nav.noMatch')}</div>
+            ? <div className={cn(NAV_NO_MATCH, compact && 'basis-0 w-0 max-w-0 p-0 overflow-hidden opacity-0 pointer-events-none')}>{t('nav.noMatch')}</div>
             : null}
         </div>
       </nav>
 
-      <div className={css.sidebarFooter}>
-        <div className={css.footerActions}>
-          <div className={css.localeWrap} ref={localeWrap}>
+      <div className={cn(
+        compact ? 'py-4 px-0 border-t border-border flex justify-center' : 'p-4 border-t border-border',
+        'max-[640px]:py-4 max-[640px]:px-0 max-[640px]:flex max-[640px]:justify-center',
+      )}>
+        <div className={compact ? 'flex flex-col justify-center items-center gap-2 w-full' : 'flex items-center justify-between gap-2'}>
+          <div className='relative' ref={localeWrap}>
             <button
               type="button"
-              className={css.footerIconButton}
+              className={cn(FOOTER_ICON_BUTTON, compact && 'mx-auto')}
               onClick={() =>{  setMenuOpen(value => !value) }}
               title={t('footer.language')}
               aria-label={t('footer.language')}
@@ -723,12 +790,12 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
             </button>
             {menuOpen
               ? (
-                <ul className={css.localeMenu} role="menu">
+                <ul className='fixed left-4 bottom-18 min-w-42 p-1.5 bg-card border border-border rounded-md shadow-lg z-20 list-none m-0' role="menu">
                   <li>
                     <button
                       type="button"
                       role="menuitem"
-                      className={cx(css.localeMenuItem, locale === 'zh-CN' && css.localeMenuActive)}
+                      className={cn(LOCALE_MENU_ITEM, locale === 'zh-CN' && LOCALE_MENU_ACTIVE)}
                       onClick={() =>{  chooseLocale('zh-CN') }}
                     >
                       简体中文
@@ -739,7 +806,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
                     <button
                       type="button"
                       role="menuitem"
-                      className={cx(css.localeMenuItem, locale === 'en-US' && css.localeMenuActive)}
+                      className={cn(LOCALE_MENU_ITEM, locale === 'en-US' && LOCALE_MENU_ACTIVE)}
                       onClick={() =>{  chooseLocale('en-US') }}
                     >
                       English
@@ -751,7 +818,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
               : null}
           </div>
           <a
-            className={css.footerIconButton}
+            className={cn(FOOTER_ICON_BUTTON, compact && 'mx-auto')}
             href={GITHUB_REPO_URL}
             target="_blank"
             rel="noreferrer noopener"
@@ -768,7 +835,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
       {!compact
         ? (
           <div
-            className={css.sidebarResize}
+            className={cn('absolute top-0 right-0 w-1.25 h-full cursor-col-resize z-3 touch-none', resized !== undefined && 'bg-accent-border')}
             role="separator"
             aria-orientation="vertical"
             title={t('nav.resizeHint')}

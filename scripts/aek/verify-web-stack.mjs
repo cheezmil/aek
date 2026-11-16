@@ -1,27 +1,34 @@
 #!/usr/bin/env node
 /**
- * Static enforcement: the AEK web frontend is React + Vite + TS + lightningcss,
- * and nothing else. Tailwind CSS (and the PostCSS / preprocessor / CSS-in-JS
- * toolchains it pulls in) must never enter the AEK console (apps/aek-web) or
- * the AEK plugin layer.
+ * Static enforcement: the AEK web frontend stack is React + Vite + TS +
+ * Tailwind CSS v4 (`@tailwindcss/vite`) + shadcn/ui (open-code components) +
+ * `@shadcn/lint` (agent-first design-system rules via the repo's oxlint).
+ * Nothing else — no PostCSS pipeline, no CSS preprocessors, no CSS-in-JS
+ * runtimes, no Tailwind v3-era tooling. CSS Modules residue is policed by
+ * `verify-console-css.mjs`; this gate polices the stack itself.
  *
- * This is the code-level counterpart of the 2026-11-07 stack decision. It is
+ * Decision history:
+ *   - 2026-11-07: the stack was pinned to "React + Vite + TS + lightningcss,
+ *     no Tailwind / PostCSS / runtime styling" and this gate enforced it.
+ *   - 2026-11-17 (FF round): the user overruled that decision — the console
+ *     moves to Tailwind CSS v4 + shadcn/ui + @shadcn/lint, so this gate was
+ *     rewritten to the new allowed stack. The 11-07 prose ("no Tailwind") in
+ *     `apps/aek-web/vite.config.ts` and in `references/20261107-前端技术栈订正.md`
+ *     (dev notes) is superseded.
+ *
  * READ-ONLY: it never writes, renames, or deletes anything. Run it directly,
  * through `pnpm run verify:web-stack`, or as part of `check:all` / `hygiene`.
  *
- * Why this exists: the copied dsh client pipeline (`packages/client/tsdown.client.ts`)
- * compiles `*.module.css` with lightningcss and injects a hashed class map,
- * Vite minifies CSS with lightningcss by default, and PostCSS only runs when a
- * PostCSS config exists. Tailwind v4 needs either a PostCSS plugin or a separate
- * precompile step, so adding it would break a pipeline that already works.
+ * Why this still exists: the FF stack decision must stay machine-enforced,
+ * not prose. The gate (a) rejects foreign pipelines (PostCSS, preprocessors,
+ * CSS-in-JS, Tailwind v3-era tooling) at the dependency / config / source
+ * level, and (b) proves both faces with its selftest.
  *
  * Scope (deliberately narrow — do not widen without a decision):
  *   - `apps/aek-web/**`            the AEK console (standalone Vite SPA)
- *   - `packages/aek/**`             the AEK plugin / coraek layer
- *   - root `package.json`           workspace-level styling dependencies
+ *   - `packages/aek/**`            the AEK plugin / coraek layer
+ *   - root `package.json`          workspace-level styling dependencies
  * `packages/client/**` is faithfully copied upstream and is not in scope.
- * (The old `packages/aek-mcp` Go gateway was removed in the 11-05 4-bucket
- * refactor; its leftover `frontend/` scraps were deleted 2026-11-14.)
  *
  * Usage:
  *   node scripts/aek/verify-web-stack.mjs            # check, read-only
@@ -42,40 +49,47 @@ const SOURCE_EXT = /\.(?:ts|tsx|mjs|js|jsx|css|html)$/u
 const DEP_KEYS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
 
 /** The declared stack, printed by the check for humans. */
-export const ALLOWED_STACK = ['react', 'react-dom', 'vite', 'typescript', 'lightningcss', '@vitejs/plugin-react']
+export const ALLOWED_STACK = [
+  'react', 'react-dom', 'vite', 'typescript', '@vitejs/plugin-react',
+  'tailwindcss', '@tailwindcss/vite', '@shadcn/lint',
+  'cn', 'radix-ui', 'shadcn', 'tw-animate-css',
+  'class-variance-authority', 'lucide-react',
+]
 
 /**
- * Dependencies that bring a foreign styling pipeline. Each entry is
- * `[label, exact-name-or-pattern]`. Patterns are anchored, so a package whose
- * name merely contains "css" is never matched.
+ * Dependencies that bring a foreign styling pipeline or a pipeline regression.
+ * Each entry is `[label, exact-name-or-pattern]`. Patterns are anchored, so a
+ * package whose name merely contains "css" is never matched. The shadcn/ui
+ * runtime companions (clsx / tailwind-merge / class-variance-authority /
+ * lucide-react / Radix or Base UI primitives) are part of the declared stack
+ * and are NOT listed here.
  * @type {ReadonlyArray<readonly [string, RegExp]>}
  */
 const FORBIDDEN_DEPS = [
-  ['Tailwind CSS core', /^tailwindcss$/u],
-  ['Tailwind CSS v4 plugins', /^@tailwindcss\//u],
-  ['Tailwind utility helpers', /^(?:tailwind-merge|tailwindcss-animate|tailwind-variants|daisyui)$/u],
+  ['Tailwind v3-era plugins (v4 configures via CSS `@theme`)', /^(?:tailwindcss-animate|tailwind-variants|daisyui)$/u],
+  ['Tailwind v4 PostCSS pipeline (the stack builds with `@tailwindcss/vite`)', /^@tailwindcss\/postcss$/u],
+  ['Tailwind v4 runtime browser package', /^@tailwindcss\/browser$/u],
   ['PostCSS (not used by this stack)', /^postcss$/u],
   ['PostCSS plugins', /^(?:autoprefixer|postcss-.+)$/u],
   ['CSS preprocessors', /^(?:sass|node-sass|sass-loader|less|less-loader|stylus|stylus-loader)$/u],
-  ['CSS-in-JS runtimes', /^(?:styled-components|styled-jsx|@emotion\/.+|@linaria\/.+)$/u],
+  ['CSS-in-JS runtimes', /^(?:styled-components|styled-jsx|@emotion\/.+|@linaria\/.+|@vanilla-extract\/.+|stylex)$/u],
 ]
 
-/** Config files that would switch Vite's CSS pipeline away from lightningcss. */
+/** Config files that would switch the pipeline back to a foreign stack. */
 const FORBIDDEN_CONFIG = /^(?:postcss\.config\.[^/]*|tailwind\.config\.[^/]*)$/u
 
 /**
  * Source-level evidence of a foreign pipeline. Comments and documentation are
- * intentionally not scanned: prose about Tailwind is allowed, real directives
- * and imports are not.
+ * intentionally not scanned: prose about Tailwind is allowed, real v3-era
+ * directives and forbidden imports are not.
  * @type {ReadonlyArray<readonly [string, RegExp]>}
  */
 const FORBIDDEN_SOURCE = [
-  ['@tailwind directive', /@tailwind\s+(?:base|components|utilities|variants)\b/u],
-  ['@apply directive', /@apply\s+[^;{]+;/u],
-  ['@config pointing at Tailwind', /@config\s+['"][^'"]*tailwind/iu],
+  ['Tailwind v3 `@tailwind` directive (v4 uses `@import "tailwindcss"`)', /@tailwind\s+(?:base|components|utilit(?:ies)?|variants)\b/u],
+  ['`@config` pointing at a Tailwind config file (v3-era)', /@config\s+['"][^'"]*tailwind/iu],
   [
     'import of a forbidden styling package',
-    /(?:from\s*|import\s*\(?\s*|require\s*\(\s*|@import\s+)['"](?:tailwindcss|@tailwindcss\/[^'"]*|tailwind-merge|tailwindcss-animate|tailwind-variants|daisyui|postcss(?:-[^'"]*)?|autoprefixer|sass|less|stylus|styled-components|styled-jsx|@emotion\/[^'"]*|@linaria\/[^'"]*)['"]/u,
+    /(?:from\s*|import\s*\(?\s*|require\s*\(\s*|@import\s+)['"](?:postcss(?:-[^'"]*)?|autoprefixer|sass|node-sass|less|stylus|styled-components|styled-jsx|@emotion\/[^'"]*|@linaria\/[^'"]*|@vanilla-extract\/[^'"]*|stylex|@tailwindcss\/postcss|@tailwindcss\/browser|tailwindcss-animate|tailwind-variants|daisyui)['"]/u,
   ],
 ]
 
@@ -121,7 +135,7 @@ export function scanManifest(relPath, manifest) {
     for (const name of Object.keys(deps)) {
       for (const [label, pattern] of FORBIDDEN_DEPS) {
         if (!pattern.test(name)) continue
-        violations.push(`${relPath}: ${key}.${JSON.stringify(name)} — ${label} is outside the React + Vite + TS + lightningcss stack`)
+        violations.push(`${relPath}: ${key}.${JSON.stringify(name)} — ${label} is outside the FF stack (React + Vite + TS + Tailwind v4 + shadcn/ui + @shadcn/lint)`)
       }
     }
   }
@@ -148,7 +162,7 @@ export function scanSourceText(relPath, text) {
  */
 export function scanFileName(relPath) {
   return FORBIDDEN_CONFIG.test(basename(relPath))
-    ? [`${relPath}: config file switches Vite's CSS pipeline; this stack uses lightningcss directly`]
+    ? [`${relPath}: config file belongs to a foreign / v3-era pipeline; the FF stack builds Tailwind v4 through @tailwindcss/vite with CSS-first configuration`]
     : []
 }
 
@@ -197,35 +211,52 @@ function selftest() {
     if (found.length !== 0) failures.push(`${label}: expected clean, got ${JSON.stringify(found)}`)
   }
 
-  expectViolation('tailwindcss dependency', scanManifest('fixture/package.json', {
-    devDependencies: { tailwindcss: '^4.0.0' },
-  }))
-  expectViolation('postcss plugin dependency', scanManifest('fixture/package.json', {
-    devDependencies: { '@tailwindcss/postcss': '^4.0.0' },
-  }))
-  expectViolation('sass dependency', scanManifest('fixture/package.json', {
-    devDependencies: { sass: '^1.0.0' },
-  }))
-  expectClean('declared stack', scanManifest('apps/aek-web/package.json', {
-    devDependencies: { react: '^18.2.0', vite: '^6.0.0', typescript: '^6.0.0', lightningcss: '^1.33.0' },
-    dependencies: { '@vitejs/plugin-react': '^4.7.0' },
+  // Declared stack members must pass the manifest scan.
+  expectClean('FF stack dependencies', scanManifest('apps/aek-web/package.json', {
+    dependencies: {
+      react: '^18.2.0', 'react-dom': '^18.2.0',
+      'class-variance-authority': '^0.7.0',
+      cn: '^0.5.0', 'radix-ui': '^1.8.0', shadcn: '^4.0.0',
+      'tw-animate-css': '^1.0.0', 'lucide-react': '^1.0.0',
+    },
+    devDependencies: {
+      vite: '^6.4.0', typescript: '^6.0.0', '@vitejs/plugin-react': '^4.7.0',
+      tailwindcss: '^4.0.0', '@tailwindcss/vite': '^4.0.0', '@shadcn/lint': '^0.2.0',
+    },
   }))
   expectClean('unrelated package name', scanManifest('fixture/package.json', {
-    dependencies: { 'css-tree': '^3.0.0', 'react-dom': '^18.2.0' },
+    dependencies: { 'css-tree': '^3.0.0' },
   }))
 
-  expectViolation('@tailwind directive', scanSourceText('fixture.css', '@tailwind base;'))
-  expectViolation('@apply directive', scanSourceText('fixture.css', '.x { @apply flex p-4; }'))
-  expectViolation('tailwind import', scanSourceText('fixture.ts', `import x from 'tailwindcss'`))
-  expectViolation('postcss import', scanSourceText('fixture.ts', `import postcss from 'postcss'`))
-  expectClean('CSS Modules import', scanSourceText('Home.tsx', `import css from './Home.module.css'`))
-  expectClean('lightningcss usage', scanSourceText('katex-fonts.ts', `import { transform } from 'lightningcss'`))
-  expectClean('prose mentioning Tailwind', scanSourceText('notes.ts', '// Tailwind is not used here'))
+  // Foreign pipelines must be rejected at the dependency level.
+  for (const [key, deps] of [
+    ['postcss dependency', { devDependencies: { postcss: '^8.4.0' } }],
+    ['autoprefixer dependency', { devDependencies: { autoprefixer: '^10.4.0' } }],
+    ['sass dependency', { devDependencies: { sass: '^1.0.0' } }],
+    ['tailwind v3-era plugin', { devDependencies: { daisyui: '^4.0.0' } }],
+    ['tailwind v4 postcss plugin', { devDependencies: { '@tailwindcss/postcss': '^4.0.0' } }],
+    ['tailwind v4 browser runtime', { dependencies: { '@tailwindcss/browser': '^4.0.0' } }],
+    ['css-in-js runtime', { dependencies: { 'styled-components': '^6.0.0' } }],
+  ]) {
+    expectViolation(key, scanManifest('fixture/package.json', deps))
+  }
 
+  // Source level: v3-era directives and forbidden imports are violations;
+  // the FF stack's own CSS/TS constructs are clean.
+  expectViolation('tailwind v3 directive', scanSourceText('fixture.css', '@tailwind base;'))
+  expectViolation('tailwind v3 @config', scanSourceText('fixture.css', `@config '../../../tailwind.config.js';`))
+  expectViolation('postcss import', scanSourceText('fixture.ts', `import postcss from 'postcss'`))
+  expectClean('tailwind v4 css import', scanSourceText('index.css', '@import "tailwindcss";'))
+  expectClean('tailwind v4 theme block', scanSourceText('index.css', '@theme { --color-primary: oklch(0.5 0.2 250); }'))
+  expectClean('tailwind vite plugin import', scanSourceText('vite.config.ts', `import tailwindcss from '@tailwindcss/vite'`))
+  expectClean('shadcn lint in oxlint config', scanSourceText('.oxlintrc.json', '{"jsPlugins": ["@shadcn/lint"]}'))
+  expectClean('prose mentioning Tailwind', scanSourceText('notes.ts', '// Tailwind v4 is the FF-round stack'))
+
+  // Config file level.
   expectViolation('postcss config file', scanFileName('apps/aek-web/postcss.config.cjs'))
-  expectViolation('tailwind config file', scanFileName('apps/aek-web/tailwind.config.ts'))
+  expectViolation('tailwind v3 config file', scanFileName('apps/aek-web/tailwind.config.ts'))
   expectClean('vite config file', scanFileName('apps/aek-web/vite.config.ts'))
-  expectClean('CSS Modules file', scanFileName('apps/aek-web/src/Home.module.css'))
+  expectClean('plain css file', scanFileName('apps/aek-web/src/index.css'))
 
   for (const name of ALLOWED_STACK) {
     let blocked = false
@@ -258,11 +289,11 @@ function main() {
   if (asJson) {
     console.log(JSON.stringify({ ok, allowedStack: ALLOWED_STACK, violations, stats }, null, 2))
   } else {
-    console.log(`aek web frontend stack: ${ok ? 'OK' : 'FAIL'}`)
+    console.log(`aek web frontend stack (FF round): ${ok ? 'OK' : 'FAIL'}`)
     console.log(`  stack: ${ALLOWED_STACK.join(' + ')}`)
     console.log(`  scanned ${stats.manifests} manifests, ${stats.sourceFiles} source files, ${stats.configFiles} foreign config files`)
     for (const line of violations) console.error(`  - ${line}`)
-    if (!ok) console.error('\nUse CSS Modules (*.module.css) compiled by lightningcss; do not add Tailwind/PostCSS/preprocessors.')
+    if (!ok) console.error('\nUse the FF stack: Tailwind CSS v4 via `@tailwindcss/vite` + shadcn/ui + @shadcn/lint; do not add PostCSS / preprocessors / CSS-in-JS / v3-era tooling.')
   }
   process.exit(ok ? 0 : 1)
 }

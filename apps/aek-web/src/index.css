@@ -1,0 +1,580 @@
+/*
+ * AEK console global stylesheet — FF round (2026-11-17).
+ *
+ * Stack: Tailwind CSS v4 (`@tailwindcss/vite`) + shadcn/ui (open-code
+ * components, radix base, design system in CSS custom properties) +
+ * `@shadcn/lint` (agent-first design-system rules, wired through the
+ * repo's oxlint). All component styling is Tailwind utilities in the tsx
+ * sources; this file holds only:
+ *   1. the token single-source-of-truth (`:root` `--aek-*` custom
+ *      properties — JS may override the rail-metric ones at runtime),
+ *   2. the shadcn theme variables (mapped onto the AEK tokens, light
+ *      theme only — the app has no dark mode, `.dark` is not applied),
+ *   3. the `@theme` blocks that expose the tokens as Tailwind utilities,
+ *   4. the element reset, global keyframes, and reduced-motion rules.
+ *
+ * The previous CSS Modules files (`Home.module.css`, `Setup.module.css`)
+ * are gone: their rules live in the tsx sources as utilities now.
+ *
+ * Imports:
+ *   - `tailwindcss`          the v4 engine (zero runtime JS)
+ *   - `tw-animate-css`       shadcn's Tailwind v4 animation utilities
+ *   - `shadcn/tailwind.css`  shared theme layer for shadcn components
+ *                            (accordion keyframes, data-open/closed variants)
+ */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ── 1. AEK design tokens (single source of truth) ──────────────────── */
+
+:root {
+  color-scheme: light;
+
+  /* surfaces */
+  --aek-bg: #f6f7f9;
+  --aek-surface: #ffffff;
+  --aek-surface-subtle: #fafafa;
+  --aek-surface-hover: #f4f4f5;
+  --aek-border: #e9e9ee;
+  --aek-border-strong: #dcdce3;
+
+  /* text */
+  --aek-text: #18181b;
+  --aek-text-secondary: #52525b;
+  --aek-text-muted: #a1a1aa;
+  --aek-text-inverse: #ffffff;
+
+  /* brand */
+  --aek-accent: #ea580c;
+  --aek-accent-hover: #c2410c;
+  --aek-accent-soft: #fff2e8;
+  --aek-accent-border: #fed7aa;
+  --aek-accent-ink: #9a3412;
+
+  /* status */
+  --aek-success: #16a34a;
+  --aek-success-soft: #ecfdf3;
+  --aek-success-border: #bbf7d0;
+  --aek-danger: #dc2626;
+  --aek-danger-soft: #fef2f2;
+  --aek-danger-border: #fecaca;
+
+  /* spacing (4px grid) — matches the Tailwind default spacing scale, so
+     `p-1`…`p-10` utilities are the migration target; these variables stay
+     for any runtime consumers. */
+  --aek-space-1: 4px;
+  --aek-space-2: 8px;
+  --aek-space-3: 12px;
+  --aek-space-4: 16px;
+  --aek-space-5: 20px;
+  --aek-space-6: 24px;
+  --aek-space-8: 32px;
+  --aek-space-10: 40px;
+
+  /* shape + type */
+  --aek-radius-sm: 8px;
+  --aek-radius: 12px;
+  --aek-radius-lg: 16px;
+  /* sub-sm radii used by compact inputs/ghost icons in the runtime panels. */
+  --aek-radius-2xs: 4px;
+  --aek-radius-xs: 6px;
+  --aek-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --aek-shadow: 0 4px 16px rgba(16, 24, 40, 0.06);
+  --aek-shadow-lg: 0 12px 40px rgba(16, 24, 40, 0.08);
+  --aek-sidebar-width: 248px;
+  --aek-sidebar-compact: 72px;
+  /* 2026-11-09: user-adjustable rail metrics. Home.tsx overrides these from
+     the settings schema; these literals are only the first-paint defaults. */
+  --aek-sidebar-font-size: 14px;
+  --aek-sidebar-pad-x: 14px;
+  --aek-sidebar-pad-y: 10px;
+  --aek-sidebar-gap: 6px;
+  --aek-sidebar-icon-gap: 10px;
+  --aek-sidebar-radius: 10px;
+  --aek-sidebar-letter-spacing: 0px;
+  --aek-ease: cubic-bezier(0.2, 0, 0.2, 1);
+  /* Decelerating curve for the rail: ease/linear reads as robotic here. */
+  --aek-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --aek-sidebar-duration: 260ms;
+  /* sub-scale type + output metrics carried over from Home.module.css rules
+     (runtime rows, virtualized output list): not on the standard scale. */
+  --aek-text-2xs: 11px;
+  --aek-text-xs-plus: 13px;
+  --aek-output-line-height: 21px;
+}
+
+/* ── 2. shadcn theme variables (light, mapped onto AEK tokens) ──────── */
+
+:root {
+  --background: var(--aek-bg);
+  --foreground: var(--aek-text);
+  --card: var(--aek-surface);
+  --card-foreground: var(--aek-text);
+  --popover: var(--aek-surface);
+  --popover-foreground: var(--aek-text);
+  --primary: var(--aek-accent);
+  --primary-foreground: var(--aek-text-inverse);
+  --secondary: var(--aek-surface-subtle);
+  --secondary-foreground: var(--aek-text-secondary);
+  --muted: var(--aek-surface-subtle);
+  --muted-foreground: var(--aek-text-muted);
+  --accent: var(--aek-accent-soft);
+  --accent-foreground: var(--aek-accent-ink);
+  --destructive: var(--aek-danger);
+  --destructive-foreground: var(--aek-text-inverse);
+  --border: var(--aek-border);
+  --input: var(--aek-border-strong);
+  --ring: var(--aek-accent);
+  --radius: var(--aek-radius);
+  --chart-1: var(--aek-accent);
+  --chart-2: var(--aek-success);
+  --chart-3: var(--aek-text-secondary);
+  --chart-4: var(--aek-danger);
+  --chart-5: var(--aek-text-muted);
+  --sidebar: var(--aek-surface);
+  --sidebar-foreground: var(--aek-text);
+  --sidebar-primary: var(--aek-accent);
+  --sidebar-primary-foreground: var(--aek-text-inverse);
+  --sidebar-accent: var(--aek-surface-subtle);
+  --sidebar-accent-foreground: var(--aek-text-secondary);
+  --sidebar-border: var(--aek-border);
+  --sidebar-ring: var(--aek-accent);
+}
+
+/* ── 3. expose tokens as Tailwind utilities ────────────────────────── */
+
+/* shadcn set: `inline` so utilities emit the var() reference and keep
+   resolving against the runtime `:root` values. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* AEK extras on top of the shadcn set (shape, shadows, motion, type). */
+@theme inline {
+  --color-surface: var(--aek-surface);
+  --color-surface-subtle: var(--aek-surface-subtle);
+  --color-surface-hover: var(--aek-surface-hover);
+  --color-text: var(--aek-text);
+  --color-text-secondary: var(--aek-text-secondary);
+  --color-text-muted: var(--aek-text-muted);
+  --color-inverse: var(--aek-text-inverse);
+  --color-accent-hover: var(--aek-accent-hover);
+  --color-accent-soft: var(--aek-accent-soft);
+  --color-accent-border: var(--aek-accent-border);
+  --color-accent-ink: var(--aek-accent-ink);
+  --color-success: var(--aek-success);
+  --color-success-soft: var(--aek-success-soft);
+  --color-success-border: var(--aek-success-border);
+  --color-danger: var(--aek-danger);
+  --color-danger-soft: var(--aek-danger-soft);
+  --color-danger-border: var(--aek-danger-border);
+  /* Provider-logo gradient stops and emblems (Icons.tsx): warm brand
+     tints that have no semantic meaning beyond the logos themselves. */
+  --color-logo-cream: #fffbeb;
+  --color-logo-glow: #fffebf;
+  --color-logo-sand: #fff0bc;
+  --color-logo-amber: #fdba74;
+  --color-logo-tangerine: #fb923c;
+  /* The modal backdrop's zinc-900 base. */
+  --color-overlay: #18181b;
+  --radius-sm: var(--aek-radius-sm);
+  --radius-md: var(--aek-radius);
+  --radius-lg: var(--aek-radius-lg);
+  /* sub-sm radii + sub-scale type (compact inputs, runtime row chips) + the
+     virtualized output list's fixed line height (ui-kit.tsx mirrors 21px in
+     JS, so keep --aek-output-line-height and the JS constant in lockstep). */
+  --radius-2xs: var(--aek-radius-2xs);
+  --radius-xs: var(--aek-radius-xs);
+  --text-2xs: var(--aek-text-2xs);
+  --text-xs-plus: var(--aek-text-xs-plus);
+  --leading-output: var(--aek-output-line-height);
+  --shadow-sm: var(--aek-shadow-sm);
+  --shadow-md: var(--aek-shadow);
+  --shadow-lg: var(--aek-shadow-lg);
+  --ease-aek: var(--aek-ease);
+  --ease-aek-out: var(--aek-ease-out);
+  /* AEK keeps the system font stack (no bundled fonts — the 11-07 "keep it
+     light" intent still applies to fonts). */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  --animate-setting-flash: aekSettingFlash 900ms ease;
+  --animate-tier-in: aek-tier-in 320ms var(--aek-ease) both;
+  --animate-aek-shimmer: aek-shimmer 1.4s ease-in-out infinite;
+}
+
+/* FF round, Setup/PluginSubNav subagent requests: sub-scale type and shape
+   values the Setup wizard and the plugin rail carry (probe-verified against
+   Tailwind 4.3.5 that every utility generates). */
+@theme inline {
+  --text-aek-11: 11px;      /* plugin rail hint text */
+  --text-aek-115: 11.5px;   /* setup rows/chips/output/skill path */
+  --text-aek-125: 12.5px;   /* setup notices/action buttons/ready lines */
+  --text-aek-13: 13px;      /* setup hints/ready/placeholder copy */
+  --text-aek-135: 13.5px;   /* setup subtitle/row labels */
+  --leading-aek-155: 1.55;  /* wizard subtitle line-height */
+  --shadow-aek-sm: 0 1px 2px rgb(24 24 27 / 0.04); /* setup section card shadow (rgb 24 24 27, distinct from --aek-shadow-sm) */
+  --radius-aek-bar: 3px;    /* plugin-rail active indicator → rounded-r-aek-bar / before:rounded-r-aek-bar */
+  --radius-aek-check: 4px;  /* setup checkbox */
+  --radius-aek-toggle: 6px; /* setup list-toggle focus ring */
+  --radius-aek-btn: 7px;    /* setup action buttons */
+  --radius-aek-outline: 10px; /* setup output wrap */
+  --radius-aek-card: 14px;  /* setup sections/placeholder card */
+  --border-width-aek: 1.5px;/* setup checkbox border → `border border-aek` (NS is --border-width-*, NOT --line-width-* — probe: border-aek generated 1.5px, and border-aek sorts after border so the width wins) */
+  --spacing-aek-15: 1.5px;  /* checkmark offset: top-aek-15 / checked:after:top-aek-15 */
+  --spacing-aek-45: 4.5px;  /* checkmark offset: left-aek-45 / checked:after:left-aek-45 */
+  /* 2px hairline radius (drop-line indicator, section accent bar). */
+  --radius-3xs: 2px;
+  /* Uppercase rail captions (.08em) — off the standard tracking scale. */
+  --tracking-aek-label: 0.08em;
+  /* Brand tagline letter-spacing (0.04em) + the slot badge's 9px caps. */
+  --tracking-aek-tagline: 0.04em;
+  --text-3xs: 9px;
+  /* The drag drop-line's accent halo (box-shadow with a theme color). */
+  --shadow-aek-ring: 0 0 0 3px var(--aek-accent-soft);
+  /* Sub-scale type the panels carry but the standard steps do not. */
+  --text-2xxs: 10px;
+  --text-sm-plus: 15px;
+  /* Body line-heights the module CSS inherited everywhere (1.6 at 14px);
+     the v4 defaults (1.333 / 1.428) would tighten the migrated text. */
+  --leading-140: 1.4;
+  --leading-160: 1.6;
+  --leading-170: 1.7;
+  --text-xs--line-height: 1.6;
+  --text-sm--line-height: 1.6;
+  /* One-off shadows the web panels carry (off the standard shadow steps). */
+  --shadow-aek-knob: 0 1px 3px rgb(16 24 40 / 0.2);
+  --shadow-aek-modal: 0 18px 48px rgb(24 24 27 / 0.2);
+  --shadow-aek-primary: 0 2px 8px rgb(234 88 12 / 0.22);
+  /* The modal backdrop's 2px blur. */
+  --blur-aek-2: 2px;
+  /* The `code` chip's 5px radius (off the rounded-* steps). */
+  --radius-code: 5px;
+  /* The About row's secondary text cap (42% of the row). */
+  --width-aek-stack: 42%;
+  /* The plugin group titles' 0.06em caps (off the tracking scale). */
+  --tracking-aek-group: 0.06em;
+}
+
+/* ── 4. reset + global motion ───────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    /* AEK base type: 14px/1.6 (the old `.app` rule, now global). */
+    font: 14px/1.6 var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Named component helpers for one-off layouts that arbitrary grid-template
+   values cannot express on the theme (@shadcn/lint no-arbitrary-values). */
+@layer components {
+  .aek-grid-rt-row {
+    grid-template-columns: 22px minmax(0, 1fr) 64px minmax(120px, 240px) 52px;
+  }
+  .aek-grid-rt-row-confirm {
+    grid-template-columns: 22px minmax(0, 1fr) auto auto;
+  }
+  /* Scroll-condensed sticky toolbar (G2b): the --aek-search-p variable (0 at
+     the top, 1 at 240px of scroll) fades the badge chip AND collapses it to
+     zero width so the search box fills the row. calc() of that variable is
+     one-off math, so it lives here instead of in arbitrary class values. */
+  .aek-count-condensed {
+    min-width: 0;
+    overflow: hidden;
+    padding: 2px calc(6px * (1 - var(--aek-search-p, 0)));
+    margin-left: calc(8px * (1 - var(--aek-search-p, 0)));
+    opacity: calc(1 - var(--aek-search-p, 0));
+    max-width: calc(48px * (1 - var(--aek-search-p, 0)));
+  }
+
+  /* ── Sidebar rail choreography (one-off transitions/pseudo-elements that
+       utility class lists cannot express without arbitrary values). The
+       class is applied in JSX; the STATE (expanded vs compact) is a
+       conditional class the component already knows. ── */
+
+  /* Label fade+slide choreography for .brandText / .navLabel. */
+  .aek-label-fade {
+    overflow: hidden;
+    opacity: 1;
+    transform: translateX(0);
+    transition:
+      opacity 150ms var(--aek-ease),
+      transform var(--aek-sidebar-duration) var(--aek-ease-out),
+      max-width var(--aek-sidebar-duration) var(--aek-ease-out),
+      padding var(--aek-sidebar-duration) var(--aek-ease-out),
+      visibility 0s linear 0s;
+  }
+  .aek-label-fade-hidden {
+    opacity: 0;
+    transform: translateX(-8px);
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity 140ms var(--aek-ease),
+      transform var(--aek-sidebar-duration) var(--aek-ease-out),
+      max-width var(--aek-sidebar-duration) var(--aek-ease-out),
+      padding var(--aek-sidebar-duration) var(--aek-ease-out),
+      visibility 0s linear var(--aek-sidebar-duration);
+  }
+
+  /* Rail rows (the mixed time-scale transition the 260ms collapse needs). */
+  .aek-rail-item {
+    transition:
+      color 150ms var(--aek-ease),
+      background 150ms var(--aek-ease),
+      gap var(--aek-sidebar-duration) var(--aek-ease-out),
+      padding var(--aek-sidebar-duration) var(--aek-ease-out);
+  }
+
+  /* Compact rail: centred 34px mark — the header padding is the rail's slack
+     around the logo, so it is a calc of the compact width (not on the grid). */
+  .aek-sidebar-header-compact {
+    padding-left: calc((var(--aek-sidebar-compact) - 34px) / 2);
+    padding-right: calc((var(--aek-sidebar-compact) - 34px) / 2);
+  }
+
+  /* The drawer group's 24px centred rule: invisible while expanded, and
+     when compact it fades in only AFTER the rail stops narrowing (the
+     delay lives here, so leaving compact hides it immediately). */
+  .aek-drawer-group-compact::before {
+    opacity: 1;
+    transition-delay: 200ms;
+  }
+
+  /* Rail content scrollbars (per-axis webkit control, hidden H by default). */
+  .aek-sidebar-body::-webkit-scrollbar {
+    width: 6px;
+    height: 0;
+  }
+  .aek-sidebar-body::-webkit-scrollbar-thumb {
+    background: var(--aek-border-strong);
+    border-radius: 999px;
+  }
+  .aek-sidebar-body.aek-sidebar-body-hscroll::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  /* The brand mark's glow (hover lives on the BUTTON, so a descendant rule). */
+  .aek-brand-mark {
+    filter: drop-shadow(0 2px 6px rgba(234, 88, 12, 0.24));
+  }
+  .aek-brand-button:hover .aek-brand-mark {
+    filter: drop-shadow(0 2px 10px rgba(234, 88, 12, 0.45));
+  }
+
+  /* No-fade rail setting: the row-actions card shows/hides instantly. */
+  .aek-nav-no-fade .aek-row-actions {
+    transition: none;
+  }
+
+  /* While resizing, the rail must track the pointer 1:1 (no easing). */
+  .aek-no-transition {
+    transition: none !important;
+  }
+
+  /* ── Grid one-offs (grid-template-columns values off the scale; the
+       `grid` + helper pair keeps @shadcn/lint no-arbitrary-values happy). ── */
+  .aek-grid-endpoint-row { grid-template-columns: 88px minmax(0, 1fr) 24px; }
+  .aek-grid-half-row { grid-template-columns: 10px minmax(0, 1fr) auto; }
+  .aek-grid-inflight-row { grid-template-columns: minmax(120px, 180px) 1fr auto; }
+  .aek-grid-instance-list { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .aek-grid-plugin-actions { grid-template-columns: 38px 32px; }
+  .aek-grid-capability-row { display: grid; grid-template-rows: auto auto; gap: 4px; }
+  /* The floating 操作进度 / 未保存 boxes (shared shape: the Z-round popovers). */
+  .aek-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    width: min(440px, 86vw);
+    background: var(--aek-surface);
+    border: 1px solid var(--aek-border-strong);
+    border-radius: var(--aek-radius);
+    box-shadow: var(--aek-shadow-lg);
+    padding: 10px 12px;
+  }
+  /* The pinned settings toolbar (M round: frosted glass, 82% surface + 10px
+     blur so the rows scrolling underneath stay visible). */
+  .aek-sticky-panel-search {
+    position: sticky;
+    top: var(--aek-space-3);
+    z-index: 3;
+    background: color-mix(in srgb, var(--aek-surface) 82%, transparent);
+    backdrop-filter: blur(10px) saturate(1.2);
+  }
+
+  /* ── Descendant one-offs (module-scoped descendant rules that need a
+       stable hook class on the ancestor, since utility strings cannot
+       express descendant selectors). ── */
+  .aek-plugin-confirm-actions > button { height: 28px; padding: 0 12px; font-size: 12px; }
+  .aek-setting-row .aek-hint { margin: var(--aek-space-1) 0 0; line-height: 1.6; }
+  .aek-setting-row .aek-setting-toggle-row { justify-content: space-between; gap: var(--aek-space-4); }
+  .aek-hero-note p { margin: 0; font-size: 13px; line-height: 1.7; }
+
+  /* ── Range input: the gradient-filled track + webkit pseudo-elements are
+     outside utility reach; the fill percentage travels through
+     `--aek-range-fill` set on the input at runtime. ── */
+  .aek-range-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 22px;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    appearance: none;
+    cursor: pointer;
+  }
+  .aek-range-input::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      var(--aek-accent) 0,
+      var(--aek-accent) var(--aek-range-fill, 0%),
+      var(--aek-range-rest, #d9d9e2) var(--aek-range-fill, 0%),
+      var(--aek-range-rest, #d9d9e2) 100%
+    );
+  }
+  .aek-range-input::-webkit-slider-thumb {
+    width: 16px;
+    height: 16px;
+    margin-top: -5px;
+    border: 2px solid var(--aek-accent);
+    border-radius: 50%;
+    background: var(--aek-surface);
+    box-shadow: var(--aek-shadow-sm);
+    appearance: none;
+    transition: transform 140ms var(--aek-ease), box-shadow 140ms var(--aek-ease);
+  }
+  .aek-range-input:hover::-webkit-slider-thumb { transform: scale(1.1); }
+  .aek-range-input:active::-webkit-slider-thumb {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 4px var(--aek-accent-soft);
+  }
+  .aek-range-input:focus-visible { outline: none; }
+  .aek-range-input:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 4px var(--aek-accent-soft);
+    transform: scale(1.1);
+  }
+  .aek-range-input:disabled { cursor: default; opacity: 0.5; }
+
+  /* ── Skeleton shimmer (gradient sweep — off utility reach; the standard
+       pattern borrowed from MUI / react-loading-skeleton). ── */
+  .aek-skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--aek-surface-subtle) 25%,
+      var(--aek-surface) 37%,
+      var(--aek-surface-subtle) 63%
+    );
+    background-size: 400% 100%;
+    animation: aek-shimmer 1.4s ease infinite;
+    border-radius: var(--aek-radius-sm);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .aek-skeleton { animation: none; }
+  }
+}
+
+@keyframes aek-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* I round: the jump-to-row flash (clears on animation end, no timers). */
+@keyframes aekSettingFlash {
+  0%,
+  55% {
+    outline: 2px solid var(--aek-accent);
+    outline-offset: 2px;
+  }
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+  }
+}
+
+/* Each tier group fades + slides in once, with a small per-index stagger
+   driven by the `--i` custom property set on the element. */
+@keyframes aek-tier-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes aek-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+/* Respect users who ask for no motion: collapse every transition/delay and
+   kill the shimmer + tier entrance (global, not per-class, so new motion
+   gets covered without maintenance). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    /* Delays are part of the choreography (the rail rule waits for the
+       width animation), so they have to collapse too or the rule shows up
+       260ms late with no animation to justify the wait. */
+    transition-delay: 0s !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+  }
+}

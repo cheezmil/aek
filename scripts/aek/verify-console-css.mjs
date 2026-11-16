@@ -1,21 +1,24 @@
 #!/usr/bin/env node
 /**
- * Static check: every `css.<name>` used by the AEK console client must have a
- * rule in `Home.module.css`.
+ * Static check (FF round, 2026-11-17): the AEK console has fully migrated to
+ * Tailwind CSS v4 — `apps/aek-web` must have ZERO CSS Modules residue:
+ *   1. no `*.module.css` files under `apps/aek-web/src`
+ *   2. no imports of `*.module.css` anywhere in the console source
+ *   3. no `css.<key>` module-map member access in the console source
  *
- * Why this exists (2026-11-09): two classes — `.accessActions` and
- * `.accessTextarea` — were referenced from JSX but had NO rule in the module
- * file. `css` is a small lookup object, so a missing key silently yields
- * `undefined`: the element renders with no class, which is exactly how the
- * settings page ended up with a button glued to the hint above it and a
- * 140px-wide textarea. TypeScript cannot catch it because the lookup accepts
- * any string.
+ * This gate's predecessor (2026-11-09) verified that every `css.*` key used
+ * by the console had a rule in `Home.module.css` (a missing key rendered as
+ * `undefined` and silently dropped a className). The 11-07 "CSS Modules
+ * only" stack decision was overruled by the user in the FF round, the
+ * console now styles with Tailwind utilities enforced by `@shadcn/lint`, and
+ * this gate proves the migration is complete: once module CSS is gone there
+ * is nothing left for the old missing-key failure class to bite.
  *
- * READ-ONLY by default; exits 1 when something is missing so it can be used as
- * a gate. `--json` prints machine-readable output.
+ * READ-ONLY; exits 1 while any residue remains so it gates the FF migration
+ * close-out. `--json` prints machine-readable output.
  *
  * Usage:
- *   node scripts/aek/verify-console-css.mjs            # report (exit 1 on miss)
+ *   node scripts/aek/verify-console-css.mjs            # report (exit 1 on residue)
  *   node scripts/aek/verify-console-css.mjs --json
  */
 import { readFileSync, readdirSync } from 'node:fs'
@@ -23,35 +26,47 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const CLIENT = join(HERE, '..', '..', 'packages', 'aek', 'coraek-plugins', 'aek-home', 'src', 'client')
-const CSS_FILE = join(CLIENT, 'Home.module.css')
+const CLIENT = join(HERE, '..', '..', 'apps', 'aek-web', 'src')
 const json = process.argv.includes('--json')
 
-const cssText = readFileSync(CSS_FILE, 'utf-8')
-// Class names in the module, ignoring anything inside a comment.
-const stripped = cssText.replace(/\/\*[\s\S]*?\*\//g, '')
-const defined = new Set([...stripped.matchAll(/\.([A-Za-z_][\w-]*)/g)].map(match => match[1]))
+/** @returns {string[]} */
+function listFiles(dir) {
+  const out = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) out.push(...listFiles(full))
+    else out.push(full)
+  }
+  return out
+}
 
-const sources = readdirSync(CLIENT).filter(name => name.endsWith('.tsx'))
-const used = new Map()
-for (const name of sources) {
-  const text = readFileSync(join(CLIENT, name), 'utf-8')
-  for (const match of text.matchAll(/\bcss\.([A-Za-z_][\w]*)/g)) {
-    const key = match[1]
-    if (!used.has(key)) used.set(key, new Set())
-    used.get(key).add(name)
+const violations = []
+
+// 1. module CSS files must not exist.
+for (const file of listFiles(CLIENT)) {
+  if (file.endsWith('.module.css')) violations.push(`${join('apps/aek-web', file.slice(CLIENT.length + 1))}: CSS Modules file residue — the FF migration styles with Tailwind utilities`)
+}
+
+// 2. no imports of module CSS + 3. no css.* member access.
+for (const file of listFiles(CLIENT)) {
+  if (!/\.(?:ts|tsx|mjs|js|jsx)$/.test(file)) continue
+  const text = readFileSync(file, 'utf-8')
+  const rel = `apps/aek-web/${file.slice(CLIENT.length + 1)}`
+  for (const match of text.matchAll(/['"]\.[^'"]*\.module\.css['"]/gu)) {
+    violations.push(`${rel}: imports ${match[0]} — CSS Modules residue`)
+  }
+  // `css.` is only residue when it is a BARE identifier member access —
+  // "index.css." / "module.css." in comments or strings are false positives.
+  for (const match of text.matchAll(/(?<![\w.])css\.[A-Za-z_$][\w$]*/gu)) {
+    violations.push(`${rel}: ${match[0]} — css.* module-map access residue`)
   }
 }
 
-const missing = [...used.keys()].filter(key => !defined.has(key)).sort()
-const unused = [...defined].filter(key => !used.has(key)).sort()
-
 if (json) {
-  console.log(JSON.stringify({ checked: used.size, missing, unused }, null, 2))
+  console.log(JSON.stringify({ ok: violations.length === 0, violations }, null, 2))
 } else {
-  console.log(`[css] ${String(sources.length)} tsx files, ${String(used.size)} css.* keys, ${String(defined.size)} class rules`)
-  if (missing.length === 0) console.log('[css] every css.* key has a rule')
-  for (const key of missing) console.log(`MISSING  .${key}  used by ${[...(used.get(key) ?? [])].join(', ')}`)
-  if (unused.length > 0) console.log(`[css] ${String(unused.length)} unused rule(s): ${unused.join(', ')}`)
+  console.log(`[css] aek-web CSS Modules residue check (FF migration proof)`)
+  if (violations.length === 0) console.log('[css] zero residue: no *.module.css, no module imports, no css.* access')
+  for (const line of violations) console.log(`RESIDUE  ${line}`)
 }
-process.exit(missing.length === 0 ? 0 : 1)
+process.exit(violations.length === 0 ? 0 : 1)

@@ -55,12 +55,6 @@ const BASE_ENV = {
 /** One reproducible step. `argv` is passed to spawnSync without a shell. */
 const STEPS = [
   {
-    id: 'home-bundle',
-    group: 'bundles',
-    label: 'aek-home client bundle (tsdown)',
-    argv: ['pnpm', '--filter', '@cheezmil/aek-home', 'run', 'bundle'],
-  },
-  {
     id: 'websearch-bundle',
     group: 'bundles',
     label: 'aek-websearch host lib + d.mts (tsdown, dts:true)',
@@ -106,7 +100,7 @@ const STEPS = [
   {
     id: 'verify-console-css',
     group: 'gates',
-    label: 'every css.* key has a rule in Home.module.css',
+    label: 'every css.* key used by aek-web has a rule in its Home.module.css',
     argv: [process.execPath, join('scripts', 'aek', 'verify-console-css.mjs')],
   },
   {

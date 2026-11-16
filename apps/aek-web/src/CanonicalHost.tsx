@@ -13,7 +13,7 @@
  * It never runs on the canonical origin, so it cannot loop. The target comes
  * from the host's own endpoint table — the client never guesses a host name.
  *
- * @module @cheezmil/aek-home/src/client/CanonicalHost
+ * @module @cheezmil/aek-web/src/CanonicalHost
  */
 import { useEffect } from 'react'
 import { useConsoleFacts } from './useConsoleFacts.ts'

@@ -34,7 +34,7 @@ import { SKILL_ICON } from './icon-registry.ts'
 import { useI18n } from './i18n.tsx'
 import { PREF_KEYS, usePref } from './preferences.tsx'
 import { useShellInstall } from './useShellInstall.ts'
-import css from './Setup.module.css'
+import { cn } from '@/lib/utils'
 
 const parseBool = (raw: unknown): boolean | undefined =>
   typeof raw === 'boolean' ? raw : undefined
@@ -50,12 +50,12 @@ function shortVersion(value: string): string {
 /** One status row: green check when present, red alert when missing. */
 function StatusRow({ label, value }: { label: string; value: string | undefined }) {
   return (
-    <div className={css.row}>
-      <Icon name={value !== undefined ? 'check' : 'alert'} size={16} className={value !== undefined ? css.iconCheck : css.iconAlert} />
-      <span className={css.rowLabel}>{label}</span>
+    <div className="flex min-h-11 items-center gap-3 py-1.5">
+      <Icon name={value !== undefined ? 'check' : 'alert'} size={16} className={value !== undefined ? 'ml-px w-4.5 shrink-0 text-success' : 'ml-px w-4.5 shrink-0 text-danger'} />
+      <span className="flex-1 min-w-0 text-aek-135 text-text">{label}</span>
       {value !== undefined
-        ? <span className={css.rowValue} title={value}>{shortVersion(value)}</span>
-        : <span className={css.chipMissing}>{'\u00A0'}</span>}
+        ? <span className="font-mono text-aek-115 whitespace-nowrap text-text-secondary" title={value}>{shortVersion(value)}</span>
+        : <span className="rounded-full border border-danger-border bg-danger-soft px-2.5 py-0.5 text-aek-115 font-semibold text-danger">{'\u00A0'}</span>}
     </div>
   )
 }
@@ -147,9 +147,9 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
   // Not inside the desktop shell: the bridge (and its probes) do not exist.
   if (!available) {
     return (
-      <div className={css.placeholder}>
-        <div className={css.placeholderCard}>
-          <p className={css.placeholderBody}>{t('setup.noShell')}</p>
+      <div className="grid min-h-screen place-items-center bg-background">
+        <div className="max-w-105 rounded-aek-card border border-border bg-surface px-8 py-7 text-center">
+          <p className="text-aek-13 text-text-secondary">{t('setup.noShell')}</p>
         </div>
       </div>
     )
@@ -173,13 +173,13 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
     : 0
 
   return (
-    <div className={css.wizard}>
-      <div className={css.wizardBody}>
-        <header className={css.wizardHeader}>
-          <p className={css.wizardSubtitle}>{t('setup.subtitle')}</p>
+    <div className="flex min-h-screen justify-center bg-background p-12 px-6 pb-16">
+      <div className="w-full max-w-140">
+        <header className="mb-5 flex items-start justify-between gap-3">
+          <p className="text-aek-135 leading-aek-155 text-text-secondary">{t('setup.subtitle')}</p>
           <button
             type="button"
-            className={css.localeToggle}
+            className="flex cursor-pointer items-center gap-1.5 rounded-sm border border-border bg-surface px-2.5 py-1.25 text-xs font-semibold text-text-secondary transition-colors duration-120 ease-aek whitespace-nowrap hover:border-input hover:text-text focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
             title={t('footer.language')}
             aria-label={t('footer.language')}
             onClick={() => {
@@ -193,26 +193,26 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
 
         {status === undefined
           ? (
-            <div className={css.section}>
-              <div className={css.sectionHead}>
-                <span className={css.sectionNum}>1</span>
-                <span className={css.sectionTitle}>{t('setup.section.runtime')}</span>
+            <div className="mb-3.5 rounded-aek-card border border-border bg-surface px-5 py-4.5 shadow-aek-sm">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-accent-border bg-accent-soft text-aek-115 font-bold text-accent-ink">1</span>
+                <span className="text-sm font-semibold text-text">{t('setup.section.runtime')}</span>
               </div>
-              <div className={css.readyLine} role="status">{t('about.loading')}</div>
+              <div className="flex items-center gap-2 py-1.5 text-aek-13 text-success" role="status">{t('about.loading')}</div>
             </div>
           )
           : (
             <>
-              <section className={css.section}>
-                <div className={css.sectionHead}>
-                  <span className={css.sectionNum}>1</span>
-                  <span className={css.sectionTitle}>{t('setup.section.runtime')}</span>
+              <section className="mb-3.5 rounded-aek-card border border-border bg-surface px-5 py-4.5 shadow-aek-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-accent-border bg-accent-soft text-aek-115 font-bold text-accent-ink">1</span>
+                  <span className="text-sm font-semibold text-text">{t('setup.section.runtime')}</span>
                 </div>
                 <StatusRow label={t('about.shellInstall.node')} value={status.node} />
                 <StatusRow label={t('about.shellInstall.pkgMgr')} value={status.pnpm} />
-                <div className={css.backendRow}>
-                  <Icon name={status.backendUp ? 'check' : 'alert'} size={14} className={status.backendUp ? css.backendOk : css.backendDown} />
-                  <span className={status.backendUp ? css.backendOk : css.backendDown}>
+                <div className="flex items-center gap-2 pb-0.5 pt-1">
+                  <Icon name={status.backendUp ? 'check' : 'alert'} size={14} className={status.backendUp ? 'inline-flex items-center gap-1.5 text-aek-125 text-success' : 'inline-flex items-center gap-1.5 text-aek-125 text-danger'} />
+                  <span className={status.backendUp ? 'inline-flex items-center gap-1.5 text-aek-125 text-success' : 'inline-flex items-center gap-1.5 text-aek-125 text-danger'}>
                     {status.backendUp
                       ? t('about.shellInstall.backendUp')
                       : t('about.shellInstall.backendDown')}
@@ -220,15 +220,15 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                 </div>
               </section>
 
-              <section className={css.section}>
-                <div className={css.sectionHead}>
-                  <span className={css.sectionNum}>2</span>
-                  <span className={css.sectionTitle}>{t('setup.section.base')}</span>
+              <section className="mb-3.5 rounded-aek-card border border-border bg-surface px-5 py-4.5 shadow-aek-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-accent-border bg-accent-soft text-aek-115 font-bold text-accent-ink">2</span>
+                  <span className="text-sm font-semibold text-text">{t('setup.section.base')}</span>
                 </div>
                 {nodeMissing
                   ? (
-                    <p className={css.hintLine} role="alert">
-                      <Icon name="alert" size={14} className={css.iconAlert} />
+                    <p className="mt-2.5 flex items-center gap-2 text-aek-13 leading-normal text-text-secondary" role="alert">
+                      <Icon name="alert" size={14} className="ml-px w-4.5 shrink-0 text-danger" />
                       {t('setup.nodeMissing')}
                     </p>
                   )
@@ -239,15 +239,15 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                       <StatusRow label={t('about.shellInstall.skill')} value={status.aeksm} />
                       {baseInstalling
                         ? (
-                          <p className={css.hintLine} role="status">
-                            <Icon name="refresh" size={14} className={css.iconSpin} />
+                          <p className="mt-2.5 flex items-center gap-2 text-aek-13 leading-normal text-text-secondary" role="status">
+                            <Icon name="refresh" size={14} className="animate-spin text-primary" />
                             {t('setup.autoInstalling')}
                           </p>
                         )
                         : null}
                       {baseOk && !baseInstalling
                         ? (
-                          <p className={css.readyLine} role="status">
+                          <p className="flex items-center gap-2 py-1.5 text-aek-13 text-success" role="status">
                             <Icon name="check" size={14} />
                             {t('setup.baseReady')}
                           </p>
@@ -260,20 +260,20 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
               {/* The tucked-away component list: collapsed by default, one
                   click expands it, then the user works the rows one by
                   one. */}
-              <section className={css.section}>
+              <section className="mb-3.5 rounded-aek-card border border-border bg-surface px-5 py-4.5 shadow-aek-sm">
                 <button
                   type="button"
-                  className={css.listToggle}
+                  className="group flex w-full cursor-pointer items-center gap-2 border-0 bg-none pt-0.5 pb-2.5 text-left focus-visible:rounded-aek-toggle focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
                   aria-expanded={compOpen}
                   aria-label={t('setup.listToggle')}
                   onClick={() => {
                     setCompOpen(value => !value)
                   }}
                 >
-                  <Icon name="chevronDown" size={14} className={compOpen ? css.chevOpen : css.chev} />
-                  <span className={css.sectionNum}>3</span>
-                  <span className={css.sectionTitle}>{t('setup.section.components')}</span>
-                  <span className={css.summaryChip}>
+                  <Icon name="chevronDown" size={14} className={compOpen ? 'rotate-180 text-text-muted transition-transform duration-140 ease-aek' : 'text-text-muted transition-transform duration-140 ease-aek'} />
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-accent-border bg-accent-soft text-aek-115 font-bold text-accent-ink">3</span>
+                  <span className="text-sm font-semibold text-text group-hover:text-text">{t('setup.section.components')}</span>
+                  <span className="ml-auto whitespace-nowrap rounded-full border border-border bg-surface-hover px-2.5 py-0.5 text-aek-115 font-semibold text-text-secondary">
                     {optionalMissingCount === 0
                       ? tf('setup.listAllInstalled', { total: WIZARD_COMPONENTS.length })
                       : tf('setup.listSummary', { total: WIZARD_COMPONENTS.length, n: optionalMissingCount })}
@@ -282,24 +282,24 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
 
                 {compOpen
                   ? (
-                    <div className={css.sectionBody}>
+                    <div className="mt-0.5">
                       {WIZARD_COMPONENTS.map((row) => {
                         const value = status[row.field]
                         const installed = value !== undefined
                         return (
-                          <div key={row.key} className={css.row}>
+                          <div key={row.key} className="flex min-h-11 items-center gap-3 py-1.5">
                             {installed
-                              ? <Icon name="check" size={16} className={css.iconCheck} />
+                              ? <Icon name="check" size={16} className="ml-px w-4.5 shrink-0 text-success" />
                               : row.required
                                 ? (
-                                  <span className={css.lockSlot} title={t('setup.requiredNote')}>
+                                  <span className="ml-px grid w-4.5 shrink-0 place-items-center text-text-muted" title={t('setup.requiredNote')}>
                                     <Icon name="lock" size={16} />
                                   </span>
                                 )
                                 : (
                                   <input
                                     type="checkbox"
-                                    className={css.check}
+                                    className="appearance-none relative m-0 size-4.5 flex-none rounded-aek-check border border-aek bg-surface cursor-pointer transition-colors duration-120 ease-aek hover:border-text-muted checked:border-primary checked:bg-primary focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 checked:after:absolute checked:after:content-[''] checked:after:left-aek-45 checked:after:top-aek-15 checked:after:h-2.25 checked:after:w-1.25 checked:after:border-b-2 checked:after:border-r-2 checked:after:border-t-0 checked:after:border-l-0 checked:after:border-inverse checked:after:rotate-45"
                                     checked={compSelected[row.key]}
                                     onChange={(event) => {
                                       setCompSelected(prev => ({ ...prev, [row.key]: event.target.checked }))
@@ -307,19 +307,19 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                                     aria-label={t(row.labelKey)}
                                   />
                                 )}
-                            <span className={css.rowLabel}>{t(row.labelKey)}</span>
+                            <span className="flex-1 min-w-0 text-aek-135 text-text">{t(row.labelKey)}</span>
                             {installed
-                              ? <span className={css.rowValue} title={value}>{shortVersion(value)}</span>
+                              ? <span className="font-mono text-aek-115 whitespace-nowrap text-text-secondary" title={value}>{shortVersion(value)}</span>
                               : row.required
-                                ? <span className={css.chipRequired}>{t('setup.required')}</span>
-                                : <span className={css.chipMissing}>{t('about.shellInstall.missing')}</span>}
+                                ? <span className="whitespace-nowrap rounded-full border border-accent-border bg-accent-soft px-2.5 py-0.5 text-aek-115 font-semibold text-accent-ink">{t('setup.required')}</span>
+                                : <span className="rounded-full border border-danger-border bg-danger-soft px-2.5 py-0.5 text-aek-115 font-semibold text-danger">{t('about.shellInstall.missing')}</span>}
                           </div>
                         )
                       })}
-                      <div className={css.actions}>
+                      <div className="flex items-center gap-2.5 pt-2.5 pb-1">
                         <button
                           type="button"
-                          className={css.actionBtn}
+                          className="whitespace-nowrap rounded-aek-btn border border-accent-border bg-accent-soft px-3 py-1.25 text-aek-125 font-semibold text-accent-ink cursor-pointer transition-colors duration-120 ease-aek hover:enabled:bg-accent-border focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 disabled:cursor-default disabled:opacity-50"
                           disabled={pending || optionalMissingCount === 0}
                           onClick={() => {
                             const next: Record<string, boolean> = {}
@@ -333,7 +333,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                         </button>
                         <button
                           type="button"
-                          className={css.actionBtn}
+                          className="whitespace-nowrap rounded-aek-btn border border-accent-border bg-accent-soft px-3 py-1.25 text-aek-125 font-semibold text-accent-ink cursor-pointer transition-colors duration-120 ease-aek hover:enabled:bg-accent-border focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 disabled:cursor-default disabled:opacity-50"
                           disabled={pending || installPkgs.length === 0}
                           onClick={() => {
                             void install(installPkgs)
@@ -345,30 +345,30 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                       {result !== undefined
                         ? (
                           <>
-                            <p className={`${css.noticeLine} ${result.ok ? css.noticeSuccess : css.noticeError}`} role="status">
+                            <p className={cn('mt-2.5 flex items-center gap-2 rounded-sm px-2.5 py-2 text-aek-125', result.ok ? 'border border-success-border bg-success-soft text-success' : 'border border-danger-border bg-danger-soft text-danger')} role="status">
                               <Icon name={result.ok ? 'check' : 'alert'} size={14} />
                               <span>{tf(result.ok ? 'about.shellInstall.done' : 'about.shellInstall.failed', { tool: result.tool })}</span>
                             </p>
                             {result.output !== ''
                               ? (
-                                <div className={css.outputWrap}>
-                                  <div className={css.outputHead}>
+                                <div className="mt-2.5 overflow-hidden rounded-aek-outline border border-border bg-surface">
+                                  <div className="flex justify-end px-2.5 pt-1.5">
                                     <CopyButton value={result.output} size={14} label={t('setup.copyLog')} />
                                   </div>
-                                  <pre className={css.output}>{result.output}</pre>
+                                  <pre className="mt-2 max-h-40 overflow-auto rounded-sm border border-border bg-surface-subtle px-3 py-2.5 font-mono text-aek-115 leading-normal whitespace-pre-wrap break-words">{result.output}</pre>
                                 </div>
                               )
                               : null}
                             {!result.ok
                               ? (
                                 <>
-                                  <p className={css.hintLine}>{t('setup.agentHelp')}</p>
+                                  <p className="mt-2.5 flex items-center gap-2 text-aek-13 leading-normal text-text-secondary">{t('setup.agentHelp')}</p>
                                   {status.skillPath !== undefined
                                     ? (
-                                      <div className={css.skillPathRow}>
-                                        <Icon name={SKILL_ICON} size={14} />
-                                        <span className={css.skillPathLabel}>{t('setup.skillPathLabel')}</span>
-                                        <span className={css.skillPath}>{status.skillPath}</span>
+                                      <div className="mt-2 flex items-center gap-2 rounded-sm border border-border bg-surface-subtle px-2.5 py-2">
+                                        <Icon name={SKILL_ICON} size={14} className="flex-none text-text-muted" />
+                                        <span className="shrink-0 text-xs font-semibold text-text-secondary">{t('setup.skillPathLabel')}</span>
+                                        <span className="min-w-0 flex-1 font-mono text-aek-115 text-text-secondary whitespace-normal wrap-anywhere break-words">{status.skillPath}</span>
                                         <CopyButton value={status.skillPath} size={14} label={t('runtime.copyPath')} />
                                       </div>
                                     )
@@ -386,7 +386,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
 
               {baseOk && !optionalMissing && !autoGone
                 ? (
-                  <p className={css.readyLineFinal} role="status">
+                  <p className="mt-3.5 flex items-center gap-2 text-aek-125 font-semibold text-success" role="status">
                     <Icon name="check" size={14} />
                     {t('setup.allReady')}
                   </p>
@@ -395,10 +395,10 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
 
               {baseFailed || nodeMissing || optionalMissing
                 ? (
-                  <footer className={css.footer}>
+                  <footer className="mt-4.5 flex justify-end">
                     <button
                       type="button"
-                      className={css.actionBtn}
+                      className="whitespace-nowrap rounded-aek-btn border border-accent-border bg-accent-soft px-3 py-1.25 text-aek-125 font-semibold text-accent-ink cursor-pointer transition-colors duration-120 ease-aek hover:enabled:bg-accent-border focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 disabled:cursor-default disabled:opacity-50"
                       style={{ fontSize: 13.5, padding: '7px 16px' }}
                       onClick={continueToConsole}
                     >

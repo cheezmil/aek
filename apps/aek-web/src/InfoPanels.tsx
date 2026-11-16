@@ -30,7 +30,7 @@
  *   PICKER (every existing container + search) instead of a bare "move to
  *   an isolated process" button.
  *
- * @module @cheezmil/aek-home/src/client/InfoPanels
+ * @module @cheezmil/aek-web/src/InfoPanels
  */
 import { useCallback, useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
@@ -42,7 +42,80 @@ import { PREF_KEYS, useAccessDraft, useDraftSettings, usePref, useSettings } fro
 import type { PrefValue } from './preferences.tsx'
 import { allSettingFields, coerce, SETTINGS_SCHEMA, WEBSEARCH_SETTINGS_SCHEMA } from './settings-schema.ts'
 import type { SettingField } from './settings-schema.ts'
-import { css, cx } from './styles.ts'
+import { cn } from '@/lib/utils'
+
+/* FF round: the old info-panel module classes, now literal Tailwind
+   utilities (1:1 from Home.module.css; off-scale values live in index.css
+   @theme tokens + .aek-* component helpers). */
+const ACCESS_ACTIONS = 'flex items-center gap-3 mt-4'
+const ACCESS_TEXTAREA = 'block box-border w-full min-h-22 p-2 px-2.5 border border-input rounded-xs bg-card text-text font-inherit text-xs leading-170 resize-y focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-1'
+const CAPABILITY_LINE = 'px-1 text-text-muted text-2xs leading-140'
+const CAPABILITY_ROW = 'aek-grid-capability-row'
+const COUNT_CHIP = 'inline-flex items-center p-0.5 px-2.25 rounded-full text-xs font-semibold tabular-nums border border-border bg-surface-subtle text-text-secondary'
+const DANGER_BUTTON = 'bg-danger border-danger'
+const DIRTY_BACKDROP = 'fixed inset-0 z-15'
+const DIRTY_DOT = 'size-2 rounded-full bg-danger'
+const DIRTY_LIST = 'list-none m-0 p-0 max-h-80 overflow-auto'
+const DIRTY_POPOVER = 'aek-popover'
+const DIRTY_POPOVER_HEAD = 'flex items-center justify-between gap-2 mb-1.5'
+const DIRTY_POPOVER_TITLE = 'text-xs-plus font-semibold text-text'
+const DIRTY_ROW = 'flex items-center gap-1.5 p-1.25 px-0.5 rounded-xs hover:bg-surface-hover'
+const DIRTY_ROW_ACTION = 'inline-flex items-center justify-center size-6 p-0 border border-border rounded-xs bg-card text-text-muted cursor-pointer hover:border-accent-border hover:text-accent-ink'
+const DIRTY_ROW_LABEL = 'grow shrink min-w-0 text-left border-0 bg-none p-0 font-inherit text-xs-plus text-text cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:underline hover:text-accent-ink'
+const DIRTY_ROW_VALUE = 'text-2xs text-text-muted font-mono max-w-22.5 whitespace-nowrap overflow-hidden text-ellipsis'
+const DIRTY_SAVE_ALL = 'relative inline-flex items-center justify-center size-8 border border-accent-border rounded-lg bg-accent-soft text-accent-ink cursor-pointer'
+const DIRTY_SAVE_ALL_DOT = 'absolute -top-0.5 -right-0.5 size-2 rounded-full bg-danger border-2 border-card'
+const DIVIDER = 'h-px my-6 bg-border'
+const EMPTY_STATE = 'flex items-center justify-center gap-2 min-h-30 text-text-muted text-xs-plus'
+const ENTRY_LIST = 'flex flex-col gap-2 list-none m-0 p-0'
+const ENTRY_TAG = 'p-0.5 px-2 rounded-full bg-accent-soft border border-accent-border text-accent-ink text-2xs'
+const ERROR_BANNER = 'flex items-center gap-2 mb-4 p-3 px-4 border border-danger-border rounded-sm bg-danger-soft text-danger text-xs-plus'
+const FEATURE_COPY = 'w-auto min-w-5.5 h-4.5 p-0 px-0.75 border-0 rounded-2xs bg-transparent text-text-muted hover:not-disabled:text-accent-ink hover:not-disabled:bg-accent-soft hover:not-disabled:border-transparent'
+const FEATURE_DESC = 'mt-0.5 text-xs leading-aek-155 text-text-muted'
+const FEATURE_ICON = 'shrink-0 grow-0 text-primary mt-0.5'
+const FEATURE_TEXT = 'mt-0.5 text-xs leading-aek-155 text-text-muted flex items-center flex-wrap gap-x-1.5 gap-y-1'
+const FEATURE_TITLE = 'text-xs-plus font-semibold flex items-center gap-1.5'
+const FEATURE_TITLE_LOCK = 'text-text-muted shrink-0 grow-0'
+const FEATURE_TITLE_NAME = 'overflow-hidden text-ellipsis whitespace-nowrap'
+const HERO_NOTE = 'flex gap-2.5 mt-4 p-4 border border-accent-border rounded-lg bg-accent-soft text-accent-ink aek-hero-note'
+const HINT = 'mt-4 text-text-secondary text-xs leading-160'
+const INFO_LABEL = 'shrink-0 grow-0 text-text-muted'
+const INFO_LIST = 'flex flex-col list-none m-0 p-0'
+const INFO_ROW = 'flex items-baseline justify-between gap-4 py-3 border-b border-border text-xs-plus last:border-b-0'
+const INFO_VALUE = 'text-right text-text font-medium break-all'
+const LOADING_STATE = EMPTY_STATE
+const MEM_CHECK_ROW = 'flex items-center gap-2'
+const NOTICE_ERROR = 'border-danger-border bg-danger-soft text-danger'
+const NOTICE_LINE = 'flex items-center gap-2 mb-3 p-1.5 px-2.5 border border-transparent rounded-lg text-text-secondary text-xs'
+const NOTICE_NEUTRAL = 'bg-surface-subtle'
+const NOTICE_SUCCESS = 'border-success-border bg-success-soft text-success'
+const NUMBER_BOX = 'w-19 text-xs tabular-nums p-1.25 px-2 border border-input rounded-xs bg-card text-text'
+const OPS_BAR = 'h-1 rounded-full bg-surface-subtle overflow-hidden'
+const OPS_BAR_FILL = 'block h-full rounded-full bg-primary transition-[width] duration-300 ease-aek'
+const OPS_BADGE_DOT = 'absolute -top-0.75 -right-1.5 size-1.75 rounded-full bg-danger border border-aek border-card'
+const OPS_BADGE_ICON = 'relative inline-flex items-center'
+const OPS_BADGE_ROW = 'relative'
+const OPS_NOTE = 'text-2xs text-text-muted overflow-wrap-anywhere'
+const OPS_NOTE_FAILED = 'text-danger'
+const OPS_PENDING_HOST = 'flex items-center justify-between gap-2 text-2xs text-text-muted'
+const OPS_POP_HEAD = 'flex items-center justify-between gap-2 mb-2'
+const OPS_POP_LIST = 'list-none m-0 p-0 flex flex-col gap-2 max-h-80 overflow-auto'
+const OPS_POP_TITLE = 'inline-flex items-center gap-1.5 text-xs-plus font-semibold text-text'
+const OPS_POPOVER = 'aek-popover'
+const OPS_ROW = 'flex flex-col gap-1.5 p-2 px-2.5 border border-border rounded-lg bg-card'
+const PLUGIN_ACTIONS_GRID = 'aek-grid-plugin-actions items-center justify-items-center gap-3 shrink-0 grow-0'
+const RANGE_INPUT = 'aek-range-input'
+const SETTING_TOGGLE_LABEL = 'text-text font-semibold'
+const SETTING_TOGGLE_ROW = 'flex items-center gap-3 min-h-6 cursor-pointer'
+const SETTING_VALUE = 'shrink-0 grow-0 p-0.5 px-2 rounded-full bg-accent-soft text-accent-ink text-2xs font-semibold tabular-nums'
+const STACK_CHIP = 'shrink-0 grow-0 p-0.5 px-2 border border-border rounded-full bg-surface-subtle text-text-muted text-2xs font-semibold'
+const STACK_TEXT = 'shrink grow min-w-0 max-w-aek-stack overflow-hidden text-ellipsis whitespace-nowrap text-text-muted text-2xs'
+const STICKY_DIVIDER = 'h-px bg-border mb-5'
+const STICKY_PANEL_SEARCH = 'aek-sticky-panel-search'
+const TEXT_INPUT = 'w-full p-1.25 px-2 border border-input rounded-xs bg-card text-text text-xs'
+const BADGE = 'inline-flex items-center gap-1.25 p-0.75 px-2.25 rounded-full text-2xs font-semibold border border-border bg-surface-subtle text-text-secondary'
+const NOTE_ICON = 'shrink-0 grow-0 text-primary'
+const CARD_BODY = 'p-6'
 import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner, ToggleSwitch } from './ui-kit.tsx'
 import type { InventoryState } from './useInventory.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
@@ -50,6 +123,7 @@ import type { PluginBucket, PluginEntry } from './useConsoleFacts.ts'
 import { useCapabilities } from './useCapabilities.ts'
 import { useRuntimes } from './useRuntimes.ts'
 import { useOps } from './useOps.ts'
+import type { OpEntry } from './useOps.ts'
 import { fetchRuntime } from './useRuntimeMode.ts'
 import { postInstance } from './useInstances.ts'
 import { RuntimesBlock, fmtBytes } from './RuntimesPanel.tsx'
@@ -102,12 +176,12 @@ function SettingControl({ field, value, onChange }: {
 }): ReactNode {
   const { t } = useI18n()
   const label = t(field.labelKey)
-  const hint = field.hintKey === undefined ? null : <p className={css.hint}>{t(field.hintKey)}</p>
+  const hint = field.hintKey === undefined ? null : <p className={HINT}>{t(field.hintKey)}</p>
   if (field.kind === 'toggle') {
     return (
       <>
-        <div className={css.settingToggleRow}>
-          <span className={css.settingToggleLabel}>{label}</span>
+        <div className={SETTING_TOGGLE_ROW}>
+          <span className={SETTING_TOGGLE_LABEL}>{label}</span>
           <ToggleSwitch checked={value === true} onChange={onChange} label={label} />
         </div>
         {hint}
@@ -124,14 +198,15 @@ function SettingControl({ field, value, onChange }: {
     const fill = max === min ? 0 : Math.min(100, Math.max(0, ((numeric - min) / (max - min)) * 100))
     return (
       <>
-        <div className={css.settingRowHead}>
-          <span className={css.settingToggleLabel}>{label}</span>
-          <span className={css.settingValue}>{`${String(numeric)}${unit}`}</span>
+        <div className="mb-2 flex min-h-5 items-center justify-between gap-3">
+          <span className={SETTING_TOGGLE_LABEL}>{label}</span>
+          <span className={SETTING_VALUE}>{`${String(numeric)}${unit}`}</span>
         </div>
-        <div className={css.rangeRow}>
+        <div className="flex items-center gap-3">
+
           <input
             type="range"
-            className={css.rangeInput}
+            className={RANGE_INPUT}
             style={{ '--aek-range-fill': `${String(fill)}%` } as CSSProperties}
             min={min}
             max={max}
@@ -142,7 +217,7 @@ function SettingControl({ field, value, onChange }: {
           />
           <input
             type="number"
-            className={css.numberBox}
+            className={NUMBER_BOX}
             min={min}
             max={max}
             step={field.step ?? 1}
@@ -158,9 +233,9 @@ function SettingControl({ field, value, onChange }: {
   if (field.kind === 'select') {
     return (
       <>
-        <div className={css.settingRowHead}><span className={css.settingToggleLabel}>{label}</span></div>
+        <div className="mb-2 flex min-h-5 items-center justify-between gap-3"><span className={SETTING_TOGGLE_LABEL}>{label}</span></div>
         <select
-          className={css.selectInput}
+          className="w-full rounded-xs border border-input bg-surface p-1.25 px-2 text-xs text-text"
           value={String(value)}
           aria-label={label}
           onChange={(event) =>{  onChange(event.target.value) }}
@@ -175,10 +250,10 @@ function SettingControl({ field, value, onChange }: {
   }
   return (
     <>
-      <div className={css.settingRowHead}><span className={css.settingToggleLabel}>{label}</span></div>
+      <div className="mb-2 flex min-h-5 items-center justify-between gap-3"><span className={SETTING_TOGGLE_LABEL}>{label}</span></div>
       <input
         type="text"
-        className={css.textInput}
+        className={TEXT_INPUT}
         value={String(value)}
         aria-label={label}
         onChange={(event) =>{  onChange(event.target.value) }}
@@ -216,21 +291,22 @@ function AccessSection() {
   const missingCredentials = publicMode && (username.trim().length === 0 || (password.length === 0 && !hasPassword))
 
   return (
-    <section className={css.settingGroup} data-access-section>
-      <h3 className={css.sectionTitle}>{t('settings.group.access')}</h3>
-      <p className={css.hint}>{t('access.defaultHint')}</p>
-      <ul className={css.settingList}>
-        <li className={css.settingRow} data-setting-key="aek-home.access">
-          <div className={css.settingToggleRow}>
-            <span className={css.settingToggleLabel}>{t('access.publicMode')}</span>
+    <section className="mb-8 last:mb-0" data-access-section>
+      {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+      <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.access')}</h3>
+      <p className={HINT}>{t('access.defaultHint')}</p>
+      <ul className="m-0 flex flex-col gap-2 list-none p-0">
+        <li className="p-2 rounded-sm transition duration-120 ease hover:bg-surface-hover" data-setting-key="aek-home.access">
+          <div className={SETTING_TOGGLE_ROW}>
+            <span className={SETTING_TOGGLE_LABEL}>{t('access.publicMode')}</span>
             <ToggleSwitch checked={publicMode} onChange={onPublicMode} label={t('access.publicMode')} />
           </div>
-          <p className={css.hint}>{t('access.publicModeHint')}</p>
+          <p className={HINT}>{t('access.publicModeHint')}</p>
         </li>
-        <li className={css.settingRow}>
-          <div className={css.settingRowHead}><span className={css.settingToggleLabel}>{t('access.allowlist')}</span></div>
+        <li className="p-2 rounded-sm transition duration-120 ease hover:bg-surface-hover">
+          <div className="mb-2 flex min-h-5 items-center justify-between gap-3"><span className={SETTING_TOGGLE_LABEL}>{t('access.allowlist')}</span></div>
           <textarea
-            className={css.accessTextarea}
+            className={ACCESS_TEXTAREA}
             rows={4}
             value={allowlist}
             placeholder={t('access.allowlistPlaceholder')}
@@ -238,16 +314,16 @@ function AccessSection() {
             onChange={(event) =>{  accessStage({ allowlist: event.target.value }) }}
             onBlur={onTextBlur}
           />
-          <p className={css.hint}>{t('access.allowlistHint')}</p>
+          <p className={HINT}>{t('access.allowlistHint')}</p>
         </li>
         {publicMode
           ? (
             <>
-              <li className={css.settingRow}>
-                <div className={css.settingRowHead}><span className={css.settingToggleLabel}>{t('access.username')}</span></div>
+              <li className="p-2 rounded-sm transition duration-120 ease hover:bg-surface-hover">
+                <div className="mb-2 flex min-h-5 items-center justify-between gap-3"><span className={SETTING_TOGGLE_LABEL}>{t('access.username')}</span></div>
                 <input
                   type="text"
-                  className={css.textInput}
+                  className={TEXT_INPUT}
                   value={username}
                   autoComplete="off"
                   aria-label={t('access.username')}
@@ -255,11 +331,11 @@ function AccessSection() {
                   onBlur={onTextBlur}
                 />
               </li>
-              <li className={css.settingRow}>
-                <div className={css.settingRowHead}><span className={css.settingToggleLabel}>{t('access.password')}</span></div>
+              <li className="p-2 rounded-sm transition duration-120 ease hover:bg-surface-hover">
+                <div className="mb-2 flex min-h-5 items-center justify-between gap-3"><span className={SETTING_TOGGLE_LABEL}>{t('access.password')}</span></div>
                 <input
                   type="password"
-                  className={css.textInput}
+                  className={TEXT_INPUT}
                   value={password}
                   autoComplete="new-password"
                   placeholder={hasPassword ? t('access.passwordKeep') : ''}
@@ -272,17 +348,17 @@ function AccessSection() {
           )
           : null}
       </ul>
-      {missingCredentials ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{t('access.needCredentials')}</span></div> : null}
+      {missingCredentials ? <div className={ERROR_BANNER}><Icon name="alert" size={16} /><span>{t('access.needCredentials')}</span></div> : null}
       {accessCommitError !== undefined
         ? (
-          <div className={css.errorBanner}>
+          <div className={ERROR_BANNER}>
             <Icon name="alert" size={16} />
             <span>{accessCommitError === 'needCredentials' ? t('access.needCredentials') : accessCommitError}</span>
           </div>
         )
         : null}
-      {notice !== undefined ? <p className={css.hint}>{notice}</p> : null}
-      {dirty ? <p className={css.hint}>{t('access.stagedHint')}</p> : null}
+      {notice !== undefined ? <p className={HINT}>{notice}</p> : null}
+      {dirty ? <p className={HINT}>{t('access.stagedHint')}</p> : null}
     </section>
   )
 }
@@ -309,37 +385,40 @@ function PermissionsSection() {
   }
 
   return (
-    <section className={css.settingGroup}>
-      <h3 className={css.sectionTitle}>{t('settings.group.permissions')}</h3>
-      <ul className={css.infoList}>
-        <li className={css.infoRow}>
-          <span className={css.infoLabel}>{t('permissions.platform')}</span>
-          <span className={css.infoValue}>
+    <section className="mb-8 last:mb-0">
+      {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+      <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.permissions')}</h3>
+      <ul className={INFO_LIST}>
+        <li className={INFO_ROW}>
+          <span className={INFO_LABEL}>{t('permissions.platform')}</span>
+          <span className={INFO_VALUE}>
             {facts.facts === undefined ? t('common.loading') : `${facts.facts.platform} / ${facts.facts.arch}`}
           </span>
         </li>
       </ul>
-      <div className={css.heroNote}>
-        <span className={css.noteIcon}><Icon name="shield" size={16} /></span>
+      <div className={HERO_NOTE}>
+        <span className={NOTE_ICON}><Icon name="shield" size={16} /></span>
         <p>{t(noteKey)}</p>
       </div>
-      <ul className={css.permList}>
+      {/* FF-NOTE: .heroNote + .permList { margin-top: var(--aek-space-4) } → mt-4 (the list is preceded by the heroNote div here). */}
+      <ul className="m-0 mt-4 flex flex-col gap-2 list-none p-0">
         {bundles.map(bundle => (
-          <li key={bundle.id} className={css.permRow}>
-            <span className={css.featureIcon}><Icon name={APP_BUNDLE_ICON} size={16} /></span>
-            <span className={css.permName}>{bundle.name}.app</span>
-            <code className={css.pathValue}>{bundle.id}</code>
+          <li key={bundle.id} className="flex items-center gap-2.5 rounded-sm border border-border bg-surface-subtle p-2 px-3 text-xs">
+            <span className={FEATURE_ICON}><Icon name={APP_BUNDLE_ICON} size={16} /></span>
+            <span className="min-w-27 font-bold text-text">{bundle.name}.app</span>
+            <code className="flex-auto min-w-0 truncate text-xs text-text-secondary">{bundle.id}</code>
             <CopyButton value={bundle.id} label={t('common.copy')} />
           </li>
         ))}
       </ul>
-      <div className={css.accessActions}>
-        <button type="button" className={css.primaryButton} disabled={pending || !isMac} onClick={openPane}>
+      <div className={ACCESS_ACTIONS}>
+
+        <button type="button" className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-primary bg-primary px-4 font-semibold shadow-aek-primary text-inverse transition duration-150 ease-aek hover:bg-accent-hover hover:border-accent-hover active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50" disabled={pending || !isMac} onClick={openPane}>
           {pending ? <Spinner /> : null}
           {t('permissions.open')}
         </button>
       </div>
-      {notice !== undefined ? <p className={css.hint}>{notice}</p> : null}
+      {notice !== undefined ? <p className={HINT}>{notice}</p> : null}
     </section>
   )
 }
@@ -387,7 +466,7 @@ function SettingsDirtyPopover({ open, onClose, withAccess }: { open: boolean; on
   // and an instant jump + the flash row is reliable in every state.
   const locate = (key: string): void => {
     const row = document.querySelector<HTMLElement>(`[data-setting-key="${key}"]`)
-    const flashClass = css.settingRowFlash
+    const flashClass = 'animate-setting-flash'
     // `flashClass` is a real key of Home.module.css, so only the row lookup
     // can miss.
     if (row === null) return
@@ -424,38 +503,38 @@ function SettingsDirtyPopover({ open, onClose, withAccess }: { open: boolean; on
   return (
     <>
       {outsideClose
-        ? <div className={css.dirtyBackdrop} role="presentation" onClick={onClose} />
+        ? <div className={DIRTY_BACKDROP} role="presentation" onClick={onClose} />
         : null}
-      <div className={css.dirtyPopover} role="dialog" aria-label={t('settings.dirty.title')}>
-        <div className={css.dirtyPopoverHead}>
-          <span className={css.dirtyPopoverTitle}>{t('settings.dirty.title')}</span>
+      <div className={DIRTY_POPOVER} role="dialog" aria-label={t('settings.dirty.title')}>
+        <div className={DIRTY_POPOVER_HEAD}>
+          <span className={DIRTY_POPOVER_TITLE}>{t('settings.dirty.title')}</span>
           <button
             type="button"
-            className={css.dirtySaveAll}
+            className={DIRTY_SAVE_ALL}
             title={t('settings.dirty.saveAll')}
             aria-label={`${t('settings.dirty.saveAll')} — ${t('settings.dirty.dot')}`}
             onClick={() => void saveAll()}
           >
             <Icon name="save" size={18} />
             {total > 0
-              ? <span className={css.dirtySaveAllDot} aria-label={t('settings.dirty.dot')} />
+              ? <span className={DIRTY_SAVE_ALL_DOT} aria-label={t('settings.dirty.dot')} />
               : null}
           </button>
         </div>
         {total === 0
-          ? <p className={css.hint}>{t('settings.dirty.empty')}</p>
+          ? <p className={HINT}>{t('settings.dirty.empty')}</p>
           : (
-            <ul className={css.dirtyList}>
+            <ul className={DIRTY_LIST}>
               {withAccess && access.dirty
                 ? (
-                  <li className={css.dirtyRow}>
-                    <button type="button" className={css.dirtyRowLabel} title={t('settings.dirty.locate')} onClick={() =>{  locate('aek-home.access') }}>
+                  <li className={DIRTY_ROW}>
+                    <button type="button" className={DIRTY_ROW_LABEL} title={t('settings.dirty.locate')} onClick={() =>{  locate('aek-home.access') }}>
                       {t('settings.access.item')}
                     </button>
-                    <span className={css.dirtyRowValue}>—</span>
+                    <span className={DIRTY_ROW_VALUE}>—</span>
                     <button
                       type="button"
-                      className={css.dirtyRowAction}
+                      className={DIRTY_ROW_ACTION}
                       title={t('settings.dirty.undo')}
                       aria-label={t('settings.dirty.undo')}
                       onClick={() =>{  access.accessUndo() }}
@@ -464,7 +543,7 @@ function SettingsDirtyPopover({ open, onClose, withAccess }: { open: boolean; on
                     </button>
                     <button
                       type="button"
-                      className={css.dirtyRowAction}
+                      className={DIRTY_ROW_ACTION}
                       title={t('settings.dirty.saveOne')}
                       aria-label={t('settings.dirty.saveOne')}
                       onClick={() => void access.accessCommit()}
@@ -478,14 +557,14 @@ function SettingsDirtyPopover({ open, onClose, withAccess }: { open: boolean; on
                 const field = FIELD_BY_KEY.get(key)
                 const label = field !== undefined ? t(field.labelKey) : key
                 return (
-                  <li key={key} className={css.dirtyRow}>
-                    <button type="button" className={css.dirtyRowLabel} title={t('settings.dirty.locate')} onClick={() =>{  locate(key) }}>
+                  <li key={key} className={DIRTY_ROW}>
+                    <button type="button" className={DIRTY_ROW_LABEL} title={t('settings.dirty.locate')} onClick={() =>{  locate(key) }}>
                       {label}
                     </button>
-                    <span className={css.dirtyRowValue}>{String(draftValues[key] ?? '')}</span>
+                    <span className={DIRTY_ROW_VALUE}>{String(draftValues[key] ?? '')}</span>
                     <button
                       type="button"
-                      className={css.dirtyRowAction}
+                      className={DIRTY_ROW_ACTION}
                       title={t('settings.dirty.undo')}
                       aria-label={t('settings.dirty.undo')}
                       onClick={() =>{  draftUndo(key) }}
@@ -494,7 +573,7 @@ function SettingsDirtyPopover({ open, onClose, withAccess }: { open: boolean; on
                     </button>
                     <button
                       type="button"
-                      className={css.dirtyRowAction}
+                      className={DIRTY_ROW_ACTION}
                       title={t('settings.dirty.saveOne')}
                       aria-label={t('settings.dirty.saveOne')}
                       onClick={() => void draftSave(key)}
@@ -610,7 +689,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   const immediateKeys = new Set(['aek-home.autoSave', 'aek-home.dirtyPopoverOutsideClose'])
 
   const fieldRow = (field: SettingField): ReactNode => (
-    <li key={field.key} className={css.settingRow} data-setting-key={field.key}>
+    <li key={field.key} className="p-2 rounded-sm transition duration-120 ease hover:bg-surface-hover" data-setting-key={field.key}>
       <SettingControl
         field={field}
         value={coerce(
@@ -635,17 +714,17 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
 
   return (
     <PanelCard>
-      <div className={css.cardBody}>
+      <div className={CARD_BODY}>
         {/* G round: the settings toolbar is a control, not content — it stays
             pinned to the top of the viewport while the section list scrolls
             (the document is the scroll container; sticky + opaque surface +
             the F-round hairline below it). */}
-        <div className={css.stickyPanelSearch}>
+        <div className={STICKY_PANEL_SEARCH}>
           <PanelSearch
             value={query}
             onChange={setQuery}
             placeholder={t('settings.panelSearch')}
-            badge={totalDirty > 0 ? <span className={css.dirtyDot} aria-hidden="true" /> : undefined}
+            badge={totalDirty > 0 ? <span className={DIRTY_DOT} aria-hidden="true" /> : undefined}
             badgeAria={t('settings.dirty.title')}
             onBadgeClick={() =>{  setPopoverOpen(open => !open) }}
             condense
@@ -656,13 +735,14 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
         {/* L round: the divider is its OWN node in document flow — it stays
             put (and scrolls away) while the toolbar above pins; the
             floating box must not carry a bottom line. */}
-        <div className={css.stickyDivider} aria-hidden="true" />
+        <div className={STICKY_DIVIDER} aria-hidden="true" />
         {firstRailRows.length > 0
           ? (
-            <section className={css.settingGroup}>
-              <h3 className={css.sectionTitle}>{t('settings.group.sidebarFirst')}</h3>
-              <p className={css.hint}>{t('settings.group.sidebarFirstHint')}</p>
-              <ul className={css.settingList}>
+            <section className="mb-8 last:mb-0">
+              {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+              <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.sidebarFirst')}</h3>
+              <p className={HINT}>{t('settings.group.sidebarFirstHint')}</p>
+              <ul className="m-0 flex flex-col gap-2 list-none p-0">
                 {firstRailRows.map(fieldRow)}
               </ul>
             </section>
@@ -670,10 +750,11 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
           : null}
         {secondRailFields.length > 0
           ? (
-            <section className={css.settingGroup}>
-              <h3 className={css.sectionTitle}>{t('settings.group.sidebarSecond')}</h3>
-              <p className={css.hint}>{t('settings.group.sidebarSecondHint')}</p>
-              <ul className={css.settingList}>
+            <section className="mb-8 last:mb-0">
+              {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+              <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.sidebarSecond')}</h3>
+              <p className={HINT}>{t('settings.group.sidebarSecondHint')}</p>
+              <ul className="m-0 flex flex-col gap-2 list-none p-0">
                 {secondRailFields.map(fieldRow)}
               </ul>
             </section>
@@ -681,9 +762,10 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
           : null}
         {navigationRows.length > 0
           ? (
-            <section className={css.settingGroup}>
-              <h3 className={css.sectionTitle}>{t('settings.group.navigation')}</h3>
-              <ul className={css.settingList}>
+            <section className="mb-8 last:mb-0">
+              {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+              <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.navigation')}</h3>
+              <ul className="m-0 flex flex-col gap-2 list-none p-0">
                 {navigationRows.map(fieldRow)}
               </ul>
             </section>
@@ -691,9 +773,10 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
           : null}
         {generalRows.length > 0
           ? (
-            <section className={css.settingGroup}>
-              <h3 className={css.sectionTitle}>{t('settings.group.general')}</h3>
-              <ul className={css.settingList}>
+            <section className="mb-8 last:mb-0">
+              {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+              <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.general')}</h3>
+              <ul className="m-0 flex flex-col gap-2 list-none p-0">
                 {generalRows.map(fieldRow)}
               </ul>
             </section>
@@ -701,10 +784,11 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
           : null}
         {testRows.length > 0
           ? (
-            <section className={css.settingGroup}>
-              <h3 className={css.sectionTitle}>{t('settings.group.test')}</h3>
-              <p className={css.hint}>{t('settings.group.testHint')}</p>
-              <ul className={css.settingList}>
+            <section className="mb-8 last:mb-0">
+              {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+              <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.test')}</h3>
+              <p className={HINT}>{t('settings.group.testHint')}</p>
+              <ul className="m-0 flex flex-col gap-2 list-none p-0">
                 {testRows.map(fieldRow)}
               </ul>
             </section>
@@ -714,18 +798,20 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
         {matches(['permission', 'tcc', 'accessibility', t('settings.group.permissions')]) ? <PermissionsSection /> : null}
         {matches(['default', t('settings.group.defaults'), t('settings.restoreDefaults')])
           ? (
-            <section className={css.settingGroup}>
-              <h3 className={css.sectionTitle}>{t('settings.group.defaults')}</h3>
-              <ul className={css.settingList}>
-                <li className={css.settingRow}>
-                  <div className={css.settingRowHead}>
-                    <span className={css.settingToggleLabel}>{t('settings.restoreDefaults')}</span>
+            <section className="mb-8 last:mb-0">
+              {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+              <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.defaults')}</h3>
+              <ul className="m-0 flex flex-col gap-2 list-none p-0">
+                <li className="p-2 rounded-sm transition duration-120 ease hover:bg-surface-hover">
+                  <div className="mb-2 flex min-h-5 items-center justify-between gap-3">
+                    <span className={SETTING_TOGGLE_LABEL}>{t('settings.restoreDefaults')}</span>
                   </div>
-                  <p className={css.hint}>{t('settings.restoreDefaultsHint')}</p>
-                  <div className={css.accessActions}>
+                  <p className={HINT}>{t('settings.restoreDefaultsHint')}</p>
+                  <div className={ACCESS_ACTIONS}>
                     <button
                       type="button"
-                      className={css.secondaryButton}
+
+                      className="inline-flex h-8.5 items-center justify-center gap-2 rounded-sm border border-input bg-surface px-3.5 text-xs-plus text-text-secondary hover:bg-surface-hover"
                       disabled={restore.phase === 'busy'}
                       onClick={() => { void restoreDefaults() }}
                     >
@@ -734,9 +820,10 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
                     </button>
                     {restore.phase === 'backedUp'
                       ? (
+
                         <button
                           type="button"
-                          className={css.primaryButton}
+                          className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-primary bg-primary px-4 font-semibold shadow-aek-primary text-inverse transition duration-150 ease-aek hover:bg-accent-hover hover:border-accent-hover active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
                           onClick={() => { void undoRestore() }}
                         >
                           {t('settings.undoRestore')}
@@ -745,19 +832,19 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
                       : null}
                   </div>
                   {restore.phase === 'backedUp'
-                    ? <p className={cx(css.noticeLine, css.noticeNeutral)}><Icon name="check" size={14} />{t('settings.backupDone')}</p>
+                    ? <p className={cn(NOTICE_LINE, NOTICE_NEUTRAL)}><Icon name="check" size={14} />{t('settings.backupDone')}</p>
                     : null}
                   {restore.phase === 'restored'
-                    ? <p className={cx(css.noticeLine, css.noticeNeutral)}><Icon name="check" size={14} />{t('settings.restored')}</p>
+                    ? <p className={cn(NOTICE_LINE, NOTICE_NEUTRAL)}><Icon name="check" size={14} />{t('settings.restored')}</p>
                     : null}
                   {restore.phase === 'noBackup'
-                    ? <p className={css.errorBanner}><Icon name="alert" size={16} /><span>{t('settings.noBackup')}</span></p>
+                    ? <p className={ERROR_BANNER}><Icon name="alert" size={16} /><span>{t('settings.noBackup')}</span></p>
                     : null}
                   {restore.phase === 'backupFailed'
-                    ? <p className={css.errorBanner}><Icon name="alert" size={16} /><span>{t('settings.backupFailed')}</span></p>
+                    ? <p className={ERROR_BANNER}><Icon name="alert" size={16} /><span>{t('settings.backupFailed')}</span></p>
                     : null}
                   {restore.phase === 'restoreFailed'
-                    ? <p className={css.errorBanner}><Icon name="alert" size={16} /><span>{t('settings.restoreFailed')}</span></p>
+                    ? <p className={ERROR_BANNER}><Icon name="alert" size={16} /><span>{t('settings.restoreFailed')}</span></p>
                     : null}
                 </li>
               </ul>
@@ -765,7 +852,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
           )
           : null}
         {visible.length === 0 && needle.length > 0
-          ? <div className={css.emptyState}>{t('common.noMatch')}</div>
+          ? <div className={EMPTY_STATE}>{t('common.noMatch')}</div>
           : null}
       </div>
     </PanelCard>
@@ -799,14 +886,14 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
 
   return (
     <PanelCard>
-      <div className={css.cardBody}>
+      <div className={CARD_BODY}>
         {/* G round: same sticky + condense toolbar as the base settings page. */}
-        <div className={css.stickyPanelSearch}>
+        <div className={STICKY_PANEL_SEARCH}>
           <PanelSearch
             value={query}
             onChange={setQuery}
             placeholder={t('settings.panelSearch')}
-            badge={dirtyKeys.length > 0 ? <span className={css.dirtyDot} aria-hidden="true" /> : undefined}
+            badge={dirtyKeys.length > 0 ? <span className={DIRTY_DOT} aria-hidden="true" /> : undefined}
             badgeAria={t('settings.dirty.title')}
             onBadgeClick={() =>{  setPopoverOpen(open => !open) }}
             condense
@@ -815,14 +902,15 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
           <SettingsDirtyPopover open={popoverOpen && dirtyKeys.length > 0} onClose={() =>{  setPopoverOpen(false) }} withAccess={false} />
         </div>
         {/* L round: standalone divider (document flow, not part of the sticky box). */}
-        <div className={css.stickyDivider} aria-hidden="true" />
+        <div className={STICKY_DIVIDER} aria-hidden="true" />
         {visible.length > 0
           ? (
-            <section className={css.settingGroup}>
-              <h3 className={css.sectionTitle}>{t('settings.group.websearch')}</h3>
-              <ul className={css.settingList}>
+            <section className="mb-8 last:mb-0">
+              {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+              <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.websearch')}</h3>
+              <ul className="m-0 flex flex-col gap-2 list-none p-0">
                 {visible.map(field => (
-                  <li key={field.key} className={css.settingRow} data-setting-key={field.key}>
+                  <li key={field.key} className="p-2 rounded-sm transition duration-120 ease hover:bg-surface-hover" data-setting-key={field.key}>
                     <SettingControl
                       field={field}
                       value={coerce(field, draftValues[field.key] ?? field.default)}
@@ -834,7 +922,7 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             </section>
           )
           : (
-            <div className={css.emptyState}>{t('common.noMatch')}</div>
+            <div className={EMPTY_STATE}>{t('common.noMatch')}</div>
           )}
       </div>
     </PanelCard>
@@ -925,59 +1013,62 @@ function RuntimePicker({ rt, current, onPick, onCarveOut, busy }: {
     ? rows
     : rows.filter(row => [row.id, row.label].join(' ').toLowerCase().includes(q))
   return (
-    <div className={css.rtPicker} role="listbox" aria-label={t('plugins.runtime.picker')}>
-      <input
-        className={css.rtPickerSearch}
-        value={needle}
-        onChange={(event) => { setNeedle(event.target.value) }}
-        placeholder={t('plugins.runtime.pickerSearch')}
-        aria-label={t('plugins.runtime.pickerSearch')}
-      />
-      <ul className={css.rtPickerList}>
-        {/* X4: the one-click "carve out" — a fresh auto-numbered dedicated
+    <>
+
+      <div className="absolute left-0 top-full z-30 flex w-60 flex-col gap-2 rounded-md border border-input bg-surface p-2 shadow-lg" role="listbox" aria-label={t('plugins.runtime.picker')}>
+        <input
+          className="rounded-xs border border-border bg-surface-subtle p-0.75 px-1.5 text-xs text-text"
+          value={needle}
+          onChange={(event) => { setNeedle(event.target.value) }}
+          placeholder={t('plugins.runtime.pickerSearch')}
+          aria-label={t('plugins.runtime.pickerSearch')}
+        />
+        <ul className="m-0 flex max-h-45 flex-col gap-0.5 list-none overflow-y-auto p-0">
+          {/* X4: the one-click "carve out" — a fresh auto-numbered dedicated
             container for THIS plugin (the in-host reading is shared, so the
             only way to see its OWN number is to give it its own process). */}
-        {onCarveOut !== undefined
-          ? (
-            <li
-              className={cx(css.rtPickerItem, busy !== undefined ? css.rtPickerItemDisabled : undefined)}
-              role="option"
-              aria-selected={false}
-              onClick={() => { if (busy === undefined) void onCarveOut() }}
-            >
-              <span className={css.rtPickerLabel}>
-                {t('plugins.runtime.carveOut')}
-              </span>
-              <Icon name="plus" size={13} />
-            </li>
-          )
-          : null}
-        {visible.length === 0
-          ? <li className={css.rtPickerEmpty}>{t('common.noMatch')}</li>
-          : visible.map((row) => {
-            const here = row.id === current
-            return (
+          {onCarveOut !== undefined
+            ? (
               <li
-                key={row.id}
-                className={cx(css.rtPickerItem, here ? css.rtPickerItemCurrent : undefined)}
+                className={cn('flex items-center justify-between gap-2 rounded-xs p-1 px-2 text-xs', 'cursor-pointer text-text hover:bg-surface-hover', busy !== undefined ? 'pointer-events-none opacity-50' : undefined)}
                 role="option"
-                aria-selected={here}
-                onClick={() => { if (!here) onPick(row.id) }}
+                aria-selected={false}
+                onClick={() => { if (busy === undefined) void onCarveOut() }}
               >
-                <span className={css.rtPickerLabel}>
-                  {row.label}
-                  <span className={css.rtPickerMeta}>
-                    {row.plugins.length > 0 ? `${row.plugins.length}` : ''}
-                    {row.state === 'running' ? t('runtimes.state.running') : t('runtimes.state.stopped')}
-                  </span>
+                <span className="inline-flex items-center gap-1.5 truncate font-semibold">
+                  {t('plugins.runtime.carveOut')}
                 </span>
-                {here ? <Icon name="check" size={13} /> : <Icon name="chevronDown" size={13} />}
+                <Icon name="plus" size={13} />
               </li>
             )
-          })}
-      </ul>
-      {busy !== undefined ? <div className={css.rtPickerBusy}><Spinner size={12} />{t('plugins.runtime.pickerBusy')}</div> : null}
-    </div>
+            : null}
+          {visible.length === 0
+            ? <li className="p-1 px-2 text-xs text-text-muted">{t('common.noMatch')}</li>
+            : visible.map((row) => {
+              const here = row.id === current
+              return (
+                <li
+                  key={row.id}
+                  className={cn('flex items-center justify-between gap-2 rounded-sm p-1 px-2 text-xs', here ? 'cursor-default bg-accent-soft text-accent-ink hover:bg-accent-soft' : 'cursor-pointer text-text hover:bg-surface-hover')}
+                  role="option"
+                  aria-selected={here}
+                  onClick={() => { if (!here) onPick(row.id) }}
+                >
+                  <span className="inline-flex items-center gap-1.5 truncate font-semibold">
+                    {row.label}
+                    <span className="font-normal text-2xs text-text-muted">
+                      {row.plugins.length > 0 ? `${row.plugins.length}` : ''}
+                      {row.state === 'running' ? t('runtimes.state.running') : t('runtimes.state.stopped')}
+                    </span>
+                  </span>
+                  {here ? <Icon name="check" size={13} /> : <Icon name="chevronDown" size={13} />}
+                </li>
+              )
+            })}
+        </ul>
+        {busy !== undefined ? <div className="flex items-center gap-1.5 text-2xs text-text-muted"><Spinner />{t('plugins.runtime.pickerBusy')}</div> : null}
+      </div>
+    </>
   )
 }
 
@@ -1039,57 +1130,64 @@ function PluginRuntimeLine({ plugin, rt, term, onMove, onCarveOut, busy }: {
       ? tf('plugins.runtime.memContainerTip', { n: String(isolatedRow.plugins.length), names: isolatedRow.plugins.join(', ') })
       : undefined
   return (
-    <div className={css.pluginRuntimeLine}>
-      <span className={cx(css.rtChip, resolved.state === 'running' ? css.rtStateRunning : undefined)}>
-        runtime{String(resolved.number)}
-      </span>
-      <span className={css.pluginRuntimeText}>
-        {isolatedRow !== undefined
-          ? tf('plugins.runtime.lineIsolated', { n: String(isolatedRow.number) })
-          : t('plugins.runtime.lineHost')}
-        {` · ${t(resolved.state === 'running' ? 'runtimes.state.running' : 'runtimes.state.stopped')}`}
-      </span>
-      {/* X4: the number is always a real measured reading; the hover carries
+    <>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-2xs text-text-muted">
+        <span
+          className={cn(
+            'justify-self-start rounded-full border border-border bg-surface py-0.25 px-2 text-2xs text-text-muted',
+            resolved.state === 'running' ? 'text-success' : undefined,
+          )}>
+          runtime{String(resolved.number)}
+        </span>
+        <span className="text-2xs text-text-muted">
+          {isolatedRow !== undefined
+            ? tf('plugins.runtime.lineIsolated', { n: String(isolatedRow.number) })
+            : t('plugins.runtime.lineHost')}
+          {` · ${t(resolved.state === 'running' ? 'runtimes.state.running' : 'runtimes.state.stopped')}`}
+        </span>
+        {/* X4: the number is always a real measured reading; the hover carries
           the WHY (in-host sharing / container cohabitation) in plain words. */}
-      <span className={cx(css.rtChip, css.pluginMemChip)} title={chipTitle}>
-        {chip}
-      </span>
-      {(moveTargets.length > 0 || carveOutable)
-        ? (
-          <span className={css.rtPickerWrap}>
-            <button
-              type="button"
-              className={css.pluginRuntimeMove}
-              disabled={busy !== undefined}
-              onClick={() => { setPickerOpen(open => !open) }}
-              aria-expanded={pickerOpen}
-            >
-              {t('plugins.runtime.picker')}
-              <Icon name="chevronDown" size={13} />
-            </button>
-            {pickerOpen
-              ? (
-                <RuntimePicker
-                  rt={rt}
-                  current={runtimeId}
-                  onPick={(target) => {
-                    setPickerOpen(false)
-                    onMove(plugin.id, target)
-                  }}
-                  onCarveOut={carveOutable
-                    ? () => {
+        <span className={cn('justify-self-start rounded-full border border-border bg-surface py-0.25 px-2 text-xs text-text-muted', 'ml-auto')} title={chipTitle}>
+          {chip}
+        </span>
+        {(moveTargets.length > 0 || carveOutable)
+          ? (
+            <span className="relative inline-flex">
+
+              <button
+                type="button"
+                className="rounded-full border border-border bg-surface py-0.5 px-2 text-2xs text-text-secondary leading-140 cursor-pointer hover:border-primary hover:text-accent-ink disabled:cursor-default disabled:opacity-50"
+                disabled={busy !== undefined}
+                onClick={() => { setPickerOpen(open => !open) }}
+                aria-expanded={pickerOpen}
+              >
+                {t('plugins.runtime.picker')}
+                <Icon name="chevronDown" size={13} />
+              </button>
+              {pickerOpen
+                ? (
+                  <RuntimePicker
+                    rt={rt}
+                    current={runtimeId}
+                    onPick={(target) => {
                       setPickerOpen(false)
-                      void onCarveOut()
-                    }
-                    : undefined}
-                  busy={busy}
-                />
-              )
-              : null}
-          </span>
-        )
-        : null}
-    </div>
+                      onMove(plugin.id, target)
+                    }}
+                    onCarveOut={carveOutable
+                      ? () => {
+                        setPickerOpen(false)
+                        void onCarveOut()
+                      }
+                      : undefined}
+                    busy={busy}
+                  />
+                )
+                : null}
+            </span>
+          )
+          : null}
+      </div>
+    </>
   )
 }
 
@@ -1146,13 +1244,13 @@ function OpsPopover({ open, onClose, ops, progressOf, onRemove, onClear, onResta
   const stepClassOf = (state: string): string => {
     switch (state) {
       case 'done':
-        return css.opsStepDone
+        return 'border-success-border bg-success-soft text-success'
       case 'failed':
-        return css.opsStepFailed
+        return 'border-danger-border bg-danger-soft text-danger'
       case 'active':
-        return css.opsStepActive
+        return 'border-accent-border bg-accent-soft text-accent-ink'
       default:
-        return css.opsStepPending
+        return 'text-text-muted'
     }
   }
   const dismiss = async (id: string): Promise<void> => {
@@ -1178,34 +1276,37 @@ function OpsPopover({ open, onClose, ops, progressOf, onRemove, onClear, onResta
   return (
     <>
       {outsideClose
-        ? <div className={css.dirtyBackdrop} role="presentation" onClick={onClose} />
+        ? <div className={DIRTY_BACKDROP} role="presentation" onClick={onClose} />
         : null}
-      <div className={css.opsPopover} role="dialog" aria-label={t('plugins.ops.title')}>
-        <div className={css.opsPopHead}>
-          <span className={css.opsPopTitle}><Icon name="activity" size={14} /><span>{t('plugins.ops.title')}</span></span>
+      <div className={OPS_POPOVER} role="dialog" aria-label={t('plugins.ops.title')}>
+        <div className={OPS_POP_HEAD}>
+          <span className={OPS_POP_TITLE}><Icon name="activity" size={14} /><span>{t('plugins.ops.title')}</span></span>
           <button
             type="button"
-            className={css.secondaryButton}
+
+            className="inline-flex h-8.5 items-center justify-center gap-2 rounded-sm border border-input bg-surface px-3.5 text-xs-plus text-text-secondary hover:bg-surface-hover"
             disabled={busy}
             onClick={() =>{  void clear() }}
           >
             {t('plugins.ops.clearAll')}
           </button>
         </div>
-        <ul className={css.opsPopList}>
+        <ul className={OPS_POP_LIST}>
           {rows.map((op) => {
             const percent = Math.round(progressOf(op) * 100)
+            // FF-NOTE: .opsRowFailed on the row = border-color only (var(--aek-danger-border)); the
+            // .opsRowFailed.opsRowState compound rule (the failed state chip) = bg-danger-soft text-danger.
             return (
-              <li key={op.id} className={cx(css.opsRow, op.status === 'failed' ? css.opsRowFailed : undefined)}>
-                <div className={css.opsRowTop}>
-                  <span className={css.opsRowTitle}>{op.title}</span>
-                  <span className={cx(css.opsRowState, op.status === 'running' ? css.opsRowRunning : (op.status === 'failed' ? css.opsRowFailed : css.opsRowDone))}>
+              <li key={op.id} className={cn(OPS_ROW, op.status === 'failed' ? 'border-danger-border' : undefined)}>
+                <div className="flex items-center gap-2">
+                  <span className="flex-auto truncate text-xs font-semibold text-text">{op.title}</span>
+                  <span className={cn('rounded-full py-0.25 px-2 text-2xs font-semibold', op.status === 'running' ? 'bg-accent-soft text-accent-ink' : (op.status === 'failed' ? 'bg-danger-soft text-danger' : 'bg-success-soft text-success'))}>
                     {opsStateTitle(op.status)}
                   </span>
-                  <span className={css.opsRowPercent}>{String(percent)}%</span>
+                  <span className="min-w-8.5 text-right tabular-nums text-2xs text-text-muted">{String(percent)}%</span>
                   <button
                     type="button"
-                    className={css.opsRowRemove}
+                    className="inline-flex size-5.5 items-center justify-center rounded-xs border-0 bg-transparent ml-auto text-text-muted hover:not-disabled:bg-surface-hover hover:not-disabled:text-danger disabled:cursor-default disabled:opacity-40"
                     title={t('plugins.ops.remove')}
                     aria-label={t('plugins.ops.remove')}
                     disabled={busy}
@@ -1214,12 +1315,12 @@ function OpsPopover({ open, onClose, ops, progressOf, onRemove, onClear, onResta
                     <Icon name="close" size={12} />
                   </button>
                 </div>
-                <div className={css.opsBar} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
-                  <span className={cx(css.opsBarFill, op.status === 'failed' ? css.opsBarFailed : undefined)} style={{ width: `${String(percent)}%` }} />
+                <div className={OPS_BAR} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+                  <span className={cn(OPS_BAR_FILL, op.status === 'failed' && 'bg-danger')} style={{ width: `${String(percent)}%` }} />
                 </div>
-                <ul className={css.opsSteps}>
+                <ul className="m-0 flex flex-wrap list-none gap-1.5 p-0">
                   {op.steps.map((step, index) => (
-                    <li key={index} className={cx(css.opsStep, stepClassOf(step.state))}>
+                    <li key={index} className={cn('inline-flex items-center gap-1 rounded-full border border-border bg-surface-subtle py-0.25 px-2 text-xs text-text-muted', stepClassOf(step.state))}>
                       {step.state === 'done'
                         ? <Icon name="check" size={11} />
                         : step.state === 'failed'
@@ -1233,11 +1334,12 @@ function OpsPopover({ open, onClose, ops, progressOf, onRemove, onClear, onResta
                 </ul>
                 {op.pendingHostRestart && op.status === 'running'
                   ? (
-                    <div className={css.opsPendingHost}>
+                    <div className={OPS_PENDING_HOST}>
                       <span>{t('plugins.ops.pendingHostRestart')}</span>
                       <button
                         type="button"
-                        className={css.secondaryButton}
+
+                        className="inline-flex h-8.5 items-center justify-center gap-2 rounded-sm border border-input bg-surface px-3.5 text-xs-plus text-text-secondary hover:bg-surface-hover"
                         onClick={() =>{  onRestartNow(op) }}
                       >
                         {t('plugins.ops.restartNow')}
@@ -1246,7 +1348,7 @@ function OpsPopover({ open, onClose, ops, progressOf, onRemove, onClear, onResta
                   )
                   : null}
                 {op.note !== undefined && op.note !== ''
-                  ? <div className={cx(css.opsNote, op.status === 'failed' ? css.opsNoteFailed : undefined)}>{op.note}</div>
+                  ? <div className={cn(OPS_NOTE, op.status === 'failed' ? OPS_NOTE_FAILED : undefined)}>{op.note}</div>
                   : null}
               </li>
             )
@@ -1463,18 +1565,18 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
 
   return (
     <PanelCard>
-      <div className={css.cardBody}>
+      <div className={CARD_BODY}>
         {/* Z round: the search box keeps its slot, but the "8"-style hit
             count is gone; the slot now carries the operation-progress
             badge (activity icon + red dot, shown while the ledger has
             rows) that opens the floating 操作进度 box. */}
-        <div className={css.opsBadgeRow}>
+        <div className={OPS_BADGE_ROW}>
           <PanelSearch
             value={query}
             onChange={setQuery}
             placeholder={t('plugins.search')}
             badge={ops !== undefined && ops.length > 0
-              ? <span className={css.opsBadgeIcon}><Icon name="activity" size={12} /><span className={css.opsBadgeDot} aria-hidden="true" /></span>
+              ? <span className={OPS_BADGE_ICON}><Icon name="activity" size={12} /><span className={OPS_BADGE_DOT} aria-hidden="true" /></span>
               : undefined}
             badgeAria={t('plugins.ops.title')}
             onBadgeClick={() =>{  setOpsPopoverOpen(open => !open) }}
@@ -1492,17 +1594,17 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
         </div>
         {notice !== undefined
           ? (
-            <p className={cx(css.noticeLine, notice.tone === 'success' ? css.noticeSuccess : css.noticeError)} role="status">
+            <p className={cn(NOTICE_LINE, notice.tone === 'success' ? NOTICE_SUCCESS : NOTICE_ERROR)} role="status">
               <Icon name={notice.tone === 'success' ? 'check' : 'alert'} size={14} />
               <span>{notice.message}</span>
             </p>
           )
           : null}
         {facts.error !== undefined
-          ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{tf('about.error', { message: facts.error })}</span></div>
+          ? <div className={ERROR_BANNER}><Icon name="alert" size={16} /><span>{tf('about.error', { message: facts.error })}</span></div>
           : null}
         {plugins.length === 0 && !facts.loading
-          ? <div className={css.emptyState}>{t('common.noMatch')}</div>
+          ? <div className={EMPTY_STATE}>{t('common.noMatch')}</div>
           : null}
         {/* T round: the numbered runtime view is part of this card now —
             the 运行时与内存 section no longer exists on its own. */}
@@ -1515,18 +1617,18 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
         {(facts.facts?.entries ?? []).length > 0
           ? (
             <div>
-              <h3 className={css.pluginGroupTitle}>
+              <h3 className="mb-2 mt-3 flex items-center gap-1.5 text-2xs font-bold uppercase tracking-aek-group text-text-muted">
                 <Icon name={ENTRIES_SECTION_ICON} size={14} />
                 <span>{t('about.entries')}</span>
               </h3>
               {/* EE round: the user-adjustable memory-check interval — seconds
                   input (5..3600, default 60, host-persisted) plus the
                   立即检测 button that measures right now. */}
-              <div className={css.memCheckRow}>
-                <span className={css.settingToggleLabel}>{t('about.entry.memCheck.label')}</span>
+              <div className={MEM_CHECK_ROW}>
+                <span className={SETTING_TOGGLE_LABEL}>{t('about.entry.memCheck.label')}</span>
                 <input
                   type="number"
-                  className={css.numberBox}
+                  className={NUMBER_BOX}
                   min={5}
                   max={3600}
                   step={5}
@@ -1537,11 +1639,12 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                   onBlur={() =>{  commitMemCheck(memCheckDraft) }}
                   onKeyDown={(event) =>{  if (event.key === 'Enter') commitMemCheck(memCheckDraft) }}
                 />
-                <button type="button" className={css.secondaryButton} onClick={() =>{  facts.refresh() }}>
+
+                <button type="button" className="inline-flex h-8.5 items-center justify-center gap-2 rounded-sm border border-input bg-surface px-3.5 text-xs-plus text-text-secondary hover:bg-surface-hover" onClick={() =>{  facts.refresh() }}>
                   {t('about.entry.memCheck.checkNow')}
                 </button>
               </div>
-              <ul className={css.entryList}>
+              <ul className={ENTRY_LIST}>
                 {(facts.facts?.entries ?? []).map((entry) => {
                   // AA round: the entry rows carry the same "various info" as
                   // the plugin rows below them — a title row (name + copy +
@@ -1560,58 +1663,59 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                     || languages.length > 0
                     || entry.memory !== undefined
                   return (
-                    <li key={entry.id} className={css.pluginItem}>
-                      <div className={css.pluginHead}>
-                        <span className={css.featureIcon}><Icon name={ENTRY_ICONS[entry.id] ?? 'layout'} size={18} /></span>
-                        <div className={css.pluginText}>
-                          <div className={css.featureTitle}>
-                            <span className={css.featureTitleName}>{entry.id}</span>
-                            <CopyButton value={entry.packageName} size={12} label={t('common.copy')} className={css.featureCopy} />
-                            <span className={css.entryTag}>{t('about.entry.tag')}</span>
+                    <li key={entry.id} className="rounded-sm border border-border bg-surface p-3">
+                      <div className="mb-0 flex items-start gap-3">
+                        <span className={FEATURE_ICON}><Icon name={ENTRY_ICONS[entry.id] ?? 'layout'} size={18} /></span>
+                        <div className="flex-auto min-w-0 pr-2">
+                          <div className={FEATURE_TITLE}>
+                            <span className={FEATURE_TITLE_NAME}>{entry.id}</span>
+                            <CopyButton value={entry.packageName} size={12} label={t('common.copy')} className={FEATURE_COPY} />
+                            <span className={ENTRY_TAG}>{t('about.entry.tag')}</span>
                           </div>
                           {hasChips
                             ? (
-                              <div className={css.featureText}>
+                              <div className={FEATURE_TEXT}>
                                 {entry.version !== undefined && entry.version !== ''
-                                  ? <span className={css.countChip}>{entry.version}</span>
+                                  ? <span className={COUNT_CHIP}>{entry.version}</span>
                                   : null}
                                 {entry.distribution !== undefined && entry.distribution !== ''
-                                  ? <span className={css.stackChip}>{entry.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
+                                  ? <span className={STACK_CHIP}>{entry.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
                                   : null}
                                 {languages.length > 0
-                                  ? <span className={css.stackText} title={languages.join(' · ')}>{languages.join(' · ')}</span>
+                                  ? <span className={STACK_TEXT} title={languages.join(' · ')}>{languages.join(' · ')}</span>
                                   : null}
                                 {entry.memory?.kind === 'shell'
                                   ? (entry.memory.state === 'running' && entry.memory.footprintMb !== undefined
                                     ? (
                                       <>
-                                        <span className={css.countChip}>{tf('about.entry.mem.shell', { mb: entry.memory.footprintMb })}</span>
-                                        <span className={css.stackText} title={t('about.entry.mem.shellNote')}>{t('about.entry.mem.shellNote')}</span>
+                                        <span className={COUNT_CHIP}>{tf('about.entry.mem.shell', { mb: entry.memory.footprintMb })}</span>
+                                        <span className={STACK_TEXT} title={t('about.entry.mem.shellNote')}>{t('about.entry.mem.shellNote')}</span>
                                       </>
                                     )
-                                    : <span className={css.countChip}>{entry.memory.state === 'stopped' ? t('about.entry.mem.shellStopped') : t('about.entry.mem.unavailable')}</span>)
+                                    : <span className={COUNT_CHIP}>{entry.memory.state === 'stopped' ? t('about.entry.mem.shellStopped') : t('about.entry.mem.unavailable')}</span>)
                                   : null}
                                 {entry.memory?.kind === 'in-host'
                                   ? (
                                     <>
-                                      <span className={css.countChip}>{t('about.entry.mem.inHost')}</span>
-                                      <span className={css.stackText} title={t('about.entry.mem.inHostNote')}>{t('about.entry.mem.inHostNote')}</span>
+                                      <span className={COUNT_CHIP}>{t('about.entry.mem.inHost')}</span>
+                                      <span className={STACK_TEXT} title={t('about.entry.mem.inHostNote')}>{t('about.entry.mem.inHostNote')}</span>
                                     </>
                                   )
                                   : null}
                                 {entry.memory?.kind === 'transient'
-                                  ? <span className={css.countChip}>{t('about.entry.mem.transient')}</span>
+                                  ? <span className={COUNT_CHIP}>{t('about.entry.mem.transient')}</span>
                                   : null}
                               </div>
                             )
                             : null}
                           {entry.description
-                            ? <div className={css.featureDesc}>{entry.description}</div>
+                            ? <div className={FEATURE_DESC}>{entry.description}</div>
                             : null}
                         </div>
                         {/* The empty actions column keeps this row's text column
                             the same width as the plugin rows under it. */}
-                        <div className={css.pluginActions} aria-hidden="true" />
+
+                        <div className={PLUGIN_ACTIONS_GRID} aria-hidden="true" />
                       </div>
                     </li>
                   )
@@ -1622,11 +1726,11 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
           : null}
         {grouped.map(group => (
           <div key={group.bucket}>
-            <h3 className={css.pluginGroupTitle}>
+            <h3 className="mb-2 mt-3 flex items-center gap-1.5 text-2xs font-bold uppercase tracking-aek-group text-text-muted">
               <Icon name={bucketIconOf(group.bucket)} size={14} />
               <span>{bucketTitleOf(group.bucket, t)}</span>
             </h3>
-            <ul className={css.pluginList}>
+            <ul className="m-0 flex flex-col gap-2 list-none p-0">
               {group.items.map((plugin) => {
                 // T round: only cordis-loadable parts are switchable; the
                 // host-identity / library / bundle rows are read-only roster
@@ -1634,19 +1738,19 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                 // behavior).
                 const switchable = plugin.switchable !== false
                 return (
-                  <li key={plugin.id} className={css.pluginItem}>
-                    <div className={css.pluginHead}>
+                  <li key={plugin.id} className="rounded-sm border border-border bg-surface p-3">
+                    <div className="mb-0 flex items-start gap-3">
                       {/* X2 item 17: the category icon (layers = real coraek plugins only). */}
-                      <span className={css.featureIcon}><Icon name={bucketIconOf(plugin.bucket ?? 'plugins')} size={18} /></span>
-                      <div className={css.pluginText}>
+                      <span className={FEATURE_ICON}><Icon name={bucketIconOf(plugin.bucket ?? 'plugins')} size={18} /></span>
+                      <div className="flex-auto min-w-0 pr-2">
                         {/* X2 items 11 + 16: the lock travels with the title (never in the
                             button cluster), and the copy icon sits right after the name.
                             X3: the copy button is a COMPACT ghost (the generic 34px bordered
                             .iconButton reads as a door in the 13px title line). */}
-                        <div className={css.featureTitle}>
-                          <span className={css.featureTitleName}>{displayName(plugin.packageName)}</span>
-                          <CopyButton value={plugin.packageName} size={12} label={t('common.copy')} className={css.featureCopy} />
-                          {plugin.locked ? <Icon name="lock" size={13} className={css.featureTitleLock} /> : null}
+                        <div className={FEATURE_TITLE}>
+                          <span className={FEATURE_TITLE_NAME}>{displayName(plugin.packageName)}</span>
+                          <CopyButton value={plugin.packageName} size={12} label={t('common.copy')} className={FEATURE_COPY} />
+                          {plugin.locked ? <Icon name="lock" size={13} className={FEATURE_TITLE_LOCK} /> : null}
                         </div>
                         {/* N2 fix: the merged row was one undifferentiated line
                             ("TypeScript · CSS AEK home surface: …" — no separators,
@@ -1654,18 +1758,18 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                             languages read as distinct chips on ONE line, and the
                             (long, colon-carrying) description gets its own line
                             below — the same two-line rhythm as the row above it. */}
-                        <div className={css.featureText}>
-                          <span className={css.countChip}>{plugin.version}</span>
+                        <div className={FEATURE_TEXT}>
+                          <span className={COUNT_CHIP}>{plugin.version}</span>
                           {plugin.distribution !== ''
-                            ? <span className={css.stackChip}>{plugin.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
+                            ? <span className={STACK_CHIP}>{plugin.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
                             : null}
-                          {switchable ? null : <span className={css.stackChip}>{t('plugins.switch.readonly')}</span>}
+                          {switchable ? null : <span className={STACK_CHIP}>{t('plugins.switch.readonly')}</span>}
                           {plugin.languages.length > 0
-                            ? <span className={css.stackText} title={plugin.languages.join(' · ')}>{plugin.languages.join(' · ')}</span>
+                            ? <span className={STACK_TEXT} title={plugin.languages.join(' · ')}>{plugin.languages.join(' · ')}</span>
                             : null}
                         </div>
                         {plugin.description !== ''
-                          ? <div className={css.featureDesc}>{plugin.description}</div>
+                          ? <div className={FEATURE_DESC}>{plugin.description}</div>
                           : null}
                         {/* T round: where this package runs (its runtime line). */}
                         <PluginRuntimeLine
@@ -1680,7 +1784,8 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                       {/* Two-column cluster (switch | actions): the lock icon moved to the
                           title row (X2 item 11 — it never sits between the switch and the
                           buttons), so the grid no longer drifts on locked rows. */}
-                      <div className={css.pluginActions}>
+
+                      <div className={PLUGIN_ACTIONS_GRID}>
                         {switchable
                           ? <ToggleSwitch
                             checked={plugin.enabled}
@@ -1688,13 +1793,13 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                             onChange={(next) =>{  requestToggle(plugin.id, next) }}
                             label={plugin.locked ? t('plugins.switch.locked.root') : (plugin.enabled ? t('plugins.switch.on') : t('plugins.switch.off'))}
                           />
-                          : <span className={css.pluginSwitchSlot} aria-hidden="true" />}
+                          : <span className="block h-5 w-9.5" aria-hidden="true" />}
                         {switchable
                           ? PLUGIN_ACTIONS.map(action => (
                             <button
                               key={action.id}
                               type="button"
-                              className={css.pluginIconButton}
+                              className="inline-flex size-8 items-center justify-center rounded-sm border border-border bg-surface p-0 text-text-secondary transition duration-160 ease-aek hover:not-disabled:border-accent-border hover:not-disabled:bg-accent-soft hover:not-disabled:text-accent-ink disabled:cursor-default disabled:opacity-45"
                               disabled={pending !== undefined}
                               onClick={() =>{  act(plugin.id, action.id) }}
                               title={t(action.labelKey)}
@@ -1709,15 +1814,15 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                     <CapabilityTags caps={plugin.capabilities} />
                     {confirming === plugin.id
                       ? (
-                        <div className={css.pluginConfirm} role="alertdialog" aria-label={t('plugins.confirm.ok')}>
-                          <span className={css.pluginConfirmText}>{tf('plugins.confirm.text', { name: displayName(plugin.packageName) })}</span>
-                          <span className={css.pluginConfirmActions}>
-                            <button type="button" className={css.secondaryButton} onClick={() =>{  setConfirming(undefined) }}>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-2 px-2.5" role="alertdialog" aria-label={t('plugins.confirm.ok')}>
+                          <span className="min-w-0 grow shrink basis-55 text-xs leading-1.5 text-text-secondary">{tf('plugins.confirm.text', { name: displayName(plugin.packageName) })}</span>
+                          <span className="aek-plugin-confirm-actions ml-auto flex gap-2">
+                            <button type="button" className="inline-flex h-8.5 items-center justify-center gap-2 rounded-sm border border-input bg-surface px-3.5 text-xs-plus text-text-secondary hover:bg-surface-hover" onClick={() =>{  setConfirming(undefined) }}>
                               {t('plugins.confirm.cancel')}
                             </button>
                             <button
                               type="button"
-                              className={cx(css.primaryButton, css.dangerButton)}
+                              className={cn('inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-primary bg-primary px-4 font-semibold shadow-aek-primary text-inverse transition duration-150 ease-aek hover:bg-accent-hover hover:border-accent-hover active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50', DANGER_BUTTON)}
                               onClick={() => { setConfirming(undefined); toggle(plugin.id, false) }}
                             >
                               {t('plugins.confirm.ok')}
@@ -1830,37 +1935,37 @@ export function AboutPanel({
 
   return (
     <PanelCard>
-      <div className={css.cardBody}>
+      <div className={CARD_BODY}>
         {inventory.error !== undefined
-          ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{tf('about.error', { message: inventory.error })}</span></div>
+          ? <div className={ERROR_BANNER}><Icon name="alert" size={16} /><span>{tf('about.error', { message: inventory.error })}</span></div>
           : null}
         {snapshot === undefined && inventory.error === undefined
-          ? <div className={css.loadingState}>{t('about.loading')}</div>
+          ? <div className={LOADING_STATE}>{t('about.loading')}</div>
           : null}
 
         {/* INSTALLATION FIRST. The user explicitly asked for this block at the
             very top instead of sandwiched between entries and package lists. */}
-        <ul className={css.infoList}>
-          <li className={css.infoRow}>
-            <span className={css.infoLabel}>{t('about.install')}</span>
-            <span className={css.infoValue}>{installKindLabel(snapshot?.installKind)}</span>
+        <ul className={INFO_LIST}>
+          <li className={INFO_ROW}>
+            <span className={INFO_LABEL}>{t('about.install')}</span>
+            <span className={INFO_VALUE}>{installKindLabel(snapshot?.installKind)}</span>
           </li>
           {/* C round: the version marker a shipped update actually shows — the
               release tag the current slot records (next slot: none, hidden). */}
           {release?.currentTag !== undefined
-            ? <li className={css.infoRow}>
-              <span className={css.infoLabel}>{t('about.version')}</span>
-              <span className={css.infoValue}>
-                <code className={css.countChip}>{release.currentTag}</code>
+            ? <li className={INFO_ROW}>
+              <span className={INFO_LABEL}>{t('about.version')}</span>
+              <span className={INFO_VALUE}>
+                <code className={COUNT_CHIP}>{release.currentTag}</code>
                 {release.previousTag !== undefined
-                  ? <span className={css.stackText}>{tf('about.versionPrevious', { tag: release.previousTag })}</span>
+                  ? <span className={STACK_TEXT}>{tf('about.versionPrevious', { tag: release.previousTag })}</span>
                   : null}
               </span>
             </li>
             : null}
-          <li className={css.infoRow}>
-            <span className={css.infoLabel}>{t('about.source')}</span>
-            <span className={css.infoValue}>{snapshot?.source ?? '—'}</span>
+          <li className={INFO_ROW}>
+            <span className={INFO_LABEL}>{t('about.source')}</span>
+            <span className={INFO_VALUE}>{snapshot?.source ?? '—'}</span>
           </li>
         </ul>
 
@@ -1876,29 +1981,32 @@ export function AboutPanel({
         {/* X2 item 9: the 入口 section now lives in the 插件与程序 card. */}
         {!compactPlugins ? (
           <>
-            <div className={css.divider} />
-            <h3 className={css.sectionTitle}>{t('about.group.plugin')}</h3>
-            <div className={css.hint}>{t('about.stackHint')}</div>
-            <ul className={css.packageList}>
+            <div className={DIVIDER} />
+            {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+            <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('about.group.plugin')}</h3>
+            <div className={HINT}>{t('about.stackHint')}</div>
+            {/* FF-NOTE: .hint + .packageList { margin-top: var(--aek-space-3) } → mt-3 (both lists are
+                preceded by a .hint div here). */}
+            <ul className="m-0 mt-3 flex flex-col gap-2 list-none p-0">
               {plugins.map((pkg) => {
                 const meta = stackByPackage.get(pkg.name)
                 const languages = meta?.languages ?? []
                 return (
-                  <li key={pkg.name} className={css.packageRow}>
-                    <span className={css.providerName}>{displayName(pkg.name)}</span>
-                    <span className={css.countChip}>{pkg.version}</span>
+                  <li key={pkg.name} className="flex items-center gap-2.5 rounded-sm border border-border bg-surface-subtle p-2 px-3 text-xs">
+                    <span className="flex-auto min-w-0 font-semibold text-text">{displayName(pkg.name)}</span>
+                    <span className={COUNT_CHIP}>{pkg.version}</span>
                     {meta?.distribution
-                      ? <span className={css.stackChip}>{meta.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
+                      ? <span className={STACK_CHIP}>{meta.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
                       : null}
                     {languages.length > 0
-                      ? <span className={css.stackText} title={languages.join(' · ')}>{languages.join(' · ')}</span>
+                      ? <span className={STACK_TEXT} title={languages.join(' · ')}>{languages.join(' · ')}</span>
                       : null}
-                    <span className={css.badge}>{installKindLabel(pkg.kind)}</span>
+                    <span className={BADGE}>{installKindLabel(pkg.kind)}</span>
                   </li>
                 )
               })}
             </ul>
-            {plugins.length === 0 ? <div className={css.emptyState}>{t('about.empty')}</div> : null}
+            {plugins.length === 0 ? <div className={EMPTY_STATE}>{t('about.empty')}</div> : null}
           </>
         ) : null}
 
@@ -1917,23 +2025,26 @@ export function AboutPanel({
             meaning when empty) — an empty section renders nothing. */}
         {showExternalSection ? (
           <>
-            <div className={css.divider} />
-            <h3 className={css.sectionTitle}>{t('about.external.title')}</h3>
-            <div className={css.hint}>{t('about.external.hint')}</div>
-            <ul className={css.packageList}>
+            <div className={DIVIDER} />
+            {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+            <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('about.external.title')}</h3>
+            <div className={HINT}>{t('about.external.hint')}</div>
+            {/* FF-NOTE: .hint + .packageList { margin-top: var(--aek-space-3) } → mt-3 (both lists are
+                preceded by a .hint div here). */}
+            <ul className="m-0 mt-3 flex flex-col gap-2 list-none p-0">
               {providers.map(provider => (
-                <li key={provider.id} className={css.capabilityRow}>
-                  <div className={css.packageRow}>
-                    <span className={css.providerName}>{displayName(provider.name)}</span>
-                    <span className={css.countChip}>{provider.state}</span>
+                <li key={provider.id} className={CAPABILITY_ROW}>
+                  <div className="flex items-center gap-2.5 rounded-sm border border-border bg-surface-subtle p-2 px-3 text-xs">
+                    <span className="flex-auto min-w-0 font-semibold text-text">{displayName(provider.name)}</span>
+                    <span className={COUNT_CHIP}>{provider.state}</span>
                     {provider.spdx !== null
-                      ? <span className={css.stackChip} title={provider.spdx}>{provider.spdx}</span>
+                      ? <span className={STACK_CHIP} title={provider.spdx}>{provider.spdx}</span>
                       : null}
                     {provider.runtime !== undefined
-                      ? <span className={css.countChip} title={t('about.external.runtimeIsolated')}>{provider.runtime.reason}</span>
+                      ? <span className={COUNT_CHIP} title={t('about.external.runtimeIsolated')}>{provider.runtime.reason}</span>
                       : null}
                   </div>
-                  <div className={css.capabilityLine}>{provider.compliance}</div>
+                  <div className={CAPABILITY_LINE}>{provider.compliance}</div>
                 </li>
               ))}
             </ul>
@@ -1963,8 +2074,8 @@ export function InfoPanels({ panel, refreshSignal }: InfoPanelsProps) {
   const { t } = useI18n()
   return (
     <PanelCard>
-      <div className={css.cardBody}>
-        <p className={css.hint}>{t('panel.aboutEmpty')}</p>
+      <div className={CARD_BODY}>
+        <p className={HINT}>{t('panel.aboutEmpty')}</p>
       </div>
     </PanelCard>
   )

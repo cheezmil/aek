@@ -27,8 +27,8 @@
  *
  * There is deliberately NO `--reload`: `Page.reload` never answers once the
  * renderer is torn down, and reconnecting a socket to the old target hangs as
- * well. In dev the profile hot-reloads `@cheezmil/aek-home/lib` on rebuild; for
- * a full page refresh restart the shell (`start-dev.mjs`).
+ * well. In dev the slot's host serves the freshly built aek-web console; for a
+ * full page refresh restart the shell (`start-dev.mjs`).
  *
  * @module scripts/aek/capture-ui
  */

@@ -35,8 +35,8 @@ if (slotCfg === undefined) {
   process.exit(2)
 }
 
-// Row labels as the console renders them in zh-CN (packages/aek/coraek-plugins/
-// aek-home/src/client/i18n.tsx `panel.*`). The matcher is substring-based, so
+// Row labels as the console renders them in zh-CN (apps/aek-web/src/i18n.tsx
+// `panel.*`). The matcher is substring-based, so
 // each entry must be unique among the row labels.
 const PANELS = ['运行实例管理', 'Web Search', '插件管理', 'Skill Manager', 'Prompt Manager', '设置', '关于']
 

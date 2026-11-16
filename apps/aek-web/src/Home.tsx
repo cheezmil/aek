@@ -11,7 +11,7 @@
  * UI preferences live on the HOST (`<AEK_HOME>/preferences/`), never in
  * localStorage, so every window and machine sees the same settings.
  *
- * @module @cheezmil/aek-home/src/client/Home
+ * @module @cheezmil/aek-web/src/Home
  */
 import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -33,7 +33,7 @@ import { RuntimeModePanel } from './RuntimeModePanel.tsx'
 import { AboutPanel, PluginsPanel } from './InfoPanels.tsx'
 import { SetupWizard } from './Setup.tsx'
 import { sidebarCssVars } from './settings-schema.ts'
-import { css, cx } from './styles.ts'
+import { cn } from '@/lib/utils'
 import { useInventory } from './useInventory.ts'
 import { useCurrentSlot } from './useRuntimeMode.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
@@ -230,19 +230,22 @@ function Console() {
       // (RuntimesBlock inside PluginsPanel) — the numbered rows live next to
       // the roster they meter, so the page scans as two titled sections.
       const { t } = useI18n()
+      // accent bar (top 3px, radius 2px) maps to top-0.75 / rounded-xs pending 0.25-step decimals.
+      // .programsSectionHint had margin: -2px 0 var(--aek-space-4) → -mt-0.5 mb-4.
+      const sectionTitleClass = 'relative mb-4 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[""] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary'
       return (
         <div>
-          <section className={css.programsSection}>
-            <h2 className={css.programsSectionTitle}>{t('panel.runtimeSection')}</h2>
+          <section className="mt-8 first:mt-0">
+            <h2 className={sectionTitleClass}>{t('panel.runtimeSection')}</h2>
             <RuntimeModePanel refreshSignal={signalFor('runtime')} />
           </section>
-          <section className={css.programsSection}>
-            <h2 className={css.programsSectionTitle}>{t('panel.pluginsSection')}</h2>
-            <div className={css.programsSectionHint}>{t('about.stackHint')}</div>
+          <section className="mt-8 first:mt-0">
+            <h2 className={sectionTitleClass}>{t('panel.pluginsSection')}</h2>
+            <div className="mb-4 -mt-0.5 text-xs text-muted">{t('about.stackHint')}</div>
             <PluginsPanel refreshSignal={signalFor('plugins')} />
           </section>
-          <section className={css.programsSection}>
-            <h2 className={css.programsSectionTitle}>{t('panel.infoSection')}</h2>
+          <section className="mt-8 first:mt-0">
+            <h2 className={sectionTitleClass}>{t('panel.infoSection')}</h2>
             <AboutPanel inventory={inventory} refreshSignal={signalFor('about')} compactPlugins />
           </section>
         </div>
@@ -257,7 +260,8 @@ function Console() {
   }
 
   return (
-    <div className={css.app} style={style}>
+    // .app: font 14px/1.6 + antialiased is now the global body rule, so only layout + color remain.
+    <div className="flex min-h-screen bg-background text-text" style={style}>
       <Sidebar
         active={panel}
         onSelect={setPanel}
@@ -265,10 +269,12 @@ function Console() {
         onRefresh={requestRefresh}
       />
 
-      <div className={cx(css.main, railVisible && css.mainWithSubNav)}>
+      <div className={cn('flex flex-1 flex-col min-w-0', railVisible && 'flex-row')}>
         {railVisible ? <PluginSubNav active={panel} onSelect={setPanel} labelsHidden={labelsCollapsed} /> : null}
-        <div className={css.mainBody}>
-          <main className={css.content}>
+        <div className="flex flex-1 flex-col min-w-0">
+          {/* FF-NOTE: .content had max-width: 1320px → max-w-330 (v4 dynamic spacing: 330 × 4px);
+              @media (max-width: 860px) padding: 20px 16px → max-[860px]:px-4 max-[860px]:py-5. */}
+          <main className="mx-auto flex-1 w-full max-w-330 p-8 max-[860px]:px-4 max-[860px]:py-5">
             {/* EE round: keep-alive — every visited panel renders; only the
                 active one is visible. Hidden trees keep their state, so a
                 switch back never rebuilds the elements from nothing. */}

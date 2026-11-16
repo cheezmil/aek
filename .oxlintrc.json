@@ -260,6 +260,62 @@
       ]
     },
     {
+      // FF round: agent-first design-system rules for the AEK console.
+      // The Tailwind v4 theme lives in apps/aek-web/src/index.css (tokens +
+      // @theme inline); @shadcn/lint enforces that styling stays on the
+      // theme (no raw colors, no arbitrary values). Component-restyling
+      // contracts (shadcn/no-restyle) land with the first shadcn/ui
+      // components in src/components/ui.
+      "files": [
+        "apps/aek-web/src/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              // Empty-string content markers: `content: ''` on pseudo-element
+              // bars/checks has no Tailwind scale form (content-none would
+              // suppress the pseudo-element entirely).
+              "before:content-['']",
+              "before:content-[\"\"]",
+              "after:content-['']",
+              "after:content-[\"\"]",
+              "checked:after:content-['']",
+              // Explicit transition property lists keep the original CSS
+              // behavior (per-property transition); only token-based values,
+              // so they are allow-listed rather than rewritten.
+              "transition-[background-color]",
+              "transition-[border-color,background-color]",
+              "transition-[background-color,border-color,opacity]",
+              "transition-[color,background-color,transform]",
+              "transition-[color,border-color,background-color]",
+              "transition-[flex-basis,width,padding]",
+              "transition-[gap]",
+              "transition-[opacity,transform]",
+              "transition-[padding]",
+              "transition-[transform,background-color,border-color]",
+              "transition-[transform,background-color]",
+              "transition-[width]"
+            ]
+          }
+        ],
+        "shadcn/no-raw-colors": [
+          "error",
+          {
+            "allow": [
+              // `border-aek` resolves to the 1.5px --border-width-aek token
+              // (width namespace; no --color-aek exists), not a color.
+              "border-aek"
+            ]
+          }
+        ]
+      },
+      "jsPlugins": [
+        "@shadcn/lint"
+      ]
+    },
+    {
       "files": [
         "packages/**/*.{ts,tsx}",
         "apps/**/*.{ts,tsx}",

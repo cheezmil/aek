@@ -21,14 +21,14 @@
  * plaintext literal is fetched ONLY when the user clicks an eye or a copy
  * button (`POST /api/aek/websearch/keys/reveal`). The agent never calls it.
  *
- * @module @cheezmil/aek-home/src/client/WebSearchPanel
+ * @module @cheezmil/aek-web/src/WebSearchPanel
  */
 import { useEffect, useState } from 'react'
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { formatDisplayPath, parsePathStyle } from './paths.ts'
-import { css, cx } from './styles.ts'
+import { cn } from '@/lib/utils'
 import { CopyButton, PanelSearch, Spinner } from './ui-kit.tsx'
 import { PREF_KEYS, oneOf, parseBoolean, usePref } from './preferences.tsx'
 import { useWebsearchRanking } from './useWebsearchRanking.ts'
@@ -37,6 +37,106 @@ import { useKeyPool } from './useKeyPool.ts'
 import type { DisableReason, KeyPoolEntry, KeyPoolState, RecycleEntry } from './useKeyPool.ts'
 import type { ProviderStatus, WebsearchState } from './useWebsearchStatus.ts'
 import type { ConsoleFactsState } from './useConsoleFacts.ts'
+
+/* FF round: the old panel module classes, now literal Tailwind utilities (1:1
+   from Home.module.css; off-scale values live in index.css @theme tokens —
+   see the 2026-11-17 FF round notes). State modifiers use MUTUALLY EXCLUSIVE
+   class sets, never stacked utilities fighting for cascade order. */
+const CARD = 'bg-card border border-border rounded-lg shadow-sm'
+const CARD_BODY = 'p-6'
+const CARD_SUBTITLE = 'mt-1 text-xs text-text-muted'
+const NOTE = 'flex gap-3 p-4 border border-dashed border-input rounded-sm bg-surface-subtle text-text-secondary text-xs-plus'
+const NOTE_ICON = 'shrink-0 grow-0 text-primary'
+const CODE = 'p-0.5 px-1.5 border border-border rounded-code bg-surface-subtle font-mono text-2xs text-text-secondary break-all'
+const HINT = 'mt-4 text-text-secondary text-xs leading-160'
+const LOADING_STATE = 'flex items-center justify-center gap-2 min-h-30 text-text-muted text-xs-plus'
+const EMPTY_STATE = LOADING_STATE
+const ERROR_BANNER = 'flex items-center gap-2 mb-4 p-3 px-4 border border-danger-border rounded-sm bg-danger-soft text-danger text-xs-plus'
+const NOTICE_BANNER = 'flex items-center gap-2 mb-4 p-3 px-4 border border-accent-border rounded-sm bg-accent-soft text-accent-ink text-xs-plus'
+const BADGE = 'inline-flex items-center gap-1.25 p-0.75 px-2.25 rounded-full text-2xs font-semibold border border-border bg-surface-subtle text-text-secondary'
+const BADGE_SUCCESS = 'border-success-border bg-success-soft text-success'
+const COUNT_CHIP = 'inline-flex items-center p-0.5 px-2.25 rounded-full text-xs font-semibold tabular-nums border border-border bg-surface-subtle text-text-secondary'
+const CHIP_OFF = 'border-border bg-surface-subtle text-text-muted'
+const PRIMARY_BUTTON = 'inline-flex items-center justify-center gap-2 h-9 px-4 rounded-sm font-semibold cursor-pointer text-inverse bg-primary border border-primary shadow-aek-primary transition-[transform,background-color,border-color] duration-150 ease-aek hover:bg-accent-hover hover:border-accent-hover active:translate-y-px disabled:opacity-50 disabled:cursor-not-allowed'
+const SECONDARY_BUTTON = 'inline-flex items-center justify-center gap-2 h-8.5 px-3.5 border border-input rounded-sm bg-card text-text-secondary text-xs-plus cursor-pointer hover:bg-surface-hover'
+const DANGER_BUTTON = 'bg-danger border-danger'
+const ACTION_BUTTON = 'p-1.25 px-3 border border-border rounded-sm bg-surface-subtle text-text text-xs cursor-pointer hover:not-disabled:border-accent-border hover:not-disabled:bg-accent-soft disabled:opacity-45 disabled:cursor-default'
+const ICON_BUTTON = 'inline-flex items-center justify-center size-8.5 p-0 text-text-secondary bg-card border border-border rounded-sm cursor-pointer transition-[color,border-color,background-color] duration-150 ease-aek hover:text-primary hover:border-accent-border hover:bg-accent-soft disabled:opacity-50 disabled:cursor-not-allowed'
+const MARK = 'px-0.25 bg-amber-200 text-inherit rounded-3xs'
+const RANKING_FILTERS = 'mb-3 p-3 border border-border rounded-sm bg-surface-subtle'
+const FILTER_HEAD = 'flex items-center justify-between gap-3 mb-2'
+const FILTER_TITLE = 'text-xs font-semibold text-text'
+const FILTER_ROW = 'flex flex-wrap items-center gap-2 mt-1.5'
+const FILTER_LABEL = 'shrink-0 grow-0 min-w-20.5 text-text-muted text-2xs'
+const FILTER_CHIPS = 'flex flex-wrap gap-1.5 m-0 p-0'
+const FILTER_CHIP = 'p-1 px-2.75 border border-border rounded-full bg-card text-text-secondary text-2xs font-semibold cursor-pointer hover:border-accent-border hover:text-accent-ink'
+const FILTER_CHIP_ACTIVE = 'border-accent-border bg-accent-soft text-accent-ink'
+const FILTER_ROW_SECONDARY = 'flex flex-wrap items-center gap-2 mt-1.5 pt-0.5 pb-0.5 pl-3 border-l-2 border-input'
+const FILTER_HINT = 'mt-2 text-text-muted text-2xs leading-160'
+const FILTER_BLOCK = 'm-0'
+const BOARD_SKELETON = 'mb-4'
+const SKEL = 'aek-skeleton'
+const SKEL_HEAD = 'aek-skeleton h-4.5 mb-2'
+const SKEL_LABEL = 'aek-skeleton shrink-0 grow-0 w-21.5 h-5 m-0'
+const SKEL_CHIPS = 'aek-skeleton grow shrink h-5 m-0'
+const SKEL_GROUP_HEAD = 'aek-skeleton h-5 mb-2.5'
+const SKEL_ROW = 'aek-skeleton h-12 mb-2 last:mb-0'
+const TIER_GROUP = 'mb-4 last:mb-0'
+const TIER_GROUP_IN = 'animate-tier-in'
+const TIER_HEAD = 'flex items-center gap-2 mb-2'
+const TIER_TITLE = 'text-xs-plus font-bold text-text'
+const TIER_COUNT = 'text-text-muted text-2xs'
+const RANKING_NOTICE = 'flex items-start gap-2 mb-3 p-3 border border-border rounded-sm bg-surface-subtle text-text-secondary text-xs leading-160'
+const RANKING_UPDATING = 'flex items-center gap-2 mb-3 text-text-muted text-2xs'
+const RANK_CHIP = 'inline mr-1.5 text-text-muted text-2xs font-medium tabular-nums'
+const UNKNOWN_CHIP = 'shrink-0 grow-0 p-0.5 px-2 border border-border rounded-full bg-surface-subtle text-text-muted text-2xs'
+const PROVIDER_LIST = 'flex flex-col gap-2 m-0 p-0'
+const PROVIDER_ITEM = 'border border-border rounded-sm bg-card overflow-hidden'
+const PROVIDER_ITEM_OPEN = 'border-accent-border bg-surface-subtle'
+const PROVIDER_ROW = 'flex items-center gap-3 p-3 px-4'
+const PROVIDER_ROW_CLICKABLE = 'cursor-pointer'
+const PROVIDER_MAIN = 'grow shrink min-w-0'
+const PROVIDER_ICON = 'inline-flex items-center justify-center shrink-0 grow-0 basis-8 size-8 rounded-sm bg-surface-hover text-primary'
+const PROVIDER_NAME = 'text-text font-semibold'
+const PROVIDER_META = 'text-2xs text-text-muted'
+const PATH_COPY = 'ml-1 align-middle'
+const CHEVRON = 'transition-transform duration-150 ease-aek'
+const CHEVRON_OPEN = 'rotate-180'
+const KEY_ACCORDION = 'my-3 ml-1 p-4 border border-border border-l-3 border-l-primary rounded-sm bg-surface-subtle'
+const KEY_ACCORDION_HEAD = 'flex items-start justify-between gap-3 mb-3'
+const KEY_ACCORDION_TITLE = 'mb-0.5 text-xs-plus font-semibold'
+const REVEAL_ALL_ON = 'text-primary bg-accent-soft border-accent-border'
+const KEY_TOOLBAR = 'flex flex-col items-stretch gap-2 mb-4'
+const KEY_EDIT_INPUT = 'w-full min-w-35 h-9 px-2.5 text-text bg-card border border-border rounded-sm text-xs-plus focus:outline-2 focus:outline-primary focus:outline-offset-1'
+const KEY_MASKED = 'text-text-secondary font-mono text-xs-plus'
+const KEY_ACTIONS = 'flex items-center gap-1.5 m-0 p-0'
+const KEY_ACTION_BUTTON = 'inline-flex items-center justify-center size-7.5 p-0 text-text-secondary bg-card border border-border rounded-sm cursor-pointer transition-[color,border-color,background-color] duration-150 ease-aek hover:text-primary hover:border-accent-border hover:bg-accent-soft disabled:opacity-50 disabled:cursor-not-allowed'
+const KEY_ACTION_DANGER = 'hover:text-danger hover:border-danger-border hover:bg-danger-soft'
+const KEY_LIST = 'flex flex-col gap-2 m-0 p-0'
+const KEY_ROW = 'flex items-center gap-3 flex-wrap p-2 px-3 border border-border rounded-sm bg-card'
+const KEY_ROW_MAIN = 'flex items-center gap-1.5 grow shrink basis-65 min-w-0'
+const KEY_ROW_STATE = 'flex items-center gap-1.5 flex-wrap'
+const KEY_ROW_ACTIONS = 'shrink-0 grow-0'
+const KEY_BATCH_BAR = 'flex items-center justify-between gap-3'
+const KEY_BATCH_INPUT = 'w-full min-h-27 p-2.5 resize-y text-text bg-card border border-border rounded-sm font-mono text-xs-plus leading-160 box-border focus:outline-2 focus:outline-primary focus:outline-offset-1'
+const KEY_BATCH_COUNT = 'text-text-muted text-xs'
+const KEY_PLAIN = 'text-text font-mono text-xs-plus break-all'
+const REASON_TAG = 'p-0.5 px-2 border border-danger-border rounded-full bg-danger-soft text-danger text-2xs'
+const RECYCLE_HEAD = 'flex items-center gap-2 mt-5'
+const RECYCLE_TITLE = 'm-0 text-xs-plus font-semibold'
+const RECYCLE_COUNT = 'min-w-5 p-0.5 px-1.5 rounded-full bg-surface-hover text-text-secondary text-2xs text-center'
+const RECYCLE_HINT = 'mt-1 mb-3 text-text-muted text-xs'
+const RECYCLE_LIST = 'flex flex-col gap-2 m-0 p-0'
+const RECYCLE_META = 'grow shrink flex-col gap-0.5 text-text-muted text-2xs m-0 p-0'
+const MODAL_BACKDROP = 'fixed inset-0 z-60 flex items-center justify-center p-5 bg-overlay/45 backdrop-blur-aek-2'
+const MODAL_CARD = 'w-105 max-w-full p-5 border border-border rounded-md bg-card shadow-aek-modal'
+const MODAL_TITLE = 'mb-2 text-sm-plus font-bold'
+const MODAL_TEXT = 'mb-2 text-text-secondary text-xs-plus leading-160'
+const MODAL_TARGET = 'mb-4 p-2 px-2.5 rounded-sm bg-surface-subtle text-text-secondary font-mono text-xs break-all'
+const MODAL_ACTIONS = 'flex justify-end gap-2'
+const TOGGLE = 'relative inline-block w-9.5 h-5.5 p-0 bg-input border border-transparent rounded-full cursor-pointer transition-[background-color] duration-180 ease-aek disabled:opacity-55 disabled:cursor-wait'
+const TOGGLE_ON = 'bg-primary border-primary'
+const TOGGLE_KNOB = 'absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow-aek-knob transition-transform duration-180 ease-aek'
 
 /** The two legal first-level values, shared by the preference parser. */
 const FREE_TIER_VALUES: readonly FreeFilter[] = ['yes', 'no']
@@ -269,9 +369,9 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
       toggleExpanded(provider.kind)
     }
     return (
-      <li key={provider.kind} className={cx(css.providerItem, open && css.providerItemOpen)}>
+      <li key={provider.kind} className={cn(PROVIDER_ITEM, open && PROVIDER_ITEM_OPEN)}>
         <div
-          className={cx(css.providerRow, css.providerRowClickable)}
+          className={cn(PROVIDER_ROW, PROVIDER_ROW_CLICKABLE)}
           onClick={handleRowClick}
         >
           <button
@@ -279,51 +379,51 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
             role="switch"
             aria-checked={provider.enabled}
             aria-label={`${t('websearch.col.enabled')} ${provider.kind}`}
-            className={cx(css.toggle, provider.enabled && css.toggleOn)}
+            className={cn(TOGGLE, provider.enabled && TOGGLE_ON)}
             disabled={pending === provider.kind}
             onClick={() =>{  toggle(provider.kind, !provider.enabled) }}
           >
-            <span className={css.toggleKnob} />
+            <span className={cn(TOGGLE_KNOB, provider.enabled && 'translate-x-4')} />
           </button>
-          <span className={css.providerIcon}><Icon name="search" size={16} /></span>
-          <div className={css.providerMain}>
-            <div className={css.providerName} title={meta?.note}>
+          <span className={PROVIDER_ICON}><Icon name="search" size={16} /></span>
+          <div className={PROVIDER_MAIN}>
+            <div className={PROVIDER_NAME} title={meta?.note}>
               {/* X round: the ordinal sticks to the provider NAME instead of
                   floating between the name block and the chip cluster. */}
               {rank !== undefined
-                ? <span className={css.rankChip}>{tf('websearch.ranking.rank', { n: rank })}</span>
+                ? <span className={RANK_CHIP}>{tf('websearch.ranking.rank', { n: rank })}</span>
                 : null}
-              {highlight(provider.kind, needle, css.mark)}
+              {highlight(provider.kind, needle, MARK)}
             </div>
-            <div className={css.providerMeta}>
+            <div className={PROVIDER_META}>
               {provider.hasPool ? t('websearch.pool') : t('websearch.noPool')}
             </div>
           </div>
           {meta?.freeTier === null
             ? (
-              <span className={css.unknownChip} title={meta.note || t('websearch.filter.unknownNote')}>
+              <span className={UNKNOWN_CHIP} title={meta.note || t('websearch.filter.unknownNote')}>
                 {t('websearch.filter.unknown')}
               </span>
             )
             : null}
-          <span className={cx(css.countChip, provider.keyCount === undefined && css.chipOff)}>
+          <span className={cn(COUNT_CHIP, provider.keyCount === undefined && CHIP_OFF)}>
             {provider.keyCount === undefined
               ? (provider.hasPool ? '—' : t('websearch.noPool'))
               : String(provider.keyCount)}
           </span>
-          <span className={cx(css.badge, provider.enabled && css.badgeSuccess)}>
+          <span className={cn(BADGE, provider.enabled && BADGE_SUCCESS)}>
             <Icon name={provider.enabled ? 'check' : 'alert'} size={12} />
             {provider.enabled ? t('common.enabled') : t('common.disabled')}
           </span>
           <button
             type="button"
-            className={css.iconButton}
+            className={ICON_BUTTON}
             onClick={() =>{  toggleExpanded(provider.kind) }}
             aria-expanded={open}
             title={t('websearch.manageKeys')}
             aria-label={t('websearch.manageKeys')}
           >
-            <Icon name="chevronDown" size={16} className={cx(css.chevron, open && css.chevronOpen)} />
+            <Icon name="chevronDown" size={16} className={cn(CHEVRON, open && CHEVRON_OPEN)} />
           </button>
         </div>
         {open
@@ -374,8 +474,8 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
     : ''
 
   return (
-    <section className={css.card}>
-      <div className={css.cardBody}>
+    <section className={CARD}>
+      <div className={CARD_BODY}>
         <PanelSearch value={query} onChange={setQuery} placeholder={t('websearch.search')} />
 
         {/* Q round: while the FIRST read of the board is in flight (or has
@@ -403,12 +503,12 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
             whole bar disappears when the remote ranking cannot be fetched. */}
         {classified
           ? (
-            <div className={css.rankingFilters}>
-              <div className={css.filterHead}>
-                <span className={css.filterTitle}>{t('websearch.filter.title')}</span>
+            <div className={RANKING_FILTERS}>
+              <div className={FILTER_HEAD}>
+                <span className={FILTER_TITLE}>{t('websearch.filter.title')}</span>
                 <button
                   type="button"
-                  className={css.actionButton}
+                  className={ACTION_BUTTON}
                   onClick={() =>{  setFiltersOpen(open => !open) }}
                   aria-expanded={filtersOpen}
                 >
@@ -418,17 +518,17 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
               {filtersOpen
                 ? (
                   <>
-                    <div className={css.filterBlock}>
+                    <div className={FILTER_BLOCK}>
                       {/* Level 1: one mandatory choice. Plain divs — a list
                           here would paint default `::marker` bullets next to
                           every chip (the user's `<::marker>` complaint). */}
-                      <div className={css.filterRow}>
-                        <span className={css.filterLabel}>{t('websearch.filter.primary')}</span>
-                        <div className={css.filterChips}>
-                          <button type="button" aria-pressed={freeTier === 'yes'} className={cx(css.filterChip, freeTier === 'yes' && css.filterChipActive)} onClick={() =>{  setFreeTier('yes') }}>
+                      <div className={FILTER_ROW}>
+                        <span className={FILTER_LABEL}>{t('websearch.filter.primary')}</span>
+                        <div className={FILTER_CHIPS}>
+                          <button type="button" aria-pressed={freeTier === 'yes'} className={cn(FILTER_CHIP, freeTier === 'yes' && FILTER_CHIP_ACTIVE)} onClick={() =>{  setFreeTier('yes') }}>
                             {t('websearch.filter.freeYes')}
                           </button>
-                          <button type="button" aria-pressed={freeTier === 'no'} className={cx(css.filterChip, freeTier === 'no' && css.filterChipActive)} onClick={() =>{  setFreeTier('no') }}>
+                          <button type="button" aria-pressed={freeTier === 'no'} className={cn(FILTER_CHIP, freeTier === 'no' && FILTER_CHIP_ACTIVE)} onClick={() =>{  setFreeTier('no') }}>
                             {t('websearch.filter.freeNo')}
                           </button>
                         </div>
@@ -436,18 +536,18 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
                       {/* Level 2: optional multi-select, indented + connected
                           under level 1 so the hierarchy reads as ONE
                           structure instead of two disconnected bars. */}
-                      <div className={css.filterRowSecondary}>
-                        <span className={css.filterLabel}>{t('websearch.filter.secondary')}</span>
-                        <div className={css.filterChips}>
-                          <button type="button" aria-pressed={reqPhone} className={cx(css.filterChip, reqPhone && css.filterChipActive)} onClick={() =>{  setReqPhone(current => !current) }}>
+                      <div className={FILTER_ROW_SECONDARY}>
+                        <span className={FILTER_LABEL}>{t('websearch.filter.secondary')}</span>
+                        <div className={FILTER_CHIPS}>
+                          <button type="button" aria-pressed={reqPhone} className={cn(FILTER_CHIP, reqPhone && FILTER_CHIP_ACTIVE)} onClick={() =>{  setReqPhone(current => !current) }}>
                             {t('websearch.filter.phone')}
                           </button>
-                          <button type="button" aria-pressed={reqCard} className={cx(css.filterChip, reqCard && css.filterChipActive)} onClick={() =>{  setReqCard(current => !current) }}>
+                          <button type="button" aria-pressed={reqCard} className={cn(FILTER_CHIP, reqCard && FILTER_CHIP_ACTIVE)} onClick={() =>{  setReqCard(current => !current) }}>
                             {t('websearch.filter.card')}
                           </button>
                           {reqPhone || reqCard
                             ? (
-                              <button type="button" className={css.actionButton} onClick={() => { setReqPhone(false); setReqCard(false) }}>
+                              <button type="button" className={ACTION_BUTTON} onClick={() => { setReqPhone(false); setReqCard(false) }}>
                                 {t('websearch.filter.reset')}
                               </button>
                             )
@@ -455,8 +555,8 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
                         </div>
                       </div>
                     </div>
-                    <p className={css.filterHint}>{t('websearch.filter.requiresHint')}</p>
-                    {freeTier === 'no' ? <p className={css.filterHint}>{t('websearch.filter.freeNoHint')}</p> : null}
+                    <p className={FILTER_HINT}>{t('websearch.filter.requiresHint')}</p>
+                    {freeTier === 'no' ? <p className={FILTER_HINT}>{t('websearch.filter.freeNoHint')}</p> : null}
                   </>
                 )
                 : null}
@@ -469,7 +569,7 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
             below the grouped skeleton above. */}
         {status !== undefined && ranking.error !== undefined
           ? (
-            <div className={css.rankingNotice}>
+            <div className={RANKING_NOTICE}>
               <Icon name="alert" size={16} />
               <span>
                 {classified
@@ -491,7 +591,7 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
             "更新失败" notice instead of spinning forever on a stale date. */}
         {classified && ranking.snapshot?.stale === true && ranking.error === undefined
           ? (
-            <div className={css.rankingUpdating}>
+            <div className={RANKING_UPDATING}>
               <Spinner />
               <span>{tf('websearch.ranking.updating', { date: ranking.snapshot.updatedAt || '—' })}</span>
             </div>
@@ -505,7 +605,7 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
             const reasonKey = `websearch.ranking.reason.${raw}`
             const reason = t(reasonKey) === reasonKey ? (raw.length > 0 ? raw : 'unknown') : t(reasonKey)
             return (
-              <div className={css.rankingNotice}>
+              <div className={RANKING_NOTICE}>
                 <Icon name="alert" size={16} />
                 <span>{tf('websearch.ranking.refreshFailed', {
                   reason,
@@ -518,7 +618,7 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
 
         {disabled
           ? (
-            <div className={css.noticeBanner}>
+            <div className={NOTICE_BANNER}>
               <Icon name="lock" size={16} />
               <span>{t('websearch.disabled')}</span>
             </div>
@@ -527,14 +627,14 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
 
         {error !== undefined
           ? (
-            <div className={css.errorBanner}>
+            <div className={ERROR_BANNER}>
               <Icon name="alert" size={16} />
               <span>{tf('websearch.error', { message: error })}</span>
             </div>
           )
           : null}
 
-        {loading ? <div className={css.loadingState}><Spinner />{t('websearch.loading')}</div> : null}
+        {loading ? <div className={LOADING_STATE}><Spinner />{t('websearch.loading')}</div> : null}
 
         {/* Six remote groups. Original ranks are displayed as-is, so a filter
             never renumbers the board. Empty groups still show their header.
@@ -547,17 +647,17 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
               {groups.map((group, at) => (
                 <section
                   key={group.id}
-                  className={cx(css.tierGroup, css.tierGroupIn)}
+                  className={cn(TIER_GROUP, TIER_GROUP_IN)}
                   style={{ '--i': at } as CSSProperties}
                   aria-label={tierLabel(group.label)}
                 >
-                  <header className={css.tierHead}>
-                    <h3 className={css.tierTitle}>{tierLabel(group.label)}</h3>
-                    <span className={css.tierCount}>{tf('websearch.ranking.groupCount', { n: group.items.length })}</span>
+                  <header className={TIER_HEAD}>
+                    <h3 className={TIER_TITLE}>{tierLabel(group.label)}</h3>
+                    <span className={TIER_COUNT}>{tf('websearch.ranking.groupCount', { n: group.items.length })}</span>
                   </header>
                   {group.items.length > 0
                     ? (
-                      <ul className={css.providerList}>
+                      <ul className={PROVIDER_LIST}>
                         {group.items.map(provider => renderProvider(
                           provider,
                           group.ranks[provider.kind],
@@ -577,7 +677,7 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
             ranking is not fetched at all in this mode. */}
         {status !== undefined && noRanking
           ? (
-            <ul className={css.providerList}>
+            <ul className={PROVIDER_LIST}>
               {providers.map(provider => renderProvider(provider))}
             </ul>
           )
@@ -585,7 +685,7 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
 
         {status !== undefined && visibleCount === 0
           ? (
-            <div className={css.emptyState}>
+            <div className={EMPTY_STATE}>
               {needle.length > 0
                 ? t('websearch.noMatch')
                 : classified ? t('websearch.ranking.empty') : t('websearch.empty')}
@@ -595,12 +695,12 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
 
         {status !== undefined
           ? (
-            <p className={css.hint}>
+            <p className={HINT}>
               <span>{t('websearch.config')}</span>
-              <code className={css.code} title={providersFile}>{providersFileDisplay}</code>
+              <code className={CODE} title={providersFile}>{providersFileDisplay}</code>
               {/* Q round: copy icon right after the path; copies the RAW
                   absolute path regardless of the display style. */}
-              <CopyButton value={providersFile ?? ''} label={t('common.copy')} size={13} className={css.pathCopy} />
+              <CopyButton value={providersFile ?? ''} label={t('common.copy')} size={13} className={PATH_COPY} />
             </p>
           )
           : null}
@@ -684,15 +784,15 @@ function KeyPoolBody({
   })
 
   return (
-    <div className={css.keyAccordion}>
-      <header className={css.keyAccordionHead}>
+    <div className={KEY_ACCORDION}>
+      <header className={KEY_ACCORDION_HEAD}>
         <div>
-          <h3 className={css.keyAccordionTitle}>{t('keys.title')} · {providerKind}</h3>
-          <p className={css.cardSubtitle}>{t('keys.subtitle')}</p>
+          <h3 className={KEY_ACCORDION_TITLE}>{t('keys.title')} · {providerKind}</h3>
+          <p className={CARD_SUBTITLE}>{t('keys.subtitle')}</p>
         </div>
         <button
           type="button"
-          className={cx(css.iconButton, allRevealed && css.revealAllOn)}
+          className={cn(ICON_BUTTON, allRevealed && REVEAL_ALL_ON)}
           onClick={onToggleRevealAll}
           title={allRevealed ? t('keys.hideAll') : t('keys.showAll')}
           aria-label={allRevealed ? t('keys.hideAll') : t('keys.showAll')}
@@ -703,7 +803,7 @@ function KeyPoolBody({
 
       {pool.error !== undefined || revealError !== undefined
         ? (
-          <div className={css.errorBanner}>
+          <div className={ERROR_BANNER}>
             <Icon name="alert" size={16} />
             <span>{tf('keys.error', { message: pool.error ?? revealError ?? '' })}</span>
           </div>
@@ -711,11 +811,11 @@ function KeyPoolBody({
         : null}
 
       <form
-        className={css.keyToolbar}
+        className={KEY_TOOLBAR}
         onSubmit={(event) => { event.preventDefault(); onAdd() }}
       >
         <textarea
-          className={css.keyBatchInput}
+          className={KEY_BATCH_INPUT}
           value={newKeys}
           onChange={(event) =>{  onNewKeys(event.target.value) }}
           placeholder={t('keys.batchPlaceholder')}
@@ -724,9 +824,9 @@ function KeyPoolBody({
           spellCheck={false}
           rows={5}
         />
-        <div className={css.keyBatchBar}>
-          <span className={css.keyBatchCount}>{batchCount > 0 ? tf('keys.batchCount', { n: batchCount }) : ''}</span>
-          <button type="submit" className={css.primaryButton} disabled={pool.pending || batchCount === 0}>
+        <div className={KEY_BATCH_BAR}>
+          <span className={KEY_BATCH_COUNT}>{batchCount > 0 ? tf('keys.batchCount', { n: batchCount }) : ''}</span>
+          <button type="submit" className={PRIMARY_BUTTON} disabled={pool.pending || batchCount === 0}>
             <Icon name="plus" size={16} />
             {batchCount > 1 ? t('keys.addMany') : t('keys.add')}
           </button>
@@ -734,22 +834,22 @@ function KeyPoolBody({
       </form>
 
       {pool.entries === undefined
-        ? <div className={css.loadingState}><Spinner />{t('keys.loading')}</div>
+        ? <div className={LOADING_STATE}><Spinner />{t('keys.loading')}</div>
         : null}
       {pool.entries !== undefined && entries.length === 0
-        ? <div className={css.emptyState}>{needle.length > 0 ? t('keys.noMatch') : t('keys.empty')}</div>
+        ? <div className={EMPTY_STATE}>{needle.length > 0 ? t('keys.noMatch') : t('keys.empty')}</div>
         : null}
 
       {entries.length > 0
         ? (
-          <ul className={css.keyList}>
+          <ul className={KEY_LIST}>
             {entries.map(entry => (
-              <li key={entry.id} className={css.keyRow}>
-                <div className={css.keyRowMain}>
+              <li key={entry.id} className={KEY_ROW}>
+                <div className={KEY_ROW_MAIN}>
                   {editingId === entry.id
                     ? (
                       <input
-                        className={css.keyEditInput}
+                        className={KEY_EDIT_INPUT}
                         type="password"
                         value={editValue}
                         onChange={(event) =>{  onEditValue(event.target.value) }}
@@ -764,13 +864,13 @@ function KeyPoolBody({
                       />
                     )
                     : (
-                      <span className={entry.id in revealed ? css.keyPlain : css.keyMasked}>
-                        {highlight(revealed[entry.id] ?? entry.masked, needle, css.mark)}
+                      <span className={entry.id in revealed ? KEY_PLAIN : KEY_MASKED}>
+                        {highlight(revealed[entry.id] ?? entry.masked, needle, MARK)}
                       </span>
                     )}
                   <button
                     type="button"
-                    className={css.keyActionButton}
+                    className={KEY_ACTION_BUTTON}
                     onClick={() =>{  onToggleReveal(entry.id) }}
                     title={entry.id in revealed ? t('keys.hide') : t('keys.show')}
                     aria-label={entry.id in revealed ? t('keys.hide') : t('keys.show')}
@@ -780,47 +880,47 @@ function KeyPoolBody({
                   {/* R4: present whether or not the row is revealed. */}
                   <CopyButton resolve={resolveKey(entry.id)} label={t('keys.copy')} size={15} />
                 </div>
-                <div className={css.keyRowState}>
-                  <span className={cx(css.badge, !entry.disabled && css.badgeSuccess)}>
+                <div className={KEY_ROW_STATE}>
+                  <span className={cn(BADGE, !entry.disabled && BADGE_SUCCESS)}>
                     {entry.disabled ? t('common.disabled') : t('common.enabled')}
                   </span>
                   {entry.disabled && entry.disabledReason !== undefined
-                    ? <span className={css.reasonTag}>{reasonText(entry.disabledReason, t)}</span>
+                    ? <span className={REASON_TAG}>{reasonText(entry.disabledReason, t)}</span>
                     : null}
                   {entry.failures > 0
-                    ? <span className={css.hint}>{tf('keys.failures', { n: entry.failures })}</span>
+                    ? <span className={HINT}>{tf('keys.failures', { n: entry.failures })}</span>
                     : null}
                 </div>
-                <div className={css.keyRowActions}>
+                <div className={KEY_ROW_ACTIONS}>
                   {editingId === entry.id
                     ? (
-                      <ul className={css.keyActions}>
+                      <ul className={KEY_ACTIONS}>
                         <li>
-                          <button type="button" className={css.keyActionButton} onClick={() =>{  onEditSave(entry.id) }} title={t('keys.save')} aria-label={t('keys.save')} disabled={editValue.trim().length === 0}>
+                          <button type="button" className={KEY_ACTION_BUTTON} onClick={() =>{  onEditSave(entry.id) }} title={t('keys.save')} aria-label={t('keys.save')} disabled={editValue.trim().length === 0}>
                             <Icon name="check" size={15} />
                           </button>
                         </li>
                         <li>
-                          <button type="button" className={css.keyActionButton} onClick={onEditCancel} title={t('keys.cancel')} aria-label={t('keys.cancel')}>
+                          <button type="button" className={KEY_ACTION_BUTTON} onClick={onEditCancel} title={t('keys.cancel')} aria-label={t('keys.cancel')}>
                             <Icon name="close" size={15} />
                           </button>
                         </li>
                       </ul>
                     )
                     : (
-                      <ul className={css.keyActions}>
+                      <ul className={KEY_ACTIONS}>
                         <li>
-                          <button type="button" className={css.keyActionButton} onClick={() =>{  onEditStart(entry.id) }} title={t('keys.edit')} aria-label={t('keys.edit')}>
+                          <button type="button" className={KEY_ACTION_BUTTON} onClick={() =>{  onEditStart(entry.id) }} title={t('keys.edit')} aria-label={t('keys.edit')}>
                             <Icon name="edit" size={15} />
                           </button>
                         </li>
                         <li>
-                          <button type="button" className={css.keyActionButton} onClick={() =>{  onSetDisabled(entry.id, !entry.disabled) }} title={entry.disabled ? t('keys.enable') : t('keys.disable')} aria-label={entry.disabled ? t('keys.enable') : t('keys.disable')} disabled={pool.pending}>
+                          <button type="button" className={KEY_ACTION_BUTTON} onClick={() =>{  onSetDisabled(entry.id, !entry.disabled) }} title={entry.disabled ? t('keys.enable') : t('keys.disable')} aria-label={entry.disabled ? t('keys.enable') : t('keys.disable')} disabled={pool.pending}>
                             <Icon name={entry.disabled ? 'check' : 'alert'} size={15} />
                           </button>
                         </li>
                         <li>
-                          <button type="button" className={cx(css.keyActionButton, css.keyActionDanger)} onClick={() =>{  onAskDelete(entry) }} title={t('keys.delete')} aria-label={t('keys.delete')} disabled={pool.pending}>
+                          <button type="button" className={cn(KEY_ACTION_BUTTON, KEY_ACTION_DANGER)} onClick={() =>{  onAskDelete(entry) }} title={t('keys.delete')} aria-label={t('keys.delete')} disabled={pool.pending}>
                             <Icon name="trash" size={15} />
                           </button>
                         </li>
@@ -834,30 +934,30 @@ function KeyPoolBody({
         : null}
 
       {/* R6: recycle bin — every row is an <li>, never a table row. */}
-      <div className={css.recycleHead}>
-        <h4 className={css.recycleTitle}>{t('keys.recycle')}</h4>
-        <span className={css.recycleCount}>{String(pool.recycle.length)}</span>
+      <div className={RECYCLE_HEAD}>
+        <h4 className={RECYCLE_TITLE}>{t('keys.recycle')}</h4>
+        <span className={RECYCLE_COUNT}>{String(pool.recycle.length)}</span>
       </div>
-      <p className={css.recycleHint}>{t('keys.recycleHint')}</p>
+      <p className={RECYCLE_HINT}>{t('keys.recycleHint')}</p>
       {recycle.length === 0
-        ? <div className={css.emptyState}>{t('keys.recycleEmpty')}</div>
+        ? <div className={EMPTY_STATE}>{t('keys.recycleEmpty')}</div>
         : (
-          <ul className={css.recycleList}>
+          <ul className={RECYCLE_LIST}>
             {recycle.map(entry => (
-              <li key={entry.id} className={css.recycleItem}>
-                <span className={css.keyMasked}>{highlight(entry.masked, needle, css.mark)}</span>
-                <ul className={css.recycleMeta}>
+              <li key={entry.id} className={KEY_ROW}>
+                <span className={cn(KEY_MASKED, 'shrink-0 grow-0')}>{highlight(entry.masked, needle, MARK)}</span>
+                <ul className={RECYCLE_META}>
                   <li>{tf('keys.deletedAt', { date: new Date(entry.deletedAt).toLocaleString() })}</li>
                   <li>{tf('keys.purgeAt', { date: new Date(entry.purgeAt).toLocaleString() })}</li>
                 </ul>
-                <ul className={css.keyActions}>
+                <ul className={KEY_ACTIONS}>
                   <li>
-                    <button type="button" className={css.keyActionButton} onClick={() =>{  onRestore(entry.id) }} title={t('keys.restore')} aria-label={t('keys.restore')} disabled={pool.pending}>
+                    <button type="button" className={KEY_ACTION_BUTTON} onClick={() =>{  onRestore(entry.id) }} title={t('keys.restore')} aria-label={t('keys.restore')} disabled={pool.pending}>
                       <Icon name="restore" size={15} />
                     </button>
                   </li>
                   <li>
-                    <button type="button" className={cx(css.keyActionButton, css.keyActionDanger)} onClick={() =>{  onAskPurge(entry) }} title={t('keys.purge')} aria-label={t('keys.purge')} disabled={pool.pending}>
+                    <button type="button" className={cn(KEY_ACTION_BUTTON, KEY_ACTION_DANGER)} onClick={() =>{  onAskPurge(entry) }} title={t('keys.purge')} aria-label={t('keys.purge')} disabled={pool.pending}>
                       <Icon name="trash" size={15} />
                     </button>
                   </li>
@@ -867,32 +967,32 @@ function KeyPoolBody({
           </ul>
         )}
 
-      <div className={css.note}>
-        <Icon name="shield" size={18} className={css.noteIcon} />
+      <div className={NOTE}>
+        <Icon name="shield" size={18} className={NOTE_ICON} />
         <span>{t('keys.note')}</span>
       </div>
 
       {/* R5: in-app confirmation. Cancel closes without touching the host. */}
       {confirmation !== undefined
         ? (
-          <div className={css.modalBackdrop} role="presentation" onClick={onCancel}>
+          <div className={MODAL_BACKDROP} role="presentation" onClick={onCancel}>
             <div
-              className={css.modalCard}
+              className={MODAL_CARD}
               role="dialog"
               aria-modal="true"
               aria-label={t('keys.deleteConfirmTitle')}
               onClick={(event) =>{  event.stopPropagation() }}
             >
-              <h4 className={css.modalTitle}>{t('keys.deleteConfirmTitle')}</h4>
-              <p className={css.modalText}>
+              <h4 className={MODAL_TITLE}>{t('keys.deleteConfirmTitle')}</h4>
+              <p className={MODAL_TEXT}>
                 {confirmation.kind === 'delete'
                   ? tf('keys.deleteConfirmText', { days: pool.retentionDays })
                   : t('keys.purgeConfirm')}
               </p>
-              <p className={css.modalTarget}>{tf('keys.deleteTarget', { masked: confirmation.masked })}</p>
-              <div className={css.modalActions}>
-                <button type="button" className={css.secondaryButton} onClick={onCancel}>{t('keys.deleteConfirmCancel')}</button>
-                <button type="button" className={cx(css.primaryButton, css.dangerButton)} onClick={onConfirm}>{t('keys.deleteConfirmOk')}</button>
+              <p className={MODAL_TARGET}>{tf('keys.deleteTarget', { masked: confirmation.masked })}</p>
+              <div className={MODAL_ACTIONS}>
+                <button type="button" className={SECONDARY_BUTTON} onClick={onCancel}>{t('keys.deleteConfirmCancel')}</button>
+                <button type="button" className={cn(PRIMARY_BUTTON, DANGER_BUTTON)} onClick={onConfirm}>{t('keys.deleteConfirmOk')}</button>
               </div>
             </div>
           </div>
@@ -919,29 +1019,29 @@ function RankingSkeleton({ filtersOpen }: { filtersOpen: boolean }): ReactNode {
   // A typical remote board has six tiers; this shape approximates it.
   const shapes = [4, 3, 3, 3, 2, 2]
   return (
-    <div className={css.boardSkeleton} aria-hidden="true">
-      <div className={css.rankingFilters}>
-        <div className={cx(css.skel, css.skelHead)} />
+    <div className={BOARD_SKELETON} aria-hidden="true">
+      <div className={RANKING_FILTERS}>
+        <div className={cn(SKEL, SKEL_HEAD)} />
         {filtersOpen
           ? (
-            <div className={css.filterBlock}>
-              <div className={css.filterRow}>
-                <div className={cx(css.skel, css.skelLabel)} />
-                <div className={cx(css.skel, css.skelChips)} />
+            <div className={FILTER_BLOCK}>
+              <div className={FILTER_ROW}>
+                <div className={cn(SKEL, SKEL_LABEL)} />
+                <div className={cn(SKEL, SKEL_CHIPS)} />
               </div>
-              <div className={css.filterRowSecondary}>
-                <div className={cx(css.skel, css.skelLabel)} />
-                <div className={cx(css.skel, css.skelChips)} />
+              <div className={FILTER_ROW_SECONDARY}>
+                <div className={cn(SKEL, SKEL_LABEL)} />
+                <div className={cn(SKEL, SKEL_CHIPS)} />
               </div>
             </div>
           )
           : null}
       </div>
       {shapes.map((rows, at) => (
-        <section key={at} className={css.tierGroup}>
-          <div className={cx(css.skel, css.skelGroupHead)} />
+        <section key={at} className={TIER_GROUP}>
+          <div className={cn(SKEL, SKEL_GROUP_HEAD)} />
           {Array.from({ length: rows }, (_, row) => (
-            <div key={row} className={cx(css.skel, css.skelRow)} />
+            <div key={row} className={cn(SKEL, SKEL_ROW)} />
           ))}
         </section>
       ))}

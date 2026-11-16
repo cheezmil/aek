@@ -36,7 +36,9 @@ function findRoot(start) {
 }
 
 const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)))
-const CLIENT = join(ROOT, 'packages', 'aek', 'coraek-plugins', 'aek-home', 'src', 'client')
+// B2 round: the aek-home plugin was deleted; its client surface now lives in
+// the standalone aek-web console.
+const CLIENT = join(ROOT, 'apps', 'aek-web', 'src')
 const WEBSEARCH = join(ROOT, 'packages', 'aek', 'coraek-plugins', 'aek-websearch', 'src')
 const DESKTOP = join(ROOT, 'apps', 'aek-desktop', 'v0', 'src', 'main')
 const SCRIPTS = join(ROOT, 'scripts', 'aek')

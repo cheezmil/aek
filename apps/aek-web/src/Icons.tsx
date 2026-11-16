@@ -3,13 +3,14 @@
  *
  * Shapes follow the Lucide icon set (ISC License, https://lucide.dev/license).
  * They are inlined rather than imported from an icon package so the frontend
- * stays exactly React + Vite + TS + lightningcss with zero extra runtime deps.
+ * stays on the declared stack (React + Vite + TS + Tailwind v4 + shadcn/ui,
+ * FF round) with no extra icon runtime.
  *
  * Every glyph must match its meaning: `search` is a magnifier, `language` is
  * the A/文 translate mark. A globe was previously used for both and read as
  * a web-browser icon.
  *
- * @module @cheezmil/aek-home/src/client/Icons
+ * @module @cheezmil/aek-web/src/Icons
  */
 import { useId } from 'react'
 import type { ReactNode } from 'react'
@@ -349,25 +350,25 @@ export function BrandMark({ size = 34, className, variant = 'mark' }: BrandMarkP
     >
       <defs>
         <linearGradient id={rind} x1="0" y1="0" x2="1" y2="1">
-          <stop stopColor="#fdba74" />
-          <stop offset="1" stopColor="#ea580c" />
+          <stop stopColor="var(--color-logo-amber)" />
+          <stop offset="1" stopColor="var(--color-primary)" />
         </linearGradient>
         <linearGradient id={flesh} x1="0" y1="0" x2="1" y2="1">
-          <stop stopColor="#fff0bc" />
-          <stop offset="1" stopColor="#fb923c" />
+          <stop stopColor="var(--color-logo-sand)" />
+          <stop offset="1" stopColor="var(--color-logo-tangerine)" />
         </linearGradient>
       </defs>
       {variant === 'text'
-        ? <text x="60" y="78" textAnchor="middle" fontSize="58" fontWeight="700" fill="#ea580c">A</text>
+        ? <text x="60" y="78" textAnchor="middle" fontSize="58" fontWeight="700" fill="var(--color-primary)">A</text>
         : (
           <g transform="translate(60 60) scale(1.2) translate(-60 -60)">
             {variant === 'square'
               ? <rect x="18" y="18" width="84" height="84" rx="16" fill={`url(#${rind})`} />
               : <circle cx="60" cy="60" r={variant === 'round' ? 46 : 42} fill={`url(#${rind})`} />}
-            <circle cx="60" cy="60" r="34" fill="#fffbeb" />
+            <circle cx="60" cy="60" r="34" fill="var(--color-logo-cream)" />
             <circle cx="60" cy="60" r="30" fill={`url(#${flesh})`} />
-            <path d="M60 30 L60 90 M30 60 L90 60 M40 40 L80 80 M80 40 L40 80" stroke="#ea580c" strokeWidth="2" opacity="0.5" />
-            <circle cx="60" cy="60" r="8" fill="#fffebf" />
+            <path d="M60 30 L60 90 M30 60 L90 60 M40 40 L80 80 M80 40 L40 80" stroke="var(--color-primary)" strokeWidth="2" opacity="0.5" />
+            <circle cx="60" cy="60" r="8" fill="var(--color-logo-glow)" />
           </g>
         )}
     </svg>

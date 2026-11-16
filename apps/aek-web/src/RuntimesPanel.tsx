@@ -27,7 +27,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { useI18n } from './i18n.tsx'
-import { css, cx } from './styles.ts'
+import { cn } from '@/lib/utils'
 import type { RuntimeRow } from './useRuntimes.ts'
 import { useRuntimes } from './useRuntimes.ts'
 
@@ -35,6 +35,26 @@ import { useRuntimes } from './useRuntimes.ts'
 export function fmtBytes(bytes?: number): string {
   return bytes === undefined ? '—' : `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
+
+/* FF round: the old rt* module classes, now literal Tailwind utilities (1:1
+   from Home.module.css L3234-3428). The five-track row grid ships as the
+   named `.aek-grid-rt-row` component helper in index.css (arbitrary
+   grid-template values are banned by @shadcn/lint). */
+const RT_ROW = 'grid aek-grid-rt-row gap-x-2 items-center border border-border rounded-sm py-2 px-2.5 bg-card'
+const RT_ROW_CONFIRM = 'aek-grid-rt-row-confirm bg-danger-soft border-danger-border'
+const RT_NUMBER = 'text-center text-xs font-bold tabular-nums text-text-muted'
+const RT_LABEL = 'text-xs-plus font-semibold overflow-hidden text-ellipsis whitespace-nowrap'
+const RT_LABEL_EDIT = 'flex items-center gap-1 min-w-0'
+const RT_LABEL_INPUT = 'text-xs-plus font-semibold py-0.5 px-1.5 border border-accent rounded-2xs bg-surface-subtle text-text min-w-0'
+const RT_STATE = 'px-2 py-px rounded-full text-2xs font-semibold justify-self-start'
+const RT_STATE_RUNNING = 'bg-success-soft text-success'
+const RT_STATE_STOPPED = 'bg-surface-subtle text-text-muted'
+const RT_MEM = 'text-2xs tabular-nums text-text-muted break-anywhere'
+const RT_ACTIONS = 'flex gap-1 justify-self-end'
+const RT_ACTION_ICON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted text-xs-plus leading-none cursor-pointer hover:text-accent-ink hover:bg-accent-soft disabled:opacity-45 disabled:cursor-default'
+const RT_ACTION_DANGER = 'hover:text-danger hover:bg-danger-soft'
+const RT_ICON_BUTTON = 'inline-flex items-center justify-center size-8.5 p-0 text-text-secondary bg-card border border-border rounded-sm cursor-pointer transition-[color,border-color,background-color] duration-150 ease-aek hover:text-primary hover:border-accent-border hover:bg-accent-soft disabled:opacity-50 disabled:cursor-not-allowed'
+const RT_CONFIRM_OK = 'text-danger border-danger-border text-xs px-2 py-0.5'
 
 /**
  * One runtime row: number, label (inline rename), state, memory + pid,
@@ -52,7 +72,7 @@ function RuntimeRowView({ row, host, term, onRename, onRemove, busy }: {
   const [renaming, setRenaming] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [draft, setDraft] = useState('')
-  const stateClass = row.state === 'running' ? css.rtStateRunning : css.rtStateStopped
+  const stateClass = row.state === 'running' ? RT_STATE_RUNNING : RT_STATE_STOPPED
   const memoryText = host
     ? `${term} ${fmtBytes(row.memory?.rss)} · ${t('runtimes.memHeap')} ${fmtBytes(row.memory?.heapUsed)}`
     : `${term} ${fmtBytes(row.memory?.rss)}`
@@ -60,21 +80,21 @@ function RuntimeRowView({ row, host, term, onRename, onRemove, busy }: {
     // The unified inline confirm strip: the row's content is replaced by the
     // question + the two buttons (no native dialog, ever).
     return (
-      <li className={cx(css.rtRow, css.rtRowConfirm)}>
-        <span className={css.rtNumber}>{String(row.number)}</span>
-        <span className={css.rtLabel} title={row.label}>{row.label}</span>
-        <span className={css.rtConfirmText}>{t('runtimes.removeConfirmInline')}</span>
-        <span className={css.rtActions}>
+      <li className={cn(RT_ROW, RT_ROW_CONFIRM)}>
+        <span className={RT_NUMBER}>{String(row.number)}</span>
+        <span className={RT_LABEL} title={row.label}>{row.label}</span>
+        <span className='text-xs text-danger break-anywhere'>{t('runtimes.removeConfirmInline')}</span>
+        <span className={RT_ACTIONS}>
           <button
             type="button"
-            className={cx(css.iconButton, css.rtConfirmOk)}
+            className={cn(RT_ICON_BUTTON, RT_CONFIRM_OK, 'w-auto min-w-12')}
             title={t('runtimes.confirmOk')}
             onClick={() => { setConfirming(false); onRemove(row.id) }}
             disabled={busy !== undefined}
           >{t('runtimes.confirmOk')}</button>
           <button
             type="button"
-            className={css.iconButton}
+            className={cn(RT_ICON_BUTTON, 'w-auto min-w-12')}
             title={t('runtimes.confirmCancel')}
             onClick={() => { setConfirming(false) }}
             disabled={busy !== undefined}
@@ -84,17 +104,17 @@ function RuntimeRowView({ row, host, term, onRename, onRemove, busy }: {
     )
   }
   return (
-    <li className={css.rtRow}>
-      <span className={css.rtNumber}>{String(row.number)}</span>
+    <li className={RT_ROW}>
+      <span className={RT_NUMBER}>{String(row.number)}</span>
       {/* X3: the rename field lives INSIDE the label column (input + two
           compact buttons on one line) so every row keeps the same five
           tracks — the old markup put ✓ / ✕ as free children and the grid
           wrapped them onto a second line, drifting the state / memory
           columns against the other rows. */}
       {renaming && !host ? (
-        <span className={css.rtLabelEdit}>
+        <span className={RT_LABEL_EDIT}>
           <input
-            className={css.rtLabelInput}
+            className={cn(RT_LABEL_INPUT, 'flex-1 w-auto')}
             value={draft}
             onChange={(event) => { setDraft(event.target.value) }}
             onKeyDown={(event) => {
@@ -106,26 +126,26 @@ function RuntimeRowView({ row, host, term, onRename, onRemove, busy }: {
             }}
             aria-label={row.id}
           />
-          <button type="button" className={css.rtActionIcon} onClick={() => { onRename(row.id, draft.trim()); setRenaming(false) }} title={t('runtimes.confirmOk')}>✓</button>
-          <button type="button" className={css.rtActionIcon} onClick={() => { setRenaming(false) }} title={t('runtimes.confirmCancel')}>✕</button>
+          <button type="button" className={RT_ACTION_ICON} onClick={() => { onRename(row.id, draft.trim()); setRenaming(false) }} title={t('runtimes.confirmOk')}>✓</button>
+          <button type="button" className={RT_ACTION_ICON} onClick={() => { setRenaming(false) }} title={t('runtimes.confirmCancel')}>✕</button>
         </span>
       ) : (
-        <span className={css.rtLabel} title={row.label}>{row.label}</span>
+        <span className={RT_LABEL} title={row.label}>{row.label}</span>
       )}
-      <span className={cx(css.rtState, stateClass)}>{t(row.state === 'running' ? 'runtimes.state.running' : 'runtimes.state.stopped')}</span>
-      <span className={css.rtMem} title={t('runtimes.memOccupied')}>{memoryText} · pid {row.pid ?? '—'}</span>
+      <span className={cn(RT_STATE, stateClass)}>{t(row.state === 'running' ? 'runtimes.state.running' : 'runtimes.state.stopped')}</span>
+      <span className={RT_MEM} title={t('runtimes.memOccupied')}>{memoryText} · pid {row.pid ?? '—'}</span>
       {!host ? (
-        <span className={css.rtActions}>
+        <span className={RT_ACTIONS}>
           <button
             type="button"
-            className={css.rtActionIcon}
+            className={RT_ACTION_ICON}
             title={t('runtimes.rename')}
             onClick={() => { setDraft(row.label); setRenaming(true) }}
             disabled={busy !== undefined}
           >✎</button>
           <button
             type="button"
-            className={cx(css.rtActionIcon, css.rtActionDanger)}
+            className={cn(RT_ACTION_ICON, RT_ACTION_DANGER)}
             title={t('runtimes.remove')}
             onClick={() => { setConfirming(true) }}
             disabled={busy !== undefined}
@@ -153,9 +173,11 @@ export function RuntimesBlock({ refreshSignal }: { refreshSignal: number }): Rea
   const hint = isWin32 ? t('runtimes.hint.win32') : t('runtimes.hint.posix')
   const term = isWin32 ? t('runtimes.memTerm.win32') : t('runtimes.memTerm.posix')
   return (
-    <div className={css.rtBlock}>
-      <div className={css.hint}>{hint}</div>
-      <ul className={css.rtList}>
+    <div className='flex flex-col gap-2 p-3 border border-border rounded-sm bg-surface-subtle mb-3'>
+      {/* The .rtBlock .hint override (margin-top 0) is baked in: the box
+          padding already separates the hint from whatever is above. */}
+      <div className='text-text-secondary text-xs'>{hint}</div>
+      <ul className='list-none m-0 p-0 flex flex-col gap-2'>
         {rows.map(row => (
           <RuntimeRowView
             key={row.id}
@@ -168,11 +190,11 @@ export function RuntimesBlock({ refreshSignal }: { refreshSignal: number }): Rea
           />
         ))}
       </ul>
-      {snapshot.runtimes.length === 0 ? <div className={css.rtEmpty}>{t('runtimes.empty')}</div> : null}
+      {snapshot.runtimes.length === 0 ? <div className='text-text-muted text-xs py-1'>{t('runtimes.empty')}</div> : null}
       {/* X2: the add row is the NAME input only — blank = the auto number. */}
-      <div className={css.rtAddRow}>
+      <div className='flex items-center gap-2 mt-2'>
         <input
-          className={css.rtNameInput}
+          className='flex-1 basis-40 min-w-30 text-xs py-0.75 px-1.5 border border-border rounded-xs bg-card text-text'
           value={pendingName}
           onChange={(event) => { setPendingName(event.target.value) }}
           onKeyDown={(event) => {
@@ -185,7 +207,7 @@ export function RuntimesBlock({ refreshSignal }: { refreshSignal: number }): Rea
         />
         <button
           type="button"
-          className={css.rtActionIcon}
+          className={RT_ACTION_ICON}
           title={t('runtimes.add')}
           disabled={busy !== undefined}
           onClick={() => {

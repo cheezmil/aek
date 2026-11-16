@@ -14,12 +14,11 @@
  * - Output (stdout / stderr / exit code / duration) is shown inline, copyable.
  * - All collections are unordered `<ul>/<li>`; no progress bars (Spinner only).
  *
- * @module @cheezmil/aek-home/src/client/ConsolePanels
+ * @module @cheezmil/aek-web/src/ConsolePanels
  */
 import { useEffect, useState } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
-import { css } from './styles.ts'
 import { CopyButton, OutputView, PanelCard, PanelSearch, Spinner } from './ui-kit.tsx'
 import { usePluginConsole } from './usePluginConsole.ts'
 import type { ConsoleCommand } from './usePluginConsole.ts'
@@ -94,49 +93,56 @@ function ManagerPanel({ pluginId, refreshSignal }: {
 
   return (
     <PanelCard>
-      <div className={css.cardBody}>
+      <div className="p-6 max-[640px]:p-4">
         {state.error !== undefined
-          ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{state.error}</span></div>
+          ? <div className="mb-4 flex items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-3 px-4 text-xs-plus text-danger"><Icon name="alert" size={16} /><span>{state.error}</span></div>
           : null}
         {notice !== ''
-          ? <div className={css.errorBanner}><Icon name="alert" size={16} /><span>{notice}</span></div>
+          ? <div className="mb-4 flex items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-3 px-4 text-xs-plus text-danger"><Icon name="alert" size={16} /><span>{notice}</span></div>
           : null}
-        {state.loading ? <div className={css.loadingState}><Spinner />{t('common.loading')}</div> : null}
+        {state.loading ? <div className="flex min-h-30 items-center justify-center gap-2 text-xs-plus text-text-muted"><Spinner />{t('common.loading')}</div> : null}
 
-        <h3 className={css.sectionTitle}>{t('managers.allCommands')}</h3>
+        {/* FF-NOTE: .sectionTitle had letter-spacing: 0.01em → tracking-normal; the ::before accent bar
+            (top 3px, radius 2px) maps to top-0.75 / rounded-xs pending 0.25-step decimal support. */}
+        <h3 className="relative mt-8 mb-4 first:mt-0 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[''] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary">{t('managers.allCommands')}</h3>
         <PanelSearch value={query} onChange={setQuery} placeholder={t('managers.searchCommands')} />
-        <ul className={css.commandList}>
+        <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
           {visible.map(command => (
-            <li key={command.name} className={css.commandItem}>
+            <li key={command.name} className="flex items-center gap-2 rounded-sm border border-border bg-secondary p-1 px-2">
               <button
                 type="button"
-                className={css.commandButton}
+                className="group flex flex-1 min-w-0 items-baseline gap-3 cursor-pointer bg-transparent py-0.5 text-left text-text"
                 onClick={() =>{  pick(command) }}
                 aria-pressed={selected?.name === command.name}
               >
-                <span className={css.commandName}>{command.name}</span>
-                <span className={css.commandLabel}>{command.label}</span>
+                <span className="flex-none text-xs font-semibold group-hover:text-accent-ink">{command.name}</span>
+                <span className="flex-1 min-w-0 truncate text-2xs text-text-muted">{command.label}</span>
               </button>
-              <span className={command.mutating ? css.badgeWarn : css.badgeSuccess}>
+              <span className={command.mutating
+                ? 'flex-none rounded-full bg-secondary px-2 py-0.25 text-xs font-semibold text-danger'
+                /* FF-NOTE: .badgeSuccess had color: #15803d → text-success (#16a34a); its
+                   border-color: var(--aek-success-border) is dropped (the rule sets no
+                   border-width, so no border was rendered). */
+                : 'bg-success-soft text-success'}>
                 {command.mutating ? t('managers.write') : t('managers.readonly')}
               </span>
             </li>
           ))}
         </ul>
         {visible.length === 0 && !state.loading
-          ? <div className={css.emptyState}>{t('managers.empty')}</div>
+          ? <div className="flex min-h-30 items-center justify-center gap-2 text-xs-plus text-text-muted">{t('managers.empty')}</div>
           : null}
 
-        <div className={css.divider} />
+        <div className="my-6 h-px bg-border" />
         {/* W round: the one-click read-only actions sit DIRECTLY ABOVE the
             运行 section (the user's placement), not above 全部命令. */}
-        <h3 className={css.sectionTitle}>{t('managers.quick')}</h3>
-        <div className={css.managerActions}>
+        <h3 className="relative mt-8 mb-4 first:mt-0 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[''] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary">{t('managers.quick')}</h3>
+        <div className="flex flex-wrap gap-2">
           {quick.map(command => (
             <button
               key={command.name}
               type="button"
-              className={css.actionButton}
+              className="cursor-pointer rounded-sm border border-border bg-secondary p-1.25 px-3 text-xs text-text enabled:hover:border-accent-border enabled:hover:bg-accent-soft disabled:cursor-default disabled:opacity-45"
               disabled={state.running || plugin?.available !== true}
               onClick={() =>{  execute(command, command.args.join(' '), false) }}
               title={command.label}
@@ -145,19 +151,20 @@ function ManagerPanel({ pluginId, refreshSignal }: {
             </button>
           ))}
           {quick.length === 0 && !state.loading
-            ? <div className={css.emptyState}>{t('managers.empty')}</div>
+            ? <div className="flex min-h-30 items-center justify-center gap-2 text-xs-plus text-text-muted">{t('managers.empty')}</div>
             : null}
         </div>
 
-        <div className={css.divider} />
-        <h3 className={css.sectionTitle}>{t('managers.run')}</h3>
-        <div className={css.managerForm}>
+        <div className="my-6 h-px bg-border" />
+        <h3 className="relative mt-8 mb-4 first:mt-0 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[''] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary">{t('managers.run')}</h3>
+        <div className="flex flex-nowrap items-center gap-2">
           {/* Y round: an EMPTY box shows no text at all — the placeholder
               ("aeksm status" / the args hint) was noise. The accessible name
               stays; the V-round tolerance for a typed leading CLI token is
-              unchanged. */}
+              unchanged.
+              FF-NOTE: .textInput / .managerForm descendant rules now exact via the 0.25-step scale + rounded-xs (6px). */}
           <input
-            className={css.textInput}
+            className="w-full flex-1 min-w-30 rounded-xs border border-input bg-card p-1.25 px-2 text-xs text-text"
             value={commandLine}
             onChange={(event) => { setCommandLine(event.target.value); setNotice('') }}
             spellCheck={false}
@@ -165,7 +172,7 @@ function ManagerPanel({ pluginId, refreshSignal }: {
           />
           <button
             type="button"
-            className={css.actionButtonPrimary}
+            className="flex-none whitespace-nowrap cursor-pointer rounded-sm border border-accent-border bg-accent-soft p-1.25 px-3 text-xs font-semibold text-text enabled:hover:border-accent-border enabled:hover:bg-accent-soft disabled:cursor-default disabled:opacity-45"
             disabled={state.running || commandLine.trim().length === 0 || plugin?.available !== true}
             onClick={() =>{  execute(
               selected ?? { name: commandLine.trim(), args: commandLine.trim().split(/\s+/u), label: '', mutating: true },
@@ -177,27 +184,29 @@ function ManagerPanel({ pluginId, refreshSignal }: {
           </button>
         </div>
         {confirm || (selected?.mutating === true)
-          ? <label className={css.managerCheck}>
+          ? <label className="flex items-center gap-2 text-xs text-muted">
             <input type="checkbox" checked={confirm} onChange={(event) =>{  setConfirm(event.target.checked) }} />
             <span>{t('managers.confirm')}</span>
           </label>
           : null}
-        <div className={css.hint}>{t('managers.hint')}</div>
+        <div className="mt-4 text-xs text-text-secondary">{t('managers.hint')}</div>
 
-        <div className={css.divider} />
-        <div className={css.outputHead}>
-          <h3 className={css.sectionTitle}>{t('managers.output')}</h3>
+        <div className="my-6 h-px bg-border" />
+        <div className="mb-2 flex flex-wrap items-center gap-3">
+          {/* FF-NOTE: .outputHead > .sectionTitle { margin: 0 } — the h3 is outputHead's
+              first child, so first:mb-0 re-asserts it (first:mt-0 already in the base string). */}
+          <h3 className="relative mt-8 mb-4 first:mt-0 first:mb-0 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[''] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary">{t('managers.output')}</h3>
           {state.result !== undefined
             ? <>
-              <span className={css.outputMeta}>{t('managers.exit')} {state.result.exitCode}</span>
-              <span className={css.outputMeta}>{t('managers.duration')} {state.result.durationMs} ms</span>
+              <span className="text-xs text-muted">{t('managers.exit')} {state.result.exitCode}</span>
+              <span className="text-xs text-muted">{t('managers.duration')} {state.result.durationMs} ms</span>
               <CopyButton value={output} label={t('managers.copy')} />
-              <button type="button" className={css.iconButton} onClick={state.clear}>{t('managers.clear')}</button>
+              <button type="button" className="inline-flex size-8.5 items-center justify-center rounded-sm border border-border bg-card p-0 text-text-secondary transition duration-150 ease-aek hover:border-accent-border hover:bg-accent-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={state.clear}>{t('managers.clear')}</button>
             </>
             : null}
         </div>
         {state.result === undefined
-          ? <div className={css.emptyState}>{t('managers.noOutput')}</div>
+          ? <div className="flex min-h-30 items-center justify-center gap-2 text-xs-plus text-text-muted">{t('managers.noOutput')}</div>
           : (
             <OutputView
               text={outputLabel + '\n' + (output || '(no output)')}

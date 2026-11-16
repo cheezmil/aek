@@ -5,7 +5,7 @@
  *
  * It owns the whole-instance lifecycle per slot (web server + Electron shell),
  * keyed by the data root so AEK and AEK Next can coexist while each stays
- * single-instance. The aek-home console calls this through
+ * single-instance. The AEK web console (apps/aek-web) calls this through
  * `@cheezmil/aek-websearch/admin`'s `/api/aek/runtime` route.
  *
  * Commands:

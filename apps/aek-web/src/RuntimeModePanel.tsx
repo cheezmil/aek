@@ -13,7 +13,7 @@
  *
  * All collections are unordered `<ul>/<li>`.
  *
- * @module @cheezmil/aek-home/src/client/RuntimeModePanel
+ * @module @cheezmil/aek-web/src/RuntimeModePanel
  */
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
@@ -21,7 +21,7 @@ import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { formatDisplayPath, parsePathStyle } from './paths.ts'
 import { PREF_KEYS, usePref } from './preferences.tsx'
-import { css, cx } from './styles.ts'
+import { cn } from '@/lib/utils'
 import { CopyButton, PanelCard, Spinner, ToggleSwitch } from './ui-kit.tsx'
 import type { SlotEndpoint } from './useConsoleFacts.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
@@ -51,10 +51,12 @@ function EndpointRow({ label, value, copyLabel }: {
   copyLabel: string
 }): ReactNode {
   return (
-    <li className={css.endpointRow}>
-      <span className={css.endpointLabel}>{label}</span>
-      <span className={css.endpointValue} title={value}>{value}</span>
-      <CopyButton value={value} label={copyLabel} size={13} />
+    // The 24px copy button is baked here (the module's
+    // `.endpointRow > .iconButton { width: 24px; height: 24px }` descendant).
+    <li className='aek-grid-endpoint-row grid items-center gap-2 py-1 border-t border-dashed border-border text-xs'>
+      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text-muted">{label}</span>
+      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text-secondary" title={value}>{value}</span>
+      <CopyButton value={value} label={copyLabel} size={13} className='size-6' />
     </li>
   )
 }
@@ -87,10 +89,11 @@ interface HalfRowProps {
 function HalfRow({ label, on, note, busyKey, base, onStart, onStop, onRestart }: HalfRowProps): ReactNode {
   const { tf } = useI18n()
   const busy = busyKey !== undefined && busyKey.startsWith(base)
+  // FF-NOTE: .halfButton now exact: size-6.5 / rounded-1.75 / hover:not-disabled:* / duration-160.
   const control = (action: HalfAction, icon: 'play' | 'stop' | 'refresh', hint: string, disabled: boolean): ReactNode => (
     <button
       type="button"
-      className={cx(css.halfButton, !disabled && css.halfButtonOn)}
+      className={cn('inline-flex items-center justify-center size-6.5 p-0 border border-transparent rounded-1.75 bg-transparent cursor-pointer transition duration-160 ease-aek hover:not-disabled:bg-surface-hover hover:not-disabled:text-accent-ink disabled:opacity-30 disabled:cursor-default', !disabled ? 'text-text-secondary' : 'text-text-muted')}
       onClick={() => {
         if (action === 'start') onStart()
         else if (action === 'stop') onStop()
@@ -104,13 +107,13 @@ function HalfRow({ label, on, note, busyKey, base, onStart, onStop, onRestart }:
     </button>
   )
   return (
-    <li className={css.halfRow}>
-      <span className={cx(css.halfDot, on ? css.halfDotOn : css.halfDotOff)} aria-hidden="true" />
-      <span className={css.halfTitle}>
-        <span className={css.halfLabel}>{label}</span>
-        {on && note !== undefined ? <span className={css.halfNote}>{note}</span> : null}
+    <li className='aek-grid-half-row grid items-center gap-2 py-1 text-xs'>
+      <span className={cn('w-2 h-2 rounded-full', on ? 'bg-success ring-3 ring-success-soft' : 'bg-text-muted opacity-45')} aria-hidden="true" />
+      <span className="inline-flex items-center gap-1.5 min-w-0">
+        <span className="text-text-secondary overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
+        {on && note !== undefined ? <span className='shrink-0 p-0.25 px-1.5 border border-border rounded-full text-text-muted text-2xxs leading-140 whitespace-nowrap'>{note}</span> : null}
       </span>
-      <span className={css.halfActions}>
+      <span className="inline-flex items-center gap-1">
         {busy ? <Spinner /> : null}
         {control('start', 'play', tf('runtime.half.start', { label }), on)}
         {control('restart', 'refresh', tf('runtime.half.restart', { label }), !on)}
@@ -227,32 +230,32 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
 
   return (
     <PanelCard>
-      <div className={css.cardBody}>
-        <div className={css.instanceToolbar}>
-          <span className={css.instanceDefault}>
+      <div className="p-6 max-[640px]:p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 mb-3">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1.25 mb-4 border border-accent-border rounded-full bg-accent-soft text-accent-ink text-xs font-semibold">
             <Icon name="shield" size={14} />
             {t('runtime.default')}
           </span>
-          <span className={css.instanceToolbarActions}>
+          <span className="inline-flex items-center gap-2">
             {/* X2 item 13: the whole-stop button carries the SAME THREE icons
                 (start / restart / stop) as the per-half rows — one control
                 set for all components, no lone icon. */}
-            <button type="button" className={css.toolbarButton} onClick={startAll} title={t('runtime.startAll')}>
+            <button type="button" className="inline-flex items-center gap-1.5 py-1.5 px-3 border border-input rounded-full bg-card text-text-secondary cursor-pointer transition duration-160 ease-aek hover:border-accent-border hover:text-accent-ink text-xs" onClick={startAll} title={t('runtime.startAll')}>
               <Icon name="play" size={14} />
               {t('runtime.startAll')}
             </button>
-            <button type="button" className={css.toolbarButton} onClick={restartAll} title={t('runtime.restartAll')}>
+            <button type="button" className="inline-flex items-center gap-1.5 py-1.5 px-3 border border-input rounded-full bg-card text-text-secondary cursor-pointer transition duration-160 ease-aek hover:border-accent-border hover:text-accent-ink text-xs" onClick={restartAll} title={t('runtime.restartAll')}>
               <Icon name="refresh" size={14} />
               {t('runtime.restartAll')}
             </button>
-            <button type="button" className={css.toolbarButton} onClick={stopAll} title={t('runtime.stopAll')}>
+            <button type="button" className="inline-flex items-center gap-1.5 py-1.5 px-3 border border-input rounded-full bg-card text-text-secondary cursor-pointer transition duration-160 ease-aek hover:border-accent-border hover:text-accent-ink text-xs" onClick={stopAll} title={t('runtime.stopAll')}>
               <Icon name="stop" size={14} />
               {t('runtime.stopAll')}
             </button>
           </span>
         </div>
 
-        <ul className={css.instanceList}>
+        <ul className='aek-grid-instance-list grid gap-4 list-none m-0 p-0'>
           {SLOTS.map((slot) => {
             const web = halfOn(slot, 'web')
             const shell = halfOn(slot, 'shell')
@@ -260,21 +263,22 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
             const endpoint = endpointFor(slot)
             const name = slot === 'aek' ? t('runtime.aek') : t('runtime.next')
             return (
-              <li key={slot} className={cx(css.instanceCard, running && css.instanceCardOn)}>
-                <div className={css.instanceHead}>
-                  <span className={css.instanceName}>
+              <li key={slot} className={cn('p-4 border rounded-md transition duration-180 ease-aek', running ? 'border-success-border bg-success-soft shadow-sm' : 'border-border bg-surface-subtle')}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className='text-sm-plus font-bold text-text'>
                     {name}
-                    {slot === current ? <span className={css.instanceSelf}>{t('runtime.current')}</span> : null}
+                    {slot === current ? <span className="ml-2 py-0.25 px-1.75 rounded-full bg-accent-soft text-accent-ink text-2xs font-semibold">{t('runtime.current')}</span> : null}
                   </span>
-                  <span className={css.instanceHeadRight}>
-                    <span className={cx(css.runtimePill, running ? css.runtimePillOn : css.runtimePillOff)}>
-                      <span className={css.runtimeDot} />
+                  <span className="inline-flex items-center gap-1.5">
+                    {/* FF-NOTE: .runtimePill now exact: py-0.5 px-2.25 (0.25-step); color deviation #15803d→text-success. */}
+                    <span className={cn('inline-flex items-center gap-1.5 py-0.5 px-2.25 rounded-full text-2xs font-semibold whitespace-nowrap', running ? 'border border-success-border text-success' : 'border border-border text-text-muted')}>
+                      <span className="flex-none size-1.5 rounded-full bg-current" />
                       {running ? t('runtime.running') : t('runtime.stopped')}
                     </span>
-                    <span className={css.halfActions}>
+                    <span className="inline-flex items-center gap-1">
                       <button
                         type="button"
-                        className={cx(css.halfButton, !web || !shell ? css.halfButtonOn : undefined)}
+                        className={cn('inline-flex items-center justify-center size-6.5 p-0 border border-transparent rounded-1.75 bg-transparent cursor-pointer transition duration-160 ease-aek hover:not-disabled:bg-surface-hover hover:not-disabled:text-accent-ink disabled:opacity-30 disabled:cursor-default', !web || !shell ? 'text-text-secondary' : 'text-text-muted')}
                         onClick={() => { startSlot(slot) }}
                         disabled={web && shell}
                         title={tf('runtime.startAllSlot', { name })}
@@ -284,7 +288,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                       </button>
                       <button
                         type="button"
-                        className={cx(css.halfButton, running ? css.halfButtonOn : undefined)}
+                        className={cn('inline-flex items-center justify-center size-6.5 p-0 border border-transparent rounded-1.75 bg-transparent cursor-pointer transition duration-160 ease-aek hover:not-disabled:bg-surface-hover hover:not-disabled:text-accent-ink disabled:opacity-30 disabled:cursor-default', running ? 'text-text-secondary' : 'text-text-muted')}
                         onClick={() => { restartSlot(slot) }}
                         disabled={!running}
                         title={tf('runtime.restartAllSlot', { name })}
@@ -294,7 +298,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                       </button>
                       <button
                         type="button"
-                        className={cx(css.halfButton, running ? css.halfButtonOn : undefined)}
+                        className={cn('inline-flex items-center justify-center size-6.5 p-0 border border-transparent rounded-1.75 bg-transparent cursor-pointer transition duration-160 ease-aek hover:not-disabled:bg-surface-hover hover:not-disabled:text-accent-ink disabled:opacity-30 disabled:cursor-default', running ? 'text-text-secondary' : 'text-text-muted')}
                         onClick={() => { stopSlot(slot) }}
                         disabled={!running}
                         title={tf('runtime.stopAllSlot', { name })}
@@ -306,7 +310,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                   </span>
                 </div>
 
-                <ul className={css.halfList}>
+                <ul className="flex flex-col gap-0.5 mb-2.5 p-0 list-none">
                   <HalfRow
                     label={t('runtime.web')}
                     on={web}
@@ -332,22 +336,22 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                     progress for this card's live controls (3-step, percented). */}
                 {inFlightOf(slot).length > 0
                   ? (
-                    <ul className={css.inFlightList}>
+                    <ul className="list-none m-0 p-0 flex flex-col gap-1">
                       {inFlightOf(slot).map((op) => {
                         const applied = op.phase === 'applied'
                         const percent = applied ? 66 : 33
                         const halfName = op.half === 'web' ? t('runtime.web') : t('runtime.shell')
                         return (
-                          <li key={op.key} className={css.inFlightRow}>
-                            <span className={css.inFlightLabel}>
+                          <li key={op.key} className='aek-grid-inflight-row grid items-center gap-2 p-1 px-2 border border-dashed border-input rounded-xs text-2xs text-text-secondary'>
+                            <span className="overflow-hidden text-ellipsis whitespace-nowrap font-semibold">
                               {tf(op.action === 'restart' ? 'runtime.half.restart' : (op.action === 'stop' ? 'runtime.half.stop' : 'runtime.half.start'), { label: halfName })}
                             </span>
-                            <span className={css.inFlightSteps}>
-                              <span className={css.inFlightStepDone}>{t('runtime.inFlight.requested')}</span>
-                              <span className={applied ? css.inFlightStepDone : css.inFlightStepActive}>{t('runtime.inFlight.applied')}</span>
-                              <span className={css.inFlightStepPending}>{t('runtime.inFlight.live')}</span>
+                            <span className="flex gap-2">
+                              <span className="text-success">{t('runtime.inFlight.requested')}</span>
+                              <span className={applied ? 'text-success' : 'text-accent-ink'}>{t('runtime.inFlight.applied')}</span>
+                              <span className="text-text-muted">{t('runtime.inFlight.live')}</span>
                             </span>
-                            <span className={css.inFlightPercent}>{String(percent)}%</span>
+                            <span className="tabular-nums text-text-muted min-w-8.5 text-right">{String(percent)}%</span>
                           </li>
                         )
                       })}
@@ -356,7 +360,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                   : null}
 
 
-                <ul className={css.endpointList}>
+                <ul className="flex flex-col gap-1">
                   {endpoint !== undefined
                     ? (
                       <>
@@ -372,7 +376,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                         />
                       </>
                     )
-                    : <li className={css.emptyState}>{t('common.loading')}</li>}
+                    : <li className="flex items-center justify-center gap-2 min-h-30 text-xs-plus text-text-muted">{t('common.loading')}</li>}
                 </ul>
               </li>
             )
@@ -380,18 +384,18 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
         </ul>
 
         {state.error !== undefined
-          ? <p className={css.runtimeError}>{tf('runtime.error', { message: state.error })}</p>
+          ? <p className="mt-3 py-3 px-4 border border-danger-border rounded-sm bg-danger-soft text-danger text-xs-plus">{tf('runtime.error', { message: state.error })}</p>
           : null}
 
-        <div className={css.heroNote}>
-          <span className={css.noteIcon}><Icon name="sparkles" size={16} /></span>
+        <div className="flex gap-2.5 mt-4 p-4 border border-accent-border rounded-lg bg-accent-soft text-accent-ink aek-hero-note">
+          <span className="flex-none text-primary"><Icon name="sparkles" size={16} /></span>
           <p>{t('runtime.hint')}</p>
         </div>
 
-        <div className={css.pathBox}>
-          <span className={css.pathLabel}>{t('runtime.skillPath')}</span>
+        <div className="flex items-center gap-2.5 mt-3 py-2 px-3 border border-border rounded-sm bg-surface-subtle">
+          <span className="flex-none text-xs text-text-muted">{t('runtime.skillPath')}</span>
           <code
-            className={css.pathValue}
+            className="grow basis-auto min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-text-secondary"
             title={facts.facts?.skillPath ?? ''}
           >
             {facts.facts?.skillPath !== undefined
@@ -408,9 +412,9 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
         {aiRelease.unsupported
           ? null
           : (
-            <div className={css.aiReleaseBox}>
-              <div className={css.aiReleaseHead}>
-                <span className={css.aiReleaseTitle}>{t('runtime.aiRelease.title')}</span>
+            <div className="flex flex-col gap-1.5 mt-3 py-2.5 px-3 border border-border rounded-sm bg-surface-subtle">
+              <div className="flex items-start justify-between gap-3">
+                <span className="grow basis-auto text-xs-plus leading-normal text-text">{t('runtime.aiRelease.title')}</span>
                 {/* X2 item 15: the standard `ToggleSwitch` base style (the
                     custom knob/toggle-on pair is gone). */}
                 <ToggleSwitch
@@ -420,16 +424,16 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                   label={t('runtime.aiRelease.title')}
                 />
               </div>
-              <p className={css.aiReleaseDesc}>{t('runtime.aiRelease.desc')}</p>
+              <p className="m-0 text-xs leading-160 text-text-muted">{t('runtime.aiRelease.desc')}</p>
               {/* BB round: the ON state renders NO text — the switch itself
                   shows the state, and "on" is the expected default, so a
                   "已开启" label next to it is noise (user ruling). Only the
                   OFF state gets a callout (it is the abnormal one). */}
               {aiRelease.allowed === undefined
-                ? <span className={css.aiReleaseState}>{t('common.loading')}</span>
+                ? <span className="text-xs text-text-secondary">{t('common.loading')}</span>
                 : aiRelease.allowed
                   ? null
-                  : <span className={css.aiReleaseState}>{t('runtime.aiRelease.off')}</span>}
+                  : <span className="text-xs text-text-secondary">{t('runtime.aiRelease.off')}</span>}
             </div>
           )}
 
@@ -443,9 +447,9 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
         {buildFlags.unsupported
           ? null
           : (
-            <div className={css.aiReleaseBox}>
-              <div className={css.aiReleaseHead}>
-                <span className={css.aiReleaseTitle}>{t('runtime.buildFlags.title')}</span>
+            <div className="flex flex-col gap-1.5 mt-3 py-2.5 px-3 border border-border rounded-sm bg-surface-subtle">
+              <div className="flex items-start justify-between gap-3">
+                <span className="grow basis-auto text-xs-plus leading-normal text-text">{t('runtime.buildFlags.title')}</span>
                 <ToggleSwitch
                   checked={buildFlags.sourcemap === true}
                   locked={buildFlags.busy || buildFlags.sourcemap === undefined}
@@ -453,8 +457,8 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                   label={t('runtime.buildFlags.title')}
                 />
               </div>
-              <p className={css.aiReleaseDesc}>{t('runtime.buildFlags.desc')}</p>
-              <div className={css.hint}>{t('runtime.buildFlags.effective')}</div>
+              <p className="m-0 text-xs leading-160 text-text-muted">{t('runtime.buildFlags.desc')}</p>
+              <div className="mt-4 text-text-secondary text-xs leading-160">{t('runtime.buildFlags.effective')}</div>
             </div>
           )}
       </div>

@@ -11,8 +11,8 @@
  * @module aek-home/tests/space-mixed.spec
  */
 import { describe, expect, it } from 'vitest'
-import { spaceMixed } from '../src/client/i18n.tsx'
-import { parseCommaList, toggleInCommaList } from '../src/client/nav-model.ts'
+import { spaceMixed } from '../src/i18n.tsx'
+import { parseCommaList, toggleInCommaList } from '../src/nav-model.ts'
 
 describe('spaceMixed: CJK ↔ Latin auto-spacing', () => {
   it('inserts a space at Latin → CJK ("Web Search首页")', () => {

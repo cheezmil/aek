@@ -1,12 +1,17 @@
 /**
  * AEK web console build: a plain React single-page app served by the host's
- * `frontend-static` fallback seat. CSS is compiled by lightningcss (the AEK
- * web stack — no Tailwind / PostCSS / runtime styling dependency). `base:
- * './'` keeps asset URLs relative so the host-injected `<base href="./">` and
- * the dist-root serving resolve them correctly.
+ * `frontend-static` fallback seat. Styling stack (FF round, 2026-11-17, user
+ * decision supersedes the 11-07 "no Tailwind" pinning): Tailwind CSS v4 via
+ * `@tailwindcss/vite` (build-time, zero runtime JS) + shadcn/ui design
+ * tokens (CSS custom properties in `src/index.css`) + `@shadcn/lint`
+ * (agent-first rules, wired through the repo's oxlint). `base: './'` keeps
+ * asset URLs relative so the host-injected `<base href="./">` and the
+ * dist-root serving resolve them correctly.
  */
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import { fileURLToPath } from 'node:url'
 
 /**
  * BB round: the source-map build flag. The console's 构建开关 persists it
@@ -19,9 +24,11 @@ const sourcemap = process.env.AEK_WEB_SOURCEMAP === '1'
 
 export default defineConfig({
   base: './',
-  plugins: [react()],
-  css: {
-    transformer: 'lightningcss',
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
   },
   build: {
     outDir: 'dist',

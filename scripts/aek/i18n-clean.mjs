@@ -16,14 +16,14 @@
  *   node scripts/aek/i18n-clean.mjs [dir]            # dry run (default)
  *   node scripts/aek/i18n-clean.mjs [dir] --yes      # apply
  *
- * `dir` defaults to the aek-home client source directory (a1 plugin UI).
+ * `dir` defaults to the aek-web console source directory (apps/aek-web/src).
  */
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const argv = process.argv.slice(2)
 const dir = resolve(argv.find(a => !a.startsWith('--')) ??
-  'packages/aek/coraek-plugins/aek-home/src/client')
+  'apps/aek-web/src')
 const YES = argv.includes('--yes')
 
 /**

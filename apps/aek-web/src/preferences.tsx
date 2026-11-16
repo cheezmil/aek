@@ -13,7 +13,7 @@
  * If the host is unreachable the console degrades to in-memory fallbacks —
  * it never silently falls back to localStorage.
  *
- * @module @cheezmil/aek-home/src/client/preferences
+ * @module @cheezmil/aek-web/src/preferences
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'

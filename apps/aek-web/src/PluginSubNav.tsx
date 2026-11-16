@@ -26,7 +26,7 @@
  *   Settings row switches it back on (no second "dismissed" state, so a
  *   reload can never lose the transition).
  *
- * @module @cheezmil/aek-home/src/client/PluginSubNav
+ * @module @cheezmil/aek-web/src/PluginSubNav
  */
 import { useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
@@ -45,7 +45,7 @@ import {
 } from './nav-model.ts'
 import type { PanelId } from './nav-model.ts'
 import { parseBoolean, usePref } from './preferences.tsx'
-import { css, cx } from './styles.ts'
+import { cn } from '@/lib/utils'
 
 /** One route row of the plugin rail. */
 interface RouteRow {
@@ -157,7 +157,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false }: PluginS
 
   return (
     <nav
-      className={cx(css.pluginSubNav, labelsHidden && css.pluginSubNavNoLabels)}
+      className="sticky top-0 flex h-screen flex-col grow-0 shrink-0 basis-(--aek-plugin-rail-width) w-(--aek-plugin-rail-width) bg-surface border-r border-border pt-6 px-3 pb-3"
       aria-label={t('nav.pluginRoutes')}
       // A round: the width is set as a LAYOUT property directly (inline
       // width + flex-basis), not through a custom property: Chromium fails
@@ -172,12 +172,17 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false }: PluginS
         flexBasis: `${String(width)}px`,
       } as CSSProperties}
     >
-      <ul className={css.pluginSubNavList}>
+      <ul className="flex flex-col gap-1">
         {routes.map(route => (
           <li key={route.id} data-panel={route.id}>
             <button
               type="button"
-              className={cx(css.pluginSubNavItem, active === route.id && css.pluginSubNavItemActive)}
+              className={cn(
+                'relative flex h-8.5 w-full items-center gap-2 rounded-sm px-2 text-aek-13 font-medium text-text-secondary bg-transparent border-0 text-left whitespace-nowrap cursor-pointer transition-colors duration-140 ease-aek hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2',
+                active === route.id
+                  && 'text-accent-ink bg-accent-soft hover:bg-accent-soft hover:text-accent-ink before:absolute before:content-[""] before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.75 before:rounded-r-aek-bar before:bg-primary',
+                labelsHidden && 'justify-center px-0',
+              )}
               aria-current={active === route.id ? 'page' : undefined}
               title={route.label}
               onClick={() => {
@@ -185,8 +190,8 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false }: PluginS
                 record(family, route.id)
               }}
             >
-              <span className={css.pluginSubNavIcon}><Icon name={route.icon} size={14} /></span>
-              <span className={css.pluginSubNavLabel}>{route.label}</span>
+              <span className={cn('inline-flex flex-none items-center justify-center text-text-muted', active === route.id && 'text-accent-ink')}><Icon name={route.icon} size={14} /></span>
+              <span className={cn('min-w-0 overflow-hidden text-ellipsis', labelsHidden && 'hidden')}>{route.label}</span>
             </button>
           </li>
         ))}
@@ -194,11 +199,11 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false }: PluginS
 
       {hintVisible
         ? (
-          <div className={css.pluginSubNavHint}>
-            {!labelsHidden ? <span className={css.pluginSubNavHintText}>{t('nav.railHint.text')}</span> : null}
+          <div className={cn('mt-auto flex items-center justify-between gap-2 rounded-sm border border-border bg-surface-hover p-2', labelsHidden && 'justify-center')}>
+            {!labelsHidden ? <span className="text-aek-11 leading-normal text-text-muted">{t('nav.railHint.text')}</span> : null}
             <button
               type="button"
-              className={css.pluginSubNavHintDismiss}
+              className="inline-flex size-5.5 flex-none items-center justify-center rounded-sm border-0 bg-transparent p-0 text-text-muted cursor-pointer hover:bg-surface hover:text-text"
               title={t('nav.railHint.dismiss')}
               aria-label={t('nav.railHint.dismiss')}
               onClick={() =>{  setRailHint(false) }}
@@ -215,7 +220,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false }: PluginS
       {!labelsHidden
         ? (
           <div
-            className={css.pluginSubNavResizer}
+            className="absolute top-0 -right-0.75 z-1 h-full w-1.75 cursor-col-resize hover:bg-accent-soft active:bg-accent-soft"
             role="separator"
             aria-orientation="vertical"
             title={t('nav.resizeHint')}

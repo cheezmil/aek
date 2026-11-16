@@ -11,13 +11,41 @@
  * "spinners only, no progress bar" note (2026-11-09) is superseded by the
  * 2026-11-15 X2 round.
  *
- * @module @cheezmil/aek-home/src/client/ui-kit
+ * @module @cheezmil/aek-web/src/ui-kit
  */
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, UIEvent } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
-import { css, cx } from './styles.ts'
+import { cn } from '@/lib/utils'
+
+/* FF round: the old ui-kit module classes, now literal Tailwind utilities
+   (1:1 from Home.module.css). One-off calc() math lives in index.css. */
+const ICON_BUTTON = 'inline-flex items-center justify-center size-8.5 p-0 text-text-secondary bg-card border border-border rounded-sm cursor-pointer transition-[color,border-color,background-color] duration-150 ease-aek hover:text-primary hover:border-accent-border hover:bg-accent-soft disabled:opacity-50 disabled:cursor-not-allowed'
+const SPINNER_WRAP = 'inline-flex items-center justify-center size-4.5'
+const SPINNER_RING = 'block w-3.5 h-3.5 border-2 border-input border-t-primary rounded-full'
+const PANEL_SEARCH_WRAP = 'flex items-center gap-2 mb-5 pb-4 border-b border-border'
+const SEARCH_CONDENSE = 'relative border-b-0 gap-0'
+const NAV_SEARCH_WRAP = 'relative flex items-center gap-2 h-9 mb-4 px-2 border border-border rounded-sm bg-surface-subtle transition-[border-color,background-color] duration-150 ease-aek focus-within:border-accent-border focus-within:bg-card'
+const NAV_SEARCH_ICON = 'inline-flex shrink-0 text-text-muted'
+const NAV_SEARCH_INPUT = 'min-w-0 h-full p-0 text-text bg-transparent border-0 outline-none text-xs-plus placeholder:text-text-muted'
+const NAV_SEARCH_CLEAR = 'absolute top-0.5 left-0.5 size-5 p-0 text-text-muted bg-transparent border-0 rounded-2xs cursor-pointer hover:text-text hover:bg-surface-hover'
+const PANEL_CARD = 'bg-card border border-border rounded-md shadow-sm'
+const PANEL_SEARCH_COUNT = 'inline-flex items-center justify-center min-w-6 py-0.5 rounded-full bg-surface-subtle text-text-muted text-2xs text-center'
+const OUTPUT_VIEW = 'max-h-120 overflow-auto p-3 border border-border rounded-sm bg-surface-subtle text-text font-mono text-2xs'
+const OUTPUT_VIEW_FAILED = 'border-danger'
+const OUTPUT_TRACK = 'relative w-full'
+const OUTPUT_WINDOW = 'absolute top-0 left-0 right-0 will-change-transform'
+const OUTPUT_LINE = 'leading-output whitespace-pre-wrap break-words'
+const TOGGLE_SWITCH = 'relative shrink-0 w-9.5 h-5.5 p-0 border border-input rounded-full bg-surface-subtle cursor-pointer transition-[background-color,border-color,opacity] duration-180 ease-aek hover:enabled:border-primary focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2'
+const TOGGLE_ON = 'bg-primary border-primary'
+const TOGGLE_LOCKED = 'cursor-not-allowed'
+const TOGGLE_THUMB = 'absolute top-1/2 left-0.5 w-4 h-4 -mt-2 rounded-full bg-text-muted transition-[transform,background-color] duration-180 ease-aek'
+const TAG_LIST = 'flex flex-wrap gap-1.5'
+const CAP_TAG = 'py-0.5 px-2 border border-border rounded-full text-text-muted bg-surface-subtle text-2xs'
+const CAP_TAG_ON = 'border-accent-border text-accent-ink bg-accent-soft'
+const BULLET_LIST = 'flex flex-col gap-1.5'
+const BULLET_ITEM = 'list-none'
 
 /** Props for {@link CopyButton}. */
 export interface CopyButtonProps {
@@ -53,7 +81,7 @@ export function CopyButton({ value, resolve, label, size = 14, className }: Copy
   return (
     <button
       type="button"
-      className={cx(css.iconButton, className)}
+      className={cn(ICON_BUTTON, className)}
       title={label}
       aria-label={label}
       onClick={() => {
@@ -79,8 +107,8 @@ export function CopyButton({ value, resolve, label, size = 14, className }: Copy
 export function Spinner({ label }: { label?: string }) {
   const { t } = useI18n()
   return (
-    <span className={css.spinnerWrap} role="status" aria-label={label ?? t('common.loading')}>
-      <span className={cx(css.spinnerRing, css.spinning)} />
+    <span className={SPINNER_WRAP} role="status" aria-label={label ?? t('common.loading')}>
+      <span className={cn(SPINNER_RING, 'animate-spin')} />
     </span>
   )
 }
@@ -172,11 +200,13 @@ export function PanelSearch({ value, onChange, placeholder, badge, condense, con
   }, [condense, condenseHold])
 
   return (
-    <div ref={rootRef} className={cx(css.panelSearchWrap, condense === true && css.searchCondense)}>
-      <div className={css.navSearchWrap}>
-        <span className={css.navSearchIcon}><Icon name="search" size={16} /></span>
+    <div ref={rootRef} className={cn(PANEL_SEARCH_WRAP, condense === true && SEARCH_CONDENSE)}>
+      {/* `.panelSearchWrap > .navSearchWrap` (flex 1 1 auto, no margin) and
+          `.panelSearchWrap .navSearchInput` (no 200px cap) are baked in. */}
+      <div className={cn(NAV_SEARCH_WRAP, 'flex-1 m-0')}>
+        <span className={NAV_SEARCH_ICON}><Icon name="search" size={16} /></span>
         <input
-          className={css.navSearchInput}
+          className={cn(NAV_SEARCH_INPUT, 'flex-1 max-w-none')}
           type="search"
           value={value}
           placeholder={placeholder}
@@ -188,7 +218,7 @@ export function PanelSearch({ value, onChange, placeholder, badge, condense, con
           ? (
             <button
               type="button"
-              className={css.navSearchClear}
+              className={NAV_SEARCH_CLEAR}
               onClick={() =>{  onChange('') }}
               title={t('nav.clear')}
               aria-label={t('nav.clear')}
@@ -209,7 +239,7 @@ export function PanelSearch({ value, onChange, placeholder, badge, condense, con
             ? (
               <button
                 type="button"
-                className={css.panelSearchCount}
+                className={cn(PANEL_SEARCH_COUNT, 'px-2 border-0 cursor-pointer', condense === true && 'aek-count-condensed')}
                 onClick={onBadgeClick}
                 title={badgeAria}
                 aria-label={badgeAria}
@@ -217,7 +247,7 @@ export function PanelSearch({ value, onChange, placeholder, badge, condense, con
                 {badge}
               </button>
             )
-            : <span className={css.panelSearchCount}>{badge}</span>
+            : <span className={cn(PANEL_SEARCH_COUNT, 'px-1.5', condense === true && 'aek-count-condensed')}>{badge}</span>
         )
         : null}
     </div>
@@ -246,7 +276,7 @@ export interface PanelCardProps {
  * @returns the card.
  */
 export function PanelCard({ children, className }: PanelCardProps) {
-  return <section className={cx(css.card, className)}>{children}</section>
+  return <section className={cn(PANEL_CARD, className)}>{children}</section>
 }
 
 /** Props for {@link OutputView}. */
@@ -296,7 +326,7 @@ export function OutputView({ text, failed = false, className }: OutputViewProps)
   // Auto-follow the tail unless the user scrolled away (re-armed at bottom).
   const stickRef = useRef(true)
 
-  const lineH = 21 // px, must match --aek-output-line-height in Home.module.css
+  const lineH = 21 // px, must match --aek-output-line-height in index.css (the `leading-output` utility)
   const overscan = 14 // rows rendered above/below the viewport
   const start = Math.max(0, Math.floor(scrollTop / lineH) - overscan)
   const visible = viewHeight > 0 ? Math.ceil(viewHeight / lineH) + 2 * overscan : 200
@@ -342,12 +372,12 @@ export function OutputView({ text, failed = false, className }: OutputViewProps)
     <div
       ref={scrollerRef}
       onScroll={onScroll}
-      className={cx(css.outputView, failed && css.outputViewFailed, className)}
+      className={cn(OUTPUT_VIEW, failed && OUTPUT_VIEW_FAILED, className)}
     >
-      <div className={css.outputTrack} style={{ height: totalHeight }}>
-        <div className={css.outputWindow} style={{ transform: `translateY(${aboveHeight}px)` }}>
+      <div className={OUTPUT_TRACK} style={{ height: totalHeight }}>
+        <div className={OUTPUT_WINDOW} style={{ transform: `translateY(${aboveHeight}px)` }}>
           {window.map((line, at) => (
-            <div key={start + at} className={css.outputLine} style={{ height: lineH }}>
+            <div key={start + at} className={OUTPUT_LINE} style={{ height: lineH }}>
               {line === '' ? '\u00A0' : line}
             </div>
           ))}
@@ -400,10 +430,12 @@ export function ToggleSwitch({ checked, onChange, label, locked = false, classNa
       aria-label={label}
       title={label}
       disabled={locked}
-      className={cx(css.toggleSwitch, checked && css.toggleOn, locked && css.toggleLocked, className)}
+      className={cn(TOGGLE_SWITCH, checked && TOGGLE_ON, locked && TOGGLE_LOCKED, className)}
       onClick={() => { if (!locked) onChange(!checked) }}
     >
-      <span className={css.toggleThumb} aria-hidden="true" />
+      {/* `.toggleOn .toggleThumb` / `.toggleLocked .toggleThumb`: the knob
+          slides 16px and turns white while on (or locked-on). */}
+      <span className={cn(TOGGLE_THUMB, (checked || locked) && 'translate-x-4 bg-inverse')} aria-hidden="true" />
     </button>
   )
 }
@@ -428,9 +460,9 @@ export function CapabilityTags({ caps }: { caps: Capabilities }) {
     { key: t('plugins.cap.mcp'), on: caps.mcp },
   ]
   return (
-    <ul className={css.tagList}>
+    <ul className={TAG_LIST}>
       {rows.map(row => (
-        <li key={row.key} className={cx(css.capTag, row.on && css.capTagOn)}>{row.key}</li>
+        <li key={row.key} className={cn(CAP_TAG, row.on && CAP_TAG_ON)}>{row.key}</li>
       ))}
     </ul>
   )
@@ -451,8 +483,8 @@ export interface BulletListProps {
  */
 export function BulletList({ items, className }: BulletListProps) {
   return (
-    <ul className={cx(css.bulletList, className)}>
-      {items.map(item => <li key={item.id} className={css.bulletItem}>{item.content}</li>)}
+    <ul className={cn(BULLET_LIST, className)}>
+      {items.map(item => <li key={item.id} className={BULLET_ITEM}>{item.content}</li>)}
     </ul>
   )
 }
