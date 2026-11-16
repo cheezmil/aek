@@ -26,6 +26,10 @@
  *     entry (the "how far is that action" pipeline, `GET /api/aek/ops`).
  *   - `GET  /api/aek/ops`       the operation ledger (newest first, the
  *     console's progress surface — the "queued … and then what?" answer).
+ *   - `POST /api/aek/ops/remove` — `{ id, confirm: true }` dismiss ONE
+ *     ledger row (428 without confirm; the row's in-flight action keeps
+ *     running — the ledger is a progress view, not the queue).
+ *   - `POST /api/aek/ops/clear` — `{ confirm: true }` clear every row.
  *
  * This module is node-builtin-free on purpose: coraek's main tsconfig is a
  * CLIENT shape (no ambient `node` types), so all filesystem / process I/O
@@ -49,7 +53,7 @@ import {
   type DiscoveredAekPackage,
 } from '../runtime.mjs'
 import { runtimesSnapshot, writeRuntimeLabel, type RuntimesSnapshot, type SupervisorRow } from '../runtimes.mjs'
-import { appendOp, listOps, updateOp } from '../ops.mjs'
+import { appendOp, clearOps, listOps, removeOp, updateOp } from '../ops.mjs'
 import { resolveAekHome } from '../home.mjs'
 
 /** Routes owned by this module. */
@@ -57,6 +61,12 @@ export const RUNTIMES_API_PATH = '/api/aek/runtimes'
 
 /** The operation ledger route (the "how far is that action" surface). */
 export const OPS_API_PATH = '/api/aek/ops'
+
+/** Dismiss ONE ledger entry (the console's per-row 剔除). */
+export const OPS_REMOVE_API_PATH = '/api/aek/ops/remove'
+
+/** Clear every ledger entry (the console's 清空). */
+export const OPS_CLEAR_API_PATH = '/api/aek/ops/clear'
 
 /** The discovered capability packages for this host (the POST paths' input). */
 function discoverPackages(): DiscoveredAekPackage[] {
@@ -465,6 +475,57 @@ export function registerRuntimeApi(
           }
           try {
             sendJson(res, 200, { protocol: 'aek-ops/1', ops: listOps(aekHome) })
+          } catch {
+            sendJson(res, 502, { code: 'ops-failed', message: 'the operation ledger is unreadable' })
+          }
+        },
+      }),
+      server.register({
+        kind: 'exact',
+        path: OPS_REMOVE_API_PATH,
+        handler: async (req, res) => {
+          if (req.method !== 'POST') {
+            sendJson(res, 405, { code: 'method-not-allowed', message: 'POST' })
+            return
+          }
+          const body = await readJsonBody(req)
+          if (body === undefined || typeof body.id !== 'string' || body.id.length === 0) {
+            sendJson(res, 400, { code: 'bad-request', message: 'body { id, confirm: true } is required' })
+            return
+          }
+          if (body.confirm !== true) {
+            // The console's write-confirm rule: dismissing a ledger row is a
+            // write, so it needs the explicit confirm (mirrors the runtimes
+            // mutation routes).
+            sendJson(res, 428, { code: 'confirm-required', message: 'dismissing a ledger entry is a write operation: resend with confirm: true' })
+            return
+          }
+          try {
+            sendJson(res, 200, { protocol: 'aek-ops/1', removed: removeOp(aekHome, body.id) })
+          } catch {
+            sendJson(res, 502, { code: 'ops-failed', message: 'the operation ledger is unreadable' })
+          }
+        },
+      }),
+      server.register({
+        kind: 'exact',
+        path: OPS_CLEAR_API_PATH,
+        handler: async (req, res) => {
+          if (req.method !== 'POST') {
+            sendJson(res, 405, { code: 'method-not-allowed', message: 'POST' })
+            return
+          }
+          const body = await readJsonBody(req)
+          if (body === undefined) {
+            sendJson(res, 400, { code: 'bad-request', message: 'body { confirm: true } is required' })
+            return
+          }
+          if (body.confirm !== true) {
+            sendJson(res, 428, { code: 'confirm-required', message: 'clearing the ledger is a write operation: resend with confirm: true' })
+            return
+          }
+          try {
+            sendJson(res, 200, { protocol: 'aek-ops/1', removed: clearOps(aekHome) })
           } catch {
             sendJson(res, 502, { code: 'ops-failed', message: 'the operation ledger is unreadable' })
           }

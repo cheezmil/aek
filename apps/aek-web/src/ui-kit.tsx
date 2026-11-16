@@ -93,11 +93,22 @@ export interface PanelSearchProps {
   onChange: (next: string) => void
   /** Input placeholder (already translated). */
   placeholder: string
-  /** Number of matches shown beside the box; `undefined` hides it. */
-  count?: number | undefined
+  /**
+   * Z round: a custom right-slot badge in place of the old numeric
+   * hit-count chip — the user called the number "没有任何的意义" and asked
+   * for it to go from EVERY panel's search box. The caller owns the
+   * content (a plain red dot for the settings' unsaved-changes nudge, an
+   * activity icon + red dot for the operation-progress indicator) and
+   * decides when to render it at all; `undefined` = nothing beside the box.
+   */
+  badge?: ReactNode
+  /** Z round: when set, the badge renders as a button (it opens a box). */
+  onBadgeClick?: (() => void) | undefined
+  /** Z round: accessible name for the badge. */
+  badgeAria?: string | undefined
   /**
    * G round: opt-in scroll-condensed toolbar for the sticky settings pages.
-   * As the page scrolls down (0 → 240px) the hit-count chip and the hairline
+   * As the page scrolls down (0 → 240px) the badge chip and the hairline
    * underline fade out while the search box fills the row width; scrolling
    * back up restores everything. The progress is a single CSS variable
    * (`--aek-search-p`) driven from `window.scrollY`, batched through
@@ -111,19 +122,16 @@ export interface PanelSearchProps {
    * The settings page passes `condenseHold={dirtyCount > 0}`.
    */
   condenseHold?: boolean
-  /** I round: makes the count chip a button (the changed-items box opens). */
-  onCountClick?: (() => void) | undefined
-  /** I round: extra aria text for the count chip. */
-  countAria?: string | undefined
 }
 
 /**
  * The search box at the TOP of a content panel (Web Search / Settings / ...).
  * It filters the PAGE content, not the sidebar navigation.
- * @param props - query, setter, placeholder and optional hit count.
+ * @param props - query, setter, placeholder, condense flags and an optional
+ * badge (the Z-round replacement for the old numeric count chip).
  * @returns the search field.
  */
-export function PanelSearch({ value, onChange, placeholder, count, condense, condenseHold, onCountClick, countAria }: PanelSearchProps) {
+export function PanelSearch({ value, onChange, placeholder, badge, condense, condenseHold, onBadgeClick, badgeAria }: PanelSearchProps) {
   const { t } = useI18n()
   const rootRef = useRef<HTMLDivElement | null>(null)
   // I round: read the hold flag through a ref so the scroll listener keeps
@@ -190,21 +198,26 @@ export function PanelSearch({ value, onChange, placeholder, count, condense, con
           )
           : null}
       </div>
-      {count !== undefined
+      {/* Z round: the numeric hit-count chip is gone (the user: such
+          numbers "没有任何的意义" on every panel); this slot now carries
+          the caller's badge — an indicator dot, or an icon + red dot that
+          opens a floating box (the operation-progress badge / the settings'
+          unsaved-changes nudge). */}
+      {badge !== undefined
         ? (
-          onCountClick !== undefined
+          onBadgeClick !== undefined
             ? (
               <button
                 type="button"
                 className={css.panelSearchCount}
-                onClick={onCountClick}
-                title={countAria}
-                aria-label={countAria}
+                onClick={onBadgeClick}
+                title={badgeAria}
+                aria-label={badgeAria}
               >
-                {String(count)}
+                {badge}
               </button>
             )
-            : <span className={css.panelSearchCount}>{String(count)}</span>
+            : <span className={css.panelSearchCount}>{badge}</span>
         )
         : null}
     </div>

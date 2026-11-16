@@ -104,7 +104,7 @@ function ManagerPanel({ pluginId, refreshSignal }: {
         {state.loading ? <div className={css.loadingState}><Spinner />{t('common.loading')}</div> : null}
 
         <h3 className={css.sectionTitle}>{t('managers.allCommands')}</h3>
-        <PanelSearch value={query} onChange={setQuery} placeholder={t('managers.searchCommands')} count={state.loading ? undefined : visible.length} />
+        <PanelSearch value={query} onChange={setQuery} placeholder={t('managers.searchCommands')} />
         <ul className={css.commandList}>
           {visible.map(command => (
             <li key={command.name} className={css.commandItem}>

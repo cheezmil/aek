@@ -78,6 +78,20 @@ export declare function updateOp(
 export declare function listOps(aekHome: string, limit?: number): OpEntry[]
 
 /**
+ * Remove ONE ledger entry by id (the operator dismissed it from the
+ * console's progress view). The action the entry records may still be
+ * in flight host-side — the ledger is a progress view, not the queue.
+ * @returns whether an entry was removed.
+ */
+export declare function removeOp(aekHome: string, id: string): boolean
+
+/**
+ * Remove every ledger entry (the operator cleared the progress view).
+ * @returns how many entries were removed.
+ */
+export declare function clearOps(aekHome: string): number
+
+/**
  * The host's boot hook: close every entry waiting on the host process
  * itself (it just restarted, so they are applied). Best-effort, idempotent.
  * @returns how many entries were closed.

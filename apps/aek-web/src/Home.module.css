@@ -2102,23 +2102,122 @@ body {
 
 /* I round: the count chip becomes a BUTTON (it opens the changed-items box).
    Reset the UA button chrome so it looks exactly like the old span chip.
-   J round: the button IS the dirty-state badge (it renders only while
-   something is staged), so make it RED — the user asked for the badge to
-   shout "unsaved changes" (plain neutral chip reads as a count, not a
-   warning). The G2b condense opacity math still applies on top. */
+   /* Z round: the chip is the CALLER'S BADGE slot (the old numeric count went
+   — the user: numbers beside a search box "没有任何的意义"). Neutral chip;
+   the INDICATION is the caller's content (a plain red dot for the settings'
+   unsaved-changes nudge, an activity icon + red dot for the operation
+   progress). The G2b condense opacity math still applies on top. */
 button.panelSearchCount {
   border: 0;
   font: inherit;
   line-height: inherit;
   cursor: pointer;
   font-size: 11px;
-  background: var(--aek-danger);
-  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--aek-surface-subtle);
+  color: var(--aek-text-muted);
   box-shadow: var(--aek-shadow-sm, 0 1px 2px rgb(0 0 0 / 10%));
 }
 button.panelSearchCount:hover {
-  filter: brightness(1.08);
+  color: var(--aek-text);
+  background: var(--aek-surface-hover);
 }
+/* Z round: badge content. A plain RED DOT — the "there are unsaved changes,
+   click me" nudge (the settings' dirty trigger; the red is the indicator,
+   the chip stays neutral). */
+.dirtyDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--aek-danger);
+}
+/* Z round: the operation-progress badge — an activity icon with a small
+   red dot in the corner ("there are ledger rows; click for the floating
+   box"). Rendered inside the neutral button chip. */
+.opsBadgeIcon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.opsBadgeDot {
+  position: absolute;
+  top: -3px;
+  right: -6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--aek-danger);
+  border: 1.5px solid var(--aek-surface);
+}
+/* Z round: the floating 操作进度 box — anchored to the search row (the
+   .opsBadgeRow containing block), right-aligned like the settings' dirty
+   box; the rows scroll, the head carries the 清空 action. */
+.opsBadgeRow {
+  position: relative;
+}
+.opsPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: min(440px, 86vw);
+  background: var(--aek-surface);
+  border: 1px solid var(--aek-border-strong);
+  border-radius: var(--aek-radius);
+  box-shadow: var(--aek-shadow-lg);
+  padding: 10px 12px;
+}
+.opsPopHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.opsPopTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--aek-text);
+}
+.opsPopList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--aek-space-2);
+  max-height: 320px;
+  overflow: auto;
+}
+/* Z round: the per-row 剔除 button — a quiet ghost icon at the row's right
+   edge (the row's top line already ends with the percent; it takes the
+   leftover space). */
+.opsRowRemove {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--aek-text-muted);
+  cursor: pointer;
+}
+.opsRowRemove:hover:not(:disabled) {
+  background: var(--aek-surface-hover);
+  color: var(--aek-danger);
+}
+.opsRowRemove:disabled { opacity: 0.4; cursor: default; }
 
 /* I round: the changed-items box. Absolute inside the sticky toolbar (which
    is the containing block), anchored to the row's right edge under the chip. */
@@ -3393,18 +3492,10 @@ button.panelSearchCount:hover {
 
 /* X2 item 17: the bucket icon in the group title. */
 .pluginGroupTitle { display: flex; align-items: center; gap: 6px; }
-/* X2 item 7: the operation pipeline block — step chips + a real percentage
-   bar (supersedes the "spinners only" doc note). */
-.opsBlock { margin: var(--aek-space-2) 0; }
-.opsTitle {
-  margin: 0 0 var(--aek-space-2);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--aek-text-muted);
-}
-.opsList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--aek-space-2); }
+/* X2 item 7: the operation pipeline rows — step chips + a real percentage
+   bar (supersedes the "spinners only" doc note). Z round: the block's
+   .opsBlock/.opsTitle/.opsList wrappers left the card body with the block
+   itself; the rows now live in the floating box (the .opsPopover below). */
 .opsRow {
   display: flex;
   flex-direction: column;

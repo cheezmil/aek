@@ -643,9 +643,9 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             value={query}
             onChange={setQuery}
             placeholder={t('settings.panelSearch')}
-            count={totalDirty > 0 ? totalDirty : undefined}
-            countAria={t('settings.dirty.title')}
-            onCountClick={() =>{  setPopoverOpen(open => !open) }}
+            badge={totalDirty > 0 ? <span className={css.dirtyDot} aria-hidden="true" /> : undefined}
+            badgeAria={t('settings.dirty.title')}
+            onBadgeClick={() =>{  setPopoverOpen(open => !open) }}
             condense
             condenseHold={totalDirty > 0}
           />
@@ -804,9 +804,9 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             value={query}
             onChange={setQuery}
             placeholder={t('settings.panelSearch')}
-            count={dirtyKeys.length > 0 ? dirtyKeys.length : undefined}
-            countAria={t('settings.dirty.title')}
-            onCountClick={() =>{  setPopoverOpen(open => !open) }}
+            badge={dirtyKeys.length > 0 ? <span className={css.dirtyDot} aria-hidden="true" /> : undefined}
+            badgeAria={t('settings.dirty.title')}
+            onBadgeClick={() =>{  setPopoverOpen(open => !open) }}
             condense
             condenseHold={dirtyKeys.length > 0}
           />
@@ -1099,33 +1099,53 @@ function PluginRuntimeLine({ plugin, rt, term, onMove, onCarveOut, busy }: {
 }
 
 /**
- * X2 item 7: the operation pipeline surface — the "how far is that" block.
- * Every plugin restart / runtime edit appends a step pipeline to the host's
- * ledger (`useOps` polls it); this renders the live ops with their step
- * chips + a real percentage bar, and gives the host-restart ops the one
- * button that actually moves them (restart the backend that serves this
- * console — the web half of its slot).
+ * Z round: the operation progress moved OUT of the card's inline block into
+ * a floating box (悬浮窗) opened from the search row's red-dot badge (the
+ * slot the "8" count chip used to sit in). Every row can be dismissed
+ * one by one (剔除) or the whole list cleared (清空): the host's ledger
+ * routes only delete the progress ROWS — an action already in flight keeps
+ * running, the ledger is a view, not the queue.
+ * @param open - the open flag (gated on the ledger being non-empty too).
+ * @param onClose - close (outside-click backdrop / Escape).
  * @param ops - the ledger, newest first (undefined before the first read).
  * @param progressOf - the done-over-total fraction of one op.
- * @param onNotice - report the restart request's outcome.
- * @param onRefresh - re-read the ledger.
- * @returns the block (or nothing when the ledger is empty).
+ * @param onRemove - dismiss one row (rejects when the host write fails).
+ * @param onClear - clear every row (rejects when the host write fails).
+ * @param onRestartNow - close a host-restart op by restarting the backend.
+ * @param onNotice - report an op's outcome.
+ * @returns the floating box (or nothing when closed / empty).
  */
-function OpsPipeline({ ops, progressOf, onNotice, onRefresh }: {
+function OpsPopover({ open, onClose, ops, progressOf, onRemove, onClear, onRestartNow, onNotice }: {
+  open: boolean
+  onClose: () => void
   ops: import('./useOps.ts').OpEntry[] | undefined
   progressOf: (op: import('./useOps.ts').OpEntry) => number
+  onRemove: (id: string) => Promise<void>
+  onClear: () => Promise<void>
+  onRestartNow: (op: import('./useOps.ts').OpEntry) => void
   onNotice: (message: string, tone: 'success' | 'error') => void
-  onRefresh: () => void
 }): ReactNode {
-  const { t, tf } = useI18n()
+  const { t } = useI18n()
   const opsStateTitle = (status: OpEntry['status']): string => (status === 'running' ? t('plugins.ops.state.running') : status === 'failed' ? t('plugins.ops.state.failed') : t('plugins.ops.state.done'))
+  const outsideClose = useOutsideClosePref()
+  const [busy, setBusy] = useState(false)
 
-  const [restarting, setRestarting] = useState(false)
-  if (ops === undefined || ops.length === 0) return null
-  // Live ops first, then the most recently finished ones (capped, the host
-  // trims the ledger to 100 entries anyway).
+  // Same outside-close contract as the settings' dirty box: the 点外关闭
+  // switch (persisted UI behaviour) governs the backdrop; Escape always.
+  useEffect(() => {
+    if (!open || !outsideClose) return undefined
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () =>{  window.removeEventListener('keydown', onKey) }
+  }, [open, outsideClose, onClose])
+
+  if (!open || ops === undefined || ops.length === 0) return null
+  // Live ops first, then the finished ones (the host trims the ledger to
+  // 100 entries anyway; the box scrolls).
   const live = ops.filter(op => op.status === 'running')
-  const settled = ops.filter(op => op.status !== 'running').slice(0, 3)
+  const settled = ops.filter(op => op.status !== 'running')
   const rows = [...live, ...settled]
   /** The step's tone class (a literal map, so the dead-class scanner stays happy). */
   const stepClassOf = (state: string): string => {
@@ -1140,76 +1160,105 @@ function OpsPipeline({ ops, progressOf, onNotice, onRefresh }: {
         return css.opsStepPending
     }
   }
-  const restartNow = async (op: import('./useOps.ts').OpEntry): Promise<void> => {
-    setRestarting(true)
+  const dismiss = async (id: string): Promise<void> => {
+    setBusy(true)
     try {
-      const status = await fetchRuntime()
-      // The ledger belongs to the backend serving this console: restart its
-      // web half — the host's boot hook closes the pending op.
-      await postInstance(status.current.slot, 'web', 'restart')
-      onNotice(tf('plugins.ops.restarted', { title: op.title }), 'success')
-      onRefresh()
+      await onRemove(id)
     } catch (cause: unknown) {
       onNotice(cause instanceof Error ? cause.message : String(cause), 'error')
     } finally {
-      setRestarting(false)
+      setBusy(false)
+    }
+  }
+  const clear = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      await onClear()
+    } catch (cause: unknown) {
+      onNotice(cause instanceof Error ? cause.message : String(cause), 'error')
+    } finally {
+      setBusy(false)
     }
   }
   return (
-    <div className={css.opsBlock} aria-label={t('plugins.ops.title')}>
-      <h3 className={css.opsTitle}>{t('plugins.ops.title')}</h3>
-      <ul className={css.opsList}>
-        {rows.map((op) => {
-          const percent = Math.round(progressOf(op) * 100)
-          return (
-            <li key={op.id} className={cx(css.opsRow, op.status === 'failed' ? css.opsRowFailed : undefined)}>
-              <div className={css.opsRowTop}>
-                <span className={css.opsRowTitle}>{op.title}</span>
-                <span className={cx(css.opsRowState, op.status === 'running' ? css.opsRowRunning : (op.status === 'failed' ? css.opsRowFailed : css.opsRowDone))}>
-                  {opsStateTitle(op.status)}
-                </span>
-                <span className={css.opsRowPercent}>{String(percent)}%</span>
-              </div>
-              <div className={css.opsBar} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
-                <span className={cx(css.opsBarFill, op.status === 'failed' ? css.opsBarFailed : undefined)} style={{ width: `${String(percent)}%` }} />
-              </div>
-              <ul className={css.opsSteps}>
-                {op.steps.map((step, index) => (
-                  <li key={index} className={cx(css.opsStep, stepClassOf(step.state))}>
-                    {step.state === 'done'
-                      ? <Icon name="check" size={11} />
-                      : step.state === 'failed'
-                        ? <Icon name="alert" size={11} />
-                        : step.state === 'active'
-                          ? <Icon name="refresh" size={11} />
-                          : null}
-                    <span>{step.label}</span>
-                  </li>
-                ))}
-              </ul>
-              {op.pendingHostRestart && op.status === 'running'
-                ? (
-                  <div className={css.opsPendingHost}>
-                    <span>{t('plugins.ops.pendingHostRestart')}</span>
-                    <button
-                      type="button"
-                      className={css.secondaryButton}
-                      disabled={restarting}
-                      onClick={() => { void restartNow(op) }}
-                    >
-                      {t('plugins.ops.restartNow')}
-                    </button>
-                  </div>
-                )
-                : null}
-              {op.note !== undefined && op.note !== ''
-                ? <div className={cx(css.opsNote, op.status === 'failed' ? css.opsNoteFailed : undefined)}>{op.note}</div>
-                : null}
-            </li>
-          )
-        })}
-      </ul>
-    </div>
+    <>
+      {outsideClose
+        ? <div className={css.dirtyBackdrop} role="presentation" onClick={onClose} />
+        : null}
+      <div className={css.opsPopover} role="dialog" aria-label={t('plugins.ops.title')}>
+        <div className={css.opsPopHead}>
+          <span className={css.opsPopTitle}><Icon name="activity" size={14} /><span>{t('plugins.ops.title')}</span></span>
+          <button
+            type="button"
+            className={css.secondaryButton}
+            disabled={busy}
+            onClick={() =>{  void clear() }}
+          >
+            {t('plugins.ops.clearAll')}
+          </button>
+        </div>
+        <ul className={css.opsPopList}>
+          {rows.map((op) => {
+            const percent = Math.round(progressOf(op) * 100)
+            return (
+              <li key={op.id} className={cx(css.opsRow, op.status === 'failed' ? css.opsRowFailed : undefined)}>
+                <div className={css.opsRowTop}>
+                  <span className={css.opsRowTitle}>{op.title}</span>
+                  <span className={cx(css.opsRowState, op.status === 'running' ? css.opsRowRunning : (op.status === 'failed' ? css.opsRowFailed : css.opsRowDone))}>
+                    {opsStateTitle(op.status)}
+                  </span>
+                  <span className={css.opsRowPercent}>{String(percent)}%</span>
+                  <button
+                    type="button"
+                    className={css.opsRowRemove}
+                    title={t('plugins.ops.remove')}
+                    aria-label={t('plugins.ops.remove')}
+                    disabled={busy}
+                    onClick={() =>{  void dismiss(op.id) }}
+                  >
+                    <Icon name="close" size={12} />
+                  </button>
+                </div>
+                <div className={css.opsBar} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+                  <span className={cx(css.opsBarFill, op.status === 'failed' ? css.opsBarFailed : undefined)} style={{ width: `${String(percent)}%` }} />
+                </div>
+                <ul className={css.opsSteps}>
+                  {op.steps.map((step, index) => (
+                    <li key={index} className={cx(css.opsStep, stepClassOf(step.state))}>
+                      {step.state === 'done'
+                        ? <Icon name="check" size={11} />
+                        : step.state === 'failed'
+                          ? <Icon name="alert" size={11} />
+                          : step.state === 'active'
+                            ? <Icon name="refresh" size={11} />
+                            : null}
+                      <span>{step.label}</span>
+                    </li>
+                  ))}
+                </ul>
+                {op.pendingHostRestart && op.status === 'running'
+                  ? (
+                    <div className={css.opsPendingHost}>
+                      <span>{t('plugins.ops.pendingHostRestart')}</span>
+                      <button
+                        type="button"
+                        className={css.secondaryButton}
+                        onClick={() =>{  onRestartNow(op) }}
+                      >
+                        {t('plugins.ops.restartNow')}
+                      </button>
+                    </div>
+                  )
+                  : null}
+                {op.note !== undefined && op.note !== ''
+                  ? <div className={cx(css.opsNote, op.status === 'failed' ? css.opsNoteFailed : undefined)}>{op.note}</div>
+                  : null}
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </>
   )
 }
 
@@ -1222,7 +1271,26 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   // the same live snapshot.
   const { snapshot: rtSnapshot, busy: rtBusy, addRuntime: addRuntimeMut, movePlugin: movePluginMut } = useRuntimes(refreshSignal, 3000)
   // X2 item 7: the operation ledger — the "how far is that" pipelines.
-  const { ops, progressOf, refresh: refreshOps } = useOps(refreshSignal)
+  // Z round: the rows render in the floating box behind the search row's
+  // red-dot badge; `removeOp` / `clearAll` are the 剔除 / 清空 writes.
+  const { ops, progressOf, refresh: refreshOps, removeOp, clearAll } = useOps(refreshSignal)
+
+  // Z round: the ops badge + floating box on the search row (the ledger's
+  // inline block left the card body).
+  const [opsPopoverOpen, setOpsPopoverOpen] = useState(false)
+  const restartNow = async (op: import('./useOps.ts').OpEntry): Promise<void> => {
+    try {
+      const status = await fetchRuntime()
+      // The ledger belongs to the backend serving this console: restart its
+      // web half — the host's boot hook closes the pending op.
+      await postInstance(status.current.slot, 'web', 'restart')
+      setNotice({ message: tf('plugins.ops.restarted', { title: op.title }), tone: 'success' })
+      refreshOps()
+      facts.refresh()
+    } catch (cause: unknown) {
+      setNotice({ message: cause instanceof Error ? cause.message : String(cause), tone: 'error' })
+    }
+  }
 
   // Sidebar-row refresh (Q round): re-scan the plugin directory.
   useEffect(() => {
@@ -1378,7 +1446,32 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   return (
     <PanelCard>
       <div className={css.cardBody}>
-        <PanelSearch value={query} onChange={setQuery} placeholder={t('plugins.search')} count={facts.loading ? undefined : plugins.length} />
+        {/* Z round: the search box keeps its slot, but the "8"-style hit
+            count is gone; the slot now carries the operation-progress
+            badge (activity icon + red dot, shown while the ledger has
+            rows) that opens the floating 操作进度 box. */}
+        <div className={css.opsBadgeRow}>
+          <PanelSearch
+            value={query}
+            onChange={setQuery}
+            placeholder={t('plugins.search')}
+            badge={ops !== undefined && ops.length > 0
+              ? <span className={css.opsBadgeIcon}><Icon name="activity" size={12} /><span className={css.opsBadgeDot} aria-hidden="true" /></span>
+              : undefined}
+            badgeAria={t('plugins.ops.title')}
+            onBadgeClick={() =>{  setOpsPopoverOpen(open => !open) }}
+          />
+          <OpsPopover
+            open={opsPopoverOpen && (ops?.length ?? 0) > 0}
+            onClose={() =>{  setOpsPopoverOpen(false) }}
+            ops={ops}
+            progressOf={progressOf}
+            onRemove={removeOp}
+            onClear={clearAll}
+            onRestartNow={(op) =>{  void restartNow(op) }}
+            onNotice={(message, tone) =>{  setNotice({ message, tone }) }}
+          />
+        </div>
         {notice !== undefined
           ? (
             <p className={cx(css.noticeLine, notice.tone === 'success' ? css.noticeSuccess : css.noticeError)} role="status">
@@ -1396,13 +1489,9 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
         {/* T round: the numbered runtime view is part of this card now —
             the 运行时与内存 section no longer exists on its own. */}
         <RuntimesBlock refreshSignal={refreshSignal} />
-        {/* X2 item 7: the live operation pipelines (progress + percentage). */}
-        <OpsPipeline
-          ops={ops}
-          progressOf={progressOf}
-          onNotice={(message, tone) => { setNotice({ message, tone }) }}
-          onRefresh={() => { refreshOps(); facts.refresh() }}
-        />
+        {/* Z round: the X2 live operation pipelines moved out of the card
+            body — they now live in the floating box behind the search
+            row's red-dot badge (see the opsBadgeRow above). */}
         {/* X2 item 9: the 入口 section moved out of the 关于 card into THIS
             card — the entry points sit next to the plugins they launch. */}
         {(facts.facts?.entries ?? []).length > 0

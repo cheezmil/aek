@@ -376,7 +376,7 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
   return (
     <section className={css.card}>
       <div className={css.cardBody}>
-        <PanelSearch value={query} onChange={setQuery} placeholder={t('websearch.search')} count={visibleCount} />
+        <PanelSearch value={query} onChange={setQuery} placeholder={t('websearch.search')} />
 
         {/* Q round: while the FIRST read of the board is in flight (or has
             FAILED and no classified snapshot exists yet), render a FIXED-SHAPE

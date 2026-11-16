@@ -15,6 +15,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 /** The host route publishing the operation ledger. */
 export const OPS_API = '/api/aek/ops'
 
+/** Dismiss ONE ledger row (the per-row 剔除). */
+export const OPS_REMOVE_API = '/api/aek/ops/remove'
+
+/** Clear every ledger row (清空). */
+export const OPS_CLEAR_API = '/api/aek/ops/clear'
+
 /** One operator-visible step in an operation's pipeline. */
 export interface OpStep {
   /** The operator-facing step name. */
@@ -57,6 +63,11 @@ export interface OpsState {
   progressOf: (op: OpEntry) => number
   /** Force a fresh read. */
   refresh: () => void
+  /** Dismiss ONE ledger row (its in-flight action keeps running; the row
+      just stops being shown). Rejects when the host write fails. */
+  removeOp: (id: string) => Promise<void>
+  /** Clear every ledger row (清空). Rejects when the host write fails. */
+  clearAll: () => Promise<void>
 }
 
 /** Poll interval while an op is in flight. */
@@ -105,5 +116,23 @@ export function useOps(refreshSignal = 0): OpsState {
     return op.status === 'running' ? Math.min(done, op.steps.length - 1) / op.steps.length : (op.status === 'done' ? 1 : done / op.steps.length)
   }, [])
 
-  return { ops, active, progressOf, refresh: read }
+  // The host's write-confirm rule: the ledger's mutation routes answer 428
+  // without `confirm: true`; a failed write throws so the UI can surface it.
+  const postLedger = (path: string, payload: Record<string, unknown>): Promise<void> =>
+    fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+      .then((response) => {
+        if (!response.ok) throw new Error(`the operation ledger write failed (${String(response.status)})`)
+      })
+
+  const removeOp = useCallback(async (id: string): Promise<void> => {
+    await postLedger(OPS_REMOVE_API, { id, confirm: true })
+    read()
+  }, [read])
+
+  const clearAll = useCallback(async (): Promise<void> => {
+    await postLedger(OPS_CLEAR_API, { confirm: true })
+    read()
+  }, [read])
+
+  return { ops, active, progressOf, refresh: read, removeOp, clearAll }
 }

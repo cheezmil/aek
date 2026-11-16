@@ -146,6 +146,37 @@ export function listOps(aekHome, limit = 40) {
 }
 
 /**
+ * Remove ONE ledger entry by id (the operator dismissed it from the
+ * console's progress view). The action the entry records may still be in
+ * flight host-side — the ledger is a PROGRESS VIEW, not the queue itself;
+ * dismissing a row only hides its progress, it does not stop the action.
+ * @param {string} aekHome
+ * @param {string} id
+ * @returns {boolean} whether an entry was removed.
+ */
+export function removeOp(aekHome, id) {
+  const ops = readOps(aekHome)
+  const next = ops.filter(op => op.id !== id)
+  if (next.length === ops.length) return false
+  writeOps(aekHome, next)
+  return true
+}
+
+/**
+ * Remove every ledger entry (the operator cleared the progress view). Same
+ * caveat as `removeOp`: in-flight actions keep running, only their ledger
+ * rows go away.
+ * @param {string} aekHome
+ * @returns {number} how many entries were removed.
+ */
+export function clearOps(aekHome) {
+  const ops = readOps(aekHome)
+  if (ops.length === 0) return 0
+  writeOps(aekHome, [])
+  return ops.length
+}
+
+/**
  * The host's boot hook: every entry waiting on the host process itself now
  * just restarted, so it is applied. Flips `pendingHostRestart` entries from
  * `running` to `done` (their steps close out). Best-effort and idempotent.
