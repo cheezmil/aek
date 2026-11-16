@@ -1000,11 +1000,11 @@ function registerShellInstallIpc(): void {
     return new Promise<ShellInstallResult>((resolve) => {
       child.on('close', (code) => {
         clearTimeout(timer)
-        resolve({ ok: code === 0, tool, output: output.trim().slice(-4000) })
+        resolve({ ok: code === 0, tool: 'pnpm', output: output.trim().slice(-4000) })
       })
       child.on('error', (error: Error) => {
         clearTimeout(timer)
-        resolve({ ok: false, tool, output: `spawn failed: ${error.message}` })
+        resolve({ ok: false, tool: 'pnpm', output: `spawn failed: ${error.message}` })
       })
     })
   })
