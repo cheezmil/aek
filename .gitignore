@@ -5,6 +5,9 @@ apps/desktop/.env.macos
 apps/desktop/*.p12
 node_modules/
 lib/
+# The web console's source-side lib/ (shadcn `cn` utility) is source code,
+# not tsc output — the blanket `lib/` above must not swallow it.
+!apps/aek-web/src/lib/
 *.tsbuildinfo
 pnpm-debug.log
 .pnpm-store/
