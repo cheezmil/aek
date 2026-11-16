@@ -62,6 +62,7 @@ import {
   repositoryClientBuildEnvironment,
 } from './client-build-environment.ts'
 import { pnpmInvocation } from './pnpm-invocation.ts'
+import { buildFlagsEnv } from './aek/build-flags.mjs'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 
@@ -475,6 +476,13 @@ if (isMain) {
   // terminate this process in the middle of the teardown below.
   process.on('SIGINT', () => { requestShutdown(130, undefined) })
   process.on('SIGTERM', () => { requestShutdown(0, 'SIGTERM') })
+
+  // BB round: the source-map build flag. dev-web builds and serves the `next`
+  // slot, so it reads that slot's persisted flag (the console toggle writes
+  // `<next-AEK_HOME>/build-flags.json`). Export it before the initial build AND
+  // the vite `--watch` stage (both inherit process.env) so the dev dist honors
+  // it. Absent / off keeps the historical no-map build.
+  process.env.AEK_WEB_SOURCEMAP = buildFlagsEnv('next').AEK_WEB_SOURCEMAP
 
   const buildExit = options.skipBuild ? 0 : await runBuild()
   if (shutdownRequested()) process.exit(await shutdown.promise)

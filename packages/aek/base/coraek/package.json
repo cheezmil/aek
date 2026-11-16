@@ -82,6 +82,10 @@
       "types": "./ai-release.d.mts",
       "default": "./ai-release.mjs"
     },
+    "./build-flags": {
+      "types": "./build-flags.d.mts",
+      "default": "./build-flags.mjs"
+    },
     "./logging": {
       "types": "./logging.d.mts",
       "default": "./logging.mjs"
@@ -147,7 +151,9 @@
     "runtimes.mjs",
     "runtimes.d.mts",
     "ai-release.mjs",
-    "ai-release.d.mts"
+    "ai-release.d.mts",
+    "build-flags.mjs",
+    "build-flags.d.mts"
   ],
   "oclif": {
     "bin": "aek",

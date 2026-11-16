@@ -61,6 +61,7 @@ import { get as httpGet } from 'node:http'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { listenPids, SLOTS, slotHome, dualTreeLayout, isBuildFresh } from './shared-logic.mjs'
+import { buildFlagsEnv } from './build-flags.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NODE = process.execPath
@@ -218,6 +219,13 @@ function runStep(root, script, args) {
  * @param {string} root @returns {void} throws via fail()
  */
 function bootstrap(root) {
+  // BB round: the source-map build flag. The console's toggle persists
+  // `<AEK_HOME>/build-flags.json` (the 'aek' slot — the one this release
+  // builds and serves). Export it so the aek-web vite build (run via the
+  // pnpm task below, which inherits process.env) honors it. Absent / off
+  // keeps the historical no-map build.
+  process.env.AEK_WEB_SOURCEMAP = buildFlagsEnv('aek').AEK_WEB_SOURCEMAP
+  console.log(`[release] source-map build flag: AEK_WEB_SOURCEMAP=${process.env.AEK_WEB_SOURCEMAP}`)
   let installed = pnpmRun(root, ['install', '--frozen-lockfile'])
   if (!installed) {
     // Lefthook re-anchor self-heal: a worktree-scoped core.hooksPath that

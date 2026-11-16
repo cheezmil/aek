@@ -18,6 +18,7 @@
 import { useCallback, useMemo } from 'react'
 import { PREF_KEYS, useSettings } from './preferences.tsx'
 import type { IconName } from './Icons.tsx'
+import { NAV_ICONS } from './icon-registry.ts'
 
 /** Every surface the console can show. */
 export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'websearchSettings' | 'settings' | 'about'
@@ -53,20 +54,19 @@ export const NAV: readonly NavEntry[] = [
   // the three sections into one page). The 'plugins' entry is GONE from the
   // nav — its old stored-order id is filtered out by the Sidebar's
   // orderIds memo (stored ids not in NAV simply don't render).
-  { id: 'runtime', labelKey: 'panel.runtime', icon: 'activity', group: 'other', keywords: ['plugin', 'program', 'runtime', 'instance', 'slot', 'port', '运行实例', '实例', '插件与程序', '程序'] },
+  { id: 'runtime', labelKey: 'panel.runtime', icon: NAV_ICONS.runtime, group: 'other', keywords: ['plugin', 'program', 'runtime', 'instance', 'slot', 'port', '运行实例', '实例', '插件与程序', '程序'] },
   // Web Search is a real AEK plugin, so it belongs in the 插件 drawer, not 其他.
-  { id: 'websearch', labelKey: 'panel.websearch', icon: 'search', group: 'plugins', keywords: ['search', 'keys', 'api key', 'provider', '密钥'] },
-  // Q round: "book" read as docs and "sparkles" as AI magic — neither says
-  // "manager". A skill is a pluggable capability block (puzzle); a prompt
-  // manager manages plain text blocks (type).
-  { id: 'skills', labelKey: 'panel.skills', icon: 'puzzle', group: 'plugins', keywords: ['skill', 'manager', '技能'] },
-  { id: 'prompts', labelKey: 'panel.prompts', icon: 'type', group: 'plugins', keywords: ['prompt', 'manager', '提示词'] },
+  { id: 'websearch', labelKey: 'panel.websearch', icon: NAV_ICONS.websearch, group: 'plugins', keywords: ['search', 'keys', 'api key', 'provider', '密钥'] },
+  // Icon semantics live in `icon-registry.ts` (BB round): skills → the
+  // mortarboard (capability block), prompts → the plain text block.
+  { id: 'skills', labelKey: 'panel.skills', icon: NAV_ICONS.skills, group: 'plugins', keywords: ['skill', 'manager', '技能'] },
+  { id: 'prompts', labelKey: 'panel.prompts', icon: NAV_ICONS.prompts, group: 'plugins', keywords: ['prompt', 'manager', '提示词'] },
   // Q round: every plugin with user-facing settings gets its own settings
   // page instead of one giant Settings page. Web Search owns the ranking
   // refresh interval; the base "Settings" page was renamed 基础设置.
-  { id: 'websearchSettings', labelKey: 'panel.websearchSettings', icon: 'settings', group: 'plugins', subOf: 'websearch', keywords: ['websearch', 'search', 'ranking', '排行', '设置'] },
-  { id: 'settings', labelKey: 'panel.settings', icon: 'settings', group: 'other', keywords: ['preferences', 'options', 'sidebar', '基础设置', '设置'] },
-  { id: 'about', labelKey: 'panel.about', icon: 'about', group: 'other', keywords: ['version', 'info', 'entry', '关于'] },
+  { id: 'websearchSettings', labelKey: 'panel.websearchSettings', icon: NAV_ICONS.websearchSettings, group: 'plugins', subOf: 'websearch', keywords: ['websearch', 'search', 'ranking', '排行', '设置'] },
+  { id: 'settings', labelKey: 'panel.settings', icon: NAV_ICONS.settings, group: 'other', keywords: ['preferences', 'options', 'sidebar', '基础设置', '设置'] },
+  { id: 'about', labelKey: 'panel.about', icon: NAV_ICONS.about, group: 'other', keywords: ['version', 'info', 'entry', '关于'] },
 ]
 
 /** Top-level rail rows only: `subOf` entries are family routes, never rail rows. */

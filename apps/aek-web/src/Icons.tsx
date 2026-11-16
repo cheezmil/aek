@@ -26,6 +26,7 @@ export type IconName =
   | 'lock' | 'grip'
   | 'save'
   | 'puzzle' | 'type'
+  | 'skill' | 'globe'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 const ICONS: Record<IconName, ReactNode> = {
@@ -198,9 +199,12 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   /**
-   * Lucide `puzzle`: Skill Manager sidebar icon (Q round, user: "book" was
-   * inaccurate). A skill is a pluggable capability block — the puzzle piece
-   * is the standard "pluggable piece" metaphor.
+   * Lucide `puzzle` (Q round): the jigsaw "pluggable capability block"
+   * metaphor. Kept for the `extensions` plugin bucket. BB round (2026-11-16):
+   * Skill Manager moved OFF this glyph (the jigsaw read as a gear next to the
+   * settings entry, user: "换掉这个图标") onto the dedicated `skill`
+   * graduation-cap above. The path here IS the official lucide `puzzle`
+   * glyph (verified against lucide.dev 2026-11-16), not a misdrawn shape.
    */
   puzzle: <path d="M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z" />,
   /**
@@ -212,6 +216,33 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M12 4v16" />
       <path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2" />
       <path d="M9 20h6" />
+    </>
+  ),
+  /**
+   * Lucide `graduation-cap` (BB round): the SKILL icon. A skill is a
+   * reusable capability / expertise block — lucide's own tag list for this
+   * glyph includes "skill / skills / expertise". Path verified against
+   * lucide.dev + the published icon set (2026-11-16, user ruling: the old
+   * `puzzle` jigsaw read as a gear next to the settings entry).
+   */
+  skill: (
+    <>
+      <path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z" />
+      <path d="M22 10v6" />
+      <path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5" />
+    </>
+  ),
+  /**
+   * Lucide `globe` (BB round): the AEK-WEB console entry — an unambiguously
+   * "a web app" mark (lucide's own tags: browser / internet / https / www).
+   * Replaces the generic `activity` heartbeat that read as "is it alive?",
+   * not "which program". Path verified against lucide.dev (2026-11-16).
+   */
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+      <path d="M2 12h20" />
     </>
   ),
   /** Lucide `play`: start one half of an instance. */

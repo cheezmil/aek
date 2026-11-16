@@ -28,6 +28,7 @@ import { useConsoleFacts } from './useConsoleFacts.ts'
 import type { Half, HalfAction, InFlightInstance } from './useInstances.ts'
 import { useInstances } from './useInstances.ts'
 import { useAiRelease } from './useAiRelease.ts'
+import { useBuildFlags } from './useBuildFlags.ts'
 
 /** The two slots, in display order. */
 const SLOTS = ['aek', 'next'] as const
@@ -129,6 +130,9 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
   const facts = useConsoleFacts()
   // S7: the AI auto-release switch (persisted host-side, read by scripts too).
   const aiRelease = useAiRelease(refreshSignal)
+  // BB round: the build-flag switch (source maps) — same host-persisted,
+  // script-readable pattern as the auto-release switch above.
+  const buildFlags = useBuildFlags(refreshSignal)
   // Q round: path display style (abbreviated ~/ · %USERPROFILE%\ vs full).
   const [pathStyle] = usePref(PREF_KEYS.pathStyle, 'abbreviated', parsePathStyle)
 
@@ -417,13 +421,40 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                 />
               </div>
               <p className={css.aiReleaseDesc}>{t('runtime.aiRelease.desc')}</p>
-              <span className={css.aiReleaseState}>
-                {aiRelease.allowed === undefined
-                  ? t('common.loading')
-                  : aiRelease.allowed
-                    ? t('runtime.aiRelease.on')
-                    : t('runtime.aiRelease.off')}
-              </span>
+              {/* BB round: the ON state renders NO text — the switch itself
+                  shows the state, and "on" is the expected default, so a
+                  "已开启" label next to it is noise (user ruling). Only the
+                  OFF state gets a callout (it is the abnormal one). */}
+              {aiRelease.allowed === undefined
+                ? <span className={css.aiReleaseState}>{t('common.loading')}</span>
+                : aiRelease.allowed
+                  ? null
+                  : <span className={css.aiReleaseState}>{t('runtime.aiRelease.off')}</span>}
+            </div>
+          )}
+
+        {/* BB round: the SOURCE-MAP build flag. Host-persisted exactly like
+            the switch above; it takes effect on the NEXT build (the scripts
+            export AEK_WEB_SOURCEMAP from this file), never on the running
+            instance. Hides itself on older hosts (404 → unsupported). The
+            on/off state carries no label — the switch itself shows it; the
+            note below carries the positive/negative trade-off + the
+            "next build" effect. */}
+        {buildFlags.unsupported
+          ? null
+          : (
+            <div className={css.aiReleaseBox}>
+              <div className={css.aiReleaseHead}>
+                <span className={css.aiReleaseTitle}>{t('runtime.buildFlags.title')}</span>
+                <ToggleSwitch
+                  checked={buildFlags.sourcemap === true}
+                  locked={buildFlags.busy || buildFlags.sourcemap === undefined}
+                  onChange={(next) => { void buildFlags.setSourcemap(next) }}
+                  label={t('runtime.buildFlags.title')}
+                />
+              </div>
+              <p className={css.aiReleaseDesc}>{t('runtime.buildFlags.desc')}</p>
+              <div className={css.hint}>{t('runtime.buildFlags.effective')}</div>
             </div>
           )}
       </div>

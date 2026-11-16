@@ -101,18 +101,32 @@ export function resolveAekRoot(env = process.env) {
 /**
  * Resolve the data root for the current process.
  *
- * `AEK_HOME` wins. Otherwise the container's path manifest (`aek.yaml`, see
- * `paths.mjs`) decides where the default slot lives; only when there is no
- * manifest is the historical `<container>/current` used. That indirection is
- * the whole point: inserting a parent folder (`current/` → `v2/current/`) is a
- * one-line manifest edit instead of a repository-wide code change.
+ * `AEK_HOME` wins — unless it points at the container root itself. A slot's
+ * data root is always *inside* the container (`<container>/current`,
+ * `<container>/v2/current`, …), never the container; a value equal to the
+ * container root (`resolveAekRoot()`) is a stale or mis-set `AEK_HOME` (for
+ * example a shell that exported the old pre-container home). Returning that
+ * verbatim would make every data folder — `websearch/`, `sessions/`, … — land
+ * directly in the container. So such a value is dropped and the manifest /
+ * historical default slot is used instead. Otherwise the container's path
+ * manifest (`aek.yaml`, see `paths.mjs`) decides where the default slot lives;
+ * only when there is no manifest is the historical `<container>/current` used.
+ * That indirection is the whole point: inserting a parent folder
+ * (`current/` → `v2/current/`) is a one-line manifest edit instead of a
+ * repository-wide code change.
  * @param {Record<string, string | undefined>} [env] - environment override.
  * @returns {string} an absolute path to the AEK data root.
  */
 export function resolveAekHome(env = process.env) {
-  const configured = (env[AEK_HOME_ENV] || '').trim()
-  if (configured) return resolve(configured)
   const root = resolveAekRoot(env)
+  const configured = (env[AEK_HOME_ENV] || '').trim()
+  if (configured) {
+    const resolved = resolve(configured)
+    if (resolved !== root) return resolved
+    // Degenerate: AEK_HOME === the container root. Fall through to the
+    // manifest / default slot so data folders never scatter into the
+    // container itself.
+  }
   return readAekManifest(root)?.slots.aek ?? join(root, AEK_DEFAULT_SLOT_DIRNAME)
 }
 

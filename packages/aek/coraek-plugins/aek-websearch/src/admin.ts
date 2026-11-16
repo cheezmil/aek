@@ -57,7 +57,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync } from 'node:child_process'
-import { resolveAekHome } from '@cheezmil/coraek/home'
+import { aekHomePath, resolveAekHome } from '@cheezmil/coraek/home'
 import { resolveSlot } from '@cheezmil/coraek/slots'
 import { parse, stringify } from 'yaml'
 import { KeyStore } from '@cheezmil/prevent-agent-directly-seeing-key'
@@ -187,11 +187,14 @@ function aekHome(): string {
 }
 
 /**
- * The `providers.yml` path inside the AEK home.
+ * The `providers.yml` path inside the slot's `websearch` data folder.
+ * Resolved through `aekHomePath` so it follows the path manifest (`dirs`
+ * table) exactly like every other reader — never a hand-joined
+ * `<home>/websearch`, which would ignore a renamed or relocated folder.
  * @returns the absolute path of the providers configuration.
  */
 function providersFile(): string {
-  return join(aekHome(), 'websearch', 'providers.yml')
+  return aekHomePath('websearch', 'providers.yml')
 }
 
 /** Cached `plugins.json` parse, keyed by mtime so an edit is seen at once. */
@@ -317,7 +320,7 @@ function countKeys(kind: string): number | undefined {
 export function readStatus(): WebsearchStatus {
   const flags = readEnabledFlags()
   const providers: ProviderStatus[] = PROVIDER_KINDS.map((kind) => {
-    const poolPath = join(aekHome(), 'websearch', `${kind}.db`)
+    const poolPath = aekHomePath('websearch', `${kind}.db`)
     return {
       kind,
       enabled: flags.get(kind) === true,
@@ -751,7 +754,7 @@ export function apply(ctx: Context): void {
   // W round: the last successful board persists in the slot home so a
   // restarted backend answers the panel instantly (no first-paint GitHub
   // wait) and refreshes in the background.
-  registerRanking(ctx, blockedWhenOff, join(aekHome(), 'websearch', 'ranking-board.json'))
+  registerRanking(ctx, blockedWhenOff, aekHomePath('websearch', 'ranking-board.json'))
   // R6: enforce the 7-day (configurable) recycle-bin TTL as soon as the host
   // boots, before any browser opens the console.
   purgeExpiredKeys()

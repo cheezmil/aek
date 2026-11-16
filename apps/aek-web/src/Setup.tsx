@@ -30,6 +30,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CopyButton } from './ui-kit.tsx'
 import { Icon } from './Icons.tsx'
+import { SKILL_ICON } from './icon-registry.ts'
 import { useI18n } from './i18n.tsx'
 import { PREF_KEYS, usePref } from './preferences.tsx'
 import { useShellInstall } from './useShellInstall.ts'
@@ -365,7 +366,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                                   {status.skillPath !== undefined
                                     ? (
                                       <div className={css.skillPathRow}>
-                                        <Icon name="book" size={14} />
+                                        <Icon name={SKILL_ICON} size={14} />
                                         <span className={css.skillPathLabel}>{t('setup.skillPathLabel')}</span>
                                         <span className={css.skillPath}>{status.skillPath}</span>
                                         <CopyButton value={status.skillPath} size={14} label={t('runtime.copyPath')} />

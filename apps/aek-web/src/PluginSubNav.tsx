@@ -32,6 +32,7 @@ import { useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { Icon } from './Icons.tsx'
 import type { IconName } from './Icons.tsx'
+import { FAMILY_HOME_ICON } from './icon-registry.ts'
 import { useI18n } from './i18n.tsx'
 import {
   NAV,
@@ -111,7 +112,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false }: PluginS
   const parent = NAV.find(entry => entry.id === family)
   if (parent === undefined) return null
   const routes: RouteRow[] = [
-    { id: family, icon: 'layout', label: tf('nav.home', { name: t(parent.labelKey) }) },
+    { id: family, icon: FAMILY_HOME_ICON, label: tf('nav.home', { name: t(parent.labelKey) }) },
     ...subEntriesOf(family).map(sub => ({ id: sub.id, icon: sub.icon, label: t(sub.labelKey) })),
   ]
 

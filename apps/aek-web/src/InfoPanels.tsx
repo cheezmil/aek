@@ -35,6 +35,8 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
+import type { IconName } from './Icons.tsx'
+import { BUCKET_ICONS, ENTRY_ICONS, ENTRIES_SECTION_ICON, APP_BUNDLE_ICON } from './icon-registry.ts'
 import { useI18n } from './i18n.tsx'
 import { useAccessDraft, useDraftSettings, useSettings } from './preferences.tsx'
 import type { PrefValue } from './preferences.tsx'
@@ -324,7 +326,7 @@ function PermissionsSection() {
       <ul className={css.permList}>
         {bundles.map(bundle => (
           <li key={bundle.id} className={css.permRow}>
-            <span className={css.featureIcon}><Icon name="layout" size={16} /></span>
+            <span className={css.featureIcon}><Icon name={APP_BUNDLE_ICON} size={16} /></span>
             <span className={css.permName}>{bundle.name}.app</span>
             <code className={css.pathValue}>{bundle.id}</code>
             <CopyButton value={bundle.id} label={t('common.copy')} />
@@ -887,20 +889,13 @@ function bucketTitleOf(bucket: PluginBucket, t: (key: string) => string): string
  * X2 item 17: the category icon — the stacked-layers icon is reserved for the
  * REAL coraek plugins (the `plugins` bucket); every other category gets its
  * own mark, so the row and the group header agree on what a category is.
+ * BB round: the table now lives in `icon-registry.ts` (BUCKET_ICONS), the
+ * single source of truth for "which thing uses which icon".
  * @param bucket - the source bucket.
  * @returns the icon name.
  */
-function bucketIconOf(bucket: PluginBucket): string {
-  switch (bucket) {
-    case 'public':
-      return 'book'
-    case 'base':
-      return 'shield'
-    case 'extensions':
-      return 'puzzle'
-    default:
-      return 'layers'
-  }
+function bucketIconOf(bucket: PluginBucket): IconName {
+  return BUCKET_ICONS[bucket]
 }
 
 /**
@@ -1498,7 +1493,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
           ? (
             <div>
               <h3 className={css.pluginGroupTitle}>
-                <Icon name="activity" size={14} />
+                <Icon name={ENTRIES_SECTION_ICON} size={14} />
                 <span>{t('about.entries')}</span>
               </h3>
               <ul className={css.entryList}>
@@ -1516,7 +1511,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                   return (
                     <li key={entry.id} className={css.pluginItem}>
                       <div className={css.pluginHead}>
-                        <span className={css.featureIcon}><Icon name={entry.id === 'aek-desktop' ? 'layout' : (entry.id === 'cli' ? 'terminal' : 'activity')} size={18} /></span>
+                        <span className={css.featureIcon}><Icon name={ENTRY_ICONS[entry.id] ?? 'layout'} size={18} /></span>
                         <div className={css.pluginText}>
                           <div className={css.featureTitle}>
                             <span className={css.featureTitleName}>{entry.id}</span>
@@ -1745,12 +1740,11 @@ export function AboutPanel({
   }, [refreshSignal, facts.refresh, inventory.refresh])
   const caps = useCapabilities()
   const providers = caps.facts?.providers ?? []
-  // Selective class-① runtime-mode choices (id → 'share' | 'isolate'); the
-  // host serves them with the capability registry, older hosts send none.
-  const runtimeChoices = Object.values(caps.facts?.runtime?.choices ?? {})
-  const sharedCount = runtimeChoices.filter(mode => mode === 'share').length
-  const isolatedCount = runtimeChoices.length - sharedCount
-  const showExternalSection = providers.length > 0 || runtimeChoices.length > 0
+  // BB round: the "runtime modes" topology line was removed at the user's
+  // ruling (it read as noise next to an empty section). The external
+  // capabilities section now exists ONLY when a real provider is listed;
+  // an empty section renders nothing — not even its divider.
+  const showExternalSection = providers.length > 0
   const snapshot = inventory.snapshot
   const plugins = snapshot?.packages.filter(pkg => pkg.group === 'plugin') ?? []
   // X2 items 9 + 10: the 入口 section moved INTO the 插件与程序 card
@@ -1838,47 +1832,39 @@ export function AboutPanel({
 
         {/* X2 item 10: the base-environment list is gone — the roster's base
             bucket shows those packages with their category icon. */}
-        {/* EXTERNAL capability providers: shown when the host reports at least
-            one ACTUALLY-external (isolate-topology) provider, or when the
-            operator has selective runtime-mode choices. The "external
-            capabilities" title + "not part of AEK" hint only render when such
-            a provider exists — a class ① capability the operator set to `share`
-            runs in-process and is NOT an external capability, so its inert
-            registration must not be listed under this heading (Y9). The
-            "runtime modes" topology line stays (neutral, accurate). The
-            compliance line is host-rendered from the provider's own
-            self-description — the client bundle carries no upstream facts. */}
+        {/* EXTERNAL capability providers: rendered ONLY when the host lists
+            at least one ACTUALLY-external (isolate-topology, non-container)
+            provider. A class ① capability the operator set to `share` runs
+            in-process and is NOT an external capability, so its inert
+            registration must not be listed here (Y9); AEK's own v3 runtime
+            containers are filtered out host-side (AA round). The compliance
+            line is host-rendered from the provider's own self-description —
+            the client bundle carries no upstream facts. BB round: the neutral
+            "runtime modes" topology line that kept this section alive when no
+            provider existed was removed at the user's ruling (noise, no
+            meaning when empty) — an empty section renders nothing. */}
         {showExternalSection ? (
           <>
             <div className={css.divider} />
-            {providers.length > 0 ? (
-              <>
-                <h3 className={css.sectionTitle}>{t('about.external.title')}</h3>
-                <div className={css.hint}>{t('about.external.hint')}</div>
-              </>
-            ) : null}
-            {runtimeChoices.length > 0
-              ? <div className={css.hint}>{tf('about.external.runtimeChoices', { shared: sharedCount, isolated: isolatedCount })}</div>
-              : null}
-            {providers.length > 0 ? (
-              <ul className={css.packageList}>
-                {providers.map(provider => (
-                  <li key={provider.id} className={css.capabilityRow}>
-                    <div className={css.packageRow}>
-                      <span className={css.providerName}>{displayName(provider.name)}</span>
-                      <span className={css.countChip}>{provider.state}</span>
-                      {provider.spdx !== null
-                        ? <span className={css.stackChip} title={provider.spdx}>{provider.spdx}</span>
-                        : null}
-                      {provider.runtime !== undefined
-                        ? <span className={css.countChip} title={t('about.external.runtimeIsolated')}>{provider.runtime.reason}</span>
-                        : null}
-                    </div>
-                    <div className={css.capabilityLine}>{provider.compliance}</div>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+            <h3 className={css.sectionTitle}>{t('about.external.title')}</h3>
+            <div className={css.hint}>{t('about.external.hint')}</div>
+            <ul className={css.packageList}>
+              {providers.map(provider => (
+                <li key={provider.id} className={css.capabilityRow}>
+                  <div className={css.packageRow}>
+                    <span className={css.providerName}>{displayName(provider.name)}</span>
+                    <span className={css.countChip}>{provider.state}</span>
+                    {provider.spdx !== null
+                      ? <span className={css.stackChip} title={provider.spdx}>{provider.spdx}</span>
+                      : null}
+                    {provider.runtime !== undefined
+                      ? <span className={css.countChip} title={t('about.external.runtimeIsolated')}>{provider.runtime.reason}</span>
+                      : null}
+                  </div>
+                  <div className={css.capabilityLine}>{provider.compliance}</div>
+                </li>
+              ))}
+            </ul>
           </>
         ) : null}
       </div>
