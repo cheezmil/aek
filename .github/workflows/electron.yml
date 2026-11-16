@@ -8,14 +8,20 @@
 #                (NSIS cannot target Windows-on-ARM — electron-builder #5461)
 #       linux:  AppImage + deb, each x64 and arm64
 #   - Artifact file names are self-describing, one scheme for all eight
-#     files (set in electron-builder.config.mjs):
+#     files (set in electron-builder.config.mjs; `${arch}` resolves per
+#     package format — native arch labels, verified in
+#     scripts/aek/verify-builder-config.mjs):
 #       AEK-<ver>-mac-x64.dmg / -mac-arm64.dmg
 #       AEK-<ver>-win-x64-setup.exe / -win-arm64-portable.exe
-#       AEK-<ver>-linux-x64.AppImage / -linux-arm64.AppImage
-#       AEK-<ver>-linux-x64.deb / -linux-arm64.deb
+#       AEK-<ver>-linux-x86_64.AppImage / -linux-arm64.AppImage
+#       AEK-<ver>-linux-amd64.deb / -linux-arm64.deb
 #     (previously the default builder templates mixed three naming
 #     schemes and dropped the arch on the default arch — unreadable)
-#   - Artifacts go to the GITHUB release (never Gitea).
+#   - Artifacts go to the GITHUB release (never Gitea). Release tags
+#     follow the `aek-desktop-<sha7>` convention — the release carries
+#     aek-desktop artifacts only, so the tag says what it contains
+#     (2026-11-16 user ruling; the old `aek-cloud` tag was the build
+#     PIPELINE name, not the product name, and is superseded).
 #   - NEVER triggered by push. Manual `workflow_dispatch` only; the prompter
 #     (`node scripts/aek/electron-cloud.mjs`) tells a developer WHEN a cloud
 #     build is actually needed (the electron layer changed since the last one).
@@ -29,9 +35,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'GitHub release tag (aek-* style, e.g. aek-0dda685)'
+        description: 'GitHub release tag — the release carries aek-desktop artifacts only, use aek-desktop-<sha7> style, e.g. aek-desktop-0dda685'
         required: true
-        default: 'aek-cloud'
+        default: 'aek-desktop'
 
 permissions:
   contents: write # create the GitHub release + upload artifacts

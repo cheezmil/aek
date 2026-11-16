@@ -131,16 +131,14 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
         // build now yields two DMGs; local deep-signing still works
         // per-arch — the local `--arm64` CLI flag restricts it).
         //
-        // Explicit per-arch artifact names: electron-builder's default
-        // template drops the arch suffix on the *default* arch, which is
-        // how one release ended up with "AEK-0.1.0.dmg" +
-        // "AEK-0.1.0-arm64.dmg" — nobody reading the release page could
-        // tell which file was for which machine. One scheme for every
-        // artifact: `<product>-<version>-<platform>-<arch>.<ext>`.
-        target: [
-          { target: 'dmg', arch: 'x64', artifactName: '${productName}-${version}-mac-x64.dmg' },
-          { target: 'dmg', arch: 'arm64', artifactName: '${productName}-${version}-mac-arm64.dmg' },
-        ],
+        // Per-arch artifact names come from the `dmg` section below
+        // (target entries only accept `{ target, arch }` — the 26.17
+        // schema rejects any other key there, so the naming template
+        // lives on the per-target-type section, not on the target).
+        target: {
+          target: 'dmg',
+          arch: ['x64', 'arm64'],
+        },
       },
     } : {}),
     ...(hostWin ? {
@@ -151,13 +149,15 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
         // executable (an x64 NSIS runs on arm64 Windows via emulation, but
         // we ship a real arm64 binary for it).
         //
-        // Explicit artifact names: both Windows files are .exe and neither
-        // default name carries the arch or the install mode, so label the
-        // NSIS installer `-win-x64-setup.exe` and the portable arm64 binary
+        // Per-arch artifact names live on the `nsis` / `portable` sections
+        // below (target entries only accept `{ target, arch }` in the 26.17
+        // schema). Both Windows files are .exe and neither default name
+        // carries the arch or the install mode, so label the NSIS installer
+        // `-win-x64-setup.exe` and the portable arm64 binary
         // `-win-arm64-portable.exe`.
         target: [
-          { target: 'nsis', arch: 'x64', artifactName: '${productName}-${version}-win-x64-setup.exe' },
-          { target: 'portable', arch: 'arm64', artifactName: '${productName}-${version}-win-arm64-portable.exe' },
+          { target: 'nsis', arch: ['x64'] },
+          { target: 'portable', arch: ['arm64'] },
         ],
       },
     } : {}),
@@ -169,18 +169,19 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
         // (`homepage` is NOT a linux option in electron-builder 26.17 — it
         // would fail the config schema.)
         maintainer: 'AEK maintainers <aek@example.com>',
-        // Explicit artifact names: the default templates are per-target
-        // (deb uses dpkg's `name_version_arch` style, AppImage drops the
-        // default-arch suffix), so one release mixed three naming
-        // schemes. Everything here is `AEK-<ver>-linux-<arch>.<ext>`;
-        // the .deb file name is cosmetic (dpkg/apt read the control
-        // section, not the file name), so "x64" instead of dpkg's
-        // "amd64" is safe and consistent with the other platforms.
+        // Per-arch artifact names live on the `appImage` / `deb` sections
+        // below (target entries only accept `{ target, arch }` in the 26.17
+        // schema; the `dmg`/`nsis`/`portable`/`appImage`/`deb` sections each
+        // carry their own `artifactName`). The default templates are
+        // per-target (deb uses dpkg's `name_version_arch` style, AppImage
+        // drops the default-arch suffix), so one release mixed three naming
+        // schemes. The `${arch}` macro resolves per package format
+        // (electron-builder `getArtifactArchName`): AppImage → x86_64/arm64,
+        // deb → amd64/arm64 — the native arch labels of each format, so
+        // every file names its OS and its arch.
         target: [
-          { target: 'AppImage', arch: 'x64', artifactName: '${productName}-${version}-linux-x64.AppImage' },
-          { target: 'AppImage', arch: 'arm64', artifactName: '${productName}-${version}-linux-arm64.AppImage' },
-          { target: 'deb', arch: 'x64', artifactName: '${productName}-${version}-linux-x64.deb' },
-          { target: 'deb', arch: 'arm64', artifactName: '${productName}-${version}-linux-arm64.deb' },
+          { target: 'AppImage', arch: ['x64', 'arm64'] },
+          { target: 'deb', arch: ['x64', 'arm64'] },
         ],
       },
     } : {}),
@@ -189,12 +190,34 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
     //update blockmaps electron-builder writes next to the DMG and the NSIS
     // installer are dead weight — and they leak into the cloud release.
     // (AppImage/deb targets in 26.17 don't emit blockmaps at all.)
+    //
+    // Per-target-type artifact names. 26.17's schema (scheme.json) only
+    // allows `{ target, arch }` on a target entry (additionalProperties
+    // false), so per-arch naming belongs on the target-type sections:
+    // `dmg`/`nsis`/`portable`/`appImage`/`deb` each accept `artifactName`.
+    // A user-forced pattern is NEVER collapsed to the default arch, so
+    // `${arch}` stays in the file name on every arch.
     dmg: {
       format: 'ULFO',
       writeUpdateInfo: false,
+      artifactName: '${productName}-${version}-mac-${arch}.dmg',
     },
     nsis: {
       differentialPackage: false,
+      // NSIS is x64-only (see the win target note above): hard label.
+      artifactName: '${productName}-${version}-win-x64-setup.exe',
+    },
+    portable: {
+      // The win target list ships portable for arm64 only: hard label.
+      artifactName: '${productName}-${version}-win-arm64-portable.exe',
+    },
+    appImage: {
+      // `${arch}` → x86_64 / arm64 (AppImage's native arch labels).
+      artifactName: '${productName}-${version}-linux-${arch}.AppImage',
+    },
+    deb: {
+      // `${arch}` → amd64 / arm64 (dpkg's native arch labels).
+      artifactName: '${productName}-${version}-linux-${arch}.deb',
     },
     extraResources: [
       {
