@@ -9,6 +9,7 @@
  * Usage: node scripts/aek/start-dev.mjs [aek|next]
  */
 import { execFileSync, spawn } from 'node:child_process'
+import { readdirSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -32,6 +33,42 @@ if (!SLOTS[slot]) {
   process.exit(2)
 }
 const cfg = SLOTS[slot]
+
+/**
+ * Y round (B-round lesson, machine half): the dev shell boots
+ * `lib/main/index.js` — the LAST tsc output. If any `src/` input is newer
+ * than that artifact, the shell would run stale main/preload JS and the whole
+ * round is lost to a mid-flight rebuild. Warn only, never block: the
+ * operator decides. `--no-warn-stale` silences the check.
+ * @returns {void}
+ */
+function warnIfMainStale() {
+  if (process.argv.includes('--no-warn-stale')) return
+  /** @param {string} dir @returns {number} newest file mtimeMs under dir (0 when absent). */
+  const newest = (dir) => {
+    let max = 0
+    const walk = (d) => {
+      let entries
+      try { entries = readdirSync(d, { withFileTypes: true }) } catch { return }
+      for (const entry of entries) {
+        const p = join(d, entry.name)
+        if (entry.isDirectory()) walk(p)
+        else if (entry.isFile()) {
+          const t = statSync(p).mtimeMs
+          if (t > max) max = t
+        }
+      }
+    }
+    walk(dir)
+    return max
+  }
+  const srcNewest = newest(join(APP_ROOT, 'src'))
+  const libNewest = newest(join(APP_ROOT, 'lib'))
+  if (srcNewest > libNewest) {
+    console.warn(`[start] ⚠️ src/ 比 lib/ 新——dev 壳将跑上次的 main/preload 旧 JS（B 轮浪费过一轮）。`)
+    console.warn(`         先 build 再启壳：cd ${APP_ROOT} && pnpm exec tsc -p tsconfig.json（或 node scripts/aek/desktop.mjs build ${slot} --yes 连带打包）；--no-warn-stale 可静音本提示`)
+  }
+}
 
 console.log(`[start] AEK Desktop v0  mode=dev  slot=${slot}`)
 
@@ -83,6 +120,7 @@ attachCleanup(web)
   else console.log('[start] web app ready')
 
   console.log(`[start] launching dev ${cfg.productName} (CDP → port ${cfg.cdpPort})`)
+  warnIfMainStale()
   // The shell must know which slot it is: without AEK_SLOT / AEK_HOME it would
   // fall back to the default data root and lock the wrong slot's pid file.
   const env = electronEnv({

@@ -222,6 +222,27 @@ function verify(devMode, json) {
     ok: state.aek.web,
     detail: state.aek.web ? 'current 正在运行' : 'current 的 web 后端没在跑',
   })
+  {
+    // Y round: after ANY close-out the current agent must actually be LOADED,
+    // or 1685 will not auto-start after a reboot (the A/B/C-round silent
+    // failure, 14 sightings). Read-only; non-macOS has no launchd → skip.
+    if (process.platform === 'darwin') {
+      const loaded = agentLoaded('aek')
+      checks.push({
+        rule: 'current-agent-loaded',
+        ok: loaded,
+        detail: loaded
+          ? 'current LaunchAgent 已加载（重启后 1685 自启）'
+          : 'current LaunchAgent 未加载——重启后 1685 不会自启；手动：node <stable 树>/scripts/aek/service.mjs install aek --yes',
+      })
+    } else {
+      checks.push({
+        rule: 'current-agent-loaded',
+        ok: true,
+        detail: '非 macOS（无 launchd），跳过',
+      })
+    }
+  }
   for (const gate of verifyBuildRules().gates) {
     checks.push({ rule: `build-rule:${gate.name}`, ok: gate.ok, detail: gate.problems.join(' / ') || 'passed' })
   }
@@ -454,12 +475,30 @@ function runCycle() {
     console.warn('[dev-cycle] 注意：stable 树不可解析——current 的 agent 从 dev 树安装（current 将运行 dev 代码，直到下次发布）。')
   }
   const installScript = stableService ?? SCRIPT('service.mjs')
-  const install = spawnSync(NODE, [installScript, 'install', 'aek', '--yes'], {
+  // Y round: the install used to be fire-and-forget with only an exit-code
+  // check — but `service.mjs` swallowed bootstrap failures (exit 0, agent
+  // NOT loaded), leaving current without login autostart: the silent failure
+  // behind the A/B/C-round sightings (14 total). Now: verify the REAL launchd
+  // state after the attempt, auto-retry ONCE from the stable tree, and only
+  // then degrade to a loud, actionable warning.
+  const doInstall = () => spawnSync(NODE, [installScript, 'install', 'aek', '--yes'], {
     cwd: stableService ?? ROOT, stdio: 'inherit', timeout: 120_000,
   })
-  if (install.status !== 0) {
-    console.warn(`[dev-cycle] 警告：current 的 LaunchAgent 注册失败（current 仍在运行，可稍后手动 install）。`)
-    console.warn(`            原 plist 备份：${backup}`)
+  const first = doInstall()
+  let loaded = agentLoaded('aek')
+  if (process.platform === 'darwin' && loaded !== true) {
+    console.warn('[dev-cycle] current 的 LaunchAgent 注册后未加载（静默失败实查）——自动补装重试一次（stable 树）')
+    doInstall()
+    loaded = agentLoaded('aek')
+  }
+  if (process.platform === 'darwin') {
+    if (loaded === true) {
+      console.log(`[dev-cycle] current 的 LaunchAgent 已加载（${first.status === 0 ? '尝试 1 成功' : '补装成功'}）`)
+    } else {
+      console.warn('[dev-cycle] 警告：current 的 LaunchAgent 补装后仍未加载——web 已在跑，但下次开机/重启 1685 不会自启。')
+      console.warn(`            手动：launchctl bootstrap gui/${String(process.getuid())} "${plistFor('aek')}"  （或 node <stable 树>/scripts/aek/service.mjs install aek --yes）`)
+      console.warn(`            原 plist 备份：${backup}`)
+    }
   }
   console.log('\n[dev-cycle] 收尾完成，开始只读验收：')
   return verify(false, false)

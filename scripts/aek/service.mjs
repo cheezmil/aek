@@ -179,6 +179,12 @@ if (!confirmed) {
 }
 
 const uid = String(process.getuid())
+// Y round: a failed `launchctl bootstrap` (sandbox, transient launchd hiccup)
+// used to be swallowed — the script still exited 0, so callers (dev-cycle /
+// release) could not tell the agent was left UNLOADED (the silent failure
+// behind the A/B/C-round sightings). Now any failed bootstrap exits 1 while
+// keeping the manual-load hint; `printStatus` below still reports the truth.
+let bootstrapFailures = 0
 
 for (const slot of slots) {
   const plist = plistPathFor(slot)
@@ -200,9 +206,15 @@ for (const slot of slots) {
     execFileSync('launchctl', ['bootstrap', `gui/${uid}`, plist], { stdio: 'inherit' })
     console.log(`[service] ${slot}: agent installed (${labelFor(slot)})`)
   } catch (err) {
+    bootstrapFailures++
     console.error(`[service] ${slot}: bootstrap failed — ${String(err.message).split('\n')[0]}`)
     console.error(`[service] the plist is in place; load it with: launchctl bootstrap gui/${uid} "${plist}"`)
   }
 }
 
 for (const slot of slots) printStatus(slot)
+
+if (bootstrapFailures > 0) {
+  console.error(`[service] ${String(bootstrapFailures)} slot(s) left UNLOADED — exit 1 so callers can auto-retry`)
+  process.exit(1)
+}

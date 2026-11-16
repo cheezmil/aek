@@ -58,7 +58,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { get as httpGet } from 'node:http'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { listenPids, SLOTS, slotHome, dualTreeLayout } from './shared-logic.mjs'
+import { listenPids, SLOTS, slotHome, dualTreeLayout, isBuildFresh } from './shared-logic.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NODE = process.execPath
@@ -359,6 +359,12 @@ function plan() {
   lines.push(`  3  冒烟门禁：候选 web ${SMOKE_PORT} 探针${SKIP_SMOKE ? '（已 --skip-smoke，注意门禁被削弱）' : smokeBusy ? `（${SMOKE_PORT} 当前被占用，执行时会先要求腾空或 --skip-smoke）` : ''}`)
   lines.push('  4  换 current：service.mjs uninstall all → slots.mjs --stop-all → slots.mjs --only aek → service.mjs install aek → 等 1685')
   lines.push(`  5  记录 state（previousTag = 旧 ${state.currentTag ?? '（无）'}）；回滚：node scripts/aek/release.mjs --rollback --yes`)
+  // Y round: read-only shell-staleness probe in the plan too (B-round
+  // near-miss: release ships the web plane; the packaged shell asar is a
+  // separate desktop.mjs concern and must at least be WARNED about).
+  lines.push(isBuildFresh('aek')
+    ? '  壳  打包壳 asar 与 electron 层输入一致（isBuildFresh ✓）'
+    : '  壳  ⚠️ 打包壳 asar 可能过期（electron 层输入自上次 desktop.mjs build 后有变更，或本树从未打包）——发布后按需：node scripts/aek/desktop.mjs build aek --yes && node scripts/aek/desktop.mjs install aek --yes（纯 webui 改动可忽略）')
   return lines
 }
 
@@ -425,10 +431,32 @@ if (!runStep(STABLE_DIR, 'slots.mjs', ['--stop-all', '--yes'])) fail('stop-all �
 if (!runStep(STABLE_DIR, 'slots.mjs', ['--only', 'aek', '--yes'])) fail('起 current 失败——回滚：node scripts/aek/release.mjs --rollback --yes')
 // Non-fatal by design (same posture as stable-migrate): the web is already
 // up; losing the agent only means no login autostart until re-registered.
-const installed = spawnSync(NODE, [join(STABLE_DIR, 'scripts', 'aek', 'service.mjs'), 'install', 'aek', '--yes'], {
-  cwd: STABLE_DIR, stdio: 'inherit', timeout: 120_000,
-})
-if (installed.status !== 0) console.warn('[release] 警告：LaunchAgent 重装失败（web 已在跑；开机自启需手动 service.mjs install aek --yes）')
+// Y round: the old code trusted the exit code alone, but service.mjs used to
+// swallow bootstrap failures (agent left UNLOADED while exit 0 said OK) —
+// now verify the real launchd state, auto-retry ONCE, then warn loudly.
+const svcInstall = [join(STABLE_DIR, 'scripts', 'aek', 'service.mjs'), 'install', 'aek', '--yes']
+const runSvcInstall = () => spawnSync(NODE, svcInstall, { cwd: STABLE_DIR, stdio: 'inherit', timeout: 120_000 })
+const agentLoadedAek = () => {
+  if (process.platform !== 'darwin') return null // no launchd → nothing to check
+  try {
+    execFileSync('launchctl', ['print', `gui/${String(process.getuid())}/com.cheezmil.aek.web.aek`], {
+      stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000,
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+runSvcInstall()
+let agentLoaded = agentLoadedAek()
+if (agentLoaded === false) {
+  console.warn('[release] current 的 LaunchAgent 注册后未加载（静默失败实查）——自动补装重试一次（stable 树）')
+  runSvcInstall()
+  agentLoaded = agentLoadedAek()
+}
+if (agentLoaded === false) {
+  console.warn('[release] 警告：LaunchAgent 补装后仍未加载（web 已在跑；开机自启需手动：node <stable 树>/scripts/aek/service.mjs install aek --yes 或 launchctl bootstrap gui/<uid> <plist>）')
+}
 if (!(await waitForPort(CURRENT_WEB_PORT, 90_000))) fail(`current web（${CURRENT_WEB_PORT}）90s 内未起来——回滚：node scripts/aek/release.mjs --rollback --yes`)
 console.log(`[release] current 已起（${CURRENT_WEB_PORT}，${STABLE_DIR} @ ${TARGET}）`)
 
@@ -441,3 +469,16 @@ writeState({
   history: [...(state.history ?? []), { tag: TARGET, at: new Date().toISOString() }].slice(-20),
 })
 console.log(`[release] state 已记录：previousTag=${prev ?? '（无）'} → 回滚：node scripts/aek/release.mjs --rollback --yes`)
+
+// Y round tail (B-round near-miss): release ships the web plane only. If the
+// electron-layer inputs changed since the last shell build, the installed
+// AEK.app asar no longer matches the released code — say so. Warn only: a
+// pure-webui round may ignore it (AGENTS §6: shell re-package is NOT a
+// release step), but the operator now sees the gap instead of discovering it
+// a round later.
+if (!isBuildFresh('aek')) {
+  console.warn('[release] ⚠️ 壳 asar 与本次发布可能不一致：apps/aek-desktop/v0 的 electron 层输入（src/、builder 配置、manifest、entitlements）自上次 desktop.mjs build 后有变更（或本树从未打包过壳）。')
+  console.warn('         纯 webui 改动可忽略；需同步打包壳：node scripts/aek/desktop.mjs build aek --yes && node scripts/aek/desktop.mjs install aek --yes')
+} else {
+  console.log('[release] 壳 asar 与 electron 层输入一致（isBuildFresh ✓）')
+}
