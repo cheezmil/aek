@@ -1,26 +1,37 @@
 /**
- * X5b: the first-run setup wizard (`/setup`) + the "components missing"
- * floating notice.
+ * X5b: the first-run setup wizard (`/setup`) — the SHELL's own surface.
  *
- * Third-round ruling (2026-11-16 05:3x): the wizard carries NO choices at
- * all — opening the shell AUTO-INSTALLS the base environment (pnpm is the
- * only package manager; npm/yarn are not supported, and Node.js itself is
- * never auto-installed, a missing runtime just says so). When the base
- * environment ends up ready the wizard CONTINUES ON ITS OWN into the
- * webui — it only lingers (manual entry button) when Node.js is missing
- * or the install failed. Free selection of the optional AEK components
- * (aekpm / aekws / aeksm) lives INSIDE the webui (the component-install
- * panel), reached automatically or via the manual entry.
+ * Ruling (2026-11-16, X5b-13 round): component installation is the desktop
+ * shell's business, NOT the webui's (the console keeps its own
+ * "插件与程序管理" logic). The wizard therefore carries the tucked-away
+ * component list: section 3 collapses behind a chevron + summary chip
+ * (one click expands, the user works the rows one by one), installed rows
+ * show the green check icon (never a checkbox, never an emoji), and the
+ * action row (select-all + install) stays visible.
  *
- * Failure path = copyable log: the install output is shown with a copy
- * button so the user hands it to their agent ("let your agent solve it")
- * — the only support loop that needs no assumptions about the machine.
+ * The wizard carries no choices for what AEK NEEDS: opening the shell
+ * AUTO-INSTALLS the base environment (`@cheezmil/coraek`) plus the
+ * REQUIRED components (`@cheezmil/aek-prompt-manager` +
+ * `@cheezmil/aek-skill-manager` — the AEK system depends on them to keep
+ * running, so they are not user-selectable; a lock mark + 必装 chip
+ * instead). pnpm is the only package manager; Node.js itself is never
+ * auto-installed, a missing runtime just says so. When everything
+ * required is ready the wizard CONTINUES ON ITS OWN into the webui; it
+ * lingers (manual entry button) when Node.js is missing, an install
+ * failed, or the OPTIONAL component (aekws) is still missing — so the
+ * user gets the chance to work the list one by one.
+ *
+ * Failure path = copyable log + a REFERENCE to the AEK system skill
+ * (`aek-usage`): the UI shows the skill's absolute path (bridge field
+ * `skillPath`, resolved host-side from the slot data root; hidden when
+ * the skill is not seeded) instead of inlining the whole procedure — the
+ * self-check / install / repair steps live in the skill itself.
  */
 import { useEffect, useRef, useState } from 'react'
 import { CopyButton } from './ui-kit.tsx'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
-import { oneOf, PREF_KEYS, usePref } from './preferences.tsx'
+import { PREF_KEYS, usePref } from './preferences.tsx'
 import { useShellInstall } from './useShellInstall.ts'
 import css from './Setup.module.css'
 
@@ -28,7 +39,7 @@ const parseBool = (raw: unknown): boolean | undefined =>
   typeof raw === 'boolean' ? raw : undefined
 
 /** Short display version: `@cheezmil/coraek/1.2.0 darwin-arm64 …` → `v1.2.0`.
- *  The full probe string stays in the row's tooltip. */
+ *  The full probe string stays in the row's tooltip — nothing gets clipped. */
 function shortVersion(value: string): string {
   const first = value.trim().split(/\s+/)[0] ?? value
   const seg = first.includes('/') ? (first.split('/').pop() ?? first) : first
@@ -48,6 +59,25 @@ function StatusRow({ label, value }: { label: string; value: string | undefined 
   )
 }
 
+/** Everything AEK needs to run: the base host plus the two components the
+ *  system depends on (aekpm / aeksm). Installed as one lot, never
+ *  user-selectable. */
+const REQUIRED_FIELDS = ['aek', 'aekpm', 'aeksm'] as const
+const REQUIRED_PACKAGES: Record<(typeof REQUIRED_FIELDS)[number], string> = {
+  aek: '@cheezmil/coraek',
+  aekpm: '@cheezmil/aek-prompt-manager',
+  aeksm: '@cheezmil/aek-skill-manager',
+}
+
+/** The tucked-away component rows (wizard section 3). Required ones first
+ *  is NOT the order — the display order follows the probe row order the
+ *  user knows (prompt / websearch / skill). */
+const WIZARD_COMPONENTS = [
+  { key: 'aekpm', labelKey: 'about.shellInstall.prompt', field: 'aekpm', pkg: REQUIRED_PACKAGES.aekpm, required: true },
+  { key: 'aekws', labelKey: 'about.shellInstall.websearch', field: 'aekws', pkg: '@cheezmil/aek-websearch', required: false },
+  { key: 'aeksm', labelKey: 'about.shellInstall.skill', field: 'aeksm', pkg: REQUIRED_PACKAGES.aeksm, required: true },
+] as const
+
 export function SetupWizard({ onDone }: { onDone: () => void }) {
   const { t, tf, locale, setLocale } = useI18n()
   const { available, status, result, pending, install } = useShellInstall()
@@ -55,26 +85,54 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
   const nodeMissing = status?.node === undefined
   const baseInstalling = pending && result === undefined
   const baseFailed = result !== undefined && !result.ok && !pending
-  const baseOk = status?.aek !== undefined || (result?.ok === true && !pending)
+  const baseOk =
+    (status !== undefined && REQUIRED_FIELDS.every(field => status[field] !== undefined)) ||
+    (result?.ok === true && !pending)
+  /** The optional component is still absent — the wizard lingers so the
+   *  user can work the tucked-away list one by one. */
+  const optionalMissing = status !== undefined && status.aekws === undefined
 
-  // Third-round ruling: the base environment installs itself — one-shot
-  // auto-install when the host CLI probe came back empty (Node present).
+  // The tucked-away component list (section 3): collapsed by default, one
+  // click expands it.
+  const [compOpen, setCompOpen] = useState(false)
+  /** Optional-component selections (required components are never picked). */
+  const [compSelected, setCompSelected] = useState<Record<string, boolean>>({})
+
+  // First probe lands: default every missing OPTIONAL row to checked.
+  useEffect(() => {
+    if (status === undefined || Object.keys(compSelected).length > 0) return
+    const next: Record<string, boolean> = {}
+    for (const row of WIZARD_COMPONENTS) {
+      if (!row.required && status[row.field] === undefined) next[row.key] = true
+    }
+    setCompSelected(next)
+  }, [status, compSelected])
+
+  // A failed install opens the list so the log + skill path stay visible.
+  useEffect(() => {
+    if (result !== undefined && !result.ok) setCompOpen(true)
+  }, [result])
+
+  // Ruling: everything AEK needs to run installs itself — one-shot
+  // auto-install of whatever REQUIRED component the probes report missing
+  // (Node present).
   const autoStarted = useRef(false)
 
   useEffect(() => {
     if (autoStarted.current || status === undefined || status.node === undefined) return
-    if (status.aek !== undefined) return
+    const missing = REQUIRED_FIELDS.filter(field => status[field] === undefined)
+    if (missing.length === 0) return
     autoStarted.current = true
-    void install(['@cheezmil/coraek'])
+    void install(missing.map(field => REQUIRED_PACKAGES[field]))
   }, [status, install])
 
-  // Third-round ruling: when the base environment is ready (already
-  // installed, or our auto-install just finished) the wizard continues
-  // ON ITS OWN — no button click. It only lingers for the manual entry
-  // when Node.js is missing or the install failed.
+  // When everything required is ready AND nothing optional is missing the
+  // wizard continues ON ITS OWN — no button click. It lingers for the
+  // manual entry when Node.js is missing, an install failed, or the
+  // optional component is still absent (the user works the list).
   const [autoGone, setAutoGone] = useState(false)
   useEffect(() => {
-    const readyNow = baseOk && !nodeMissing && !baseFailed && !autoGone
+    const readyNow = baseOk && !nodeMissing && !baseFailed && !optionalMissing && !autoGone
     if (!readyNow) return
     const timer = setTimeout(() => {
       setAutoGone(true)
@@ -83,7 +141,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
     return () => {
       clearTimeout(timer)
     }
-  }, [baseOk, nodeMissing, baseFailed, autoGone, result])
+  }, [baseOk, nodeMissing, baseFailed, optionalMissing, autoGone, result])
 
   // Not inside the desktop shell: the bridge (and its probes) do not exist.
   if (!available) {
@@ -100,6 +158,18 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
     setSetupSeen(true)
     onDone()
   }
+
+  // The install set behind 安装所选 = every missing REQUIRED component
+  // (always) plus the missing optional ones the user ticked.
+  const installPkgs = status !== undefined
+    ? WIZARD_COMPONENTS
+      .filter(row => status[row.field] === undefined)
+      .filter(row => row.required || compSelected[row.key])
+      .map(row => row.pkg)
+    : []
+  const optionalMissingCount = status !== undefined
+    ? WIZARD_COMPONENTS.filter(row => !row.required && status[row.field] === undefined).length
+    : 0
 
   return (
     <div className={css.wizard}>
@@ -164,6 +234,8 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                   : (
                     <>
                       <StatusRow label={t('about.shellInstall.cli')} value={status.aek} />
+                      <StatusRow label={t('about.shellInstall.prompt')} value={status.aekpm} />
+                      <StatusRow label={t('about.shellInstall.skill')} value={status.aeksm} />
                       {baseInstalling
                         ? (
                           <p className={css.hintLine} role="status">
@@ -180,12 +252,101 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                           </p>
                         )
                         : null}
-                      {baseFailed
+                    </>
+                  )}
+              </section>
+
+              {/* The tucked-away component list: collapsed by default, one
+                  click expands it, then the user works the rows one by
+                  one. */}
+              <section className={css.section}>
+                <button
+                  type="button"
+                  className={css.listToggle}
+                  aria-expanded={compOpen}
+                  aria-label={t('setup.listToggle')}
+                  onClick={() => {
+                    setCompOpen(value => !value)
+                  }}
+                >
+                  <Icon name="chevronDown" size={14} className={compOpen ? css.chevOpen : css.chev} />
+                  <span className={css.sectionNum}>3</span>
+                  <span className={css.sectionTitle}>{t('setup.section.components')}</span>
+                  <span className={css.summaryChip}>
+                    {optionalMissingCount === 0
+                      ? tf('setup.listAllInstalled', { total: WIZARD_COMPONENTS.length })
+                      : tf('setup.listSummary', { total: WIZARD_COMPONENTS.length, n: optionalMissingCount })}
+                  </span>
+                </button>
+
+                {compOpen
+                  ? (
+                    <div className={css.sectionBody}>
+                      {WIZARD_COMPONENTS.map((row) => {
+                        const value = status[row.field]
+                        const installed = value !== undefined
+                        return (
+                          <div key={row.key} className={css.row}>
+                            {installed
+                              ? <Icon name="check" size={16} className={css.iconCheck} />
+                              : row.required
+                                ? (
+                                  <span className={css.lockSlot} title={t('setup.requiredNote')}>
+                                    <Icon name="lock" size={16} />
+                                  </span>
+                                )
+                                : (
+                                  <input
+                                    type="checkbox"
+                                    className={css.check}
+                                    checked={compSelected[row.key]}
+                                    onChange={(event) => {
+                                      setCompSelected(prev => ({ ...prev, [row.key]: event.target.checked }))
+                                    }}
+                                    aria-label={t(row.labelKey)}
+                                  />
+                                )}
+                            <span className={css.rowLabel}>{t(row.labelKey)}</span>
+                            {installed
+                              ? <span className={css.rowValue} title={value}>{shortVersion(value)}</span>
+                              : row.required
+                                ? <span className={css.chipRequired}>{t('setup.required')}</span>
+                                : <span className={css.chipMissing}>{t('about.shellInstall.missing')}</span>}
+                          </div>
+                        )
+                      })}
+                      <div className={css.actions}>
+                        <button
+                          type="button"
+                          className={css.actionBtn}
+                          disabled={pending || optionalMissingCount === 0}
+                          onClick={() => {
+                            const next: Record<string, boolean> = {}
+                            for (const row of WIZARD_COMPONENTS) {
+                              if (!row.required && status[row.field] === undefined) next[row.key] = true
+                            }
+                            setCompSelected(next)
+                          }}
+                        >
+                          {t('about.shellInstall.selectAll')}
+                        </button>
+                        <button
+                          type="button"
+                          className={css.actionBtn}
+                          disabled={pending || installPkgs.length === 0}
+                          onClick={() => {
+                            void install(installPkgs)
+                          }}
+                        >
+                          {pending ? t('about.shellInstall.pending') : t('about.shellInstall.installSelected')}
+                        </button>
+                      </div>
+                      {result !== undefined
                         ? (
                           <>
-                            <p className={`${css.noticeLine} ${css.noticeError}`} role="alert">
-                              <Icon name="alert" size={14} />
-                              <span>{tf('about.shellInstall.failed', { tool: result.tool })}</span>
+                            <p className={`${css.noticeLine} ${result.ok ? css.noticeSuccess : css.noticeError}`} role="status">
+                              <Icon name={result.ok ? 'check' : 'alert'} size={14} />
+                              <span>{tf(result.ok ? 'about.shellInstall.done' : 'about.shellInstall.failed', { tool: result.tool })}</span>
                             </p>
                             {result.output !== ''
                               ? (
@@ -197,17 +358,32 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                                 </div>
                               )
                               : null}
-                            <p className={css.hintLine}>
-                              {t('setup.agentHelp')}
-                            </p>
+                            {!result.ok
+                              ? (
+                                <>
+                                  <p className={css.hintLine}>{t('setup.agentHelp')}</p>
+                                  {status.skillPath !== undefined
+                                    ? (
+                                      <div className={css.skillPathRow}>
+                                        <Icon name="book" size={14} />
+                                        <span className={css.skillPathLabel}>{t('setup.skillPathLabel')}</span>
+                                        <span className={css.skillPath}>{status.skillPath}</span>
+                                        <CopyButton value={status.skillPath} size={14} label={t('runtime.copyPath')} />
+                                      </div>
+                                    )
+                                    : null}
+                                </>
+                              )
+                              : null}
                           </>
                         )
                         : null}
-                    </>
-                  )}
+                    </div>
+                  )
+                  : null}
               </section>
 
-              {baseOk && !autoGone
+              {baseOk && !optionalMissing && !autoGone
                 ? (
                   <p className={css.readyLineFinal} role="status">
                     <Icon name="check" size={14} />
@@ -216,7 +392,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                 )
                 : null}
 
-              {baseFailed || nodeMissing
+              {baseFailed || nodeMissing || optionalMissing
                 ? (
                   <footer className={css.footer}>
                     <button
@@ -233,53 +409,6 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
             </>
           )}
       </div>
-    </div>
-  )
-}
-
-/**
- * Corner notice: shown in the console while at least one OPTIONAL AEK
- * component (aekpm / aekws / aeksm) is missing. The base environment
- * installs itself on the wizard page, so it is not part of this count.
- * Clicking the action lands on the console's component-install panel.
- */
-export function SetupNotice() {
-  const { t, tf } = useI18n()
-  const { available, status } = useShellInstall()
-  const [dismissed, setDismissed] = useState(false)
-  const [, setPanel] = usePref(PREF_KEYS.panel, 'runtime', oneOf(['runtime', 'websearch', 'plugins', 'skills', 'prompts', 'websearchSettings', 'settings', 'about', 'components'] as const))
-
-  const missing = status !== undefined
-    ? [status.aekpm, status.aekws, status.aeksm].filter(v => v === undefined).length
-    : 0
-
-  if (!available || dismissed || missing === 0) return null
-
-  const openComponents = (): void => {
-    setPanel('components')
-    window.history.pushState(null, '', '/')
-    window.dispatchEvent(new PopStateEvent('popstate'))
-  }
-
-  return (
-    <div className={css.floatNotice} role="status">
-      <span className={css.floatNoticeIcon}>
-        <Icon name="alert" size={16} />
-      </span>
-      <span className={css.floatNoticeText}>{tf('setup.notice', { n: missing })}</span>
-      <button type="button" className={css.actionBtn} onClick={openComponents}>
-        {t('setup.noticeAction')}
-      </button>
-      <button
-        type="button"
-        className={css.floatNoticeClose}
-        aria-label={t('setup.noticeDismiss')}
-        onClick={() => {
-          setDismissed(true)
-        }}
-      >
-        <Icon name="close" size={14} />
-      </button>
     </div>
   )
 }

@@ -31,21 +31,20 @@ import {
 import { PluginSubNav } from './PluginSubNav.tsx'
 import { RuntimeModePanel } from './RuntimeModePanel.tsx'
 import { AboutPanel, PluginsPanel } from './InfoPanels.tsx'
-import { SetupWizard, SetupNotice } from './Setup.tsx'
+import { SetupWizard } from './Setup.tsx'
 import { sidebarCssVars } from './settings-schema.ts'
 import { css, cx } from './styles.ts'
 import { useInventory } from './useInventory.ts'
 import { useCurrentSlot } from './useRuntimeMode.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
 import { WebSearchPanel } from './WebSearchPanel.tsx'
-import { ComponentsPanel } from './ComponentsPanel.tsx'
 import { useWebsearchStatus } from './useWebsearchStatus.ts'
 import { prefetchRanking } from './useWebsearchRanking.ts'
 import type { FreeFilter } from './useWebsearchRanking.ts'
 
 /** All valid panel ids, used to validate a persisted value. */
 const PANEL_IDS: readonly PanelId[] = [
-  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'websearchSettings', 'settings', 'about', 'components',
+  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'websearchSettings', 'settings', 'about',
 ]
 
 /**
@@ -275,7 +274,6 @@ function Console() {
     if (id === 'plugins' || id === 'settings' || id === 'websearchSettings' || id === 'about') {
       return <InfoPanels panel={id} inventory={inventory} refreshSignal={signalFor(id)} />
     }
-    if (id === 'components') return <ComponentsPanel />
     if (id === 'skills') return <SkillsPanel refreshSignal={signalFor('skills')} />
     return <PromptsPanel refreshSignal={signalFor('prompts')} />
   }
@@ -350,7 +348,6 @@ export function AekHome(_props: AekHomeProps) {
             />
           )
           : <Console />}
-        {!isSetup ? <SetupNotice /> : null}
       </I18nProvider>
     </PrefProvider>
   )

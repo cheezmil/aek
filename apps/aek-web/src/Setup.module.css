@@ -135,6 +135,28 @@
   padding: 2px 10px;
 }
 
+/* required-component row: the leading slot is a lock mark (NOT a
+   checkbox — required items are never user-selectable), the trailing
+   slot is the 必装 chip. */
+.lockSlot {
+  flex: 0 0 18px;
+  display: grid;
+  place-items: center;
+  color: var(--aek-text-muted);
+  margin-left: 1px;
+}
+
+.chipRequired {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--aek-accent-ink);
+  background: var(--aek-accent-soft);
+  border: 1px solid var(--aek-accent-border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
 .backendRow {
   display: flex;
   align-items: center;
@@ -411,64 +433,47 @@
 
 /* ------------------------------------------------ agent section ---- */
 
-/* the AEK system skill path: mono, WRAPS fully — no clipping, ever. */
-
-/* ------------------------------------------------ top-right notice (console) ---- */
-.floatNotice {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 90;
+/* the AEK system skill path: mono, WRAPS fully — no clipping, ever. The
+   user hands this one path (copy button) to their agent; the procedure
+   itself lives in the skill, not in the UI. */
+.skillPathRow {
   display: flex;
   align-items: center;
-  gap: 10px;
-  max-width: 340px;
-  background: var(--aek-surface);
-  border: 1px solid var(--aek-border-strong);
-  border-radius: 12px;
-  box-shadow:
-    0 4px 16px rgb(24 24 27 / 0.1),
-    0 1px 3px rgb(24 24 27 / 0.08);
-  padding: 10px 12px;
-  animation: noticeIn 180ms ease-out;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--aek-surface-subtle);
+  border: 1px solid var(--aek-border);
+  border-radius: 8px;
 }
 
-@keyframes noticeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.skillPathRow > svg {
+  flex: 0 0 auto;
+  color: var(--aek-text-muted);
 }
 
-.floatNoticeIcon {
-  color: var(--aek-accent);
-  display: grid;
-  place-items: center;
+.skillPathLabel {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--aek-text-secondary);
 }
 
-.floatNoticeText {
-  font-size: 12.5px;
-  color: var(--aek-text);
+.skillPath {
   flex: 1 1 auto;
   min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--aek-text-secondary);
+  /* wraps — the FULL absolute path stays visible, never clipped. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
-.floatNoticeClose {
-  color: var(--aek-text-muted);
-  display: grid;
-  place-items: center;
-  padding: 2px;
-  border-radius: 6px;
-}
-
-.floatNoticeClose:hover {
-  color: var(--aek-text);
-  background: var(--aek-surface-hover);
+/* the expanded body of the tucked-away component list. */
+.sectionBody {
+  margin-top: 2px;
 }
 
 /* ------------------------------------------------ no-shell placeholder ---- */
