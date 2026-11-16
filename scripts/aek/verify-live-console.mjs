@@ -51,11 +51,16 @@ function signature(path) {
   }
 }
 
-/** @param {string} url @returns {Promise<{status: number, body: string}>} */
+/**
+ * @param {string} url @returns {Promise<{status: number, body: string}>}
+ */
 async function get(url) {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(3000), headers: { accept: 'application/json' } })
-    return { status: response.status, body: (await response.text()).slice(0, 4096) }
+    // Cap at 1 MiB (every console API payload is tens of KB at most): a
+    // smaller slice truncated the growing facts JSON mid-object and
+    // masqueraded as "non-JSON" (the AA round saw this at 5093 bytes).
+    return { status: response.status, body: (await response.text()).slice(0, 1_048_576) }
   } catch {
     return { status: 0, body: '' }
   }
