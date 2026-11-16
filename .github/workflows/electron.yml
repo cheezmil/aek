@@ -108,9 +108,11 @@ jobs:
       - run: pnpm --filter aek-desktop build
 
       # Four Windows packages: NSIS installer (x64 + arm64) + portable exe
-      # (x64 + arm64). The per-arch installer split happens because the
-      # nsis artifactName pattern contains `${arch}` (builder default would
-      # otherwise merge both payloads into one universal installer).
+      # (x64 + arm64). Per-arch (NOT the default combined "universal"
+      # installer) via buildUniversalInstaller: false in the builder config
+      # — a multi-arch NSIS build otherwise emits the universal on top of
+      # the per-arch ones (that produced 12 release assets instead of 10
+      # on run 43820146602).
       - name: Package NSIS x64+arm64 and portable x64+arm64 (unsigned)
         run: pnpm --filter aek-desktop exec electron-builder build --win --config electron-builder.config.mjs
         env:

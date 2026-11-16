@@ -113,6 +113,13 @@ async function main() {
         console.warn(`  ⚠ ${entry.target}: no artifactName on the ${sectionKey} section — default template (arch may be dropped on the default arch)`)
         continue
       }
+      // Multi-arch NSIS-family targets ALSO emit a combined "universal"
+      // installer (both payloads, one file) unless buildUniversalInstaller
+      // is false — an unwanted extra release asset (run 43820146602: 12
+      // assets instead of 10, from win-setup.exe + win-portable.exe).
+      if ((entry.target === 'nsis' || entry.target === 'portable') && entry.archs.length > 1 && (cfg[sectionKey] ?? {}).buildUniversalInstaller !== false) {
+        console.warn(`  ⚠ ${entry.target}: multi-arch without buildUniversalInstaller: false — a combined universal installer will be emitted on top of the per-arch ones`)
+      }
       for (const arch of entry.archs) {
         const archName = getArtifactArchName(Arch[arch], ext)
         const builderName = expandTemplate(template, cfg.productName, packageJson.version, archName)

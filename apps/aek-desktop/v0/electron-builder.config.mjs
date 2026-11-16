@@ -148,15 +148,15 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
         // installer AND a portable build, each in x64 AND arm64 —
         // installers as .exe like VSCode's (user vetoed .msi).
         //
-        // NSIS per-arch: one target entry with both archs makes 26.17
-        // build a UNIVERSAL installer by default (both payloads in one
-        // .exe). Naming the artifact with `${arch}` flips that off and
-        // yields one installer PER arch instead (NsisTarget.finishBuild:
-        // "if pattern includes ${arch} && archs.size > 1 → per-arch
-        // builds"). The arm64 installer's NSIS stub is x86-64 (NSIS
-        // cannot compile an arm64 stub — it runs on Windows-on-ARM via
-        // emulation, exactly how VSCode ships VCCodeUserSetup-arm64.exe)
-        // and installs the NATIVE arm64 app payload.
+        // NSIS per-arch: without `buildUniversalInstaller: false` on the
+        // section, a multi-arch NSIS target ALSO emits a combined
+        // "universal" installer (both payloads, one .exe) next to the
+        // per-arch ones — see the nsis/portable section comments below.
+        //
+        // The arm64 installer's NSIS stub is x86-64 (NSIS cannot compile
+        // an arm64 stub — it runs on Windows-on-ARM via emulation, exactly
+        // how VSCode ships VCCodeUserSetup-arm64.exe) and installs the
+        // NATIVE arm64 app payload.
         target: [
           { target: 'nsis', arch: ['x64', 'arm64'] },
           { target: 'portable', arch: ['x64', 'arm64'] },
@@ -210,13 +210,21 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
     },
     nsis: {
       differentialPackage: false,
-      // `${arch}` in the pattern turns off the universal (both-arch)
-      // installer and yields one setup.exe per arch (see the win target
-      // note). exe is not arch-remapped → x64 / arm64.
+      // One installer PER arch. Without this, a multi-arch NSIS build ALSO
+      // emits a combined "universal" installer (both payloads in one file)
+      // on top of the per-arch ones — that is how a release ended up with
+      // win-setup.exe + win-x64-setup.exe + win-arm64-setup.exe (12 assets
+      // instead of 10). The ${arch} pattern alone does NOT suppress the
+      // universal build; it only adds the per-arch builds (NsisTarget
+      // .finishBuild). buildUniversalInstaller: false flips it to per-arch
+      // only (NsisTarget .build: each arch builds its own installer).
+      buildUniversalInstaller: false,
       artifactName: '${productName}-${version}-win-${arch}-setup.exe',
     },
     portable: {
-      // Self-extracting .exe, both archs (see the win target note).
+      // Self-extracting .exe, both archs (see the win target note). Same
+      // universal-installer trap as NSIS — off, per-arch only.
+      buildUniversalInstaller: false,
       artifactName: '${productName}-${version}-win-${arch}-portable.exe',
     },
     appImage: {
