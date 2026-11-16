@@ -55,7 +55,7 @@ const PKGS = {
     binName: 'aekpm',
     repoBin: 'bin/aekpm.js',
     builds: false, // ships source (no build step)
-    publishedCli: false, // source-only package, not on npm → test-npm skips
+    publishedCli: true, // on npm → test-npm verifies the published artifact by bare command
   },
   skillManager: {
     npm: '@cheezmil/aek-skill-manager',
@@ -63,7 +63,7 @@ const PKGS = {
     binName: 'aeksm',
     repoBin: 'bin/aeksm.mjs',
     builds: true, // tsc → lib/ + copy non-TS assets (agent-catalog.json, skills/, docs/)
-    publishedCli: false, // not yet published to npm → test-npm skips; dev smoke covers it
+    publishedCli: true, // on npm → test-npm verifies the published artifact by bare command
   },
 }
 
