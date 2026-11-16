@@ -126,9 +126,13 @@ function messageOf(cause: unknown): string {
 
 /**
  * Fetch console facts once on mount and expose a manual refresh.
+ * @param pollMs - optional polling interval in milliseconds (EE round):
+ *   when > 0 the hook re-reads the host facts on a timer so the runtime
+ *   memory readings keep moving on their own. The host read is a non-blocking
+ *   async top sample (DD+ round), so a poll costs no event-loop stall.
  * @returns the live state.
  */
-export function useConsoleFacts(): ConsoleFactsState {
+export function useConsoleFacts(pollMs = 0): ConsoleFactsState {
   const [facts, setFacts] = useState<ConsoleFacts | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(true)
@@ -155,6 +159,20 @@ export function useConsoleFacts(): ConsoleFactsState {
       })
     return () => { cancelled = true }
   }, [revision])
+
+  // EE round: optional background polling — bump the revision on a timer so
+  // the same fetch path re-reads the host. The timer resets when the
+  // interval changes (the user's 内存检测间隔 input), and an in-flight poll
+  // can never overlap the mount-time one because both ride on `revision`.
+  useEffect(() => {
+    if (pollMs <= 0) return
+    const timer = window.setInterval(() => {
+      setRevision(value => value + 1)
+    }, pollMs)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [pollMs])
 
   const refresh = useCallback(() =>{  setRevision(value => value + 1) }, [])
   return { facts, error, loading, refresh }

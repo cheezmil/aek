@@ -2581,6 +2581,10 @@ button.panelSearchCount:hover {
    looked nothing like the rest of the console. `--aek-range-fill` is written
    by the component so the filled part of the track follows the value. */
 .rangeRow { display: flex; align-items: center; gap: var(--aek-space-3); }
+/* EE round: the 入口 section's memory-check interval row (label + seconds
+   input + 立即检测 button). Same row rhythm as .rangeRow, tighter spacing
+   because it sits under the entries title. */
+.memCheckRow { display: flex; align-items: center; gap: var(--aek-space-2); }
 .rangeInput {
   flex: 1 1 auto;
   min-width: 0;

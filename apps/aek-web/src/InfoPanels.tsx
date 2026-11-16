@@ -32,13 +32,13 @@
  *
  * @module @cheezmil/aek-home/src/client/InfoPanels
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import type { IconName } from './Icons.tsx'
 import { BUCKET_ICONS, ENTRY_ICONS, ENTRIES_SECTION_ICON, APP_BUNDLE_ICON } from './icon-registry.ts'
 import { useI18n } from './i18n.tsx'
-import { useAccessDraft, useDraftSettings, useSettings } from './preferences.tsx'
+import { PREF_KEYS, useAccessDraft, useDraftSettings, usePref, useSettings } from './preferences.tsx'
 import type { PrefValue } from './preferences.tsx'
 import { allSettingFields, coerce, SETTINGS_SCHEMA, WEBSEARCH_SETTINGS_SCHEMA } from './settings-schema.ts'
 import type { SettingField } from './settings-schema.ts'
@@ -1257,10 +1257,33 @@ function OpsPopover({ open, onClose, ops, progressOf, onRemove, onClear, onResta
   )
 }
 
+/** @param raw - the raw host value. @returns a clamped interval in seconds, or undefined. */
+function parseMemCheckIntervalSec(raw: unknown): number | undefined {
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 5 && value <= 3600 ? Math.floor(value) : undefined
+}
+
 /** @returns the plugin management page. */
 export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   const { t, tf } = useI18n()
-  const facts = useConsoleFacts()
+  // EE round: the 入口 section carries the memory-check interval — the
+  // user-adjustable seconds input (persisted on the host, default 60) drives
+  // a background poll of the host facts so the runtime memory readings keep
+  // moving on their own; 立即检测 bypasses the interval and measures now.
+  const [memCheckSec, setMemCheckSec] = usePref<number>(PREF_KEYS.memCheckIntervalSec, 60, parseMemCheckIntervalSec)
+  const facts = useConsoleFacts(memCheckSec * 1000)
+  const [memCheckDraft, setMemCheckDraft] = useState(String(memCheckSec))
+  useEffect(() => {
+    setMemCheckDraft(String(memCheckSec))
+  }, [memCheckSec])
+  const commitMemCheck = useCallback((raw: string) => {
+    const value = Number(raw)
+    if (Number.isFinite(value) && value >= 5 && value <= 3600) {
+      setMemCheckSec(Math.floor(value))
+    } else {
+      setMemCheckDraft(String(memCheckSec))
+    }
+  }, [memCheckSec, setMemCheckSec])
   // T round: the numbered runtime view lives IN this card (the standalone
   // 运行时与内存 section is gone); the per-plugin runtime lines come from
   // the same live snapshot.
@@ -1496,6 +1519,28 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                 <Icon name={ENTRIES_SECTION_ICON} size={14} />
                 <span>{t('about.entries')}</span>
               </h3>
+              {/* EE round: the user-adjustable memory-check interval — seconds
+                  input (5..3600, default 60, host-persisted) plus the
+                  立即检测 button that measures right now. */}
+              <div className={css.memCheckRow}>
+                <span className={css.settingToggleLabel}>{t('about.entry.memCheck.label')}</span>
+                <input
+                  type="number"
+                  className={css.numberBox}
+                  min={5}
+                  max={3600}
+                  step={5}
+                  value={memCheckDraft}
+                  aria-label={t('about.entry.memCheck.label')}
+                  title={t('about.entry.memCheck.hint')}
+                  onChange={(event) =>{  setMemCheckDraft(event.target.value) }}
+                  onBlur={() =>{  commitMemCheck(memCheckDraft) }}
+                  onKeyDown={(event) =>{  if (event.key === 'Enter') commitMemCheck(memCheckDraft) }}
+                />
+                <button type="button" className={css.secondaryButton} onClick={() =>{  facts.refresh() }}>
+                  {t('about.entry.memCheck.checkNow')}
+                </button>
+              </div>
               <ul className={css.entryList}>
                 {(facts.facts?.entries ?? []).map((entry) => {
                   // AA round: the entry rows carry the same "various info" as

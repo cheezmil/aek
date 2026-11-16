@@ -74,6 +74,13 @@ export const PREF_KEYS = {
    * fresh launch opens `/setup` or the console.
    */
   shellSetupSeen: 'aek-home.shellSetupSeen',
+  /**
+   * EE round: how often the console re-reads host facts (the runtime-memory
+   * readings), in seconds — the 插件与程序管理 page's 入口 section carries the
+   * user-adjustable input (default 60). Clamped to 5..3600; the 立即检测
+   * button bypasses the interval and measures immediately.
+   */
+  memCheckIntervalSec: 'aek-home.memCheckIntervalSec',
 } as const
 
 /** One storable setting value (JSON primitive, enforced by the host). */

@@ -157,40 +157,18 @@ function Console() {
     prefetchRanking({ free: prefFreeTier, phone: prefPhone, card: prefCard }, { ttlHours: prefTtlHours, enabled: !prefNoRanking })
   }, [prefFreeTier, prefPhone, prefCard, prefTtlHours, prefNoRanking])
 
-  // B round: while the NEW panel's first frame is landing, the previous
-  // panel's content stays mounted (hidden) for one short beat, so a switch
-  // never shows an empty main — the screen never goes blank. The hold is
-  // capped at ~300 ms: the old tree is unmounted right after, keeping the
-  // console's memory profile at ONE live panel (the low-memory rule).
-  // D round: the release runs on rAF FRAMES, not a `setTimeout` — Chromium's
-  // intensive timer throttling clamps timers to ≥1 s (up to 1 min) in
-  // long-lived / occluded sessions, which made the hold linger a full second
-  // (and every timer-based interaction feel a beat late). rAF keeps ticking
-  // in a visible document; when frames pause (window occluded) the hold
-  // simply persists, which costs nothing visible.
-  const prevPanelRef = useRef<PanelId | null>(null)
-  const [heldPanel, setHeldPanel] = useState<PanelId | null>(null)
+  // EE round: keep-alive panel switching — every panel the user has VISITED
+  // stays mounted (hidden) instead of B round's 18-frame hold, which
+  // unmounted the old tree ~300 ms after a switch. Re-entering a visited
+  // panel re-shows the LIVE tree in place: no element is ever rebuilt "from
+  // nothing", no data is refetched on entry, no scroll / input / selection
+  // position is lost — a switch reads as a tab flip, not a page reload.
+  // Cost: hidden panels' effects keep running (their pollers keep ticking);
+  // the console's panels are few and each polls a cheap local host API, so
+  // the trade is worth it (the user explicitly called the remount "wrong").
+  const [visitedPanels, setVisitedPanels] = useState<PanelId[]>(() => [panel])
   useEffect(() => {
-    const previous = prevPanelRef.current
-    prevPanelRef.current = panel
-    if (previous === null || previous === panel) return
-    setHeldPanel(previous)
-    const HOLD_FRAMES = 18 // ≈300 ms at 60 fps
-    let frame = 0
-    let pendingRaf: number | undefined
-    const tick = (): void => {
-      pendingRaf = undefined
-      frame++
-      if (frame >= HOLD_FRAMES) {
-        setHeldPanel(current => (current === previous ? null : current))
-        return
-      }
-      pendingRaf = requestAnimationFrame(tick)
-    }
-    pendingRaf = requestAnimationFrame(tick)
-    return () => {
-      if (pendingRaf !== undefined) cancelAnimationFrame(pendingRaf)
-    }
+    setVisitedPanels(previous => (previous.includes(panel) ? previous : [...previous, panel]))
   }, [panel])
   // Host facts lifted to the root: the Web Search page needs them for the
   // path display-style setting, and this keeps one shared fetch for every
@@ -291,10 +269,14 @@ function Console() {
         {railVisible ? <PluginSubNav active={panel} onSelect={setPanel} labelsHidden={labelsCollapsed} /> : null}
         <div className={css.mainBody}>
           <main className={css.content}>
-            {heldPanel !== null && heldPanel !== panel
-              ? <div style={{ display: 'none' }}>{renderPanelContent(heldPanel)}</div>
-              : null}
-            {renderPanelContent(panel)}
+            {/* EE round: keep-alive — every visited panel renders; only the
+                active one is visible. Hidden trees keep their state, so a
+                switch back never rebuilds the elements from nothing. */}
+            {visitedPanels.map(id => (
+              <div key={id} style={{ display: id === panel ? 'block' : 'none' }}>
+                {renderPanelContent(id)}
+              </div>
+            ))}
           </main>
         </div>
       </div>
