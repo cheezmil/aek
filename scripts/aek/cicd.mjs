@@ -189,7 +189,10 @@ const stages = {
     }
     let ok = true
     for (const p of installable) {
-      ok = bare(p.binName, ['--version'], binDir, (o) => o.includes(p.binName === 'aekws' ? 'aek-websearch' : p.npm)) && ok
+      // --version outputs differ per CLI (aekpm/aekws print `<npm>/<version>`,
+      // aeksm prints the bare version) — assert the LOCAL version string, which
+      // is what the spec `pkg@<localVersion>` just installed.
+      ok = bare(p.binName, ['--version'], binDir, (o) => o.includes(localVersion(p))) && ok
       ok = bare(p.binName, ['--help'], binDir, () => true) && ok
     }
     const skipped = Object.values(PKGS).filter((p) => !p.publishedCli)
