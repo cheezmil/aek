@@ -255,7 +255,7 @@ function childDirectories(dir: string): string[] {
  * @param slot - the slot whose shell is being read (the host's own slot).
  * @returns the shell memory fact for `kind: 'shell'` entries.
  */
-function shellMemoryOf(slot: 'aek' | 'next'): { state: 'running' | 'stopped' | 'unavailable'; footprintMb?: number } {
+async function shellMemoryOf(slot: 'aek' | 'next'): Promise<{ state: 'running' | 'stopped' | 'unavailable'; footprintMb?: number }> {
   const cfg = slotConfig(slot)
   const bundles = [
     join(homedir(), 'Applications', `${cfg.productName}.app`),
@@ -295,37 +295,85 @@ function shellMemoryOf(slot: 'aek' | 'next'): { state: 'running' | 'stopped' | '
   // shared between the main process and its helpers are apportioned, not
   // double-counted). The CC round summed raw RSS and read ~840 MB for an
   // app whose footprint is ~554 MB — the user caught the inflated basis.
+  // `top` runs ASYNC (spawn + await) with a bounded guard: the ~1 s sample
+  // must not stall the host event loop — a synchronous execFileSync held the
+  // whole HTTP server for the sample duration, the shell's 1 s / 1.5 s
+  // health probe timed out behind that stall, and the reconnect watcher
+  // wedged into a down/up flap loop (the DD fix that this round re-ships).
   // A failed `top` run degrades to the real (larger-basis) RSS sum, never
   // to an invented number.
   if (process.platform === 'darwin') {
-    let topOut: string
-    try {
-      topOut = execFileSync('top', ['-l', '1', '-stats', 'pid,mem,command'], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      })
-    } catch {
-      return { state: 'running', footprintMb: rssSumMb }
-    }
-    let totalMb = 0
-    let any = false
-    for (const line of topOut.split('\n')) {
-      const columns = line.trim().split(/\s+/)
-      if (columns.length < 2) continue
-      const pid = columns[0]
-      const raw = columns[1]
-      if (pid === undefined || raw === undefined) continue
-      if (!matchedRssKb.has(pid)) continue
-      const mb = parseTopMemory(raw)
-      if (mb === undefined) continue
-      totalMb += mb
-      any = true
-    }
-    if (!any) return { state: 'running', footprintMb: rssSumMb }
-    return { state: 'running', footprintMb: Math.round(totalMb * 10) / 10 }
+    const footprintMb = await topFootprintMb(new Set(matchedRssKb.keys()))
+    return { state: 'running', footprintMb: footprintMb ?? rssSumMb }
   }
   // Linux: no `top` mem column — the RSS sum is the reading.
   return { state: 'running', footprintMb: rssSumMb }
+}
+
+/**
+ * Sum the physical footprint (`top` mem column, macOS) of the given pids.
+ *
+ * Runs `top -l 1` as a child process and AWAITs it: the sample takes about a
+ * second, and doing it synchronously (execFileSync) blocked the host event
+ * loop for the whole duration — every in-flight HTTP request (including the
+ * Electron shell's backend probe) queued behind it, the 1.5 s probe timeout
+ * tripped, and the reconnect watcher flapped. The 8 s guard bounds a wedged
+ * sample; a failure resolves `undefined` and the caller falls back to the
+ * RSS sum.
+ * @param matchedPids - the shell process pids to sum.
+ * @returns the footprint sum in MB, or undefined on failure.
+ */
+function topFootprintMb(matchedPids: ReadonlySet<string>): Promise<number | undefined> {
+  let child: ReturnType<typeof spawn>
+  try {
+    child = spawn('top', ['-l', '1', '-stats', 'pid,mem,command'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+  } catch {
+    return Promise.resolve(undefined)
+  }
+  return new Promise((resolve) => {
+    let out = ''
+    let settled = false
+    const finish = (value: number | undefined): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(value)
+    }
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL') } catch { /* already gone */ }
+      finish(undefined)
+    }, 8000)
+    // `stdio: ['ignore', 'pipe', 'ignore']` guarantees a readable stdout; the
+    // null branch is defensive typing, not a runtime path.
+    const stdout = child.stdout
+    if (stdout === null) {
+      finish(undefined)
+      return
+    }
+    stdout.on('data', (chunk: Buffer) => {
+      out += chunk.toString('utf8')
+    })
+    child.on('error', () => { finish(undefined) })
+    child.on('close', () => {
+      let totalMb = 0
+      let any = false
+      for (const line of out.split('\n')) {
+        const columns = line.trim().split(/\s+/)
+        if (columns.length < 2) continue
+        const pid = columns[0]
+        const raw = columns[1]
+        if (pid === undefined || raw === undefined) continue
+        if (!matchedPids.has(pid)) continue
+        const mb = parseTopMemory(raw)
+        if (mb === undefined) continue
+        totalMb += mb
+        any = true
+      }
+      finish(any ? Math.round(totalMb * 10) / 10 : undefined)
+    })
+  })
 }
 
 /** Parse one `top` memory column (`9249K` / `229M` / `1G` / bare MB). */
@@ -357,43 +405,44 @@ function parseTopMemory(raw: string): number | undefined {
  * the 入口 section reads as informative as the 插件 section below it.
  * @returns the entry list.
  */
-function scanEntries(): AppEntry[] {
+async function scanEntries(): Promise<AppEntry[]> {
   const base = join(ROOT, 'apps')
-  return childDirectories(base)
-    .filter(id => id === 'aek-web' || id === 'cli' || id === 'aek-desktop')
-    .map((id) => {
-      const appDir = join(base, id)
-      const manifestDir = existsSync(join(appDir, 'package.json'))
-        ? appDir
-        : join(appDir, 'v0')
-      const manifest = readManifest(join(manifestDir, 'package.json'))
-      const cls = pluginClassOf(manifest)
-      const languages = scanLanguages(manifestDir)
-      // CC round: the runtime memory fact, resolved per entry identity.
-      // DD round (basis/attribution fix): the desktop shell is the ONLY
-      // measurable entry — its whole process tree (main + helpers) as a
-      // physical footprint. The webui has no own runtime of its own: it is
-      // served by the shared host runtime0 (like an in-host plugin), so it
-      // ships `in-host`, not a fake "no process" claim. The CLI is
-      // transient. Nothing here is ever invented: no process read → the
-      // reason ships instead of a zero.
-      const memory = id === 'aek-desktop'
-        ? { kind: 'shell' as const, ...shellMemoryOf(resolveSlot()) }
-        : id === 'aek-web'
-          ? { kind: 'in-host' as const }
-          : { kind: 'transient' as const }
-      return {
-        id,
-        packageName: typeof manifest.name === 'string' ? manifest.name : id,
-        description: typeof manifest.description === 'string' ? manifest.description : '',
-        entry: true as const,
-        version: typeof manifest.version === 'string' ? manifest.version : '',
-        distribution: cls.ok ? (cls.value === 'A2' ? 'A2' : 'A1') : '',
-        languages: languages.languages,
-        primaryLanguage: languages.primary,
-        memory,
-      }
+  const entries: AppEntry[] = []
+  for (const id of childDirectories(base)) {
+    if (id !== 'aek-web' && id !== 'cli' && id !== 'aek-desktop') continue
+    const appDir = join(base, id)
+    const manifestDir = existsSync(join(appDir, 'package.json'))
+      ? appDir
+      : join(appDir, 'v0')
+    const manifest = readManifest(join(manifestDir, 'package.json'))
+    const cls = pluginClassOf(manifest)
+    const languages = scanLanguages(manifestDir)
+    // CC round: the runtime memory fact, resolved per entry identity.
+    // DD round (basis/attribution fix): the desktop shell is the ONLY
+    // measurable entry — its whole process tree (main + helpers) as a
+    // physical footprint. The webui has no own runtime of its own: it is
+    // served by the shared host runtime0 (like an in-host plugin), so it
+    // ships `in-host`, not a fake "no process" claim. The CLI is
+    // transient. Nothing here is ever invented: no process read → the
+    // reason ships instead of a zero.
+    const memory = id === 'aek-desktop'
+      ? { kind: 'shell' as const, ...(await shellMemoryOf(resolveSlot())) }
+      : id === 'aek-web'
+        ? { kind: 'in-host' as const }
+        : { kind: 'transient' as const }
+    entries.push({
+      id,
+      packageName: typeof manifest.name === 'string' ? manifest.name : id,
+      description: typeof manifest.description === 'string' ? manifest.description : '',
+      entry: true as const,
+      version: typeof manifest.version === 'string' ? manifest.version : '',
+      distribution: cls.ok ? (cls.value === 'A2' ? 'A2' : 'A1') : '',
+      languages: languages.languages,
+      primaryLanguage: languages.primary,
+      memory,
     })
+  }
+  return entries
 }
 
 /**
@@ -687,15 +736,16 @@ function permissionSnapshot(): Record<string, unknown> {
 }
 
 /**
- * @returns the full read-only fact snapshot.
+ * @returns the full read-only fact snapshot (async: the shell memory fact
+ * samples `top` in a child process and must not block the event loop).
  */
-export function readConsoleFacts(): ConsoleFacts {
+export async function readConsoleFacts(): Promise<ConsoleFacts> {
   const isMac = process.platform === 'darwin'
   return {
     platform: process.platform,
     arch: process.arch,
     home: homedir(),
-    entries: scanEntries(),
+    entries: await scanEntries(),
     plugins: scanPlugins(),
     pluginsDir: packageTreeRoot(),
     endpoints: endpoints(),
@@ -807,7 +857,7 @@ export function registerConsole(ctx: Context): void {
   ctx.effect(() => server.register({
     kind: 'exact',
     path: CONSOLE_FACTS_API_PATH,
-    handler: (_req, res) => { sendJson(res, 200, readConsoleFacts()) },
+    handler: async (_req, res) => { sendJson(res, 200, await readConsoleFacts()) },
   }), 'aek-websearch: console facts')
 
   ctx.effect(() => server.register({
