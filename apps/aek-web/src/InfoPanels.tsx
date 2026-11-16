@@ -1537,17 +1537,22 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                                   ? <span className={css.stackText} title={languages.join(' · ')}>{languages.join(' · ')}</span>
                                   : null}
                                 {entry.memory?.kind === 'shell'
-                                  ? (entry.memory.state === 'running' && entry.memory.rssMb !== undefined
+                                  ? (entry.memory.state === 'running' && entry.memory.footprintMb !== undefined
                                     ? (
                                       <>
-                                        <span className={css.countChip}>{tf('about.entry.mem.shell', { mb: entry.memory.rssMb })}</span>
+                                        <span className={css.countChip}>{tf('about.entry.mem.shell', { mb: entry.memory.footprintMb })}</span>
                                         <span className={css.stackText} title={t('about.entry.mem.shellNote')}>{t('about.entry.mem.shellNote')}</span>
                                       </>
                                     )
                                     : <span className={css.countChip}>{entry.memory.state === 'stopped' ? t('about.entry.mem.shellStopped') : t('about.entry.mem.unavailable')}</span>)
                                   : null}
-                                {entry.memory?.kind === 'in-shell'
-                                  ? <span className={css.countChip}>{t('about.entry.mem.inShell')}</span>
+                                {entry.memory?.kind === 'in-host'
+                                  ? (
+                                    <>
+                                      <span className={css.countChip}>{t('about.entry.mem.inHost')}</span>
+                                      <span className={css.stackText} title={t('about.entry.mem.inHostNote')}>{t('about.entry.mem.inHostNote')}</span>
+                                    </>
+                                  )
                                   : null}
                                 {entry.memory?.kind === 'transient'
                                   ? <span className={css.countChip}>{t('about.entry.mem.transient')}</span>

@@ -27,14 +27,17 @@ export interface AppEntry {
   /** Main implementation language (AA round). */
   primaryLanguage?: string
   /**
-   * Runtime memory fact (CC round; absent on older hosts, where the entry
-   * row renders no memory chip at all). Never an invented number: the
-   * `shell` reading is a real process sum (`rssMb` set only when `running`);
-   * the other states ship the honest reason instead of a fake zero.
+   * Runtime memory fact (CC round, basis/attribution fixed DD round;
+   * absent on older hosts, where the entry row renders no memory chip at
+   * all). Never an invented number: the `shell` reading is the measured
+   * physical footprint of the whole app process tree (`footprintMb` set
+   * only when `running`); the other kinds ship the honest reason instead
+   * of a fake zero — `in-host` = the webui runs under the shared host
+   * runtime0, `transient` = the CLI runs and exits.
    */
   memory?:
-    | { kind: 'shell'; state: 'running' | 'stopped' | 'unavailable'; rssMb?: number }
-    | { kind: 'in-shell' }
+    | { kind: 'shell'; state: 'running' | 'stopped' | 'unavailable'; footprintMb?: number }
+    | { kind: 'in-host' }
     | { kind: 'transient' }
 }
 

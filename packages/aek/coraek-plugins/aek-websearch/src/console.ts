@@ -68,18 +68,19 @@ export interface AppEntry {
   /** Main implementation language. */
   primaryLanguage: string
   /**
-   * Runtime memory fact for this entry (CC round, 2026-11-17). The console
-   * NEVER invents numbers: a measured reading ships only when a real process
-   * was read (`shell` + `running` + `rssMb`); when nothing can be measured
-   * the honest REASON ships instead (`in-shell` = the webui has no own
-   * process, it renders inside the shell; `transient` = the CLI runs and
-   * exits; `stopped` / `unavailable` = the shell is not running or the
-   * platform cannot be read). Absent on older hosts — the client renders
-   * nothing in that case.
+   * Runtime memory fact for this entry (CC round 2026-11-17, basis +
+   * attribution fixed in the DD round). The console NEVER invents numbers:
+   * a measured reading ships only when a real process was read (`shell` =
+   * the desktop app process tree — `footprintMb` is the summed PHYSICAL
+   * FOOTPRINT on macOS, Activity Monitor's basis, not the inflated raw-RSS
+   * sum; `in-host` = the webui is served by the shared host runtime0, no
+   * own process; `transient` = the CLI runs and exits; `stopped` /
+   * `unavailable` = the shell is not running or the platform cannot be
+   * read). Absent on older hosts — the client renders nothing in that case.
    */
   memory?:
-    | { kind: 'shell'; state: 'running' | 'stopped' | 'unavailable'; rssMb?: number }
-    | { kind: 'in-shell' }
+    | { kind: 'shell'; state: 'running' | 'stopped' | 'unavailable'; footprintMb?: number }
+    | { kind: 'in-host' }
     | { kind: 'transient' }
 }
 
@@ -235,51 +236,108 @@ function childDirectories(dir: string): string[] {
 
 /**
  * CC round (2026-11-17): the desktop shell's whole footprint as ONE measured
- * number — or the honest reason why there is no number.
+ * number — or the honest reason why there is no number. DD round (same
+ * night) fixed two things the user caught: the BASIS (summing raw `ps` RSS
+ * double-counts the pages shared between the main process and its Chromium
+ * helpers — 840 MB vs the app's true ~554 MB; now the macOS physical
+ * FOOTPRINT, `top`'s mem column = Activity Monitor's basis) and the
+ * attribution of the webui (runtime0 host-shared, not "no own process").
  *
  * The shell is NOT a host process: it is the user's `~/Applications/<app>`
  * install (or the slot's dev-variant bundle under the slot data root) whose
  * main process spawns Chromium helper processes. Every process whose
- * command line starts with one of those two bundle paths is summed (RSS,
- * KB → MB) — that sum is the honest "the app takes this much" reading.
+ * command line starts with one of those two bundle paths is summed.
  * The bundle paths are derived from the slot table + `homedir()`, never
- * from a machine-specific literal. `ps` is POSIX-only: on Windows the
- * state is `unavailable` (never a guessed zero), a shell that is not
- * running is `stopped`, and a failed / missing `ps` degrades to
- * `unavailable` instead of failing the whole facts request.
+ * from a machine-specific literal. Both tools are POSIX-only: on Windows
+ * the state is `unavailable` (never a guessed zero), a shell that is not
+ * running is `stopped`, and a failed / missing tool degrades through the
+ * fallback chain instead of failing the whole facts request.
  * @param slot - the slot whose shell is being read (the host's own slot).
  * @returns the shell memory fact for `kind: 'shell'` entries.
  */
-function shellMemoryOf(slot: 'aek' | 'next'): { state: 'running' | 'stopped' | 'unavailable'; rssMb?: number } {
+function shellMemoryOf(slot: 'aek' | 'next'): { state: 'running' | 'stopped' | 'unavailable'; footprintMb?: number } {
   const cfg = slotConfig(slot)
   const bundles = [
     join(homedir(), 'Applications', `${cfg.productName}.app`),
     join(slotHome(slot), 'dev', `${cfg.devAppName}.app`),
   ]
   if (process.platform === 'win32') return { state: 'unavailable' }
-  let out: string
+  // Step 1: the pids of every process whose command line starts with one of
+  // the bundle paths (the main process + its helper processes, i.e. the
+  // whole app process tree). The RSS column is kept as the FALLBACK
+  // reading when the platform's finer tool is unavailable.
+  let psOut: string
   try {
-    out = execFileSync('ps', ['-axo', 'pid=,rss=,command='], {
+    psOut = execFileSync('ps', ['-axo', 'pid=,rss=,command='], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     })
   } catch {
     return { state: 'unavailable' }
   }
-  let totalKb = 0
-  let found = false
-  for (const line of out.split('\n')) {
+  const matchedRssKb = new Map<string, number>()
+  let totalRssKb = 0
+  for (const line of psOut.split('\n')) {
     const columns = line.trim().split(/\s+/)
     if (columns.length < 3) continue
+    const pid = columns[0]
     const rssKb = Number(columns[1])
-    if (!Number.isFinite(rssKb) || rssKb <= 0) continue
+    if (pid === undefined || !Number.isFinite(rssKb) || rssKb <= 0) continue
     const command = columns.slice(2).join(' ')
     if (!bundles.some(bundle => command.startsWith(bundle))) continue
-    totalKb += rssKb
-    found = true
+    matchedRssKb.set(pid, rssKb)
+    totalRssKb += rssKb
   }
-  if (!found) return { state: 'stopped' }
-  return { state: 'running', rssMb: Math.round((totalKb / 1024) * 10) / 10 }
+  if (matchedRssKb.size === 0) return { state: 'stopped' }
+  const rssSumMb = Math.round((totalRssKb / 1024) * 10) / 10
+  // Step 2: the HONEST number. On macOS sum the per-process PHYSICAL
+  // FOOTPRINT (`top`'s mem column — Activity Monitor's basis, where pages
+  // shared between the main process and its helpers are apportioned, not
+  // double-counted). The CC round summed raw RSS and read ~840 MB for an
+  // app whose footprint is ~554 MB — the user caught the inflated basis.
+  // A failed `top` run degrades to the real (larger-basis) RSS sum, never
+  // to an invented number.
+  if (process.platform === 'darwin') {
+    let topOut: string
+    try {
+      topOut = execFileSync('top', ['-l', '1', '-stats', 'pid,mem,command'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+    } catch {
+      return { state: 'running', footprintMb: rssSumMb }
+    }
+    let totalMb = 0
+    let any = false
+    for (const line of topOut.split('\n')) {
+      const columns = line.trim().split(/\s+/)
+      if (columns.length < 2) continue
+      const pid = columns[0]
+      const raw = columns[1]
+      if (pid === undefined || raw === undefined) continue
+      if (!matchedRssKb.has(pid)) continue
+      const mb = parseTopMemory(raw)
+      if (mb === undefined) continue
+      totalMb += mb
+      any = true
+    }
+    if (!any) return { state: 'running', footprintMb: rssSumMb }
+    return { state: 'running', footprintMb: Math.round(totalMb * 10) / 10 }
+  }
+  // Linux: no `top` mem column — the RSS sum is the reading.
+  return { state: 'running', footprintMb: rssSumMb }
+}
+
+/** Parse one `top` memory column (`9249K` / `229M` / `1G` / bare MB). */
+function parseTopMemory(raw: string): number | undefined {
+  const match = /^(\d+(?:\.\d+)?)([KMG]?)$/u.exec(raw)
+  if (match === null) return undefined
+  const value = Number(match[1])
+  if (!Number.isFinite(value)) return undefined
+  const unit = match[2]
+  if (unit === 'K') return value / 1024
+  if (unit === 'G') return value * 1024
+  return value
 }
 
 /**
@@ -312,13 +370,17 @@ function scanEntries(): AppEntry[] {
       const cls = pluginClassOf(manifest)
       const languages = scanLanguages(manifestDir)
       // CC round: the runtime memory fact, resolved per entry identity.
-      // Only the shell can be MEASURED (its own process group); the webui
-      // has no own process (it renders inside the shell) and the CLI is
-      // transient — both ship the honest reason, never an invented number.
+      // DD round (basis/attribution fix): the desktop shell is the ONLY
+      // measurable entry — its whole process tree (main + helpers) as a
+      // physical footprint. The webui has no own runtime of its own: it is
+      // served by the shared host runtime0 (like an in-host plugin), so it
+      // ships `in-host`, not a fake "no process" claim. The CLI is
+      // transient. Nothing here is ever invented: no process read → the
+      // reason ships instead of a zero.
       const memory = id === 'aek-desktop'
         ? { kind: 'shell' as const, ...shellMemoryOf(resolveSlot()) }
         : id === 'aek-web'
-          ? { kind: 'in-shell' as const }
+          ? { kind: 'in-host' as const }
           : { kind: 'transient' as const }
       return {
         id,
