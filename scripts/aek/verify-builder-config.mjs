@@ -20,11 +20,13 @@
  *      blocks are gated on `process.platform` inside the config, so each
  *      shape is produced by re-importing the config module with a spoofed
  *      platform.
- *   2. Prints the expected eight release file names by expanding each
+ *   2. Prints the expected release file names by expanding each
  *      target-type section's `artifactName` template the way the builder
  *      does (`getArtifactArchName`: dmg/exe → x64/arm64, AppImage →
- *      x86_64/arm64, deb → amd64/arm64), so a naming change is visible
- *      locally instead of only on the release page.
+ *      x86_64/arm64, deb → amd64/arm64) — and for linux, also the name
+ *      after the workflow's "Unify arch labels" step (x86_64/amd64 → x64,
+ *      user ruling 2026-11-16), so the release-page names are visible
+ *      locally instead of only after the cloud build.
  *
  * Read-only: it writes nothing and changes no state — no flags needed.
  *
@@ -113,7 +115,16 @@ async function main() {
       }
       for (const arch of entry.archs) {
         const archName = getArtifactArchName(Arch[arch], ext)
-        console.log(`  ${expandTemplate(template, cfg.productName, packageJson.version, archName)}`)
+        const builderName = expandTemplate(template, cfg.productName, packageJson.version, archName)
+        if (host.platform === 'linux') {
+          // Simulate the workflow's "Unify arch labels" step (release names)
+          const releaseName = builderName.replace(/-x86_64\./, '-x64.').replace(/-amd64\./, '-x64.')
+          if (releaseName !== builderName) {
+            console.log(`  ${builderName}  → release: ${releaseName}`)
+            continue
+          }
+        }
+        console.log(`  ${builderName}`)
       }
     }
   }

@@ -144,20 +144,22 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
     ...(hostWin ? {
       win: {
         icon: 'resources/icon.png',
-        // NSIS installers are x86-64 only — NSIS cannot target Windows on
-        // ARM (electron-builder issue #5461), so arm64 ships as a portable
-        // executable (an x64 NSIS runs on arm64 Windows via emulation, but
-        // we ship a real arm64 binary for it).
+        // Windows ships FOUR packages (2026-11-16 user ruling): an
+        // installer AND a portable build, each in x64 AND arm64 —
+        // installers as .exe like VSCode's (user vetoed .msi).
         //
-        // Per-arch artifact names live on the `nsis` / `portable` sections
-        // below (target entries only accept `{ target, arch }` in the 26.17
-        // schema). Both Windows files are .exe and neither default name
-        // carries the arch or the install mode, so label the NSIS installer
-        // `-win-x64-setup.exe` and the portable arm64 binary
-        // `-win-arm64-portable.exe`.
+        // NSIS per-arch: one target entry with both archs makes 26.17
+        // build a UNIVERSAL installer by default (both payloads in one
+        // .exe). Naming the artifact with `${arch}` flips that off and
+        // yields one installer PER arch instead (NsisTarget.finishBuild:
+        // "if pattern includes ${arch} && archs.size > 1 → per-arch
+        // builds"). The arm64 installer's NSIS stub is x86-64 (NSIS
+        // cannot compile an arm64 stub — it runs on Windows-on-ARM via
+        // emulation, exactly how VSCode ships VCCodeUserSetup-arm64.exe)
+        // and installs the NATIVE arm64 app payload.
         target: [
-          { target: 'nsis', arch: ['x64'] },
-          { target: 'portable', arch: ['arm64'] },
+          { target: 'nsis', arch: ['x64', 'arm64'] },
+          { target: 'portable', arch: ['x64', 'arm64'] },
         ],
       },
     } : {}),
@@ -169,16 +171,15 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
         // (`homepage` is NOT a linux option in electron-builder 26.17 — it
         // would fail the config schema.)
         maintainer: 'AEK maintainers <aek@example.com>',
-        // Per-arch artifact names live on the `appImage` / `deb` sections
-        // below (target entries only accept `{ target, arch }` in the 26.17
-        // schema; the `dmg`/`nsis`/`portable`/`appImage`/`deb` sections each
-        // carry their own `artifactName`). The default templates are
-        // per-target (deb uses dpkg's `name_version_arch` style, AppImage
-        // drops the default-arch suffix), so one release mixed three naming
-        // schemes. The `${arch}` macro resolves per package format
-        // (electron-builder `getArtifactArchName`): AppImage → x86_64/arm64,
-        // deb → amd64/arm64 — the native arch labels of each format, so
-        // every file names its OS and its arch.
+        // Linux ships FOUR packages (2026-11-16 user ruling): installers
+        // (deb) + portables (AppImage), each in x64 AND arm64.
+        //
+        // The builder's `${arch}` macro resolves to each format's NATIVE
+        // label for x64 (AppImage → x86_64, deb → amd64); the workflow's
+        // "Unify arch labels" step renames them to the one release-wide
+        // label, x64 (user ruling: no x86_64 / no amd64). The .deb file
+        // name is cosmetic — dpkg/apt read the control section, not the
+        // file name.
         target: [
           { target: 'AppImage', arch: ['x64', 'arm64'] },
           { target: 'deb', arch: ['x64', 'arm64'] },
@@ -197,6 +198,11 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
     // `dmg`/`nsis`/`portable`/`appImage`/`deb` each accept `artifactName`.
     // A user-forced pattern is NEVER collapsed to the default arch, so
     // `${arch}` stays in the file name on every arch.
+    //
+    // `${arch}` is the format-native label: dmg/exe → x64/arm64,
+    // AppImage → x86_64/arm64, deb → amd64/arm64. The workflow's
+    // "Unify arch labels" step normalizes the two native labels to x64
+    // (user ruling 2026-11-16: one label everywhere).
     dmg: {
       format: 'ULFO',
       writeUpdateInfo: false,
@@ -204,19 +210,23 @@ export function createElectronBuilderConfig(slot = resolveSlot()) {
     },
     nsis: {
       differentialPackage: false,
-      // NSIS is x64-only (see the win target note above): hard label.
-      artifactName: '${productName}-${version}-win-x64-setup.exe',
+      // `${arch}` in the pattern turns off the universal (both-arch)
+      // installer and yields one setup.exe per arch (see the win target
+      // note). exe is not arch-remapped → x64 / arm64.
+      artifactName: '${productName}-${version}-win-${arch}-setup.exe',
     },
     portable: {
-      // The win target list ships portable for arm64 only: hard label.
-      artifactName: '${productName}-${version}-win-arm64-portable.exe',
+      // Self-extracting .exe, both archs (see the win target note).
+      artifactName: '${productName}-${version}-win-${arch}-portable.exe',
     },
     appImage: {
-      // `${arch}` → x86_64 / arm64 (AppImage's native arch labels).
+      // `${arch}` → x86_64 / arm64 (native labels; workflow renames
+      // x86_64 → x64 for the release).
       artifactName: '${productName}-${version}-linux-${arch}.AppImage',
     },
     deb: {
-      // `${arch}` → amd64 / arm64 (dpkg's native arch labels).
+      // `${arch}` → amd64 / arm64 (dpkg labels; workflow renames
+      // amd64 → x64 for the release — the file name is cosmetic to dpkg).
       artifactName: '${productName}-${version}-linux-${arch}.deb',
     },
     extraResources: [

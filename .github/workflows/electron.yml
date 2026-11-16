@@ -2,26 +2,33 @@
 #
 #   - The release carries ELECTRON artifacts only (webui/host ship via npm,
 #     not here).
-#   - All three platforms, each in x64 AND arm64:
+#   - 10 artifacts total (2026-11-16 user ruling: installer AND portable
+#     per platform per arch; mac has no portable, so two):
 #       mac:    DMG x64 + DMG arm64
-#       windows: NSIS installer x64 + portable exe arm64
-#                (NSIS cannot target Windows-on-ARM — electron-builder #5461)
-#       linux:  AppImage + deb, each x64 and arm64
-#   - Artifact file names are self-describing, one scheme for all eight
-#     files (set in electron-builder.config.mjs; `${arch}` resolves per
-#     package format — native arch labels, verified in
-#     scripts/aek/verify-builder-config.mjs):
+#       windows: NSIS installer x64 + NSIS installer arm64
+#                (the arm64 installer's NSIS stub is x86-64, emulated on
+#                Windows-on-ARM — it installs the NATIVE arm64 app, same as
+#                VSCode's VCCodeUserSetup-arm64.exe)
+#                + portable exe x64 + portable exe arm64
+#       linux:  deb x64 + deb arm64 (installer)
+#                + AppImage x64 + AppImage arm64 (portable)
+#   - One file-name scheme for all ten, arch label ALWAYS in the name,
+#     unified to x64/arm64 everywhere (user ruling: no x86_64, no amd64,
+#     setup as .exe not .msi — like VSCode):
 #       AEK-<ver>-mac-x64.dmg / -mac-arm64.dmg
-#       AEK-<ver>-win-x64-setup.exe / -win-arm64-portable.exe
-#       AEK-<ver>-linux-x86_64.AppImage / -linux-arm64.AppImage
-#       AEK-<ver>-linux-amd64.deb / -linux-arm64.deb
-#     (previously the default builder templates mixed three naming
-#     schemes and dropped the arch on the default arch — unreadable)
+#       AEK-<ver>-win-x64-setup.exe / -win-arm64-setup.exe
+#       AEK-<ver>-win-x64-portable.exe / -win-arm64-portable.exe
+#       AEK-<ver>-linux-x64.deb / -linux-arm64.deb
+#       AEK-<ver>-linux-x64.AppImage / -linux-arm64.AppImage
+#     (the builder emits AppImage x64 as x86_64 and deb x64 as amd64 —
+#     each format's native label; the linux job's "Unify arch labels" step
+#     renames them, and the naming plan is checked by
+#     scripts/aek/verify-builder-config.mjs)
 #   - Artifacts go to the GITHUB release (never Gitea). Release tags
 #     follow the `aek-desktop-<sha7>` convention — the release carries
 #     aek-desktop artifacts only, so the tag says what it contains
 #     (2026-11-16 user ruling; the old `aek-cloud` tag was the build
-#     PIPELINE name, not the product name, and is superseded).
+#     PIPELINE name, not the product name, and is deleted).
 #   - NEVER triggered by push. Manual `workflow_dispatch` only; the prompter
 #     (`node scripts/aek/electron-cloud.mjs`) tells a developer WHEN a cloud
 #     build is actually needed (the electron layer changed since the last one).
@@ -100,9 +107,11 @@ jobs:
 
       - run: pnpm --filter aek-desktop build
 
-      # NSIS x64 + portable arm64 (see the win target note in the builder
-      # config: NSIS is x86-64 only, so arm64 ships as a portable exe)
-      - name: Package NSIS x64 + portable arm64 (unsigned)
+      # Four Windows packages: NSIS installer (x64 + arm64) + portable exe
+      # (x64 + arm64). The per-arch installer split happens because the
+      # nsis artifactName pattern contains `${arch}` (builder default would
+      # otherwise merge both payloads into one universal installer).
+      - name: Package NSIS x64+arm64 and portable x64+arm64 (unsigned)
         run: pnpm --filter aek-desktop exec electron-builder build --win --config electron-builder.config.mjs
         env:
           AEK_SLOT: aek
@@ -137,6 +146,28 @@ jobs:
         run: pnpm --filter aek-desktop exec electron-builder build --linux --config electron-builder.config.mjs
         env:
           AEK_SLOT: aek
+
+      # The builder labels x64 with each format's native name (AppImage →
+      # x86_64, deb → amd64; the unpacked dirs already use x64/arm64). The
+      # release uses one label everywhere, x64 (user ruling 2026-11-16).
+      # Renamed here so the uploaded artifact — and thus the release file —
+      # already carries the final name.
+      - name: Unify arch labels (x86_64/amd64 → x64)
+        run: |
+          cd apps/aek-desktop/v0/dist/aek
+          renamed=0
+          for f in *.AppImage *.deb; do
+            case "$f" in
+              *-x86_64.AppImage) mv -v "$f" "${f/x86_64/x64}"; renamed=1 ;;
+              *-amd64.deb)       mv -v "$f" "${f/amd64/x64}";  renamed=1 ;;
+            esac
+          done
+          if [ "$renamed" -eq 0 ]; then
+            echo "expected x86_64/amd64 files to rename — builder output names changed?"
+            ls -1
+            exit 1
+          fi
+          ls -1
 
       - uses: actions/upload-artifact@v4
         with:
