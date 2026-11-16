@@ -80,7 +80,6 @@ jobs:
           # (2026 docs, shared with Packages) — 90-day default retention would
           # block the next upload mid-month. Files survive in the release.
           retention-days: 7
-          delete-older-artifacts: true
 
   # ---------------------------------------------------------- windows ----
   build-win:
@@ -113,7 +112,6 @@ jobs:
           name: electron-win
           path: apps/aek-desktop/v0/dist/aek/
           retention-days: 7
-          delete-older-artifacts: true
 
   # ----------------------------------------------------------- linux ----
   build-linux:
@@ -145,7 +143,6 @@ jobs:
           name: electron-linux
           path: apps/aek-desktop/v0/dist/aek/
           retention-days: 7
-          delete-older-artifacts: true
 
   # --------------------------------------------------------- release ----
   publish:
