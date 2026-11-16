@@ -33,7 +33,9 @@
  *        lib/types backfill (package-level host tsconfigs, discovered)
  *        pnpm run build:artifacts
  *   4  smoke gate: candidate web from the stable tree on port 1689,
- *      probe / until 200 (90s), kill immediately. Fail = current untouched.
+ *      probe / until 200, then every resource the page references (plugin
+ *      combos + app assets) until all 200 (90s cap); kill immediately.
+ *      Fail = current untouched.
  *   5  swap: service.mjs uninstall all --yes → slots.mjs --stop-all --yes
  *      → slots.mjs --only aek --yes → service.mjs install aek --yes
  *      (the agent is installed FROM the stable tree, so its plist points at
@@ -294,25 +296,49 @@ async function smokeWeb(root) {
     child.once('exit', () => r())
     child.once('error', () => r()) // spawn failure emits 'error', not 'exit'
   })
-  const ok = await new Promise((resolveProbe) => {
-    const start = Date.now()
-    const timer = setInterval(() => {
-      if (Date.now() - start > 90_000) {
-        clearInterval(timer)
-        resolveProbe(false)
-        return
-      }
-      const req = httpGet(`http://127.0.0.1:${String(SMOKE_PORT)}/`, (res) => {
-        res.resume()
-        if (res.statusCode === 200) {
-          clearInterval(timer)
-          resolveProbe(true)
-        }
-      })
-      req.on('error', () => { /* keep polling */ })
-      req.end()
-    }, 2_000)
+  // A root 200 is NOT enough: the SPA only boots when every resource the
+  // page references is served — the dsh-client-modules bootstrap combo first
+  // (if it 404s the module system is never created and the user stares at a
+  // blank, "no change at all" page), then the app bundle + CSS. One 404 in
+  // that set fails the gate and the current slot stays untouched.
+  const fetchBody = (url) => new Promise((resolveFetch) => {
+    let body = ''
+    httpGet(url, (res) => {
+      res.on('data', (chunk) => { body += chunk })
+      res.on('end', () => resolveFetch({ status: res.statusCode, body }))
+    }).on('error', () => resolveFetch({ status: 0, body: '' }))
   })
+  const base = `http://127.0.0.1:${String(SMOKE_PORT)}`
+  const ok = await (async () => {
+    const start = Date.now()
+    let lastBad = null
+    while (Date.now() - start < 90_000) {
+      const root = await fetchBody(`${base}/`)
+      if (root.status === 200 && root.body !== '') {
+        // Local references only: `plugins/??…` combos (+ `&amp;rev=…` as the
+        // raw body escapes it) and the `assets/` bundle/CSS.
+        const paths = [...new Set(
+          [...root.body.matchAll(/(?:src|href)="([^"]+)"/g)]
+            .map((match) => match[1])
+            .filter((ref) => ref.startsWith('plugins/') || ref.startsWith('./assets/') || ref.startsWith('assets/'))
+            .map((ref) => ref.replace(/^\.\/|&amp;/g, (token) => (token === './' ? '' : '&'))),
+        )].sort()
+        const bad = []
+        for (const path of paths) {
+          const resource = await fetchBody(`${base}/${path}`)
+          if (resource.status !== 200) bad.push(`${path} -> HTTP ${resource.status}`)
+        }
+        if (bad.length === 0) return true
+        if (JSON.stringify(bad) !== JSON.stringify(lastBad)) {
+          console.warn(`[release] smoke: page is up but ${String(bad.length)} referenced resource(s) are not 200 yet — the candidate will not swap until every one serves:\n  ${bad.join('\n  ')}`)
+          lastBad = bad
+        }
+      }
+      await new Promise((sleep) => { setTimeout(sleep, 2_000) })
+    }
+    if (lastBad !== null) console.warn(`[release] smoke: still failing after 90s:\n  ${lastBad.join('\n  ')}`)
+    return false
+  })()
   // Kill the whole process group (detached child is a group leader), with a
   // SIGTERM → SIGKILL escalation, so the nested web host that owns
   // SMOKE_PORT cannot leak and block the next release/rollback.
