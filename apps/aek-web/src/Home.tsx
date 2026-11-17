@@ -283,7 +283,9 @@ function Console() {
         <div className="flex flex-1 flex-col min-w-0">
           {/* FF-NOTE: .content had max-width: 1320px → max-w-330 (v4 dynamic spacing: 330 × 4px);
               @media (max-width: 860px) padding: 20px 16px → max-[860px]:px-4 max-[860px]:py-5. */}
-          <main className="mx-auto flex-1 w-full max-w-330 p-8 max-[860px]:px-4 max-[860px]:py-5">
+          {/* III round +: 左右外边距 32 (p-8) → 24 (px-6, Vercel/Linear content-24 口径),
+              上下保持 32 — 用户点破「左右padding呢」：宽窗口下两侧 32px 留白太大。 */}
+          <main className="mx-auto flex-1 w-full max-w-330 py-8 px-6 max-[860px]:px-4 max-[860px]:py-5">
             {/* EE round: keep-alive — every visited panel renders; only the
                 active one is visible. Hidden trees keep their state, so a
                 switch back never rebuilds the elements from nothing. */}
