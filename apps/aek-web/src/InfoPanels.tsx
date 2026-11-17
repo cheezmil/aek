@@ -32,7 +32,7 @@
  *
  * @module @cheezmil/aek-web/src/InfoPanels
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import type { IconName } from './Icons.tsx'
@@ -161,7 +161,8 @@ const CARD_BODY = 'p-8'
 import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner, ToggleSwitch } from './ui-kit.tsx'
 import type { InventoryState } from './useInventory.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
-import type { PluginBucket, PluginEntry } from './useConsoleFacts.ts'
+import { copyToClipboard } from './clipboard.ts'
+import type { AppEntry, PluginBucket, PluginEntry } from './useConsoleFacts.ts'
 import { useCapabilities } from './useCapabilities.ts'
 import { useRuntimes } from './useRuntimes.ts'
 import { useOps } from './useOps.ts'
@@ -1410,6 +1411,104 @@ function parseMemCheckIntervalSec(raw: unknown): number | undefined {
 }
 
 /** @returns the plugin management page. */
+/** V round: the shared ENTRY-ROWS list — the 入口 section of the runtime page
+    and the 组件结构 section of the About page render the SAME rows from ONE
+    component (the III-round rule: one list style, the pages never drift). */
+function EntryRows({ entries, t, tf }: {
+  entries: AppEntry[]
+  t: (key: string) => string
+  tf: (key: string, values: Record<string, string | number>) => string
+}): ReactNode {
+  return (
+    <ul className={ENTRY_LIST}>
+      {entries.map((entry) => {
+        // AA round: the entry rows carry the same "various info" as
+        // the plugin rows below them — a title row (name + copy +
+        // the 入口 tag) plus a chip row (version / A1-A2 class /
+        // languages) plus the description row — reusing the plugin
+        // row classes, so no new CSS. An older host without the
+        // chip fields simply renders no chip row.
+        // CC round: the chip row gains the RUNTIME MEMORY fact —
+        // the shell is measured (main + helpers, RSS sum), the
+        // webui has no own process, the CLI is transient: every
+        // row answers "where is this app's memory" with either a
+        // real reading or the honest reason, never an invented 0.
+        const languages = entry.languages ?? []
+        const hasChips = (entry.version !== undefined && entry.version !== '')
+      || (entry.distribution !== undefined && entry.distribution !== '')
+      || languages.length > 0
+      || entry.memory !== undefined
+        return (
+          <li key={entry.id}>
+            {/* HH round: the hand-rolled bordered li is the shadcn
+            Card (sm spacing = the same 12px rhythm, standard
+            ring/chrome); the inner flex structure and the
+            measured right-side track (ml-auto chip, empty
+            actions grid) are kept so entry and plugin cards
+            stay column-aligned. */}
+            <Card size="lg" className="shadow-none">
+              <CardContent className="flex flex-col gap-2">
+                <div className="mb-0 flex items-start gap-3">
+                  <span className={FEATURE_ICON}><Icon name={ENTRY_ICONS[entry.id] ?? 'layout'} size={18} /></span>
+                  <div className="flex flex-auto min-w-0 flex-col gap-1.5 pr-2">
+                    <div className={FEATURE_TITLE}>
+                      <span className={FEATURE_TITLE_NAME}>{entry.id}</span>
+                      <CopyButton value={entry.packageName} size={12} label={t('common.copy')} className={FEATURE_COPY} />
+                      <Badge variant="secondary" className="tabular-nums">{t('about.entry.tag')}</Badge>
+                    </div>
+                    {hasChips
+                      ? (
+                        <div className={FEATURE_TEXT}>
+                          {entry.version !== undefined && entry.version !== ''
+                            ? <Badge variant="secondary" className="tabular-nums">{entry.version}</Badge>
+                            : null}
+                          <ClassChip distribution={entry.distribution ?? ''} t={t} />
+                          {languages.length > 0
+                            ? <span className={STACK_TEXT} title={languages.join(' · ')}>{languages.join(' · ')}</span>
+                            : null}
+                          {entry.memory?.kind === 'shell'
+                            ? (entry.memory.state === 'running' && entry.memory.footprintMb !== undefined
+                              ? (
+                                <>
+                                  {/* 2026-11-17: the memory fact is right-anchored like the plugin
+                                  runtime lines (their chip carries ml-auto), so the entry
+                                  list and plugin lists share one right-side track. */}
+                                  <Badge variant="outline" className="ml-auto tabular-nums">{tf('about.entry.mem.shell', { mb: entry.memory.footprintMb })}</Badge>
+                                </>
+                              )
+                              : <Badge variant="outline" className="ml-auto">{entry.memory.state === 'stopped' ? t('about.entry.mem.shellStopped') : t('about.entry.mem.unavailable')}</Badge>)
+                            : null}
+                          {entry.memory?.kind === 'in-host'
+                            ? (
+                              <>
+                                <Badge variant="outline" className="ml-auto">{t('about.entry.mem.inHost')}</Badge>
+                              </>
+                            )
+                            : null}
+                          {entry.memory?.kind === 'transient'
+                            ? <Badge variant="outline" className="ml-auto">{t('about.entry.mem.transient')}</Badge>
+                            : null}
+                        </div>
+                      )
+                      : null}
+                    {entry.description
+                      ? <div className={FEATURE_DESC}>{entry.description}</div>
+                      : null}
+                  </div>
+                  {/* The empty actions column keeps this row's text column
+                  the same width as the plugin rows under it. */}
+
+                  <div className={PLUGIN_ACTIONS_GRID} aria-hidden="true" />
+                </div>
+              </CardContent>
+            </Card>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   const { t, tf } = useI18n()
   // EE round: the 入口 section carries the memory-check interval — the
@@ -1706,92 +1805,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
               {memCheckError !== undefined
                 ? <p className="m-0 mt-1.5 text-2xs text-danger" role="alert">{memCheckError}</p>
                 : null}
-              <ul className={ENTRY_LIST}>
-                {(facts.facts?.entries ?? []).map((entry) => {
-                  // AA round: the entry rows carry the same "various info" as
-                  // the plugin rows below them — a title row (name + copy +
-                  // the 入口 tag) plus a chip row (version / A1-A2 class /
-                  // languages) plus the description row — reusing the plugin
-                  // row classes, so no new CSS. An older host without the
-                  // chip fields simply renders no chip row.
-                  // CC round: the chip row gains the RUNTIME MEMORY fact —
-                  // the shell is measured (main + helpers, RSS sum), the
-                  // webui has no own process, the CLI is transient: every
-                  // row answers "where is this app's memory" with either a
-                  // real reading or the honest reason, never an invented 0.
-                  const languages = entry.languages ?? []
-                  const hasChips = (entry.version !== undefined && entry.version !== '')
-                    || (entry.distribution !== undefined && entry.distribution !== '')
-                    || languages.length > 0
-                    || entry.memory !== undefined
-                  return (
-                    <li key={entry.id}>
-                      {/* HH round: the hand-rolled bordered li is the shadcn
-                          Card (sm spacing = the same 12px rhythm, standard
-                          ring/chrome); the inner flex structure and the
-                          measured right-side track (ml-auto chip, empty
-                          actions grid) are kept so entry and plugin cards
-                          stay column-aligned. */}
-                      <Card size="lg" className="shadow-none">
-                        <CardContent className="flex flex-col gap-2">
-                          <div className="mb-0 flex items-start gap-3">
-                            <span className={FEATURE_ICON}><Icon name={ENTRY_ICONS[entry.id] ?? 'layout'} size={18} /></span>
-                            <div className="flex flex-auto min-w-0 flex-col gap-1.5 pr-2">
-                              <div className={FEATURE_TITLE}>
-                                <span className={FEATURE_TITLE_NAME}>{entry.id}</span>
-                                <CopyButton value={entry.packageName} size={12} label={t('common.copy')} className={FEATURE_COPY} />
-                                <Badge variant="secondary" className="tabular-nums">{t('about.entry.tag')}</Badge>
-                              </div>
-                              {hasChips
-                                ? (
-                                  <div className={FEATURE_TEXT}>
-                                    {entry.version !== undefined && entry.version !== ''
-                                      ? <Badge variant="secondary" className="tabular-nums">{entry.version}</Badge>
-                                      : null}
-                                    <ClassChip distribution={entry.distribution ?? ''} t={t} />
-                                    {languages.length > 0
-                                      ? <span className={STACK_TEXT} title={languages.join(' · ')}>{languages.join(' · ')}</span>
-                                      : null}
-                                    {entry.memory?.kind === 'shell'
-                                      ? (entry.memory.state === 'running' && entry.memory.footprintMb !== undefined
-                                        ? (
-                                          <>
-                                            {/* 2026-11-17: the memory fact is right-anchored like the plugin
-                                                runtime lines (their chip carries ml-auto), so the entry
-                                                list and plugin lists share one right-side track. */}
-                                            <Badge variant="outline" className="ml-auto tabular-nums">{tf('about.entry.mem.shell', { mb: entry.memory.footprintMb })}</Badge>
-                                          </>
-                                        )
-                                        : <Badge variant="outline" className="ml-auto">{entry.memory.state === 'stopped' ? t('about.entry.mem.shellStopped') : t('about.entry.mem.unavailable')}</Badge>)
-                                      : null}
-                                    {entry.memory?.kind === 'in-host'
-                                      ? (
-                                        <>
-                                          <Badge variant="outline" className="ml-auto">{t('about.entry.mem.inHost')}</Badge>
-                                        </>
-                                      )
-                                      : null}
-                                    {entry.memory?.kind === 'transient'
-                                      ? <Badge variant="outline" className="ml-auto">{t('about.entry.mem.transient')}</Badge>
-                                      : null}
-                                  </div>
-                                )
-                                : null}
-                              {entry.description
-                                ? <div className={FEATURE_DESC}>{entry.description}</div>
-                                : null}
-                            </div>
-                            {/* The empty actions column keeps this row's text column
-                                the same width as the plugin rows under it. */}
-
-                            <div className={PLUGIN_ACTIONS_GRID} aria-hidden="true" />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </li>
-                  )
-                })}
-              </ul>
+              <EntryRows entries={facts.facts?.entries ?? []} t={t} tf={tf} />
             </div>
           )
           : null}
@@ -1992,6 +2006,29 @@ export function AboutPanel({
   }, [refreshSignal, facts.refresh, inventory.refresh])
   const caps = useCapabilities()
   const providers = caps.facts?.providers ?? []
+  // V round: the 组件结构 section's "copy for the agent" button (the same
+  // agent-handoff block the host data gives the user, one click).
+  const [componentsCopied, setComponentsCopied] = useState(false)
+  const componentsCopyTimer = useRef<number | undefined>(undefined)
+  const entries = facts.facts?.entries ?? []
+  /** Copies the whole 组件结构 block (header + one line per entry) to the clipboard. */
+  const copyComponentsForAgent = async (): Promise<void> => {
+    const ok = await copyToClipboard([
+      tf('about.componentsHeader'),
+      ...entries.map(entry => tf('about.componentsLine', {
+        name: entry.id,
+        version: entry.version ?? '—',
+        distribution: entry.distribution ?? 'A1',
+        langs: (entry.languages ?? []).join(' · ') || '—',
+        role: entry.description,
+      })),
+    ].join('\n'))
+    if (ok) {
+      setComponentsCopied(true)
+      window.clearTimeout(componentsCopyTimer.current)
+      componentsCopyTimer.current = window.setTimeout(() => { setComponentsCopied(false) }, 1200)
+    }
+  }
   // BB round: the "runtime modes" topology line was removed at the user's
   // ruling (it read as noise next to an empty section). The external
   // capabilities section now exists ONLY when a real provider is listed;
@@ -2020,6 +2057,9 @@ export function AboutPanel({
 
         {/* INSTALLATION FIRST. The user explicitly asked for this block at the
             very top instead of sandwiched between entries and package lists. */}
+        {/* V round: the 关于 page is a REAL page now (the M-round stub is gone) —
+            the install / version block gets its own section title. */}
+        <h3 className="relative mb-4 mt-8 first:mt-0 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[''] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary">{t('about.installSection')}</h3>
         <ul className={INFO_LIST}>
           <li className={INFO_ROW}>
             <span className={INFO_LABEL}>{t('about.install')}</span>
@@ -2043,6 +2083,28 @@ export function AboutPanel({
             <span className={INFO_VALUE}>{snapshot?.source ?? '—'}</span>
           </li>
         </ul>
+
+        {/* V round: the 组件结构 card — the user's ask (the page used to show
+            it in the OLD build; the M-round stub dropped it). Same entry rows
+            as the runtime page's 入口 section (EntryRows, one source of
+            truth), plus the "copy for the agent" bulk block. */}
+        {entries.length > 0
+          ? (
+            <div>
+              <div className="mt-8 flex items-center justify-between gap-4 first:mt-0">
+                <h3 className="relative mb-0 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[''] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary">{t('about.components')}</h3>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { void copyComponentsForAgent() }}>
+                  <Icon name="copy" size={14} />
+                  {componentsCopied ? t('about.componentsCopied') : t('about.copyAgent')}
+                </Button>
+              </div>
+              <p className="mb-4 mt-2 pl-3 text-xs-plus text-text-muted">{t('about.componentsDesc')}</p>
+              <div className="pl-3">
+                <EntryRows entries={entries} t={t} tf={tf} />
+              </div>
+            </div>
+          )
+          : null}
 
         {/* X5b: the install self-check moved to the /setup first-run wizard
             (Setup.tsx) — the About card was the wrong carrier (user ruling
@@ -2133,7 +2195,7 @@ export function AboutPanel({
  * @param props - panel id and inventory.
  * @returns the selected surface.
  */
-export function InfoPanels({ panel, refreshSignal }: InfoPanelsProps) {
+export function InfoPanels({ panel, inventory, refreshSignal }: InfoPanelsProps) {
   // M round: the "插件管理" page no longer exists as its own nav entry — its
   // content (and the About content) is merged INTO the 插件与程序管理
   // (runtime) page, composed by Home. The panel id 'plugins' stays a valid
@@ -2141,15 +2203,8 @@ export function InfoPanels({ panel, refreshSignal }: InfoPanelsProps) {
   if (panel === 'plugins') return <PluginsPanel refreshSignal={refreshSignal} />
   if (panel === 'settings') return <SettingsPanel refreshSignal={refreshSignal} />
   if (panel === 'websearchSettings') return <WebSearchSettingsPanel refreshSignal={refreshSignal} />
-  // M round: the 关于 page is deliberately empty for now — its content moved
-  // to 插件与程序管理. The nav entry stays (the user may fill it later).
-  // Every InfoPanelId member is handled above, so `panel` is narrowed to 'about' here.
-  const { t } = useI18n()
-  return (
-    <PanelCard>
-      <div className={CARD_BODY}>
-        <p className={HINT}>{t('panel.aboutEmpty')}</p>
-      </div>
-    </PanelCard>
-  )
+  // M round: the 关于 page was a stub (its content moved to 插件与程序管理).
+  // V round (2026-11-17): the user wants the 关于 page BACK as a real page —
+  // version + install rows, the 组件结构 card with its copy-for-agent button.
+  return <AboutPanel inventory={inventory} refreshSignal={refreshSignal} />
 }

@@ -20,6 +20,7 @@ import { PanelCard } from './ui-kit.tsx'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useI18n } from './i18n.tsx'
+import { copyToClipboard } from './clipboard.ts'
 
 /** One unified outer-card body (32px, IV-round scale). */
 const BODY = 'p-8'
@@ -29,21 +30,6 @@ const TITLE = 'relative mb-4 pl-3 text-base font-bold tracking-normal text-text 
 /** @param name - one registry name. @param t - the i18n `tf` interpolator. @returns the agent-handoff line. */
 function usageLine(name: IconName, tf: (key: string, vars?: Record<string, string | number>) => string): string {
   return tf('icons.usageLine', { name })
-}
-
-/**
- * Copy text to the clipboard. The Electron shell serves the webui from a
- * localhost origin (a secure context), so the async Clipboard API is always
- * available; a failed write simply reports false to the caller.
- * @param text - the snippet. @returns whether the write succeeded.
- */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch {
-    return false
-  }
 }
 
 export function IconManagerPanel(): ReactNode {
@@ -64,7 +50,7 @@ export function IconManagerPanel(): ReactNode {
 
   /** @param icon - the clicked tile. Copies its one-icon snippet. */
   const copyOne = async (icon: IconName): Promise<void> => {
-    const ok = await copyText(`${header}\n${usageLine(icon, tf)}`)
+    const ok = await copyToClipboard(`${header}\n${usageLine(icon, tf)}`)
     if (ok) {
       setCopied(icon)
       window.clearTimeout(copyTimer.current)
@@ -76,7 +62,7 @@ export function IconManagerPanel(): ReactNode {
   const copySelected = async (): Promise<void> => {
     const chosen = Array.from(selected)
     if (chosen.length === 0) return
-    const ok = await copyText([header, ...chosen.map(name => usageLine(name, tf))].join('\n'))
+    const ok = await copyToClipboard([header, ...chosen.map(name => usageLine(name, tf))].join('\n'))
     if (ok) {
       setBulkCopied(true)
       window.clearTimeout(copyTimer.current)
