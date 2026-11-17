@@ -64,6 +64,11 @@ interface SetCatalogChunk {
   default: unknown
 }
 
+/** A loaded zh-aliases chunk: { [prefix]: { [iconName]: string[] } }. */
+interface ZhAliasesChunk {
+  default: Record<string, Record<string, ReadonlyArray<string>>> | undefined
+}
+
 /**
  * The vendored catalogs, shipped as lazy chunks: one chunk per set JSON,
  * downloaded (from the local dist) only when its section first expands.
@@ -80,7 +85,9 @@ function prefixLoaders(modules: Record<string, () => Promise<SetCatalogChunk>>):
   const loaders: Record<string, () => Promise<SetData | undefined>> = {}
   for (const [path, load] of Object.entries(modules)) {
     const base = path.slice(path.lastIndexOf('/') + 1)
-    if (base === 'manifest.json') continue
+    // Skip non-catalog metadata files; zh-aliases.json carries Chinese
+    // search terms and is consumed separately via `loadAliases()`.
+    if (base === 'manifest.json' || base === 'zh-aliases.json') continue
     const prefix = base.slice(0, base.lastIndexOf('.json'))
     loaders[prefix] = async () => {
       const chunk = await load()
@@ -96,6 +103,16 @@ function prefixLoaders(modules: Record<string, () => Promise<SetCatalogChunk>>):
 
 const SET_LOADERS = prefixLoaders(iconSetModules)
 
+/** Lazy chunk loader for the Chinese-search alias table. Returns undefined
+ * when the generator never ran — callers treat that as "no aliases". */
+function loadAliases(): Promise<Record<string, Record<string, ReadonlyArray<string>>> | undefined> {
+  const key = Object.keys(iconSetModules).find(path => path.endsWith('/zh-aliases.json'))
+  if (key === undefined) return Promise.resolve(undefined)
+  return iconSetModules[key]()
+    .then(chunk => (chunk as ZhAliasesChunk).default)
+    .catch(() => undefined /* broken alias chunk: degrade gracefully */)
+}
+
 /** @returns the vendored manifest (set names, counts, licenses, usage templates). */
 function loadManifest(): Promise<ReadonlyArray<SetMeta>> {
   const key = Object.keys(iconSetModules).find(path => path.endsWith('/manifest.json'))
@@ -103,6 +120,21 @@ function loadManifest(): Promise<ReadonlyArray<SetMeta>> {
   return iconSetModules[key]()
     .then(chunk => ((chunk.default as { sets?: SetMeta[] } | undefined)?.sets ?? []))
     .catch(() => [] /* the generator never ran: the panel shows the framework face only */)
+}
+
+/** Match against Chinese aliases. Name-only substring match is handled by callers. */
+function matchesZhAlias(name: string, needle: string, aliases: Record<string, Record<string, ReadonlyArray<string>>> | undefined): boolean {
+  if (needle.length === 0 || aliases === undefined) return false
+  // The framework faces (`fw:` keys) uses the raw lucide-style names; search them
+  // across every prefix's alias map so the user can hit e.g. "搜索" anywhere.
+  for (const entry of Object.values(aliases)) {
+    if (!Object.prototype.hasOwnProperty.call(entry, name)) continue
+    const terms = entry[name]
+    for (const term of terms) {
+      if (term.toLowerCase().includes(needle)) return true
+    }
+  }
+  return false
 }
 
 /** @param name - an icon file name. @returns the guidance PascalCase name. */
@@ -142,6 +174,8 @@ export function IconManagerPanel(): ReactNode {
   const [manifest, setManifest] = useState<ReadonlyArray<SetMeta>>([])
   /** prefix → loaded catalog (absent = not loaded yet). */
   const [setCache, setSetCache] = useState<Record<string, SetData | undefined>>({})
+  /** Chinese-search alias table (prefix → icon → zh terms). Loaded with manifest; absent = vendor generator never ran. */
+  const [aliases, setAliases] = useState<Record<string, Record<string, ReadonlyArray<string>>> | undefined>(undefined)
   /** Load-once guard kept out of the state updater (updaters must be pure). */
   const loadedRef = useRef(new Set<string>())
 
@@ -180,13 +214,17 @@ export function IconManagerPanel(): ReactNode {
       setExpanded(new Set(setMeta.map(meta => meta.prefix)))
       for (const meta of setMeta) ensureSet(meta.prefix)
     })
+    void loadAliases().then((data) => {
+      if (cancelled) return
+      setAliases(data)
+    })
     return () => { cancelled = true }
   }, [ensureSet])
 
   const needle = query.trim().toLowerCase()
   const fwNames = useMemo(
-    () => ICON_NAMES.filter(name => needle.length === 0 || name.toLowerCase().includes(needle)),
-    [needle])
+    () => ICON_NAMES.filter(name => needle.length === 0 || name.toLowerCase().includes(needle) || matchesZhAlias(name, needle, aliases)),
+    [needle, aliases])
   /** Every set the search has to span is fetched while a query is live. */
   useEffect(() => {
     if (needle.length === 0) return
@@ -200,9 +238,21 @@ export function IconManagerPanel(): ReactNode {
     const data = setCache[meta.prefix]
     if (data === undefined) return []
     const all = Object.keys(data.icons)
-    return needle.length === 0
-      ? all
-      : all.filter(name => name.toLowerCase().includes(needle))
+    if (needle.length === 0) return all
+    // English substring match OR any of the icon's Chinese alias terms contain the needle.
+    return all.filter((name) => {
+      if (name.toLowerCase().includes(needle)) return true
+      const setAliases = aliases?.[meta.prefix]
+      if (setAliases === undefined) return false
+      // HasOwnProperty check sidesteps the TS inference gap: Record indexer
+      // never yields undefined, but plain-object runtime behavior does.
+      if (!Object.prototype.hasOwnProperty.call(setAliases, name)) return false
+      const terms = setAliases[name]
+      for (const term of terms) {
+        if (term.toLowerCase().includes(needle)) return true
+      }
+      return false
+    })
   }
 
   /** Every key shown on the panel right now (framework face + every
