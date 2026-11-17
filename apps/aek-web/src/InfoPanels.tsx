@@ -69,7 +69,7 @@ const DIRTY_ROW_LABEL = 'grow shrink min-w-0 text-left border-0 bg-none p-0 font
 const DIRTY_ROW_VALUE = 'text-2xs text-text-muted font-mono max-w-22.5 whitespace-nowrap overflow-hidden text-ellipsis'
 const DIRTY_SAVE_ALL = 'relative inline-flex items-center justify-center size-8 border border-accent-border rounded-lg bg-accent-soft text-accent-ink cursor-pointer'
 const DIRTY_SAVE_ALL_DOT = 'absolute -top-0.5 -right-0.5 size-2 rounded-full bg-danger border-2 border-card'
-const DIVIDER = 'h-px my-4 bg-border'
+const DIVIDER = 'h-px my-6 bg-border'
 const EMPTY_STATE = 'flex items-center justify-center gap-2 min-h-30 text-text-muted text-xs-plus'
 const ENTRY_LIST = 'flex flex-col gap-2 list-none m-0 p-0'
 const ERROR_BANNER = 'flex items-center gap-2 mb-4 p-3 px-4 border border-danger-border rounded-sm bg-danger-soft text-danger text-xs-plus'
@@ -135,7 +135,7 @@ const NOTE_ICON = 'shrink-0 grow-0 text-primary'
 // strictly descending (page 32 > section 24 > card body 16 > row 12 >
 // rows 8 > micro 4) — borrowed Windmill 4px-grid + Vercel card-16
 // references 2026-11-17; the card was reading "floaty" at 24.
-const CARD_BODY = 'p-4'
+const CARD_BODY = 'p-6'
 import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner, ToggleSwitch } from './ui-kit.tsx'
 import type { InventoryState } from './useInventory.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'

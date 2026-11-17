@@ -259,7 +259,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
 
   return (
     <PanelCard>
-      <div className="p-4">
+      <div className="p-6">
         <div className="flex flex-wrap items-center justify-between gap-2.5 mb-3">
           <Badge variant="secondary" className="gap-1.5 px-2.5 py-1.25">
             <Icon name="shield" size={14} className="size-3.5" />
@@ -285,7 +285,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
           </span>
         </div>
 
-        <ul className='aek-grid-instance-list grid gap-4 list-none m-0 p-0'>
+        <ul className='aek-grid-instance-list grid gap-6 list-none m-0 p-0'>
           {SLOTS.map((slot) => {
             const web = halfOn(slot, 'web')
             const shell = halfOn(slot, 'shell')
@@ -429,15 +429,15 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
         </ul>
 
         {state.error !== undefined
-          ? <p className="mt-3 p-3 border border-danger-border rounded-sm bg-danger-soft text-danger text-xs-plus">{tf('runtime.error', { message: state.error })}</p>
+          ? <p className="mt-3 p-4 border border-danger-border rounded-sm bg-danger-soft text-danger text-xs-plus">{tf('runtime.error', { message: state.error })}</p>
           : null}
 
-        <div className="flex gap-2.5 mt-3 p-3 border border-accent-border rounded-sm bg-accent-soft text-accent-ink aek-hero-note">
+        <div className="flex gap-2.5 mt-3 p-4 border border-accent-border rounded-sm bg-accent-soft text-accent-ink aek-hero-note">
           <span className="flex-none text-primary"><Icon name="sparkles" size={16} /></span>
           <p>{t('runtime.hint')}</p>
         </div>
 
-        <div className="flex items-center gap-2.5 mt-3 p-3 border border-border rounded-sm bg-surface-subtle">
+        <div className="flex items-center gap-2.5 mt-3 p-4 border border-border rounded-sm bg-surface-subtle">
           <span className="flex-none text-xs text-text-muted">{t('runtime.skillPath')}</span>
           <code
             className="grow basis-auto min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-text-secondary"
@@ -457,7 +457,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
         {aiRelease.unsupported
           ? null
           : (
-            <div className="flex flex-col gap-1.5 mt-3 p-3 border border-border rounded-sm bg-surface-subtle">
+            <div className="flex flex-col gap-1.5 mt-3 p-4 border border-border rounded-sm bg-surface-subtle">
               <div className="flex items-start justify-between gap-3">
                 <Label className="grow basis-auto text-xs-plus leading-normal text-text">{t('runtime.aiRelease.title')}</Label>
                 {/* HH round: the standard shadcn (Radix) Switch via the
@@ -492,7 +492,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
         {buildFlags.unsupported
           ? null
           : (
-            <div className="flex flex-col gap-1.5 mt-3 p-3 border border-border rounded-sm bg-surface-subtle">
+            <div className="flex flex-col gap-1.5 mt-3 p-4 border border-border rounded-sm bg-surface-subtle">
               <div className="flex items-start justify-between gap-3">
                 <Label className="grow basis-auto text-xs-plus leading-normal text-text">{t('runtime.buildFlags.title')}</Label>
                 <ToggleSwitch

@@ -93,12 +93,12 @@ function ManagerPanel({ pluginId, refreshSignal }: {
 
   return (
     <PanelCard>
-      <div className="p-4">
+      <div className="p-6">
         {state.error !== undefined
-          ? <div className="mb-4 flex items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-3 text-xs-plus text-danger"><Icon name="alert" size={16} /><span>{state.error}</span></div>
+          ? <div className="mb-4 flex items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-4 text-xs-plus text-danger"><Icon name="alert" size={16} /><span>{state.error}</span></div>
           : null}
         {notice !== ''
-          ? <div className="mb-4 flex items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-3 text-xs-plus text-danger"><Icon name="alert" size={16} /><span>{notice}</span></div>
+          ? <div className="mb-4 flex items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-4 text-xs-plus text-danger"><Icon name="alert" size={16} /><span>{notice}</span></div>
           : null}
         {state.loading ? <div className="flex min-h-30 items-center justify-center gap-2 text-xs-plus text-text-muted"><Spinner />{t('common.loading')}</div> : null}
 
@@ -133,7 +133,7 @@ function ManagerPanel({ pluginId, refreshSignal }: {
           ? <div className="flex min-h-30 items-center justify-center gap-2 text-xs-plus text-text-muted">{t('managers.empty')}</div>
           : null}
 
-        <div className="my-4 h-px bg-border" />
+        <div className="my-6 h-px bg-border" />
         {/* W round: the one-click read-only actions sit DIRECTLY ABOVE the
             运行 section (the user's placement), not above 全部命令. */}
         <h3 className="relative mt-8 mb-4 first:mt-0 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[''] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary">{t('managers.quick')}</h3>
@@ -155,7 +155,7 @@ function ManagerPanel({ pluginId, refreshSignal }: {
             : null}
         </div>
 
-        <div className="my-4 h-px bg-border" />
+        <div className="my-6 h-px bg-border" />
         <h3 className="relative mt-8 mb-4 first:mt-0 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[''] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary">{t('managers.run')}</h3>
         <div className="flex flex-nowrap items-center gap-2">
           {/* Y round: an EMPTY box shows no text at all — the placeholder
@@ -191,7 +191,7 @@ function ManagerPanel({ pluginId, refreshSignal }: {
           : null}
         <div className="mt-4 text-xs text-text-secondary">{t('managers.hint')}</div>
 
-        <div className="my-4 h-px bg-border" />
+        <div className="my-6 h-px bg-border" />
         <div className="mb-2 flex flex-wrap items-center gap-3">
           {/* FF-NOTE: .outputHead > .sectionTitle { margin: 0 } — the h3 is outputHead's
               first child, so first:mb-0 re-asserts it (first:mt-0 already in the base string). */}
