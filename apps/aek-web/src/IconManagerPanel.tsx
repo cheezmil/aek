@@ -166,6 +166,12 @@ export function IconManagerPanel(): ReactNode {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   /** prefix → how many of that set's icons the grid shows. */
   const [visible, setVisible] = useState<Record<string, number>>({})
+  /** V6.4: the user's grid density — one number, both the framework face and
+   *  every set face render with the same column count. Not persisted: project
+   *  rule keeps user settings in the host data root, never localStorage, and
+   *  a display-density knob is not worth the host preference plumbing yet. */
+  const [cols, setCols] = useState(9)
+  const gridStyle = { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }
 
   useEffect(() => {
     let cancelled = false
@@ -348,6 +354,16 @@ export function IconManagerPanel(): ReactNode {
               className="h-8 flex-1 min-w-40 max-w-80 text-xs"
             />
             <div className="ml-auto flex items-center gap-1.5">
+              <label className="mr-1 flex items-center gap-1.5 text-2xs text-text-muted/70">
+                {t('icons.colsLabel')}
+                <select
+                  value={String(cols)}
+                  onChange={(event) => { setCols(Number(event.target.value)) }}
+                  className="h-7 rounded-sm border border-border bg-surface-subtle px-1 font-mono text-xs text-text"
+                >
+                  {[4, 5, 6, 8, 9, 10, 12, 14].map(n => <option key={n} value={n}>{String(n)}</option>)}
+                </select>
+              </label>
               <Button size="sm" variant="ghost" onClick={() => { setSelected(new Set(visibleKeys)) }}>{t('icons.selectAll')}</Button>
               <Button size="sm" disabled={selected.size === 0} onClick={() => { void copySelected() }}>
                 {bulkCopied ? t('icons.copied') : `${t('icons.copySelected')}${selected.size > 0 ? ` (${String(selected.size)})` : ''}`}
@@ -363,7 +379,7 @@ export function IconManagerPanel(): ReactNode {
                   ? (
                     <div>
                       <h4 className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-text-muted/80">{t('icons.framework')} ({String(fwNames.length)})</h4>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-9 gap-2">
+                      <div className="grid gap-2" style={gridStyle}>
                         {fwNames.map(name => tile(`fw:${name}`, 'fw', name, undefined))}
                       </div>
                     </div>
@@ -412,7 +428,7 @@ export function IconManagerPanel(): ReactNode {
                           : open
                             ? (
                               <>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-9 gap-2">
+                                <div className="grid gap-2" style={gridStyle}>
                                   {slice.map(iconName => tile(`${meta.prefix}:${iconName}`, meta.prefix, iconName, data.icons[iconName]))}
                                 </div>
                                 {slice.length === 0 && <p className="py-2 text-2xs text-text-muted/60">{t('icons.empty')}</p>}
