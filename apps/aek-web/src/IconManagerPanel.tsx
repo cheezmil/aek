@@ -158,7 +158,8 @@ export function IconManagerPanel(): ReactNode {
         if (data === undefined) return
         setSetCache(cached => ({ ...cached, [prefix]: data }))
       })
-      .catch(() => { /* the chunk failed to load: keep the section collapsed */ })
+      .catch(() => { /* the chunk failed to load: the card keeps its progress
+         bar — a local chunk that never lands signals a broken build. */ })
   }, [])
 
   /** prefixes whose section is expanded (its data fetched). */
@@ -168,9 +169,18 @@ export function IconManagerPanel(): ReactNode {
 
   useEffect(() => {
     let cancelled = false
-    void loadManifest().then((setMeta) => { if (!cancelled) setManifest(setMeta) })
+    void loadManifest().then((setMeta) => {
+      if (cancelled) return
+      setManifest(setMeta)
+      // V6.3: the panel's job is to SHOW icons — every set starts expanded
+      // and its chunk loads on mount (5 lazy chunks in parallel; each card
+      // shows the download progress bar until its data lands). The user can
+      // still collapse; a panel re-mount returns to this default.
+      setExpanded(new Set(setMeta.map(meta => meta.prefix)))
+      for (const meta of setMeta) ensureSet(meta.prefix)
+    })
     return () => { cancelled = true }
-  }, [])
+  }, [ensureSet])
 
   const needle = query.trim().toLowerCase()
   const fwNames = useMemo(
