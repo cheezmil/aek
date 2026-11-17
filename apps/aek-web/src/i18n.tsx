@@ -886,8 +886,8 @@ export interface I18nValue {
   setLocale: (locale: Locale) => void
   /** Translate one key. */
   t: (key: string) => string
-  /** Translate one key, interpolating `{name}` placeholders. */
-  tf: (key: string, values: Readonly<Record<string, string | number>>) => string
+  /** Translate one key, interpolating `{name}` placeholders. Omit values to leave placeholders verbatim. */
+  tf: (key: string, values?: Readonly<Record<string, string | number>>) => string
 }
 
 const I18nContext = createContext<I18nValue | undefined>(undefined)
@@ -904,8 +904,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   // interpolation — the spacing can only be known once the `{name}` value is
   // in ("Web Search" + "首页" → "Web Search 首页").
   const t = (key: string): string => spaceMixed(DICTS[locale][key] ?? ZH[key] ?? key)
-  const tf = (key: string, values: Readonly<Record<string, string | number>>): string => spaceMixed(t(key)
-    .replace(/\{(\w+)\}/gu, (match, name: string) => name in values ? String(values[name]) : match))
+  const tf = (key: string, values?: Readonly<Record<string, string | number>>): string => spaceMixed(t(key)
+    .replace(/\{(\w+)\}/gu, (match, name: string) => values !== undefined && name in values ? String(values[name]) : match))
   return (
     <I18nContext.Provider value={{ locale, setLocale: setStored, t, tf }}>
       {children}
