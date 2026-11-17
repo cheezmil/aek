@@ -93,12 +93,12 @@ function ManagerPanel({ pluginId, refreshSignal }: {
 
   return (
     <PanelCard>
-      <div className="p-6">
+      <div className="p-8">
         {state.error !== undefined
-          ? <div className="mb-4 flex items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-4 text-xs-plus text-danger"><Icon name="alert" size={16} /><span>{state.error}</span></div>
+          ? <div className="mb-4 flex items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-5 text-xs-plus text-danger"><Icon name="alert" size={16} /><span>{state.error}</span></div>
           : null}
         {notice !== ''
-          ? <div className="mb-4 flex items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-4 text-xs-plus text-danger"><Icon name="alert" size={16} /><span>{notice}</span></div>
+          ? <div className="mb-4 flex items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-5 text-xs-plus text-danger"><Icon name="alert" size={16} /><span>{notice}</span></div>
           : null}
         {state.loading ? <div className="flex min-h-30 items-center justify-center gap-2 text-xs-plus text-text-muted"><Spinner />{t('common.loading')}</div> : null}
 

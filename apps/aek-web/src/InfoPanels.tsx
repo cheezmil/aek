@@ -135,7 +135,7 @@ const NOTE_ICON = 'shrink-0 grow-0 text-primary'
 // strictly descending (page 32 > section 24 > card body 16 > row 12 >
 // rows 8 > micro 4) — borrowed Windmill 4px-grid + Vercel card-16
 // references 2026-11-17; the card was reading "floaty" at 24.
-const CARD_BODY = 'p-6'
+const CARD_BODY = 'p-8'
 import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner, ToggleSwitch } from './ui-kit.tsx'
 import type { InventoryState } from './useInventory.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
