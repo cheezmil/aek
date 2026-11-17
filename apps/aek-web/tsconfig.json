@@ -10,7 +10,7 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "types": ["react", "react-dom"],
+    "types": ["react", "react-dom", "vite/client"],
     "paths": {
       "@/*": ["./src/*"]
     }

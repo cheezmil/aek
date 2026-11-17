@@ -5,13 +5,19 @@
  *   - the AEK framework registry (`Icons.tsx`, the 24×24 Lucide-stroke
  *     glyphs the console itself renders), and
  *   - the curated open-source sets vendored by `scripts/aek/gen-icon-sets.mjs`
- *     (GitHub tarballs via the `gh` CLI) and served over the same origin by
- *     the host routes `GET /api/aek/icons/sets` + `GET /api/aek/icons/set/<set>`.
+ *     (GitHub tarballs via the `gh` CLI) into the aek-icon-manager plugin's
+ *     data directory. The catalogs are shipped WITH the console dist (one
+ *     lazy chunk per set, loaded on first expand) so the panel has zero
+ *     runtime dependency on the host — fully offline. The host routes
+ *     `GET /api/aek/icons/sets` / `GET /api/aek/icons/set/<set>` stay as the
+ *     agent/CLI face over the same vendored files.
  *
  * Interaction (user rule, V6): single click = toggle selection, double
  * click = copy that icon's usage line. The batch toolbar (select all / clear /
  * copy selected) spans both faces. Large sets paginate (a visible slice per
  * section) so a 5.5k-icon catalog never renders 5.5k DOM tiles at once.
+ * V6.1: icons vertically centered in their tiles; set catalogs ship as
+ * local lazy chunks (zero host dependency).
  *
  * @module @cheezmil/aek-web/src/IconManagerPanel
  */
@@ -45,7 +51,7 @@ interface SetMeta {
   file: string
 }
 
-/** A fetched set catalog (the per-set JSON the host serves). */
+/** A fetched set catalog (one vendored per-set JSON, loaded as a lazy chunk). */
 interface SetData {
   prefix: string
   icons: Record<string, string>
@@ -53,6 +59,52 @@ interface SetData {
   npm: string
   name: string
   license: string
+}
+
+/** One chunk of the glob result: the default export is the raw JSON shape. */
+interface SetCatalogChunk {
+  default: unknown
+}
+
+/**
+ * The vendored catalogs, shipped as lazy chunks: one chunk per set JSON,
+ * downloaded (from the local dist) only when its section first expands.
+ * The manifest is the same family of files — loaded lazily too, so the
+ * panel still renders the framework face on a tree where the generator
+ * never ran (the glob simply matches nothing there).
+ */
+const iconSetModules = import.meta.glob(
+  '../../../packages/aek/coraek-plugins/aek-icon-manager/data/icon-sets/*.json',
+) as Record<string, () => Promise<SetCatalogChunk>>
+
+/** @param modules - the glob result. @returns prefix → lazy loader. */
+function prefixLoaders(modules: Record<string, () => Promise<SetCatalogChunk>>): Record<string, () => Promise<SetData | undefined>> {
+  const loaders: Record<string, () => Promise<SetData | undefined>> = {}
+  for (const [path, load] of Object.entries(modules)) {
+    const base = path.slice(path.lastIndexOf('/') + 1)
+    if (base === 'manifest.json') continue
+    const prefix = base.slice(0, base.lastIndexOf('.json'))
+    loaders[prefix] = async () => {
+      const chunk = await load()
+      const data = chunk.default as Partial<SetData> | undefined
+      // A partial or corrupt catalog must not crash the panel render:
+      // the Object.keys() over its icons map would throw on undefined.
+      if (data === undefined || data.icons === undefined) return undefined
+      return data
+    }
+  }
+  return loaders
+}
+
+const SET_LOADERS = prefixLoaders(iconSetModules)
+
+/** @returns the vendored manifest (set names, counts, licenses, usage templates). */
+function loadManifest(): Promise<ReadonlyArray<SetMeta>> {
+  const key = Object.keys(iconSetModules).find(path => path.endsWith('/manifest.json'))
+  if (key === undefined) return Promise.resolve([])
+  return iconSetModules[key]()
+    .then(chunk => ((chunk.default as { sets?: SetMeta[] } | undefined)?.sets ?? []))
+    .catch(() => [] /* the generator never ran: the panel shows the framework face only */)
 }
 
 /** @param name - an icon file name. @returns the guidance PascalCase name. */
@@ -90,25 +142,23 @@ export function IconManagerPanel(): ReactNode {
   const copyTimer = useRef<number | undefined>(undefined)
 
   const [manifest, setManifest] = useState<ReadonlyArray<SetMeta>>([])
-  /** prefix → fetched catalog (absent = not fetched yet). */
+  /** prefix → loaded catalog (absent = not loaded yet). */
   const [setCache, setSetCache] = useState<Record<string, SetData | undefined>>({})
-  /** Fetch-once guard kept out of the state updater (updaters must be pure). */
-  const fetchedRef = useRef(new Set<string>())
+  /** Load-once guard kept out of the state updater (updaters must be pure). */
+  const loadedRef = useRef(new Set<string>())
 
-  /** @param prefix - one set's prefix. Fetches its catalog once. */
+  /** @param prefix - one set's prefix. Loads its vendored catalog once. */
   const ensureSet = useCallback((prefix: string): void => {
-    if (fetchedRef.current.has(prefix)) return
-    fetchedRef.current.add(prefix)
-    void fetch(`/api/aek/icons/set/${encodeURIComponent(prefix)}`)
-      .then(response => (response.ok ? response.json() : undefined))
-      .then((body: unknown) => {
-        // Guard the decode shape: a double-encoded or partial body would
-        // otherwise crash the Object.keys() over its icons map.
-        const data = body as Partial<SetData> | undefined
-        if (data === undefined || data.icons === undefined) return
-        setSetCache(cached => ({ ...cached, [prefix]: data as SetData }))
+    if (loadedRef.current.has(prefix)) return
+    if (!Object.prototype.hasOwnProperty.call(SET_LOADERS, prefix)) return
+    const loader = SET_LOADERS[prefix]
+    loadedRef.current.add(prefix)
+    void loader()
+      .then((data) => {
+        if (data === undefined) return
+        setSetCache(cached => ({ ...cached, [prefix]: data }))
       })
-      .catch(() => { /* the set file is missing: keep the section collapsed */ })
+      .catch(() => { /* the chunk failed to load: keep the section collapsed */ })
   }, [])
 
   /** prefixes whose section is expanded (its data fetched). */
@@ -118,10 +168,7 @@ export function IconManagerPanel(): ReactNode {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/aek/icons/sets')
-      .then(response => response.ok ? response.json() : { sets: [] })
-      .then((body: { sets?: SetMeta[] }) => { if (!cancelled) setManifest(body.sets ?? []) })
-      .catch(() => { /* the generator never ran: the panel shows the framework face only */ })
+    void loadManifest().then((setMeta) => { if (!cancelled) setManifest(setMeta) })
     return () => { cancelled = true }
   }, [])
 
@@ -238,7 +285,7 @@ export function IconManagerPanel(): ReactNode {
           if (event.key === 'Enter') { event.preventDefault(); void copyOne(key) }
         }}
         className={[
-          'group relative flex cursor-pointer flex-col items-center gap-1.5 rounded-sm border bg-surface-subtle p-3 transition duration-120 ease-aek',
+          'group relative flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-sm border bg-surface-subtle p-3 transition duration-120 ease-aek',
           ticked || justCopied ? 'border-primary bg-accent-soft' : 'border-border hover:border-input',
         ].join(' ')}
       >
@@ -341,31 +388,33 @@ export function IconManagerPanel(): ReactNode {
                             {meta.note !== '' && <p className="mb-2 text-2xs text-text-muted/60">{meta.note}</p>}
                             {data === undefined && open
                               ? <p className="py-2 text-2xs text-text-muted/60">{t('icons.loading')}</p>
-                              : (
-                                <>
-                                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-9 gap-2">
-                                    {slice.map(iconName => tile(`${meta.prefix}:${iconName}`, meta.prefix, iconName, data.icons[iconName]))}
-                                  </div>
-                                  {slice.length === 0 && <p className="py-2 text-2xs text-text-muted/60">{t('icons.empty')}</p>}
-                                  {needle.length === 0 && total > cap
-                                    ? (
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="mt-2 text-2xs"
-                                        onClick={() => {
-                                          setVisible((current) => {
-                                            const cap = current[meta.prefix] ?? PAGE_SIZE
-                                            return { ...current, [meta.prefix]: cap + PAGE_SIZE }
-                                          })
-                                        }}
-                                      >
-                                        {t('icons.showMore')} (+{String(PAGE_SIZE)})
-                                      </Button>
-                                    )
-                                    : null}
-                                </>
-                              )}
+                              : open
+                                ? (
+                                  <>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-9 gap-2">
+                                      {slice.map(iconName => tile(`${meta.prefix}:${iconName}`, meta.prefix, iconName, data.icons[iconName]))}
+                                    </div>
+                                    {slice.length === 0 && <p className="py-2 text-2xs text-text-muted/60">{t('icons.empty')}</p>}
+                                    {needle.length === 0 && total > cap
+                                      ? (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="mt-2 text-2xs"
+                                          onClick={() => {
+                                            setVisible((current) => {
+                                              const cap = current[meta.prefix] ?? PAGE_SIZE
+                                              return { ...current, [meta.prefix]: cap + PAGE_SIZE }
+                                            })
+                                          }}
+                                        >
+                                          {t('icons.showMore')} (+{String(PAGE_SIZE)})
+                                        </Button>
+                                      )
+                                      : null}
+                                  </>
+                                )
+                                : null}
                           </div>
                         )
                       })}
