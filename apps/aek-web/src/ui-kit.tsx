@@ -18,6 +18,8 @@ import type { ReactNode, UIEvent } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { cn } from '@/lib/utils'
+import { Switch as Uiswitch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
 
 /* FF round: the old ui-kit module classes, now literal Tailwind utilities
    (1:1 from Home.module.css). One-off calc() math lives in index.css. */
@@ -37,13 +39,7 @@ const OUTPUT_VIEW_FAILED = 'border-danger'
 const OUTPUT_TRACK = 'relative w-full'
 const OUTPUT_WINDOW = 'absolute top-0 left-0 right-0 will-change-transform'
 const OUTPUT_LINE = 'leading-output whitespace-pre-wrap break-words'
-const TOGGLE_SWITCH = 'relative shrink-0 w-9.5 h-5.5 p-0 border border-input rounded-full bg-surface-subtle cursor-pointer transition-[background-color,border-color,opacity] duration-180 ease-aek hover:enabled:border-primary focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2'
-const TOGGLE_ON = 'bg-primary border-primary'
-const TOGGLE_LOCKED = 'cursor-not-allowed'
-const TOGGLE_THUMB = 'absolute top-1/2 left-0.5 w-4 h-4 -mt-2 rounded-full bg-text-muted transition-[transform,background-color] duration-180 ease-aek'
 const TAG_LIST = 'flex flex-wrap gap-1.5'
-const CAP_TAG = 'py-0.5 px-2 border border-border rounded-full text-text-muted bg-surface-subtle text-2xs'
-const CAP_TAG_ON = 'border-accent-border text-accent-ink bg-accent-soft'
 const BULLET_LIST = 'flex flex-col gap-1.5'
 const BULLET_ITEM = 'list-none'
 
@@ -421,22 +417,21 @@ export interface ToggleSwitchProps {
  * @param props - state, change handler, label and the `locked` variant.
  * @returns the switch.
  */
+/**
+ * HH round: the hand-rolled toggle track + thumb is gone; the switch is the
+ * shadcn (Radix) `Switch` primitive from `@/components/ui` — the standard
+ * accessible design-system control. `locked` maps to `disabled` (busy or
+ * not yet loaded: shows the current value, cannot flip).
+ */
 export function ToggleSwitch({ checked, onChange, label, locked = false, className }: ToggleSwitchProps) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      title={label}
+    <Uiswitch
+      checked={checked}
       disabled={locked}
-      className={cn(TOGGLE_SWITCH, checked && TOGGLE_ON, locked && TOGGLE_LOCKED, className)}
-      onClick={() => { if (!locked) onChange(!checked) }}
-    >
-      {/* `.toggleOn .toggleThumb` / `.toggleLocked .toggleThumb`: the knob
-          slides 16px and turns white while on (or locked-on). */}
-      <span className={cn(TOGGLE_THUMB, (checked || locked) && 'translate-x-4 bg-inverse')} aria-hidden="true" />
-    </button>
+      aria-label={label}
+      className={cn('shrink-0', className)}
+      onCheckedChange={(next) => { if (!locked) onChange(next) }}
+    />
   )
 }
 
@@ -449,6 +444,8 @@ export interface Capabilities {
 
 /**
  * Render the three capability tags for a plugin (backend process / CLI / MCP).
+ * HH round: shadcn Badges (the house CAP_TAG pill classes are gone); the ON
+ * state keeps the accent-soft highlight, the OFF state is a quiet outline.
  * @param props.caps - tags derived from the manifest on the host.
  * @returns an unordered list of tags.
  */
@@ -462,7 +459,12 @@ export function CapabilityTags({ caps }: { caps: Capabilities }) {
   return (
     <ul className={TAG_LIST}>
       {rows.map(row => (
-        <li key={row.key} className={cn(CAP_TAG, row.on && CAP_TAG_ON)}>{row.key}</li>
+        <li key={row.key}>
+          <Badge
+            variant={row.on ? 'secondary' : 'outline'}
+            className={cn('text-2xs', row.on && 'bg-accent-soft text-accent-ink border-accent-border')}
+          >{row.key}</Badge>
+        </li>
       ))}
     </ul>
   )

@@ -43,6 +43,11 @@ import type { PrefValue } from './preferences.tsx'
 import { allSettingFields, coerce, SETTINGS_SCHEMA, WEBSEARCH_SETTINGS_SCHEMA } from './settings-schema.ts'
 import type { SettingField } from './settings-schema.ts'
 import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 /* FF round: the old info-panel module classes, now literal Tailwind
    utilities (1:1 from Home.module.css; off-scale values live in index.css
@@ -52,7 +57,6 @@ const ACCESS_TEXTAREA = 'block box-border w-full min-h-22 p-2 px-2.5 border bord
 const CAPABILITY_LINE = 'px-1 text-text-muted text-2xs leading-140'
 const CAPABILITY_ROW = 'aek-grid-capability-row'
 const COUNT_CHIP = 'inline-flex items-center p-0.5 px-2.25 rounded-full text-xs font-semibold tabular-nums border border-border bg-surface-subtle text-text-secondary'
-const DANGER_BUTTON = 'bg-danger border-danger'
 const DIRTY_BACKDROP = 'fixed inset-0 z-15'
 const DIRTY_DOT = 'size-2 rounded-full bg-danger'
 const DIRTY_LIST = 'list-none m-0 p-0 max-h-80 overflow-auto'
@@ -68,12 +72,11 @@ const DIRTY_SAVE_ALL_DOT = 'absolute -top-0.5 -right-0.5 size-2 rounded-full bg-
 const DIVIDER = 'h-px my-6 bg-border'
 const EMPTY_STATE = 'flex items-center justify-center gap-2 min-h-30 text-text-muted text-xs-plus'
 const ENTRY_LIST = 'flex flex-col gap-2 list-none m-0 p-0'
-const ENTRY_TAG = 'p-0.5 px-2 rounded-full bg-accent-soft border border-accent-border text-accent-ink text-2xs leading-none'
 const ERROR_BANNER = 'flex items-center gap-2 mb-4 p-3 px-4 border border-danger-border rounded-sm bg-danger-soft text-danger text-xs-plus'
 const FEATURE_COPY = 'w-auto min-w-5.5 h-4.5 p-0 px-0.75 border-0 rounded-2xs bg-transparent text-text-muted hover:not-disabled:text-accent-ink hover:not-disabled:bg-accent-soft hover:not-disabled:border-transparent'
-const FEATURE_DESC = 'mt-0.5 text-xs leading-aek-155 text-text-muted'
+const FEATURE_DESC = 'text-xs leading-aek-155 text-text-muted'
 const FEATURE_ICON = 'shrink-0 grow-0 text-primary mt-0.5'
-const FEATURE_TEXT = 'mt-0.5 text-xs leading-aek-155 text-text-muted flex items-center flex-wrap gap-x-1.5 gap-y-1'
+const FEATURE_TEXT = 'text-xs leading-aek-155 text-text-muted flex items-center flex-wrap gap-x-1.5 gap-y-1'
 const FEATURE_TITLE = 'text-xs-plus font-semibold flex items-center gap-1.5'
 const FEATURE_TITLE_LOCK = 'text-text-muted shrink-0 grow-0'
 const FEATURE_TITLE_NAME = 'overflow-hidden text-ellipsis whitespace-nowrap'
@@ -1144,7 +1147,7 @@ function PluginRuntimeLine({ plugin, rt, term, onMove, onCarveOut, busy }: {
       : undefined
   return (
     <>
-      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-2xs text-text-muted">
+      <div className="flex flex-wrap items-center gap-2 text-2xs text-text-muted">
         <span
           className={cn(
             'justify-self-start rounded-full border border-border bg-surface py-0.25 px-2 text-2xs text-text-muted',
@@ -1652,10 +1655,10 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                   input (5..3600, default 60, host-persisted) plus the
                   立即检测 button that measures right now. */}
               <div className={MEM_CHECK_ROW}>
-                <span className={SETTING_TOGGLE_LABEL}>{t('about.entry.memCheck.label')}</span>
-                <input
+                <Label className="text-xs-plus font-semibold text-text">{t('about.entry.memCheck.label')}</Label>
+                <Input
                   type="number"
-                  className={NUMBER_BOX}
+                  className="h-8 w-16 text-xs tabular-nums"
                   min={5}
                   max={3600}
                   step={5}
@@ -1665,14 +1668,14 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                   onChange={(event) =>{  setMemCheckDraft(event.target.value); setMemCheckError(undefined) }}
                   onKeyDown={(event) =>{  if (event.key === 'Enter') { event.preventDefault(); void saveMemCheck() } }}
                 />
-                <button type="button" className="inline-flex h-8.5 items-center justify-center gap-2 rounded-sm border border-input bg-surface px-3.5 text-xs-plus text-text-secondary hover:bg-surface-hover disabled:cursor-default disabled:opacity-50" disabled={memCheckSaving || !memCheckDirty} onClick={() =>{  void saveMemCheck() }}>
+                <Button size="sm" className="gap-1.5" disabled={memCheckSaving || !memCheckDirty} onClick={() =>{  void saveMemCheck() }}>
                   {memCheckSaving ? <Spinner /> : null}
                   {t('about.entry.memCheck.save')}
-                </button>
+                </Button>
 
-                <button type="button" className="inline-flex h-8.5 items-center justify-center gap-2 rounded-sm border border-input bg-surface px-3.5 text-xs-plus text-text-secondary hover:bg-surface-hover" onClick={() =>{  facts.refresh() }}>
+                <Button variant="outline" size="sm" onClick={() =>{  facts.refresh() }}>
                   {t('about.entry.memCheck.checkNow')}
-                </button>
+                </Button>
               </div>
               {memCheckError !== undefined
                 ? <p className="m-0 mt-1.5 text-2xs text-danger" role="alert">{memCheckError}</p>
@@ -1696,61 +1699,71 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                     || languages.length > 0
                     || entry.memory !== undefined
                   return (
-                    <li key={entry.id} className="rounded-sm border border-border bg-surface p-3">
-                      <div className="mb-0 flex items-start gap-3">
-                        <span className={FEATURE_ICON}><Icon name={ENTRY_ICONS[entry.id] ?? 'layout'} size={18} /></span>
-                        <div className="flex-auto min-w-0 pr-2">
-                          <div className={FEATURE_TITLE}>
-                            <span className={FEATURE_TITLE_NAME}>{entry.id}</span>
-                            <CopyButton value={entry.packageName} size={12} label={t('common.copy')} className={FEATURE_COPY} />
-                            <span className={ENTRY_TAG}>{t('about.entry.tag')}</span>
-                          </div>
-                          {hasChips
-                            ? (
-                              <div className={FEATURE_TEXT}>
-                                {entry.version !== undefined && entry.version !== ''
-                                  ? <span className={COUNT_CHIP}>{entry.version}</span>
-                                  : null}
-                                {entry.distribution !== undefined && entry.distribution !== ''
-                                  ? <span className={STACK_CHIP}>{entry.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
-                                  : null}
-                                {languages.length > 0
-                                  ? <span className={STACK_TEXT} title={languages.join(' · ')}>{languages.join(' · ')}</span>
-                                  : null}
-                                {entry.memory?.kind === 'shell'
-                                  ? (entry.memory.state === 'running' && entry.memory.footprintMb !== undefined
-                                    ? (
-                                      <>
-                                        {/* 2026-11-17: the memory fact is right-anchored like the plugin
-                                            runtime lines (their chip carries ml-auto), so the entry
-                                            list and plugin lists share one right-side track. */}
-                                        <span className={cn(COUNT_CHIP, 'ml-auto')}>{tf('about.entry.mem.shell', { mb: entry.memory.footprintMb })}</span>
-                                      </>
-                                    )
-                                    : <span className={cn(COUNT_CHIP, 'ml-auto')}>{entry.memory.state === 'stopped' ? t('about.entry.mem.shellStopped') : t('about.entry.mem.unavailable')}</span>)
-                                  : null}
-                                {entry.memory?.kind === 'in-host'
-                                  ? (
-                                    <>
-                                      <span className={cn(COUNT_CHIP, 'ml-auto')}>{t('about.entry.mem.inHost')}</span>
-                                    </>
-                                  )
-                                  : null}
-                                {entry.memory?.kind === 'transient'
-                                  ? <span className={cn(COUNT_CHIP, 'ml-auto')}>{t('about.entry.mem.transient')}</span>
-                                  : null}
+                    <li key={entry.id}>
+                      {/* HH round: the hand-rolled bordered li is the shadcn
+                          Card (sm spacing = the same 12px rhythm, standard
+                          ring/chrome); the inner flex structure and the
+                          measured right-side track (ml-auto chip, empty
+                          actions grid) are kept so entry and plugin cards
+                          stay column-aligned. */}
+                      <Card size="sm" className="shadow-none">
+                        <CardContent className="flex flex-col gap-2">
+                          <div className="mb-0 flex items-start gap-3">
+                            <span className={FEATURE_ICON}><Icon name={ENTRY_ICONS[entry.id] ?? 'layout'} size={18} /></span>
+                            <div className="flex flex-auto min-w-0 flex-col gap-1.5 pr-2">
+                              <div className={FEATURE_TITLE}>
+                                <span className={FEATURE_TITLE_NAME}>{entry.id}</span>
+                                <CopyButton value={entry.packageName} size={12} label={t('common.copy')} className={FEATURE_COPY} />
+                                <Badge variant="secondary" className="tabular-nums">{t('about.entry.tag')}</Badge>
                               </div>
-                            )
-                            : null}
-                          {entry.description
-                            ? <div className={FEATURE_DESC}>{entry.description}</div>
-                            : null}
-                        </div>
-                        {/* The empty actions column keeps this row's text column
-                            the same width as the plugin rows under it. */}
+                              {hasChips
+                                ? (
+                                  <div className={FEATURE_TEXT}>
+                                    {entry.version !== undefined && entry.version !== ''
+                                      ? <Badge variant="secondary" className="tabular-nums">{entry.version}</Badge>
+                                      : null}
+                                    {entry.distribution !== undefined && entry.distribution !== ''
+                                      ? <Badge variant="outline">{entry.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</Badge>
+                                      : null}
+                                    {languages.length > 0
+                                      ? <span className={STACK_TEXT} title={languages.join(' · ')}>{languages.join(' · ')}</span>
+                                      : null}
+                                    {entry.memory?.kind === 'shell'
+                                      ? (entry.memory.state === 'running' && entry.memory.footprintMb !== undefined
+                                        ? (
+                                          <>
+                                            {/* 2026-11-17: the memory fact is right-anchored like the plugin
+                                                runtime lines (their chip carries ml-auto), so the entry
+                                                list and plugin lists share one right-side track. */}
+                                            <Badge variant="outline" className="ml-auto tabular-nums">{tf('about.entry.mem.shell', { mb: entry.memory.footprintMb })}</Badge>
+                                          </>
+                                        )
+                                        : <Badge variant="outline" className="ml-auto">{entry.memory.state === 'stopped' ? t('about.entry.mem.shellStopped') : t('about.entry.mem.unavailable')}</Badge>)
+                                      : null}
+                                    {entry.memory?.kind === 'in-host'
+                                      ? (
+                                        <>
+                                          <Badge variant="outline" className="ml-auto">{t('about.entry.mem.inHost')}</Badge>
+                                        </>
+                                      )
+                                      : null}
+                                    {entry.memory?.kind === 'transient'
+                                      ? <Badge variant="outline" className="ml-auto">{t('about.entry.mem.transient')}</Badge>
+                                      : null}
+                                  </div>
+                                )
+                                : null}
+                              {entry.description
+                                ? <div className={FEATURE_DESC}>{entry.description}</div>
+                                : null}
+                            </div>
+                            {/* The empty actions column keeps this row's text column
+                                the same width as the plugin rows under it. */}
 
-                        <div className={PLUGIN_ACTIONS_GRID} aria-hidden="true" />
-                      </div>
+                            <div className={PLUGIN_ACTIONS_GRID} aria-hidden="true" />
+                          </div>
+                        </CardContent>
+                      </Card>
                     </li>
                   )
                 })}
@@ -1772,99 +1785,105 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                 // behavior).
                 const switchable = plugin.switchable !== false
                 return (
-                  <li key={plugin.id} className="rounded-sm border border-border bg-surface p-3">
-                    <div className="mb-0 flex items-start gap-3">
-                      {/* X2 item 17: the category icon (layers = real coraek plugins only). */}
-                      <span className={FEATURE_ICON}><Icon name={bucketIconOf(plugin.bucket ?? 'plugins')} size={18} /></span>
-                      <div className="flex-auto min-w-0 pr-2">
-                        {/* X2 items 11 + 16: the lock travels with the title (never in the
-                            button cluster), and the copy icon sits right after the name.
-                            X3: the copy button is a COMPACT ghost (the generic 34px bordered
-                            .iconButton reads as a door in the 13px title line). */}
-                        <div className={FEATURE_TITLE}>
-                          <span className={FEATURE_TITLE_NAME}>{displayName(plugin.packageName)}</span>
-                          <CopyButton value={plugin.packageName} size={12} label={t('common.copy')} className={FEATURE_COPY} />
-                          {plugin.locked ? <Icon name="lock" size={13} className={FEATURE_TITLE_LOCK} /> : null}
-                        </div>
-                        {/* N2 fix: the merged row was one undifferentiated line
-                            ("TypeScript · CSS AEK home surface: …" — no separators,
-                            chips jammed against the version). Now: version + A1/A2 +
-                            languages read as distinct chips on ONE line, and the
-                            (long, colon-carrying) description gets its own line
-                            below — the same two-line rhythm as the row above it. */}
-                        <div className={FEATURE_TEXT}>
-                          <span className={COUNT_CHIP}>{plugin.version}</span>
-                          {plugin.distribution !== ''
-                            ? <span className={STACK_CHIP}>{plugin.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
-                            : null}
-                          {switchable ? null : <span className={STACK_CHIP}>{t('plugins.switch.readonly')}</span>}
-                          {plugin.languages.length > 0
-                            ? <span className={STACK_TEXT} title={plugin.languages.join(' · ')}>{plugin.languages.join(' · ')}</span>
-                            : null}
-                        </div>
-                        {plugin.description !== ''
-                          ? <div className={FEATURE_DESC}>{plugin.description}</div>
-                          : null}
-                        {/* T round: where this package runs (its runtime line). */}
-                        <PluginRuntimeLine
-                          plugin={plugin}
-                          rt={rtSnapshot}
-                          term={term}
-                          onMove={movePlugin}
-                          onCarveOut={carveOutFor(plugin.id)}
-                          busy={rtBusy}
-                        />
-                      </div>
-                      {/* Two-column cluster (switch | actions): the lock icon moved to the
-                          title row (X2 item 11 — it never sits between the switch and the
-                          buttons), so the grid no longer drifts on locked rows. */}
+                  <li key={plugin.id}>
+                    <Card size="sm" className="shadow-none">
+                      <CardContent className="flex flex-col gap-2">
+                        <div className="mb-0 flex items-start gap-3">
+                          {/* X2 item 17: the category icon (layers = real coraek plugins only). */}
+                          <span className={FEATURE_ICON}><Icon name={bucketIconOf(plugin.bucket ?? 'plugins')} size={18} /></span>
+                          <div className="flex flex-auto min-w-0 flex-col gap-1.5 pr-2">
+                            {/* X2 items 11 + 16: the lock travels with the title (never in the
+                                button cluster), and the copy icon sits right after the name.
+                                X3: the copy button is a COMPACT ghost (the generic 34px bordered
+                                .iconButton reads as a door in the 13px title line). */}
+                            <div className={FEATURE_TITLE}>
+                              <span className={FEATURE_TITLE_NAME}>{displayName(plugin.packageName)}</span>
+                              <CopyButton value={plugin.packageName} size={12} label={t('common.copy')} className={FEATURE_COPY} />
+                              {plugin.locked ? <Icon name="lock" size={13} className={FEATURE_TITLE_LOCK} /> : null}
+                            </div>
+                            {/* N2 fix: the merged row was one undifferentiated line
+                                ("TypeScript · CSS AEK home surface: …" — no separators,
+                                chips jammed against the version). Now: version + A1/A2 +
+                                languages read as distinct chips on ONE line, and the
+                                (long, colon-carrying) description gets its own line
+                                below — the same two-line rhythm as the row above it.
+                                HH round: the chips are shadcn Badges. */}
+                            <div className={FEATURE_TEXT}>
+                              <Badge variant="secondary" className="tabular-nums">{plugin.version}</Badge>
+                              {plugin.distribution !== ''
+                                ? <Badge variant="outline">{plugin.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</Badge>
+                                : null}
+                              {switchable ? null : <Badge variant="outline">{t('plugins.switch.readonly')}</Badge>}
+                              {plugin.languages.length > 0
+                                ? <span className={STACK_TEXT} title={plugin.languages.join(' · ')}>{plugin.languages.join(' · ')}</span>
+                                : null}
+                            </div>
+                            {plugin.description !== ''
+                              ? <div className={FEATURE_DESC}>{plugin.description}</div>
+                              : null}
+                            {/* T round: where this package runs (its runtime line). */}
+                            <PluginRuntimeLine
+                              plugin={plugin}
+                              rt={rtSnapshot}
+                              term={term}
+                              onMove={movePlugin}
+                              onCarveOut={carveOutFor(plugin.id)}
+                              busy={rtBusy}
+                            />
+                          </div>
+                          {/* Two-column cluster (switch | actions): the lock icon moved to the
+                              title row (X2 item 11 — it never sits between the switch and the
+                              buttons), so the grid no longer drifts on locked rows.
+                              HH round: the shadcn Switch (32×18) + outline icon Button. */}
 
-                      <div className={PLUGIN_ACTIONS_GRID}>
-                        {switchable
-                          ? <ToggleSwitch
-                            checked={plugin.enabled}
-                            locked={plugin.locked}
-                            onChange={(next) =>{  requestToggle(plugin.id, next) }}
-                            label={plugin.locked ? t('plugins.switch.locked.root') : (plugin.enabled ? t('plugins.switch.on') : t('plugins.switch.off'))}
-                          />
-                          : <span className="block h-5 w-9.5" aria-hidden="true" />}
-                        {switchable
-                          ? PLUGIN_ACTIONS.map(action => (
-                            <button
-                              key={action.id}
-                              type="button"
-                              className="inline-flex size-8 items-center justify-center rounded-sm border border-border bg-surface p-0 text-text-secondary transition duration-160 ease-aek hover:not-disabled:border-accent-border hover:not-disabled:bg-accent-soft hover:not-disabled:text-accent-ink disabled:cursor-default disabled:opacity-45"
-                              disabled={pending !== undefined}
-                              onClick={() =>{  act(plugin.id, action.id) }}
-                              title={t(action.labelKey)}
-                              aria-label={`${t(action.labelKey)} · ${displayName(plugin.packageName)}`}
-                            >
-                              <Icon name={action.icon} size={18} />
-                            </button>
-                          ))
-                          : <span aria-hidden="true" />}
-                      </div>
-                    </div>
-                    <CapabilityTags caps={plugin.capabilities} />
-                    {confirming === plugin.id
-                      ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-2 px-2.5" role="alertdialog" aria-label={t('plugins.confirm.ok')}>
-                          <span className="min-w-0 grow shrink basis-55 text-xs leading-1.5 text-text-secondary">{tf('plugins.confirm.text', { name: displayName(plugin.packageName) })}</span>
-                          <span className="aek-plugin-confirm-actions ml-auto flex gap-2">
-                            <button type="button" className="inline-flex h-8.5 items-center justify-center gap-2 rounded-sm border border-input bg-surface px-3.5 text-xs-plus text-text-secondary hover:bg-surface-hover" onClick={() =>{  setConfirming(undefined) }}>
-                              {t('plugins.confirm.cancel')}
-                            </button>
-                            <button
-                              type="button"
-                              className={cn('inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-primary bg-primary px-4 font-semibold shadow-aek-primary text-inverse transition duration-150 ease-aek hover:bg-accent-hover hover:border-accent-hover active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50', DANGER_BUTTON)}
-                              onClick={() => { setConfirming(undefined); toggle(plugin.id, false) }}
-                            >
-                              {t('plugins.confirm.ok')}
-                            </button>
-                          </span>
+                          <div className={PLUGIN_ACTIONS_GRID}>
+                            {switchable
+                              ? <ToggleSwitch
+                                checked={plugin.enabled}
+                                locked={plugin.locked}
+                                onChange={(next) =>{  requestToggle(plugin.id, next) }}
+                                label={plugin.locked ? t('plugins.switch.locked.root') : (plugin.enabled ? t('plugins.switch.on') : t('plugins.switch.off'))}
+                              />
+                              : <span className="block h-4.5 w-8" aria-hidden="true" />}
+                            {switchable
+                              ? PLUGIN_ACTIONS.map(action => (
+                                <Button
+                                  key={action.id}
+                                  variant="outline"
+                                  size="icon-sm"
+                                  disabled={pending !== undefined}
+                                  onClick={() =>{  act(plugin.id, action.id) }}
+                                  title={t(action.labelKey)}
+                                  aria-label={`${t(action.labelKey)} · ${displayName(plugin.packageName)}`}
+                                >
+                                  <Icon name={action.icon} size={16} className="size-4" />
+                                </Button>
+                              ))
+                              : <span aria-hidden="true" />}
+                          </div>
                         </div>
-                      )
-                      : null}
+                        <CapabilityTags caps={plugin.capabilities} />
+                        {confirming === plugin.id
+                          ? (
+                            <div className="flex flex-wrap items-center gap-2 rounded-sm border border-danger-border bg-danger-soft p-2 px-2.5" role="alertdialog" aria-label={t('plugins.confirm.ok')}>
+                              <span className="min-w-0 grow shrink basis-55 text-xs leading-1.5 text-text-secondary">{tf('plugins.confirm.text', { name: displayName(plugin.packageName) })}</span>
+                              <span className="aek-plugin-confirm-actions ml-auto flex gap-2">
+                                <Button variant="outline" size="sm" onClick={() =>{  setConfirming(undefined) }}>
+                                  {t('plugins.confirm.cancel')}
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => { setConfirming(undefined); toggle(plugin.id, false) }}
+                                >
+                                  {t('plugins.confirm.ok')}
+                                </Button>
+                              </span>
+                            </div>
+                          )
+                          : null}
+                      </CardContent>
+                    </Card>
                   </li>
                 )
               })}

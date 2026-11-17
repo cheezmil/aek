@@ -33,10 +33,12 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
   runtime: 'activity',
   /** Web Search: the magnifier says "look things up" and nothing else. */
   websearch: 'search',
-  /** Skill Manager: back to the jigsaw (the Q-round ruling, restored
-      2026-11-17 — the mortarboard the BB round introduced read as
-      "academic", not "pluggable capability block"; the user vetoed it). */
-  skills: 'puzzle',
+  /** Skill Manager: an open book of text lines = "skill document". Icon
+      history (both earlier picks user-vetoed, 2026-11-17): the BB-round
+      mortarboard read as "academic"; the GG-round jigsaw was vetoed the
+      same day. `book-open-text` says "readable capability document" and
+      matches the aeksm hub (install / import / distribute skill docs). */
+  skills: 'bookOpenText',
   /** Prompt Manager: a plain text block (the Q-round ruling stands). */
   prompts: 'type',
   /** Web Search settings: the sliders glyph is the house style for "tune". */
@@ -92,7 +94,7 @@ export const ENTRIES_SECTION_ICON: IconName = 'layout'
  * nav entry and the skill-hub path row in the setup flow — one thing, one
  * mark.
  */
-export const SKILL_ICON: IconName = 'puzzle'
+export const SKILL_ICON: IconName = 'bookOpenText'
 
 /**
  * The "family home" row of a plugin's own side rail (`PluginSubNav`) — the

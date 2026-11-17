@@ -263,11 +263,15 @@
       // FF round: agent-first design-system rules for the AEK console.
       // The Tailwind v4 theme lives in apps/aek-web/src/index.css (tokens +
       // @theme inline); @shadcn/lint enforces that styling stays on the
-      // theme (no raw colors, no arbitrary values). Component-restyling
-      // contracts (shadcn/no-restyle) land with the first shadcn/ui
-      // components in src/components/ui.
+      // theme (no raw colors, no arbitrary values). The generated shadcn
+      // design-system sources in src/components/ui are the EXEMPT layer —
+      // they stay byte-verbatim from the shadcn CLI (regenerable), and
+      // house code importing them is what the rules police.
       "files": [
         "apps/aek-web/src/**/*.{ts,tsx}"
+      ],
+      "excludeFiles": [
+        "apps/aek-web/src/components/ui/**"
       ],
       "rules": {
         "shadcn/no-arbitrary-values": [
@@ -316,11 +320,16 @@
       ]
     },
     {
+      // The shadcn design-system sources (src/components/ui) stay verbatim
+      // CLI output — exempt from the house style block too.
       "files": [
         "packages/**/*.{ts,tsx}",
         "apps/**/*.{ts,tsx}",
         "examples/**/*.{ts,tsx}",
         "scripts/**/*.{ts,tsx}",
+      ],
+      "excludeFiles": [
+        "apps/aek-web/src/components/ui/**"
       ],
       "rules": {
         "@stylistic/indent": [

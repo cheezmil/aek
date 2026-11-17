@@ -29,6 +29,7 @@ import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { formatDisplayPath, parsePathStyle } from './paths.ts'
 import { cn } from '@/lib/utils'
+import { Switch as UISwitch } from '@/components/ui/switch'
 import { CopyButton, PanelSearch, Spinner } from './ui-kit.tsx'
 import { PREF_KEYS, oneOf, parseBoolean, usePref } from './preferences.tsx'
 import { useWebsearchRanking } from './useWebsearchRanking.ts'
@@ -134,9 +135,6 @@ const MODAL_TITLE = 'mb-2 text-sm-plus font-bold'
 const MODAL_TEXT = 'mb-2 text-text-secondary text-xs-plus leading-160'
 const MODAL_TARGET = 'mb-4 p-2 px-2.5 rounded-sm bg-surface-subtle text-text-secondary font-mono text-xs break-all'
 const MODAL_ACTIONS = 'flex justify-end gap-2'
-const TOGGLE = 'relative inline-block w-9.5 h-5.5 p-0 bg-input border border-transparent rounded-full cursor-pointer transition-[background-color] duration-180 ease-aek disabled:opacity-55 disabled:cursor-wait'
-const TOGGLE_ON = 'bg-primary border-primary'
-const TOGGLE_KNOB = 'absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow-aek-knob transition-transform duration-180 ease-aek'
 
 /** The two legal first-level values, shared by the preference parser. */
 const FREE_TIER_VALUES: readonly FreeFilter[] = ['yes', 'no']
@@ -374,17 +372,12 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
           className={cn(PROVIDER_ROW, PROVIDER_ROW_CLICKABLE)}
           onClick={handleRowClick}
         >
-          <button
-            type="button"
-            role="switch"
-            aria-checked={provider.enabled}
+          <UISwitch
+            checked={provider.enabled}
             aria-label={`${t('websearch.col.enabled')} ${provider.kind}`}
-            className={cn(TOGGLE, provider.enabled && TOGGLE_ON)}
             disabled={pending === provider.kind}
-            onClick={() =>{  toggle(provider.kind, !provider.enabled) }}
-          >
-            <span className={cn(TOGGLE_KNOB, provider.enabled && 'translate-x-4')} />
-          </button>
+            onCheckedChange={(next) => { toggle(provider.kind, next) }}
+          />
           <span className={PROVIDER_ICON}><Icon name="search" size={16} /></span>
           <div className={PROVIDER_MAIN}>
             <div className={PROVIDER_NAME} title={meta?.note}>
