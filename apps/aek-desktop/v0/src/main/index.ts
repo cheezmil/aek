@@ -361,16 +361,17 @@ async function backendAlive(): Promise<boolean> {
  * backend lags the shell by about a minute, and the window must say so.
  * @returns a data: URL carrying the waiting notice.
  */
-function reconnectingPage(): string {
+function reconnectingPage(appNotMounting = false): string {
+  const detail = appNotMounting
+    ? `<p style="color:#666;margin:0 0 1rem">The web backend on port ${WEB_PORT} is answering, but the app has not finished loading. A cold host can take a minute or two — this window retries automatically. If it is still blank, press ⌘R or quit and reopen the app.</p>`
+    : `<p style="color:#666;margin:0 0 1rem">The web backend on port ${WEB_PORT} is not answering. On this machine it starts automatically — this window reloads itself as soon as it is back. If it is still blank after a couple of minutes, press ⌘R or quit and reopen the app.</p>`
   const html = [
     '<!doctype html><meta charset="utf-8"><title>AEK</title>',
     '<body style="margin:0;min-height:100vh;display:grid;place-items:center;',
     'background:#fafafa;font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#222">',
     '<div style="max-width:26rem;padding:2rem">',
-    `<h1 style="font-size:1.05rem;margin:0 0 .5rem">${SLOT_CFG.productName} — waiting for the backend</h1>`,
-    `<p style="color:#666;margin:0 0 1rem">The web backend on port ${WEB_PORT} is not answering.`,
-    ' On this machine it starts automatically — this window reloads itself as soon as it is back.',
-    ' If it is still blank after a couple of minutes, press ⌘R or quit and reopen the app.</p>',
+    `<h1 style="font-size:1.05rem;margin:0 0 .5rem">${SLOT_CFG.productName} — ${appNotMounting ? 'backend up, app not mounting' : 'waiting for the backend'}</h1>`,
+    detail,
     '<div style="display:flex;gap:.4rem;align-items:center;color:#888;font-size:.85rem">',
     '<div style="width:10px;height:10px;border-radius:50%;background:#888;animation:p 1s infinite"></div>',
     'Retrying…',
@@ -416,6 +417,17 @@ const BOOT_RECHECK_MS = 5_000
  * reload the page every second until it did.
  */
 const RECOVERY_COOLDOWN_MS = 5_000
+/**
+ * II round: consecutive app-URL loads issued FOR RECOVERY (while
+ * `recoveryPending`) that settle without the app mounting. After this many the
+ * window stops oscillating between white app pages: it parks on the status
+ * page and retries the shell load on the longer parked backoff below. The
+ * count clears on any healthy boot — or when the backend goes down and comes
+ * back (a new generation gets a fresh failure budget).
+ */
+const MAX_STALLED_RECOVERY_LOADS = 3
+/** II round: shell-load retry period while parked (backend answers, app not mounting). */
+const PARKED_RETRY_MS = 30_000
 
 function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void } {
   let showingReconnect = false
@@ -440,8 +452,17 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
    * answers, and any healthy-boot signal clears the counters. The 2026-11-15
    * post-reboot white screen was the old terminal state: backend healthy,
    * window blank, watcher no longer capable of acting.
+   * II round: while this is set, the window PARKS on the status page between
+   * backoff retries (`stalledRecoveryLoads` / `PARKED_RETRY_MS`) — the
+   * 2026-11-17 incident left it oscillating on white app loads instead.
    */
   let recoveryPending = false
+  /** II round: consecutive stalled RECOVERY loads (settled unmounted). */
+  let stalledRecoveryLoads = 0
+  /** II round: true while the in-flight app-URL load was issued for recovery. */
+  let recoveryLoadInFlight = false
+  /** II round: liveness of the last probe (a down→up edge gives a fresh budget). */
+  let lastAlive = false
 
   const disarmBootWatch = (): void => {
     if (bootTimer !== undefined) clearTimeout(bootTimer)
@@ -454,6 +475,8 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
     lastBootOkAt = Date.now()
     forcedReloads = 0
     recoveryPending = false
+    stalledRecoveryLoads = 0
+    recoveryLoadInFlight = false
   }
 
   /**
@@ -497,11 +520,25 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
       return
     }
     if (forcedReloads >= MAX_CONSECUTIVE_FORCED_RELOADS) {
+      // II round: if THIS load was a recovery attempt that still does not
+      // mount, count it — after the parked threshold the retry period
+      // lengthens so the window stops oscillating on white app pages.
+      if (recoveryLoadInFlight) stalledRecoveryLoads += 1
+      recoveryLoadInFlight = false
       recoveryPending = true
+      // The probe must not re-issue a recovery load in the same second as
+      // the park decision: stamping the cooldown here keeps the window on
+      // the status page for the whole backoff gap instead of letting the
+      // one-second probe tick flash a white app load over it.
+      lastRecoveryLoadAt = Date.now()
       log.warn(
-        'renderer silent-failure: recovery pending — the window re-loads automatically as soon as the backend answers',
-        { attempts: forcedReloads },
+        'renderer silent-failure: recovery pending — parking on the status page; the probe retries the shell load on a backoff',
+        { attempts: forcedReloads, stalledRecoveryLoads },
       )
+      // II round: leave the white app document NOW — the status page says
+      // what is actually true (backend up, app not mounting) and the ⌘R
+      // fallback instead of another silent white screen.
+      showReconnect(true)
       return
     }
     forcedReloads += 1
@@ -551,14 +588,19 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
    *  endless 5s reload loop after a poisoned-build recovery). */
   let bootSettleArmed = false
 
-  const showReconnect = (): void => {
+  const showReconnect = (appNotMounting = false): void => {
     // W round: also guard against the flag being stale in the reverse
     // direction (already on the reconnect page, flag not set).
-    if (showingReconnect || win.webContents.getURL().startsWith('data:')) return
+    const onStatusPage = win.webContents.getURL().startsWith('data:')
+    if (onStatusPage && !appNotMounting) return
+    if (showingReconnect && !onStatusPage) return
     showingReconnect = true
-    log.warn('backend down — showing reconnecting page', { shellUrl })
-    disarmBootWatch()
-    void win.loadURL(reconnectingPage()).catch(() => { /* the window may be gone */ })
+    // II round: `appNotMounting` swaps in the honest variant (the backend
+    // answers but the app will not mount) — that is what the 2026-11-17
+    // incident left on screen: a white app page, not a status page.
+    log.warn(appNotMounting ? 'app not mounting — parking on the status page' : 'backend down — showing reconnecting page', { shellUrl })
+    if (!onStatusPage) disarmBootWatch()
+    void win.loadURL(reconnectingPage(appNotMounting)).catch(() => { /* the window may be gone */ })
   }
 
   const showApp = (): void => {
@@ -568,10 +610,16 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
     // nothing ever called loadURL again.
     if (!showingReconnect && !recoveryPending) return
     if (recoveryPending && bootSettleArmed) return
-    if (recoveryPending && Date.now() - lastRecoveryLoadAt < RECOVERY_COOLDOWN_MS) return
+    // II round: after the parked threshold the retry period lengthens —
+    // the window rests on the status page and re-probes the app only on
+    // the slow backoff, so a permanently-stalling mount cannot keep
+    // oscillating the page between white app loads.
+    const cooldown = stalledRecoveryLoads >= MAX_STALLED_RECOVERY_LOADS ? PARKED_RETRY_MS : RECOVERY_COOLDOWN_MS
+    if (recoveryPending && Date.now() - lastRecoveryLoadAt < cooldown) return
     showingReconnect = false
     if (recoveryPending) lastRecoveryLoadAt = Date.now()
-    log.info('backend up — loading shell', { shellUrl })
+    recoveryLoadInFlight = recoveryPending
+    log.info('backend up — loading shell', { shellUrl, stalledRecoveryLoads })
     void win.loadURL(shellUrl).catch(() => { /* the window may be gone */ })
     // The app URL is (re)loading now: arm the boot deadline from the moment
     // of the DECISION, not from did-finish-load — the `[aek-boot]` line
@@ -593,6 +641,16 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
       showingReconnect = false
     }
     const alive = await backendAlive()
+    // II round: a down→up edge is a NEW backend generation — the failure
+    // budgets built up while the backend was down (forced reloads, stalled
+    // recovery loads) must not gate the recovery against the new one, and
+    // the parked backoff clock resets so the first retry is prompt.
+    if (alive && !lastAlive) {
+      forcedReloads = 0
+      stalledRecoveryLoads = 0
+      lastRecoveryLoadAt = 0
+    }
+    lastAlive = alive
     if (alive) {
       showApp()
       return

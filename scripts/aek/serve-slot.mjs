@@ -28,6 +28,8 @@
  */
 import { spawn } from 'node:child_process'
 import { execFileSync } from 'node:child_process'
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { SLOTS, slotConfig, slotWebUp, slotHome, listenPids } from './shared-logic.mjs'
 
 const POLL_MS = 15_000
@@ -71,10 +73,28 @@ function holderDescription(pids) {
   return parts.join('; ')
 }
 
+/**
+ * II round: the agent's shared stderr (`web.err.log`) mixes many supervisor
+ * generations and is easy to lose in post-mortem. The foreign-holder events
+ * and the child lifecycle are ALSO appended to a durable per-slot log under
+ * the slot data root, so "who held the port, since when, and did our child
+ * ever start" is answerable without digging through LaunchAgent stderr.
+ * Never throws: logging must not take the supervisor down.
+ */
+const SUP_LOG = join(slotHome(slot), 'logs', 'supervisor.log')
+function supervisorLog(kind, extra) {
+  try {
+    if (!existsSync(join(SUP_LOG, '..'))) mkdirSync(join(SUP_LOG, '..'), { recursive: true })
+    appendFileSync(SUP_LOG, `${JSON.stringify({ kind, slot, at: new Date().toISOString(), ...extra })}\n`)
+  } catch { /* the supervisor outlives a flaky log dir */ }
+}
+
 let stopping = false
 let timer = null
 let child = null
 let foreignHoldersReported = false
+/** II round: the holder set last written to the durable log (log on change). */
+let lastLoggedHolders = ''
 
 /**
  * Wait, but let a signal cut the wait short.
@@ -99,14 +119,25 @@ while (!stopping) {
     if (child !== null) {
       // Our own child is up — the quiet, expected case.
       foreignHoldersReported = false
+      lastLoggedHolders = ''
       console.log(`[serve] ${slot} web up on ${cfg.webPort} (our pid ${String(child.pid)}) — waiting`)
-    } else if (!foreignHoldersReported) {
-      // Someone ELSE answers on the slot port: a stuck dev-era boot, a manual
-      // session, or an orphaned launcher. Waiting on that is silent data loss:
-      // the holder may lack the launcher flags this supervisor would pass
-      // (e.g. --trusted-host), which degrades the backend without any error.
-      // Report it once, loudly, with the kill path; keep waiting afterwards.
-      const holders = listenPids(cfg.webPort)
+      await sleep(POLL_MS)
+      continue
+    }
+    // Someone ELSE answers on the slot port: a stuck dev-era boot, a manual
+    // session, or an orphaned launcher. Waiting on that is silent data loss:
+    // the holder may lack the launcher flags this supervisor would pass
+    // (e.g. --trusted-host), which degrades the backend without any error.
+    // Report it once, loudly, with the kill path; keep waiting afterwards.
+    const holders = listenPids(cfg.webPort)
+    // II round: the durable log tracks HOLDER SET CHANGES (holder A dies, B
+    // takes over the port) even after the console warning has already fired.
+    const holdersKey = holders.join(',')
+    if (holdersKey !== lastLoggedHolders) {
+      lastLoggedHolders = holdersKey
+      supervisorLog('foreign-holder', { port: cfg.webPort, holders, description: holderDescription(holders) })
+    }
+    if (!foreignHoldersReported) {
       console.warn(`[serve] WARNING: ${cfg.webPort} is held by a process that is not this supervisor's child: ${holderDescription(holders) || '(holder gone)'}`)
       console.warn(`[serve] The slot backend may be degraded (missing launcher flags such as --trusted-host). To hand the port back to the supervisor: kill ${holders.map(String).join(' ')} (or reload the slot's LaunchAgent). The supervisor keeps waiting until the port is free.`)
       foreignHoldersReported = true
@@ -116,6 +147,7 @@ while (!stopping) {
   }
 
   foreignHoldersReported = false
+  lastLoggedHolders = ''
   // The port is taken but not answering (a foreign app, or a stuck socket). Do
   // NOT start a server that can only fail: wait until the port is really free.
   if (listenPids(cfg.webPort).length > 0) {
@@ -129,6 +161,7 @@ while (!stopping) {
   const env = { ...process.env }
   delete env.NODE_OPTIONS
   child = spawn(process.execPath, [launcher, '--slot', slot, 'web', '--no-open'], { stdio: 'inherit', env })
+  supervisorLog('child-start', { pid: child.pid, port: cfg.webPort })
 
   const code = await new Promise((resolve) => {
     child.on('exit', (c) => { resolve(c) })
@@ -138,6 +171,7 @@ while (!stopping) {
     })
   })
   child = null
+  supervisorLog('child-exit', { code, port: cfg.webPort })
   if (stopping) break
   console.log(`[serve] web exited (${String(code)}) — restarting in ${String(RESTART_MS)}ms`)
   await sleep(RESTART_MS)

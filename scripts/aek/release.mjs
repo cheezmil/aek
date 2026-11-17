@@ -39,7 +39,10 @@
  *   5  swap: service.mjs uninstall all --yes → slots.mjs --stop-all --yes
  *      → slots.mjs --only aek --yes → service.mjs install aek --yes
  *      (the agent is installed FROM the stable tree, so its plist points at
- *       the stable tree's serve-slot.mjs) → wait for 1685
+ *       the stable tree's serve-slot.mjs) → wait for 1685, and the listener
+ *      must belong to the agent's child chain (`serve-slot.mjs` in the
+ *      ancestors) — a foreign dev-era holder does NOT pass the gate (II
+ *      round: the 2026-11-17 false-positive left current wedged 43 min)
  *   6  record state (previousTag = old currentTag) and print the rollback ref
  *
  * ROLLBACK (--rollback [tag] --yes): steps 2-6 with the target ref; when the
@@ -363,13 +366,69 @@ async function smokeWeb(root) {
 }
 
 /** @param {number} port @param {number} timeoutMs @returns {Promise<boolean>} */
-async function waitForPort(port, timeoutMs) {
+function describePid(pid) {
+  try {
+    const cmd = execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8', timeout: 3_000 }).trim()
+    return `pid ${String(pid)} — ${cmd.slice(0, 160)}`
+  } catch {
+    return `pid ${String(pid)} (command unknown)`
+  }
+}
+
+/**
+ * II round: the ownership probe for the health gate. A listener belongs to the
+ * slot's agent when its ANCESTOR CHAIN contains the slot's `serve-slot.mjs`
+ * supervisor (launchd → serve-slot.mjs → launch.mjs → … → the web host).
+ * Anything else — a terminal dev session, a stale holder, a dev-era tsx —
+ * may be missing the launcher flags the agent passes (`--trusted-host`),
+ * which degrades the backend silently.
+ * @param {string} slot
+ * @param {number} pid
+ * @returns {boolean}
+ */
+function listenerOwnedBySlot(slot, pid) {
+  const marker = `serve-slot.mjs --slot ${slot}`
+  let current = Number(pid)
+  for (let hop = 0; hop < 12 && current > 1; hop++) {
+    let ppid = 1
+    try {
+      const out = execFileSync('ps', ['-o', 'ppid=,command=', '-p', String(current)], { encoding: 'utf8', timeout: 3_000 }).trim()
+      const [head, ...rest] = out.split(' ')
+      ppid = Number.parseInt(head, 10) || 1
+      if (rest.join(' ').includes(marker)) return true
+    } catch {
+      break // the holder died between the lsof and this probe
+    }
+    current = ppid
+  }
+  return false
+}
+
+/**
+ * Wait until the port answers AND the listener belongs to the slot's agent.
+ * II round: the 2026-11-17 release false-positive — a stray dev-era tsx held
+ * the slot port, so a plain "someone is listening" check reported success
+ * while the real agent child stayed wedged behind the supervisor for 43
+ * minutes (the user's "新建运行时白屏" incident). Foreign holders are reported
+ * once per pid with the kill path, and the gate stays closed until the
+ * listener is agent-owned; at the deadline the caller fails with a rollback.
+ */
+async function waitForPortOwned(slot, port, timeoutMs) {
   const start = Date.now()
+  const warned = new Set()
   while (Date.now() - start < timeoutMs) {
-    if (listenPids(port).length > 0) return true
+    for (const pid of listenPids(port)) {
+      if (listenerOwnedBySlot(slot, pid)) return true
+      if (!warned.has(pid)) {
+        warned.add(pid)
+        console.warn(`[release] ⚠️ ${String(port)} is held by a process that is NOT the ${slot} agent's child: ${describePid(pid)}`)
+        console.warn(`[release]    It may lack the launcher flags the agent passes — the backend would run degraded. The gate stays closed: kill ${String(pid)} (or reload the slot's LaunchAgent) to hand the port back; at the deadline this release fails with a rollback.`)
+      }
+      break
+    }
     await new Promise((r) => setTimeout(r, 3_000))
   }
-  return listenPids(port).length > 0
+  return false
 }
 
 // ── Plan (read-only) ────────────────────────────────────────────────────────
@@ -491,7 +550,7 @@ if (agentLoaded === false) {
 if (agentLoaded === false) {
   console.warn('[release] 警告：LaunchAgent 补装后仍未加载（web 已在跑；开机自启需手动：node <stable 树>/scripts/aek/service.mjs install aek --yes 或 launchctl bootstrap gui/<uid> <plist>）')
 }
-if (!(await waitForPort(CURRENT_WEB_PORT, 90_000))) fail(`current web（${CURRENT_WEB_PORT}）90s 内未起来——回滚：node scripts/aek/release.mjs --rollback --yes`)
+if (!(await waitForPortOwned('aek', CURRENT_WEB_PORT, 90_000))) fail(`current web（${CURRENT_WEB_PORT}）90s 内没有由槽 agent 的子进程持有（外部长占进程会在上方逐次告警）——先 kill 告警里的 pid（或 reload 该槽 LaunchAgent）后重跑本步骤；或回滚：node scripts/aek/release.mjs --rollback --yes`)
 console.log(`[release] current 已起（${CURRENT_WEB_PORT}，${STABLE_DIR} @ ${TARGET}）`)
 
 // record state
