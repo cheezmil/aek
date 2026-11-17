@@ -239,9 +239,11 @@ function Console() {
             <h2 className={sectionTitleClass}>{t('panel.runtimeSection')}</h2>
             <RuntimeModePanel refreshSignal={signalFor('runtime')} />
           </section>
+          {/* 2026-11-17: the 基础语言 / A1A2 stackHint line was removed on
+              user demand ("去掉这个文字" — the title + roster speak for
+              themselves; the hint duplicated the chip legend). */}
           <section className="mt-8 first:mt-0">
             <h2 className={sectionTitleClass}>{t('panel.pluginsSection')}</h2>
-            <div className="mb-4 -mt-0.5 text-xs text-muted">{t('about.stackHint')}</div>
             <PluginsPanel refreshSignal={signalFor('plugins')} />
           </section>
           <section className="mt-8 first:mt-0">

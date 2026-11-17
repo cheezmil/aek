@@ -42,20 +42,42 @@ type Slot = typeof SLOTS[number]
  *
  * The URL already ends in `:<port>`, so the row carries no separate port chip
  * and no second copy button — both were noise.
- * @param props - label, value and the copy label.
+ *
+ * 2026-11-17: the WEB endpoint value is CLICKABLE (`onOpen`) — it opens in
+ * the SYSTEM default browser. In the Electron shell the main process routes
+ * every `window.open` http(s) URL to `shell.openExternal` (see aek-desktop
+ * main's `setWindowOpenHandler`), and in a plain server browser the same
+ * call just opens a new tab — one code path, both surfaces.
+ * @param props - label, value, the copy label, and the optional open action.
  * @returns a list item.
  */
-function EndpointRow({ label, value, copyLabel }: {
+function EndpointRow({ label, value, copyLabel, onOpen }: {
   label: string
   value: string
   copyLabel: string
+  onOpen?: (() => void) | undefined
 }): ReactNode {
+  const { t } = useI18n()
   return (
     // The 24px copy button is baked here (the module's
     // `.endpointRow > .iconButton { width: 24px; height: 24px }` descendant).
     <li className='aek-grid-endpoint-row grid items-center gap-2 py-1 border-t border-dashed border-border text-xs'>
+      {/* 10px spacer = the sibling half-row's status-dot track, so the label
+          lines up with 后端服务 / 桌面窗口 in the same card (2026-11-17). */}
+      <span aria-hidden="true" className='w-2.5 h-2.5' />
       <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text-muted">{label}</span>
-      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text-secondary" title={value}>{value}</span>
+      {onOpen !== undefined
+        ? (
+          <button
+            type="button"
+            className="min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-left text-text-secondary cursor-pointer transition duration-150 hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-1"
+            title={`${t('runtime.endpoint.openHint')} · ${value}`}
+            onClick={onOpen}
+          >
+            {value}
+          </button>
+        )
+        : <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text-secondary" title={value}>{value}</span>}
       <CopyButton value={value} label={copyLabel} size={13} className='size-6' />
     </li>
   )
@@ -368,6 +390,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                           label={t('runtime.endpoint.web')}
                           value={endpoint.url}
                           copyLabel={t('runtime.copyUrl')}
+                          onOpen={() =>{  window.open(endpoint.url, '_blank', 'noopener,noreferrer') }}
                         />
                         <EndpointRow
                           label={t('runtime.endpoint.cdp')}

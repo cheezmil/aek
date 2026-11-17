@@ -461,8 +461,16 @@ export function slotWebUp(slot, options = {}) {
       } catch { continue }   // pid vanished mid-scan; skip it, don't fail the probe
       // `home` must match on a path boundary: `/a/.aek` must not match the
       // command line of the sibling `/a/.aek-next` process.
+      //
+      // 2026-11-17: the dev-web host (`node --import tsx/esm …/bin.ts web
+      // --trusted-host <webHost> --no-open`) carries the slot's port in the
+      // AEK_WEB_PORT env, NOT on the command line — so `--port` alone does
+      // not see it and the arbiter refuses to launch the dev shell. The
+      // `--trusted-host` alias is slot-unique (aek.localhost / aek-next.
+      // localhost) and marks the same process.
       if (cmd.includes(`${home}/`) || cmd.trimEnd().endsWith(home) ||
-          cmd.includes(`--port ${s.webPort}`)) ours = true
+          cmd.includes(`--port ${s.webPort}`) ||
+          cmd.includes(`--trusted-host ${s.webHost}`)) ours = true
     }
   } catch { /* no listener */ }
   if (!ours) return false

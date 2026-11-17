@@ -27,7 +27,7 @@ export type IconName =
   | 'lock' | 'grip'
   | 'save'
   | 'puzzle' | 'type'
-  | 'skill' | 'globe'
+  | 'globe'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 const ICONS: Record<IconName, ReactNode> = {
@@ -219,20 +219,9 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M9 20h6" />
     </>
   ),
-  /**
-   * Lucide `graduation-cap` (BB round): the SKILL icon. A skill is a
-   * reusable capability / expertise block — lucide's own tag list for this
-   * glyph includes "skill / skills / expertise". Path verified against
-   * lucide.dev + the published icon set (2026-11-16, user ruling: the old
-   * `puzzle` jigsaw read as a gear next to the settings entry).
-   */
-  skill: (
-    <>
-      <path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z" />
-      <path d="M22 10v6" />
-      <path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5" />
-    </>
-  ),
+  /* (The BB-round `skill` mortarboard was removed on 2026-11-17: the user
+     vetoed it ("谁让你用一个学士帽图标"); the Skill Manager mark is back to
+     the Q-round `puzzle` jigsaw — see icon-registry.ts.) */
   /**
    * Lucide `globe` (BB round): the AEK-WEB console entry — an unambiguously
    * "a web app" mark (lucide's own tags: browser / internet / https / www).

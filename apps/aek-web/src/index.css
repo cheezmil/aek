@@ -419,7 +419,11 @@
 
   /* ── Grid one-offs (grid-template-columns values off the scale; the
        `grid` + helper pair keeps @shadcn/lint no-arbitrary-values happy). ── */
-  .aek-grid-endpoint-row { grid-template-columns: 88px minmax(0, 1fr) 24px; }
+  /* 2026-11-17: first column = the 10px dot track of the sibling
+     `.aek-grid-half-row` — the endpoint labels line up with the 后端服务 /
+     桌面窗口 labels of the SAME card (they were 18px to the left). The
+     label column keeps "desktop cdp url" (15 chars @ text-xs) untruncated. */
+  .aek-grid-endpoint-row { grid-template-columns: 10px 100px minmax(0, 1fr) 24px; }
   .aek-grid-half-row { grid-template-columns: 10px minmax(0, 1fr) auto; }
   .aek-grid-inflight-row { grid-template-columns: minmax(120px, 180px) 1fr auto; }
   .aek-grid-instance-list { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }

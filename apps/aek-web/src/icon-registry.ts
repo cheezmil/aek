@@ -33,9 +33,10 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
   runtime: 'activity',
   /** Web Search: the magnifier says "look things up" and nothing else. */
   websearch: 'search',
-  /** Skill Manager: the mortarboard (lucide tag list carries "skill /
-      skills / expertise") — a reusable capability block, not a gear. */
-  skills: 'skill',
+  /** Skill Manager: back to the jigsaw (the Q-round ruling, restored
+      2026-11-17 — the mortarboard the BB round introduced read as
+      "academic", not "pluggable capability block"; the user vetoed it). */
+  skills: 'puzzle',
   /** Prompt Manager: a plain text block (the Q-round ruling stands). */
   prompts: 'type',
   /** Web Search settings: the sliders glyph is the house style for "tune". */
@@ -86,10 +87,12 @@ export const BUCKET_ICONS: Record<PluginBucket, IconName> = {
 export const ENTRIES_SECTION_ICON: IconName = 'layout'
 
 /**
- * The SKILL concept mark (the mortarboard), shared by the Skill Manager nav
- * entry and the skill-hub path row in the setup flow — one thing, one mark.
+ * The SKILL concept mark (the jigsaw — the Skill Manager's block glyph, the
+ * 2026-11-17 restoration of the Q-round choice), shared by the Skill Manager
+ * nav entry and the skill-hub path row in the setup flow — one thing, one
+ * mark.
  */
-export const SKILL_ICON: IconName = 'skill'
+export const SKILL_ICON: IconName = 'puzzle'
 
 /**
  * The "family home" row of a plugin's own side rail (`PluginSubNav`) — the

@@ -68,7 +68,7 @@ const DIRTY_SAVE_ALL_DOT = 'absolute -top-0.5 -right-0.5 size-2 rounded-full bg-
 const DIVIDER = 'h-px my-6 bg-border'
 const EMPTY_STATE = 'flex items-center justify-center gap-2 min-h-30 text-text-muted text-xs-plus'
 const ENTRY_LIST = 'flex flex-col gap-2 list-none m-0 p-0'
-const ENTRY_TAG = 'p-0.5 px-2 rounded-full bg-accent-soft border border-accent-border text-accent-ink text-2xs'
+const ENTRY_TAG = 'p-0.5 px-2 rounded-full bg-accent-soft border border-accent-border text-accent-ink text-2xs leading-none'
 const ERROR_BANNER = 'flex items-center gap-2 mb-4 p-3 px-4 border border-danger-border rounded-sm bg-danger-soft text-danger text-xs-plus'
 const FEATURE_COPY = 'w-auto min-w-5.5 h-4.5 p-0 px-0.75 border-0 rounded-2xs bg-transparent text-text-muted hover:not-disabled:text-accent-ink hover:not-disabled:bg-accent-soft hover:not-disabled:border-transparent'
 const FEATURE_DESC = 'mt-0.5 text-xs leading-aek-155 text-text-muted'
@@ -84,7 +84,9 @@ const INFO_LIST = 'flex flex-col list-none m-0 p-0'
 const INFO_ROW = 'flex items-baseline justify-between gap-4 py-3 border-b border-border text-xs-plus last:border-b-0'
 const INFO_VALUE = 'text-right text-text font-medium break-all'
 const LOADING_STATE = EMPTY_STATE
-const MEM_CHECK_ROW = 'flex items-center gap-2'
+/* EE-fix (2026-11-17): mb-2 keeps the row off the 入口 card list below it
+   (the list's own gap-2 only separates the CARDS from each other). */
+const MEM_CHECK_ROW = 'mb-2 flex items-center gap-2'
 const NOTICE_ERROR = 'border-danger-border bg-danger-soft text-danger'
 const NOTICE_LINE = 'flex items-center gap-2 mb-3 p-1.5 px-2.5 border border-transparent rounded-lg text-text-secondary text-xs'
 const NOTICE_NEUTRAL = 'bg-surface-subtle'
@@ -103,13 +105,24 @@ const OPS_POP_LIST = 'list-none m-0 p-0 flex flex-col gap-2 max-h-80 overflow-au
 const OPS_POP_TITLE = 'inline-flex items-center gap-1.5 text-xs-plus font-semibold text-text'
 const OPS_POPOVER = 'aek-popover'
 const OPS_ROW = 'flex flex-col gap-1.5 p-2 px-2.5 border border-border rounded-lg bg-card'
-const PLUGIN_ACTIONS_GRID = 'aek-grid-plugin-actions items-center justify-items-center gap-3 shrink-0 grow-0'
+/* 2026-11-17 field report: the restart button sat FLUSH against the switch.
+   Root cause: the div was `display:block`, so the `gap` / `justify-items` /
+   `grid-template-columns` on `.aek-grid-plugin-actions` were all no-ops and
+   the two controls rendered as touching inline-blocks. The `grid`
+   (display:grid) class — the same pair the sibling `.aek-grid-endpoint-row`
+   uses — is what actually makes the 38px/32px columns + gap-4 (16px)
+   spacing apply. */
+const PLUGIN_ACTIONS_GRID = 'aek-grid-plugin-actions grid items-center justify-items-center gap-4 shrink-0 grow-0'
 const RANGE_INPUT = 'aek-range-input'
 const SETTING_TOGGLE_LABEL = 'text-text font-semibold'
 const SETTING_TOGGLE_ROW = 'flex items-center gap-3 min-h-6 cursor-pointer'
 const SETTING_VALUE = 'shrink-0 grow-0 p-0.5 px-2 rounded-full bg-accent-soft text-accent-ink text-2xs font-semibold tabular-nums'
 const STACK_CHIP = 'shrink-0 grow-0 p-0.5 px-2 border border-border rounded-full bg-surface-subtle text-text-muted text-2xs font-semibold'
-const STACK_TEXT = 'shrink grow min-w-0 max-w-aek-stack overflow-hidden text-ellipsis whitespace-nowrap text-text-muted text-2xs'
+/* 2026-11-17: no `grow` — a stretching text span was stealing the row's slack,
+   so the right-anchored memory chips (ml-auto) of the rows above it never reached the
+   right edge and floated at different x per card. Compact left-aligned text; the
+   right-side track belongs to the ml-auto chips. */
+const STACK_TEXT = 'shrink min-w-0 max-w-aek-stack overflow-hidden text-ellipsis whitespace-nowrap text-text-muted text-2xs'
 const STICKY_DIVIDER = 'h-px bg-border mb-5'
 const STICKY_PANEL_SEARCH = 'aek-sticky-panel-search'
 const TEXT_INPUT = 'w-full p-1.25 px-2 border border-input rounded-xs bg-card text-text text-xs'
@@ -1154,9 +1167,11 @@ function PluginRuntimeLine({ plugin, rt, term, onMove, onCarveOut, busy }: {
           ? (
             <span className="relative inline-flex">
 
+              {/* inline-flex + gap: label and chevron stay on ONE line (a
+                  wrapping icon was the 2026-11-17 field report). */}
               <button
                 type="button"
-                className="rounded-full border border-border bg-surface py-0.5 px-2 text-2xs text-text-secondary leading-140 cursor-pointer hover:border-primary hover:text-accent-ink disabled:cursor-default disabled:opacity-50"
+                className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-border bg-surface py-0.5 px-2 text-2xs text-text-secondary leading-140 cursor-pointer hover:border-primary hover:text-accent-ink disabled:cursor-default disabled:opacity-50"
                 disabled={busy !== undefined}
                 onClick={() => { setPickerOpen(open => !open) }}
                 aria-expanded={pickerOpen}
@@ -1372,20 +1387,32 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
   // user-adjustable seconds input (persisted on the host, default 60) drives
   // a background poll of the host facts so the runtime memory readings keep
   // moving on their own; 立即检测 bypasses the interval and measures now.
-  const [memCheckSec, setMemCheckSec] = usePref<number>(PREF_KEYS.memCheckIntervalSec, 60, parseMemCheckIntervalSec)
+  // EE-fix (2026-11-17): the commit is now EXPLICIT (the 保存 button, or
+  // Enter) and awaited — the old blur-commit POSTed fire-and-forget, so when
+  // the host was down the write was silently lost and the next load
+  // reconciled back to the fallback 60. A failed save now shows inline and
+  // keeps the draft for a retry.
+  const [memCheckSec, , commitMemCheckSec] = usePref<number>(PREF_KEYS.memCheckIntervalSec, 60, parseMemCheckIntervalSec)
   const facts = useConsoleFacts(memCheckSec * 1000)
   const [memCheckDraft, setMemCheckDraft] = useState(String(memCheckSec))
   useEffect(() => {
     setMemCheckDraft(String(memCheckSec))
   }, [memCheckSec])
-  const commitMemCheck = useCallback((raw: string) => {
-    const value = Number(raw)
-    if (Number.isFinite(value) && value >= 5 && value <= 3600) {
-      setMemCheckSec(Math.floor(value))
-    } else {
-      setMemCheckDraft(String(memCheckSec))
-    }
-  }, [memCheckSec, setMemCheckSec])
+  const [memCheckSaving, setMemCheckSaving] = useState(false)
+  const [memCheckError, setMemCheckError] = useState<string | undefined>(undefined)
+  const memCheckValue = Number(memCheckDraft)
+  const memCheckDirty = Number.isFinite(memCheckValue)
+    && memCheckValue >= 5 && memCheckValue <= 3600
+    && Math.floor(memCheckValue) !== memCheckSec
+  const saveMemCheck = useCallback(async (): Promise<void> => {
+    const value = Math.floor(Number(memCheckDraft))
+    if (!Number.isFinite(value) || value < 5 || value > 3600) return
+    setMemCheckSaving(true)
+    setMemCheckError(undefined)
+    const ok = await commitMemCheckSec(value)
+    setMemCheckSaving(false)
+    if (!ok) setMemCheckError(t('about.entry.memCheck.saveFailed'))
+  }, [commitMemCheckSec, memCheckDraft, t])
   // T round: the numbered runtime view lives IN this card (the standalone
   // 运行时与内存 section is gone); the per-plugin runtime lines come from
   // the same live snapshot.
@@ -1635,15 +1662,21 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                   value={memCheckDraft}
                   aria-label={t('about.entry.memCheck.label')}
                   title={t('about.entry.memCheck.hint')}
-                  onChange={(event) =>{  setMemCheckDraft(event.target.value) }}
-                  onBlur={() =>{  commitMemCheck(memCheckDraft) }}
-                  onKeyDown={(event) =>{  if (event.key === 'Enter') commitMemCheck(memCheckDraft) }}
+                  onChange={(event) =>{  setMemCheckDraft(event.target.value); setMemCheckError(undefined) }}
+                  onKeyDown={(event) =>{  if (event.key === 'Enter') { event.preventDefault(); void saveMemCheck() } }}
                 />
+                <button type="button" className="inline-flex h-8.5 items-center justify-center gap-2 rounded-sm border border-input bg-surface px-3.5 text-xs-plus text-text-secondary hover:bg-surface-hover disabled:cursor-default disabled:opacity-50" disabled={memCheckSaving || !memCheckDirty} onClick={() =>{  void saveMemCheck() }}>
+                  {memCheckSaving ? <Spinner /> : null}
+                  {t('about.entry.memCheck.save')}
+                </button>
 
                 <button type="button" className="inline-flex h-8.5 items-center justify-center gap-2 rounded-sm border border-input bg-surface px-3.5 text-xs-plus text-text-secondary hover:bg-surface-hover" onClick={() =>{  facts.refresh() }}>
                   {t('about.entry.memCheck.checkNow')}
                 </button>
               </div>
+              {memCheckError !== undefined
+                ? <p className="m-0 mt-1.5 text-2xs text-danger" role="alert">{memCheckError}</p>
+                : null}
               <ul className={ENTRY_LIST}>
                 {(facts.facts?.entries ?? []).map((entry) => {
                   // AA round: the entry rows carry the same "various info" as
@@ -1688,22 +1721,23 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                                   ? (entry.memory.state === 'running' && entry.memory.footprintMb !== undefined
                                     ? (
                                       <>
-                                        <span className={COUNT_CHIP}>{tf('about.entry.mem.shell', { mb: entry.memory.footprintMb })}</span>
-                                        <span className={STACK_TEXT} title={t('about.entry.mem.shellNote')}>{t('about.entry.mem.shellNote')}</span>
+                                        {/* 2026-11-17: the memory fact is right-anchored like the plugin
+                                            runtime lines (their chip carries ml-auto), so the entry
+                                            list and plugin lists share one right-side track. */}
+                                        <span className={cn(COUNT_CHIP, 'ml-auto')}>{tf('about.entry.mem.shell', { mb: entry.memory.footprintMb })}</span>
                                       </>
                                     )
-                                    : <span className={COUNT_CHIP}>{entry.memory.state === 'stopped' ? t('about.entry.mem.shellStopped') : t('about.entry.mem.unavailable')}</span>)
+                                    : <span className={cn(COUNT_CHIP, 'ml-auto')}>{entry.memory.state === 'stopped' ? t('about.entry.mem.shellStopped') : t('about.entry.mem.unavailable')}</span>)
                                   : null}
                                 {entry.memory?.kind === 'in-host'
                                   ? (
                                     <>
-                                      <span className={COUNT_CHIP}>{t('about.entry.mem.inHost')}</span>
-                                      <span className={STACK_TEXT} title={t('about.entry.mem.inHostNote')}>{t('about.entry.mem.inHostNote')}</span>
+                                      <span className={cn(COUNT_CHIP, 'ml-auto')}>{t('about.entry.mem.inHost')}</span>
                                     </>
                                   )
                                   : null}
                                 {entry.memory?.kind === 'transient'
-                                  ? <span className={COUNT_CHIP}>{t('about.entry.mem.transient')}</span>
+                                  ? <span className={cn(COUNT_CHIP, 'ml-auto')}>{t('about.entry.mem.transient')}</span>
                                   : null}
                               </div>
                             )
@@ -1984,10 +2018,10 @@ export function AboutPanel({
             <div className={DIVIDER} />
             {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
             <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('about.group.plugin')}</h3>
-            <div className={HINT}>{t('about.stackHint')}</div>
-            {/* FF-NOTE: .hint + .packageList { margin-top: var(--aek-space-3) } → mt-3 (both lists are
-                preceded by a .hint div here). */}
-            <ul className="m-0 mt-3 flex flex-col gap-2 list-none p-0">
+            {/* 2026-11-17: the 基础语言 / A1A2 stackHint line was removed on
+                user demand — the roster chips already carry the A1/A2 +
+                language facts per row. */}
+            <ul className="m-0 flex flex-col gap-2 list-none p-0">
               {plugins.map((pkg) => {
                 const meta = stackByPackage.get(pkg.name)
                 const languages = meta?.languages ?? []

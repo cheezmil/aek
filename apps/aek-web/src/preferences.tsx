@@ -91,6 +91,15 @@ interface PrefContextValue {
   prefs: Record<string, PrefValue> | undefined
   /** Update one setting: optimistic local write + host POST. */
   set: (key: string, next: PrefValue | ((current: unknown) => PrefValue)) => void
+  /**
+   * EE-fix (2026-11-17): awaitable single-key commit — the host POST resolves
+   * TRUE only when the host answered OK (and the value is merged into the
+   * local map). The fire-and-forget `set` above swallows the verdict, so a
+   * write that never reached the host would silently reconcile back to the
+   * fallback on the next load — callers that can show the user "saved" or
+   * "not saved" use this one.
+   */
+  commitOne: (key: string, value: PrefValue) => Promise<boolean>
   /** Update several settings in ONE host request (presets / group reset). */
   setMany: (values: Record<string, PrefValue>) => void
   /** Re-read the whole settings map from the host (settings-page refresh). */
@@ -239,6 +248,27 @@ export function PrefProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       // Optimistic values stay visible; the next GET reconciles.
     })
+  }, [])
+
+  /**
+   * EE-fix (2026-11-17): awaitable single-key commit (see `commitOne` in
+   * {@link PrefContextValue}). Optimistic merge ONLY on a host-answered OK —
+   * a failed write never touches the local map, so the caller owns the
+   * error notice and the user's edit stays put to retry.
+   */
+  const commitOne = useCallback(async (key: string, value: PrefValue): Promise<boolean> => {
+    try {
+      const response = await fetch(PREFS_API, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key, value }),
+      })
+      if (!response.ok) return false
+      setPrefs(prev => ({ ...(prev ?? {}), [key]: value }))
+      return true
+    } catch {
+      return false
+    }
   }, [])
 
   /** Re-read the authoritative map from the host (settings-page refresh). */
@@ -403,7 +433,7 @@ export function PrefProvider({ children }: { children: ReactNode }) {
 
   return <PrefContext.Provider
     value={{
-      prefs, set, setMany, reload, adopt,
+      prefs, set, setMany, commitOne, reload, adopt,
       draft, draftView, dirtyKeys, draftSet, draftSave, draftUndo, autoSave,
       accessView, accessDraft, accessDirty, accessStage, accessUndo, accessCommit, accessCommitError,
     }}>{children}
@@ -444,14 +474,17 @@ export function useSettings(): {
  * @param key - the setting key ({@link PREF_KEYS}).
  * @param fallback - value until/when the host has no storable value for it.
  * @param parse - validator for the raw host value.
- * @returns `[value, update]`, functional updaters supported.
+ * @returns `[value, update, updateAwaited]`, functional updaters supported.
+ *   `updateAwaited` POSTs to the host and resolves TRUE only when the host
+ *   accepted the write (EE-fix: the silent `update` lost its value whenever
+ *   the host was down — the next load reconciled back to the fallback).
  */
 export function usePref<T>(
   key: string,
   fallback: T,
   parse: (raw: unknown) => T | undefined,
-): [T, (next: T | ((current: T) => T)) => void] {
-  const { prefs, set } = usePrefContext()
+): [T, (next: T | ((current: T) => T)) => void, (next: T | ((current: T) => T)) => Promise<boolean>] {
+  const { prefs, set, commitOne } = usePrefContext()
   const value: T = prefs === undefined ? fallback : parse(prefs[key]) ?? fallback
 
   const update = useCallback((next: T | ((current: T) => T)) => {
@@ -462,7 +495,13 @@ export function usePref<T>(
     })
   }, [key, set, value, parse, fallback])
 
-  return [value, update]
+  const updateAwaited = useCallback(async (next: T | ((current: T) => T)): Promise<boolean> => {
+    const base: T = value
+    const resolved = typeof next === 'function' ? (next as (cur: T) => T)(base) : next
+    return commitOne(key, resolved as unknown as PrefValue)
+  }, [key, commitOne, value])
+
+  return [value, update, updateAwaited]
 }
 
 /**
