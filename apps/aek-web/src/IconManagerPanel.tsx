@@ -29,14 +29,12 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useI18n } from './i18n.tsx'
 import { copyToClipboard } from './clipboard.ts'
+import { VirtualGrid, VIRTUAL_ROW_UNIT } from './VirtualGrid.tsx'
 
 /** One unified outer-card body (32px, IV-round scale). */
 const BODY = 'p-8'
 /** The section-title style shared by every panel (accent bar, mt-8 mb-4 pl-3). */
 const TITLE = 'relative mb-4 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[""] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary'
-/** How many tiles one open-source section renders per pagination step. */
-const PAGE_SIZE = 120
-
 /** A set's metadata row, as the host manifest returns it. */
 interface SetMeta {
   prefix: string
@@ -164,14 +162,11 @@ export function IconManagerPanel(): ReactNode {
 
   /** prefixes whose section is expanded (its data fetched). */
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
-  /** prefix → how many of that set's icons the grid shows. */
-  const [visible, setVisible] = useState<Record<string, number>>({})
   /** V6.4: the user's grid density — one number, both the framework face and
    *  every set face render with the same column count. Not persisted: project
    *  rule keeps user settings in the host data root, never localStorage, and
    *  a display-density knob is not worth the host preference plumbing yet. */
   const [cols, setCols] = useState(9)
-  const gridStyle = { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }
 
   useEffect(() => {
     let cancelled = false
@@ -198,34 +193,28 @@ export function IconManagerPanel(): ReactNode {
     for (const meta of manifest) ensureSet(meta.prefix)
   }, [needle, manifest, ensureSet])
 
-  /** @param meta - a set. @returns the icons of that set passing the query, capped to its page. */
-  const setSlice = (meta: SetMeta): string[] => {
+  /** @param meta - a set. @returns EVERY icon of that set passing the query
+   *  (V6.5 iron rule: lists are virtualized, so no pagination cap — the DOM
+   *  only ever materializes the viewport + overscan). */
+  const setNames = (meta: SetMeta): string[] => {
     const data = setCache[meta.prefix]
     if (data === undefined) return []
     const all = Object.keys(data.icons)
-    const matches = needle.length === 0
+    return needle.length === 0
       ? all
       : all.filter(name => name.toLowerCase().includes(needle))
-    const cap = visible[meta.prefix] ?? PAGE_SIZE
-    return matches.slice(0, cap)
   }
 
-  const setMatchesCount = (meta: SetMeta): number => {
-    const data = setCache[meta.prefix]
-    if (data === undefined) return 0
-    const all = Object.keys(data.icons)
-    return needle.length === 0 ? all.length : all.filter(name => name.toLowerCase().includes(needle)).length
-  }
-
-  /** Every key visible right now (framework face + every expanded set page). */
+  /** Every key shown on the panel right now (framework face + every
+   *  expanded set). "Select all" spans the full lists. */
   const visibleKeys = useMemo((): IconKey[] => {
     const keys: IconKey[] = fwNames.map(name => `fw:${name}`)
     for (const meta of manifest) {
       if (!expanded.has(meta.prefix) && needle.length === 0) continue
-      for (const iconName of setSlice(meta)) keys.push(`${meta.prefix}:${iconName}`)
+      for (const iconName of setNames(meta)) keys.push(`${meta.prefix}:${iconName}`)
     }
     return keys
-  }, [fwNames, manifest, expanded, needle, setCache, visible])
+  }, [fwNames, manifest, expanded, needle, setCache])
 
   /** One line of the bulk block: framework vs set icon. */
   const usageFor = (key: IconKey): string => {
@@ -379,9 +368,12 @@ export function IconManagerPanel(): ReactNode {
                   ? (
                     <div>
                       <h4 className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-text-muted/80">{t('icons.framework')} ({String(fwNames.length)})</h4>
-                      <div className="grid gap-2" style={gridStyle}>
-                        {fwNames.map(name => tile(`fw:${name}`, 'fw', name, undefined))}
-                      </div>
+                      <VirtualGrid
+                        cols={cols}
+                        items={fwNames}
+                        height={Math.min(Math.ceil(fwNames.length / cols) * VIRTUAL_ROW_UNIT, 560)}
+                        renderTile={index => tile(`fw:${fwNames[index]}`, 'fw', fwNames[index], undefined)}
+                      />
                     </div>
                   )
                   : null}
@@ -390,9 +382,8 @@ export function IconManagerPanel(): ReactNode {
                   : manifest.map((meta) => {
                     const data = setCache[meta.prefix]
                     const open = expanded.has(meta.prefix) || needle.length > 0
-                    const slice = open ? setSlice(meta) : []
-                    const total = needle.length > 0 ? setMatchesCount(meta) : meta.iconCount
-                    const cap = visible[meta.prefix] ?? PAGE_SIZE
+                    const names = open ? setNames(meta) : []
+                    const total = needle.length > 0 ? names.length : meta.iconCount
                     return (
                       <div key={meta.prefix} className="rounded-sm border border-border bg-surface-subtle/50 p-3">
                         <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
@@ -428,27 +419,16 @@ export function IconManagerPanel(): ReactNode {
                           : open
                             ? (
                               <>
-                                <div className="grid gap-2" style={gridStyle}>
-                                  {slice.map(iconName => tile(`${meta.prefix}:${iconName}`, meta.prefix, iconName, data.icons[iconName]))}
-                                </div>
-                                {slice.length === 0 && <p className="py-2 text-2xs text-text-muted/60">{t('icons.empty')}</p>}
-                                {needle.length === 0 && total > cap
-                                  ? (
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="mt-2 text-2xs"
-                                      onClick={() => {
-                                        setVisible((current) => {
-                                          const cap = current[meta.prefix] ?? PAGE_SIZE
-                                          return { ...current, [meta.prefix]: cap + PAGE_SIZE }
-                                        })
-                                      }}
-                                    >
-                                      {t('icons.showMore')} (+{String(PAGE_SIZE)})
-                                    </Button>
-                                  )
-                                  : null}
+                                <VirtualGrid
+                                  cols={cols}
+                                  items={names}
+                                  height={560}
+                                  renderTile={(index) => {
+                                    const iconName = names[index]
+                                    return tile(`${meta.prefix}:${iconName}`, meta.prefix, iconName, data.icons[iconName])
+                                  }}
+                                />
+                                {names.length === 0 && <p className="py-2 text-2xs text-text-muted/60">{t('icons.empty')}</p>}
                               </>
                             )
                             : null}
