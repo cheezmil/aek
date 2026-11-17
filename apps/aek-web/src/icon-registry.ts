@@ -46,6 +46,14 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
   /** IV round: icon manager — the layout grid says "a wall of glyphs"; it is
       the one icon whose meaning is literally "the icon catalog". */
   icons: 'layout',
+  // V6.7: icon-set sub-routes reuse the same "catalog" glyph — the rail labels
+  // carry the library name so a unique mark would be redundant.
+  iconsAll: 'layout',
+  iconsLucide: 'layout',
+  iconsTabler: 'layout',
+  iconsPhosphor: 'layout',
+  iconsHeroicons: 'layout',
+  iconsBootstrap: 'layout',
   /** 基础设置: the same sliders glyph — one house style for "settings". */
   settings: 'settings',
   /** 关于 / 系统信息: the "i" in a circle says "info about this". */

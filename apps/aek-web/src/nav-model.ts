@@ -21,7 +21,10 @@ import type { IconName } from './Icons.tsx'
 import { NAV_ICONS } from './icon-registry.ts'
 
 /** Every surface the console can show. */
-export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'websearchSettings' | 'icons' | 'settings' | 'about'
+export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'websearchSettings' | 'icons'
+  | 'iconsAll'
+  | 'iconsLucide' | 'iconsTabler' | 'iconsPhosphor' | 'iconsHeroicons' | 'iconsBootstrap'
+  | 'settings' | 'about'
 
 /** The two drawer groups the user asked for (plus the pinned bucket). */
 export type NavGroup = 'plugins' | 'other'
@@ -68,6 +71,14 @@ export const NAV: readonly NavEntry[] = [
   // IV round: the icon manager — every frontend icon with click-to-copy usage
   // and multi-select bulk copy, so the user can point the icons at an agent.
   { id: 'icons', labelKey: 'panel.icons', icon: NAV_ICONS.icons, group: 'plugins', keywords: ['icon', 'glyph', '复制', '图标', 'agent', 'lucide'] },
+  // V6.7: icon-set sub-routes — clicking a row in the rail shows just one
+  // curated library on its own page; the "all" route stays as the family root.
+  { id: 'iconsAll', labelKey: 'panel.iconsAll', icon: NAV_ICONS.icons, group: 'plugins', subOf: 'icons', keywords: ['icon', 'all', '全览', '全部图标'] },
+  { id: 'iconsLucide', labelKey: 'panel.iconsLucide', icon: NAV_ICONS.icons, group: 'plugins', subOf: 'icons', keywords: ['icon', 'lucide'] },
+  { id: 'iconsTabler', labelKey: 'panel.iconsTabler', icon: NAV_ICONS.icons, group: 'plugins', subOf: 'icons', keywords: ['icon', 'tabler'] },
+  { id: 'iconsPhosphor', labelKey: 'panel.iconsPhosphor', icon: NAV_ICONS.icons, group: 'plugins', subOf: 'icons', keywords: ['icon', 'phosphor'] },
+  { id: 'iconsHeroicons', labelKey: 'panel.iconsHeroicons', icon: NAV_ICONS.icons, group: 'plugins', subOf: 'icons', keywords: ['icon', 'heroicons'] },
+  { id: 'iconsBootstrap', labelKey: 'panel.iconsBootstrap', icon: NAV_ICONS.icons, group: 'plugins', subOf: 'icons', keywords: ['icon', 'bootstrap'] },
   { id: 'settings', labelKey: 'panel.settings', icon: NAV_ICONS.settings, group: 'other', keywords: ['preferences', 'options', 'sidebar', '基础设置', '设置'] },
   { id: 'about', labelKey: 'panel.about', icon: NAV_ICONS.about, group: 'other', keywords: ['version', 'info', 'entry', '关于'] },
 ]

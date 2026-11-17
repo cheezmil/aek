@@ -162,7 +162,7 @@ function setCopyText(meta: SetMeta, iconName: string): string {
 type IconKey = string
 // Framework keys are `fw:<name>`; set keys are `<prefix>:<name>`.
 
-export function IconManagerPanel(): ReactNode {
+export function IconManagerPanel({ activeSet }: { activeSet?: string }): ReactNode {
   const { t, tf } = useI18n()
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<ReadonlySet<IconKey>>(new Set())
@@ -222,6 +222,14 @@ export function IconManagerPanel(): ReactNode {
   }, [ensureSet])
 
   const needle = query.trim().toLowerCase()
+  // When a set sub-route is active (V6.7: rail rows), show only that library;
+  // otherwise render the full compendium (family-root behavior). The manifest
+  // is still loaded so we can read `meta.name` / usage / repo etc. for the
+  // active row's header line even in focused mode.
+  const activeSetMeta = useMemo((): SetMeta | undefined => {
+    if (activeSet === undefined) return undefined
+    return manifest.find(m => m.prefix === activeSet)
+  }, [activeSet, manifest])
   const fwNames = useMemo(
     () => ICON_NAMES.filter(name => needle.length === 0 || name.toLowerCase().includes(needle) || matchesZhAlias(name, needle, aliases)),
     [needle, aliases])
@@ -378,7 +386,13 @@ export function IconManagerPanel(): ReactNode {
   return (
     <PanelCard>
       <div className={BODY}>
-        <h2 className={TITLE}>{t('panel.icons')}</h2>
+        {/* Focused rail mode (V6.7): header carries the library name so the
+            user knows which curated catalog they are browsing. */}
+        {activeSetMeta !== undefined
+          ? (
+            <h2 className={TITLE}>{t('panel.icons')} · {activeSetMeta.name}</h2>
+          )
+          : <h2 className={TITLE}>{t('panel.icons')}</h2>}
 
         <section>
           <h3 className="relative mb-3 pl-3 text-sm font-semibold tracking-normal text-text-secondary before:absolute before:content-[''] before:left-0 before:top-0.5 before:h-3 before:w-0.5 before:rounded-3xs before:bg-text-muted/50">
@@ -414,50 +428,32 @@ export function IconManagerPanel(): ReactNode {
             ? <p className="p-4 text-xs-plus text-text-muted">{t('icons.empty')}</p>
             : (
               <div className="space-y-4">
-                {fwNames.length > 0
-                  ? (
-                    <div>
-                      <h4 className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-text-muted/80">{t('icons.framework')} ({String(fwNames.length)})</h4>
-                      <VirtualGrid
-                        cols={cols}
-                        items={fwNames}
-                        height={Math.min(Math.ceil(fwNames.length / cols) * VIRTUAL_ROW_UNIT, 560)}
-                        renderTile={index => tile(`fw:${fwNames[index]}`, 'fw', fwNames[index], undefined)}
-                      />
-                    </div>
-                  )
-                  : null}
-                {manifest.length === 0
-                  ? <p className="text-xs text-text-muted/70">{t('icons.noSets')}</p>
-                  : manifest.map((meta) => {
+                {/* V6.7 focused-set mode: render only the active library card;
+                    skip framework icons and the multi-set loop. */}
+                {activeSetMeta !== undefined
+                  ? (() => {
+                    const meta = activeSetMeta
                     const data = setCache[meta.prefix]
-                    const open = expanded.has(meta.prefix) || needle.length > 0
-                    const names = open ? setNames(meta) : []
-                    const total = needle.length > 0 ? names.length : meta.iconCount
+                    const names = setNames(meta)
                     return (
-                      <div key={meta.prefix} className="rounded-sm border border-border bg-surface-subtle/50 p-3">
+                      <div className="rounded-sm border border-border bg-surface-subtle/50 p-3">
                         <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setExpanded((current) => {
-                                const next = new Set(current)
-                                if (next.has(meta.prefix)) next.delete(meta.prefix)
-                                else next.add(meta.prefix)
-                                return next
-                              })
-                              ensureSet(meta.prefix)
-                            }}
-                            className="font-mono font-semibold text-primary"
+                          <span className="font-mono font-semibold text-primary">{meta.prefix}</span>
+                          <span className="text-text-secondary">{meta.name} · npm {meta.npm} · {String(names.length)} {t('icons.iconsUnit')}</span>
+                          <a
+                            href={`https://github.com/${meta.repo}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-1 font-mono text-2xs text-text-muted/60 underline decoration-dashed hover:text-primary"
+                            onClick={(event) => { event.stopPropagation() }}
+                            title={meta.repo}
                           >
-                            {meta.prefix}
-                          </button>
-                          <span className="text-text-secondary">{meta.name} · npm {meta.npm} · {String(total)} {t('icons.iconsUnit')}</span>
-                          <span className="text-text-muted/70">{meta.license} · {meta.repo}</span>
+                            {meta.license} · {meta.repo}
+                          </a>
                           <span className="ml-auto font-mono text-2xs text-text-muted/60">{meta.usage}</span>
                         </div>
                         {meta.note !== '' && <p className="mb-2 text-2xs text-text-muted/60">{meta.note}</p>}
-                        {data === undefined && open
+                        {data === undefined
                           ? (
                             <div className="py-3">
                               <div className="h-1.5 overflow-hidden rounded-full bg-surface-subtle">
@@ -466,25 +462,108 @@ export function IconManagerPanel(): ReactNode {
                               <p className="mt-1.5 text-2xs text-text-muted/60">{t('icons.loading')}</p>
                             </div>
                           )
-                          : open
-                            ? (
-                              <>
-                                <VirtualGrid
-                                  cols={cols}
-                                  items={names}
-                                  height={560}
-                                  renderTile={(index) => {
-                                    const iconName = names[index]
-                                    return tile(`${meta.prefix}:${iconName}`, meta.prefix, iconName, data.icons[iconName])
-                                  }}
-                                />
-                                {names.length === 0 && <p className="py-2 text-2xs text-text-muted/60">{t('icons.empty')}</p>}
-                              </>
-                            )
-                            : null}
+                          : (
+                            <>
+                              <VirtualGrid
+                                cols={cols}
+                                items={names}
+                                height={560}
+                                renderTile={(index) => {
+                                  const iconName = names[index]
+                                  return tile(`${meta.prefix}:${iconName}`, meta.prefix, iconName, data.icons[iconName])
+                                }}
+                              />
+                              {names.length === 0 && <p className="py-2 text-2xs text-text-muted/60">{t('icons.empty')}</p>}
+                            </>
+                          )}
                       </div>
                     )
-                  })}
+                  })()
+                  : (
+                    // Family-root / full-compilation view — original behavior.
+                    <>
+                      {fwNames.length > 0
+                        ? (
+                          <div>
+                            <h4 className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-text-muted/80">{t('icons.framework')} ({String(fwNames.length)})</h4>
+                            <VirtualGrid
+                              cols={cols}
+                              items={fwNames}
+                              height={Math.min(Math.ceil(fwNames.length / cols) * VIRTUAL_ROW_UNIT, 560)}
+                              renderTile={index => tile(`fw:${fwNames[index]}`, 'fw', fwNames[index], undefined)}
+                            />
+                          </div>
+                        )
+                        : null}
+                      {manifest.length === 0
+                        ? <p className="text-xs text-text-muted/70">{t('icons.noSets')}</p>
+                        : manifest.map((meta) => {
+                          const data = setCache[meta.prefix]
+                          const open = expanded.has(meta.prefix) || needle.length > 0
+                          const names = open ? setNames(meta) : []
+                          const total = needle.length === 0 ? meta.iconCount : names.length
+                          return (
+                            <div key={meta.prefix} className="rounded-sm border border-border bg-surface-subtle/50 p-3">
+                              <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setExpanded((current) => {
+                                      const next = new Set(current)
+                                      if (next.has(meta.prefix)) next.delete(meta.prefix)
+                                      else next.add(meta.prefix)
+                                      return next
+                                    })
+                                    ensureSet(meta.prefix)
+                                  }}
+                                  className="font-mono font-semibold text-primary"
+                                >
+                                  {meta.prefix}
+                                </button>
+                                <span className="text-text-secondary">{meta.name} · npm {meta.npm} · {String(total)} {t('icons.iconsUnit')}</span>
+                                <a
+                                  href={`https://github.com/${meta.repo}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="ml-1 font-mono text-2xs text-text-muted/60 underline decoration-dashed hover:text-primary"
+                                  onClick={(event) => { event.stopPropagation() }}
+                                  title={meta.repo}
+                                >
+                                  {meta.license} · {meta.repo}
+                                </a>
+                                <span className="ml-auto font-mono text-2xs text-text-muted/60">{meta.usage}</span>
+                              </div>
+                              {meta.note !== '' && <p className="mb-2 text-2xs text-text-muted/60">{meta.note}</p>}
+                              {data === undefined && open
+                                ? (
+                                  <div className="py-3">
+                                    <div className="h-1.5 overflow-hidden rounded-full bg-surface-subtle">
+                                      <div className="h-full w-1/3 animate-icon-load rounded-full bg-primary" />
+                                    </div>
+                                    <p className="mt-1.5 text-2xs text-text-muted/60">{t('icons.loading')}</p>
+                                  </div>
+                                )
+                                : open
+                                  ? (
+                                    <>
+                                      <VirtualGrid
+                                        cols={cols}
+                                        items={names}
+                                        height={560}
+                                        renderTile={(index) => {
+                                          const iconName = names[index]
+                                          return tile(`${meta.prefix}:${iconName}`, meta.prefix, iconName, data.icons[iconName])
+                                        }}
+                                      />
+                                      {names.length === 0 && <p className="py-2 text-2xs text-text-muted/60">{t('icons.empty')}</p>}
+                                    </>
+                                  )
+                                  : null}
+                            </div>
+                          )
+                        })}
+                    </>
+                  )}
               </div>
             )}
         </section>

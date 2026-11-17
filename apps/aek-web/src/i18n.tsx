@@ -78,6 +78,14 @@ const ZH: Record<string, string | undefined> = {
   'panel.settings': '基础设置',
   'panel.websearchSettings': 'Web Search 设置',
   'panel.icons': '图标管理',
+  // V6.7: icon-set sub-routes (rail rows). The manifest-supplied `meta.name`
+  // is rendered in the page header; these keys only label the rail row itself.
+  'panel.iconsAll': '全部图标库',
+  'panel.iconsLucide': 'Lucide',
+  'panel.iconsTabler': 'Tabler',
+  'panel.iconsPhosphor': 'Phosphor',
+  'panel.iconsHeroicons': 'Heroicons',
+  'panel.iconsBootstrap': 'Bootstrap',
   'panel.about': '关于',
 
   'common.loading': '读取中…',
@@ -158,7 +166,7 @@ const ZH: Record<string, string | undefined> = {
   'about.class.a2.tip': 'A2 = 本地专用：完全本地使用，不发布',
   'icons.catalog': '图标大全',
   'icons.search': '搜索图标（英文名或中文别名，跨全部图标库）…',
-  'icons.framework': 'AEK 框架图标',
+  'icons.framework': 'AEK目前使用的图标',
   'icons.iconsUnit': '个图标',
   'icons.loading': '加载中…',
   'icons.noSets': '开源图标数据未生成：仓库根目录运行 node scripts/aek/gen-icon-sets.mjs --download（数据源 = GitHub 仓库，gh CLI 抓取）。',
@@ -502,6 +510,14 @@ const EN: Record<string, string> = {
   'panel.settings': 'Basic Settings',
   'panel.websearchSettings': 'Web Search Settings',
   'panel.icons': 'Icon Manager',
+  // V6.7: icon-set sub-routes (rail rows). The manifest-supplied `meta.name`
+  // is rendered in the page header; these keys only label the rail row itself.
+  'panel.iconsAll': 'All icon sets',
+  'panel.iconsLucide': 'Lucide',
+  'panel.iconsTabler': 'Tabler',
+  'panel.iconsPhosphor': 'Phosphor',
+  'panel.iconsHeroicons': 'Heroicons',
+  'panel.iconsBootstrap': 'Bootstrap',
   'panel.about': 'About',
 
   'common.loading': 'Loading…',
@@ -582,7 +598,7 @@ const EN: Record<string, string> = {
   'about.class.a2.tip': 'A2 = local only: never published',
   'icons.catalog': 'Icon compendium',
   'icons.search': 'Search icons (English name or Chinese alias, across all sets)…',
-  'icons.framework': 'AEK framework icons',
+  'icons.framework': 'AEK icons in use',
   'icons.iconsUnit': 'icons',
   'icons.loading': 'Loading…',
   'icons.noSets': 'No open-source icon data yet: run node scripts/aek/gen-icon-sets.mjs --download from the repo root (GitHub repos fetched via the gh CLI).',

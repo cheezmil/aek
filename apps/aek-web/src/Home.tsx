@@ -45,7 +45,10 @@ import type { FreeFilter } from './useWebsearchRanking.ts'
 
 /** All valid panel ids, used to validate a persisted value. */
 const PANEL_IDS: readonly PanelId[] = [
-  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'websearchSettings', 'icons', 'settings', 'about',
+  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'websearchSettings',
+  'icons', 'iconsAll', 'iconsLucide', 'iconsTabler', 'iconsPhosphor',
+  'iconsHeroicons', 'iconsBootstrap',
+  'settings', 'about',
 ]
 
 /**
@@ -262,8 +265,15 @@ function Console() {
       )
     }
     if (id === 'websearch') return <WebSearchPanel state={state} refreshSignal={signalFor('websearch')} facts={facts} />
-    // IV round: the icon manager (every frontend icon, click-to-copy + bulk copy).
-    if (id === 'icons') return <IconManagerPanel />
+    // IV / V6.7 round: the icon manager. When id matches one of the set
+    // sub-routes we hand it an `activeSet` prefix so it renders just that
+    // library on its own page; the family root (`icons`) shows the full
+    // compendium (same as before). No separate component is needed — the
+    // same panel handles both views.
+    if (id === 'icons' || id.startsWith('icons')) {
+      const activeSet = id === 'icons' ? undefined : (id as PanelId).slice('icons'.length) || undefined
+      return <IconManagerPanel activeSet={activeSet} />
+    }
     if (id === 'plugins' || id === 'settings' || id === 'websearchSettings' || id === 'about') {
       return <InfoPanels panel={id} inventory={inventory} refreshSignal={signalFor(id)} />
     }
