@@ -86,6 +86,10 @@
       "types": "./build-flags.d.mts",
       "default": "./build-flags.mjs"
     },
+    "./icon-sets": {
+      "types": "./icon-sets.d.mts",
+      "default": "./icon-sets.mjs"
+    },
     "./logging": {
       "types": "./logging.d.mts",
       "default": "./logging.mjs"
@@ -153,7 +157,9 @@
     "ai-release.mjs",
     "ai-release.d.mts",
     "build-flags.mjs",
-    "build-flags.d.mts"
+    "build-flags.d.mts",
+    "icon-sets.mjs",
+    "icon-sets.d.mts"
   ],
   "oclif": {
     "bin": "aek",

@@ -1,0 +1,67 @@
+{
+  "protocol": "aek-icon-sets/1",
+  "generatedAt": "2026-11-17T18:35:46.815Z",
+  "generator": "scripts/aek/gen-icon-sets.mjs (gh CLI tarballs — GitHub source only, no web icon services)",
+  "sets": [
+    {
+      "prefix": "lucide",
+      "name": "Lucide",
+      "repo": "lucide-icons/lucide",
+      "branch": "main",
+      "license": "ISC",
+      "npm": "lucide-react",
+      "usage": "import { {pascal} } from 'lucide-react'; // <{pascal} size={18} />",
+      "note": "The style the AEK framework registry (Icons.tsx) is based on.",
+      "iconCount": 2091,
+      "file": "lucide.json"
+    },
+    {
+      "prefix": "tabler",
+      "name": "Tabler Icons",
+      "repo": "tabler/tabler-icons",
+      "branch": "main",
+      "license": "MIT",
+      "npm": "@tabler/icons-react",
+      "usage": "import { Icon{pascal} } from '@tabler/icons-react'; // <Icon{pascal} size={18} />",
+      "note": "Outline variant; the filled variant (tabler-filled) is a follow-up.",
+      "iconCount": 5491,
+      "file": "tabler.json"
+    },
+    {
+      "prefix": "phosphor",
+      "name": "Phosphor",
+      "repo": "phosphor-icons/core",
+      "branch": "main",
+      "license": "MIT",
+      "npm": "@phosphor-icons/react",
+      "usage": "import { {pascal} } from '@phosphor-icons/react'; // <{pascal} size={18} weight='regular' />",
+      "note": "Regular weight; the 6 phosphor weights are follow-ups.",
+      "iconCount": 1512,
+      "file": "phosphor.json"
+    },
+    {
+      "prefix": "heroicons",
+      "name": "Heroicons",
+      "repo": "tailwindlabs/heroicons",
+      "branch": "master",
+      "license": "MIT",
+      "npm": "@heroicons/react",
+      "usage": "import { {pascal} } from '@heroicons/react/24/outline'; // <{pascal} className='h-[18px] w-[18px]' />",
+      "note": "Tailwind-labs set; outline 24px variant.",
+      "iconCount": 324,
+      "file": "heroicons.json"
+    },
+    {
+      "prefix": "bootstrap",
+      "name": "Bootstrap Icons",
+      "repo": "twbs/icons",
+      "branch": "main",
+      "license": "MIT",
+      "npm": "react-bootstrap-icons",
+      "usage": "import { {pascal} } from 'react-bootstrap-icons'; // <{pascal} size={18} />",
+      "note": "Usage names are guidance-grade: digit-leading names (0-circle) do not map to the component name verbatim.",
+      "iconCount": 2078,
+      "file": "bootstrap.json"
+    }
+  ]
+}

@@ -27,6 +27,7 @@ import { registerCapabilityApi } from './capability-api.ts'
 import { registerRuntimeApi } from './runtime-api.ts'
 import { registerAiReleaseApi } from './ai-release-api.ts'
 import { registerBuildFlagsApi } from './build-flags-api.ts'
+import { registerIconSetsApi } from './icon-sets-api.ts'
 
 // Re-export AEK framework types so plugins don't import cordis/cosmokit directly.
 export type { Context } from '@deepseek-ai/cordis'
@@ -68,6 +69,7 @@ export function apply(ctx: Context): void {
   registerRuntimeApi(ctx, { supervisor })
   registerAiReleaseApi(ctx)
   registerBuildFlagsApi(ctx)
+  registerIconSetsApi(ctx)
   ctx.inject(['connection'], (connectionCtx) => {
     if (ANNOUNCED_ROOTS.has(connectionCtx.root)) return
     const url = connectionCtx.connection.authenticatedUrl(ctx.webServer.getOrigin())
