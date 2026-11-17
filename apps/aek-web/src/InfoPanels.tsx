@@ -71,7 +71,7 @@ const DIRTY_SAVE_ALL = 'relative inline-flex items-center justify-center size-8 
 const DIRTY_SAVE_ALL_DOT = 'absolute -top-0.5 -right-0.5 size-2 rounded-full bg-danger border-2 border-card'
 const DIVIDER = 'h-px my-6 bg-border'
 const EMPTY_STATE = 'flex items-center justify-center gap-2 min-h-30 text-text-muted text-xs-plus'
-const ENTRY_LIST = 'flex flex-col gap-2 list-none m-0 p-0'
+const ENTRY_LIST = 'flex flex-col gap-1.5 list-none m-0 p-0'
 const ERROR_BANNER = 'flex items-center gap-2 mb-4 p-3 px-4 border border-danger-border rounded-sm bg-danger-soft text-danger text-xs-plus'
 const FEATURE_COPY = 'w-auto min-w-5.5 h-4.5 p-0 px-0.75 border-0 rounded-2xs bg-transparent text-text-muted hover:not-disabled:text-accent-ink hover:not-disabled:bg-accent-soft hover:not-disabled:border-transparent'
 const FEATURE_DESC = 'text-xs leading-aek-155 text-text-muted'
@@ -315,7 +315,7 @@ function AccessSection() {
       {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
       <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.access')}</h3>
       <p className={HINT}>{t('access.defaultHint')}</p>
-      <ul className="m-0 flex flex-col gap-2 list-none p-0">
+      <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
         <li className="p-2 rounded-sm transition duration-120 ease hover:bg-surface-hover" data-setting-key="aek-home.access">
           <div className={SETTING_TOGGLE_ROW}>
             <span className={SETTING_TOGGLE_LABEL}>{t('access.publicMode')}</span>
@@ -762,7 +762,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.sidebarFirst')}</h3>
               <p className={HINT}>{t('settings.group.sidebarFirstHint')}</p>
-              <ul className="m-0 flex flex-col gap-2 list-none p-0">
+              <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
                 {firstRailRows.map(fieldRow)}
               </ul>
             </section>
@@ -774,7 +774,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.sidebarSecond')}</h3>
               <p className={HINT}>{t('settings.group.sidebarSecondHint')}</p>
-              <ul className="m-0 flex flex-col gap-2 list-none p-0">
+              <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
                 {secondRailFields.map(fieldRow)}
               </ul>
             </section>
@@ -785,7 +785,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             <section className="mb-8 last:mb-0">
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.navigation')}</h3>
-              <ul className="m-0 flex flex-col gap-2 list-none p-0">
+              <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
                 {navigationRows.map(fieldRow)}
               </ul>
             </section>
@@ -796,7 +796,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             <section className="mb-8 last:mb-0">
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.general')}</h3>
-              <ul className="m-0 flex flex-col gap-2 list-none p-0">
+              <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
                 {generalRows.map(fieldRow)}
               </ul>
             </section>
@@ -808,7 +808,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.test')}</h3>
               <p className={HINT}>{t('settings.group.testHint')}</p>
-              <ul className="m-0 flex flex-col gap-2 list-none p-0">
+              <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
                 {testRows.map(fieldRow)}
               </ul>
             </section>
@@ -821,7 +821,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             <section className="mb-8 last:mb-0">
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.defaults')}</h3>
-              <ul className="m-0 flex flex-col gap-2 list-none p-0">
+              <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
                 <li className="p-2 rounded-sm transition duration-120 ease hover:bg-surface-hover">
                   <div className="mb-2 flex min-h-5 items-center justify-between gap-3">
                     <span className={SETTING_TOGGLE_LABEL}>{t('settings.restoreDefaults')}</span>
@@ -928,7 +928,7 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             <section className="mb-8 last:mb-0">
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.websearch')}</h3>
-              <ul className="m-0 flex flex-col gap-2 list-none p-0">
+              <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
                 {visible.map(field => (
                   <li key={field.key} className="p-2 rounded-sm transition duration-120 ease hover:bg-surface-hover" data-setting-key={field.key}>
                     <SettingControl
@@ -1781,7 +1781,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
               <Icon name={bucketIconOf(group.bucket)} size={14} />
               <span>{bucketTitleOf(group.bucket, t)}</span>
             </h3>
-            <ul className="m-0 flex flex-col gap-2 list-none p-0">
+            <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
               {group.items.map((plugin) => {
                 // T round: only cordis-loadable parts are switchable; the
                 // host-identity / library / bundle rows are read-only roster
@@ -2044,7 +2044,7 @@ export function AboutPanel({
             {/* 2026-11-17: the 基础语言 / A1A2 stackHint line was removed on
                 user demand — the roster chips already carry the A1/A2 +
                 language facts per row. */}
-            <ul className="m-0 flex flex-col gap-2 list-none p-0">
+            <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
               {plugins.map((pkg) => {
                 const meta = stackByPackage.get(pkg.name)
                 const languages = meta?.languages ?? []
