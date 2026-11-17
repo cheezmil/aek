@@ -269,7 +269,9 @@ export function IconManagerPanel(): ReactNode {
     }
   }
 
-  /** One tile from any face. */
+  /** One tile from any face. V6.2: the glyph owns a flex-1 zone so it sits in
+   *  the vertical center of the card; the name row is pinned to the bottom
+   *  (fixed height, "已复制" swaps in place — no layout shift, no spacer row). */
   const tile = (key: IconKey, scope: string, name: string, svgText: string | undefined): ReactNode => {
     const ticked = selected.has(key)
     const justCopied = copied === key
@@ -285,7 +287,7 @@ export function IconManagerPanel(): ReactNode {
           if (event.key === 'Enter') { event.preventDefault(); void copyOne(key) }
         }}
         className={[
-          'group relative flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-sm border bg-surface-subtle p-3 transition duration-120 ease-aek',
+          'group relative flex h-24 cursor-pointer flex-col rounded-sm border bg-surface-subtle p-3 transition duration-120 ease-aek',
           ticked || justCopied ? 'border-primary bg-accent-soft' : 'border-border hover:border-input',
         ].join(' ')}
       >
@@ -297,20 +299,23 @@ export function IconManagerPanel(): ReactNode {
           onClick={(event) => { event.stopPropagation() }}
           className="absolute right-1.5 top-1.5 size-3.5 accent-primary"
         />
-        {svgText === undefined
-          ? <Icon name={name as IconName} size={22} />
-          : (
-            <span
-              className="flex size-5.5 items-center justify-center [&>svg]:h-full [&>svg]:w-full"
-              // The set SVGs are the upstream files verbatim (license header stripped
-              // at generation); they are static vendored data, not user input.
-              dangerouslySetInnerHTML={{ __html: svgText }}
-            />
-          )}
-        <span className="w-full truncate text-center font-mono text-xs text-text-secondary">{name}</span>
-        {justCopied
-          ? <span className="text-2xs font-semibold text-primary">{t('icons.copied')}</span>
-          : <span className="text-2xs text-transparent selection:bg-accent-soft">·</span>}
+        <div className="flex flex-1 items-center justify-center">
+          {svgText === undefined
+            ? <Icon name={name as IconName} size={22} />
+            : (
+              <span
+                className="flex size-5.5 items-center justify-center [&>svg]:h-full [&>svg]:w-full"
+                // The set SVGs are the upstream files verbatim (license header stripped
+                // at generation); they are static vendored data, not user input.
+                dangerouslySetInnerHTML={{ __html: svgText }}
+              />
+            )}
+        </div>
+        <div className="mt-1.5 h-4 truncate text-center font-mono text-xs">
+          {justCopied
+            ? <span className="font-semibold text-primary">{t('icons.copied')}</span>
+            : <span className="text-text-secondary">{name}</span>}
+        </div>
       </div>
     )
   }
@@ -319,110 +324,114 @@ export function IconManagerPanel(): ReactNode {
     <PanelCard>
       <div className={BODY}>
         <h2 className={TITLE}>{t('panel.icons')}</h2>
-        <p className="mb-2 pl-3 text-xs-plus text-text-muted">{t('icons.desc')}</p>
-        <p className="mb-4 pl-3 text-2xs text-text-muted/80">{t('icons.interactions')}</p>
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Input
-            value={query}
-            onChange={(event) => { setQuery(event.target.value) }}
-            placeholder={t('icons.search')}
-            className="h-8 flex-1 min-w-40 max-w-80 text-xs"
-          />
-          <div className="ml-auto flex items-center gap-1.5">
-            <Button size="sm" variant="ghost" onClick={() => { setSelected(new Set(visibleKeys)) }}>{t('icons.selectAll')}</Button>
-            <Button size="sm" variant="ghost" disabled={selected.size === 0} onClick={() => { setSelected(new Set()) }}>{t('icons.clear')}</Button>
-            <Button size="sm" disabled={selected.size === 0} onClick={() => { void copySelected() }}>
-              {bulkCopied ? t('icons.copied') : `${t('icons.copySelected')}${selected.size > 0 ? ` (${String(selected.size)})` : ''}`}
-            </Button>
-          </div>
-        </div>
 
-        {fwNames.length === 0 && manifest.length === 0 && needle.length === 0
-          ? <p className="p-4 text-xs-plus text-text-muted">{t('icons.empty')}</p>
-          : (
-            <div className="space-y-6">
-              <section>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">{t('icons.framework')} ({String(fwNames.length)})</h3>
-                {fwNames.length === 0
-                  ? null
-                  : (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-9 gap-2">
-                      {fwNames.map(name => tile(`fw:${name}`, 'fw', name, undefined))}
+        <section>
+          <h3 className="relative mb-3 pl-3 text-sm font-semibold tracking-normal text-text-secondary before:absolute before:content-[''] before:left-0 before:top-0.5 before:h-3 before:w-0.5 before:rounded-3xs before:bg-text-muted/50">
+            {t('icons.catalog')}
+          </h3>
+
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Input
+              value={query}
+              onChange={(event) => { setQuery(event.target.value) }}
+              placeholder={t('icons.search')}
+              className="h-8 flex-1 min-w-40 max-w-80 text-xs"
+            />
+            <div className="ml-auto flex items-center gap-1.5">
+              <Button size="sm" variant="ghost" onClick={() => { setSelected(new Set(visibleKeys)) }}>{t('icons.selectAll')}</Button>
+              <Button size="sm" disabled={selected.size === 0} onClick={() => { void copySelected() }}>
+                {bulkCopied ? t('icons.copied') : `${t('icons.copySelected')}${selected.size > 0 ? ` (${String(selected.size)})` : ''}`}
+              </Button>
+            </div>
+          </div>
+
+          {fwNames.length === 0 && manifest.length === 0 && needle.length === 0
+            ? <p className="p-4 text-xs-plus text-text-muted">{t('icons.empty')}</p>
+            : (
+              <div className="space-y-4">
+                {fwNames.length > 0
+                  ? (
+                    <div>
+                      <h4 className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-text-muted/80">{t('icons.framework')} ({String(fwNames.length)})</h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-9 gap-2">
+                        {fwNames.map(name => tile(`fw:${name}`, 'fw', name, undefined))}
+                      </div>
                     </div>
-                  )}
-              </section>
-              <section>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">{t('icons.openSource')}</h3>
+                  )
+                  : null}
                 {manifest.length === 0
                   ? <p className="text-xs text-text-muted/70">{t('icons.noSets')}</p>
-                  : (
-                    <div className="space-y-4">
-                      {manifest.map((meta) => {
-                        const data = setCache[meta.prefix]
-                        const open = expanded.has(meta.prefix) || needle.length > 0
-                        const slice = open ? setSlice(meta) : []
-                        const total = needle.length > 0 ? setMatchesCount(meta) : meta.iconCount
-                        const cap = visible[meta.prefix] ?? PAGE_SIZE
-                        return (
-                          <div key={meta.prefix} className="rounded-sm border border-border bg-surface-subtle/50 p-3">
-                            <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setExpanded((current) => {
-                                    const next = new Set(current)
-                                    if (next.has(meta.prefix)) next.delete(meta.prefix)
-                                    else next.add(meta.prefix)
-                                    return next
-                                  })
-                                  ensureSet(meta.prefix)
-                                }}
-                                className="font-mono font-semibold text-primary"
-                              >
-                                {meta.prefix}
-                              </button>
-                              <span className="text-text-secondary">{meta.name} · npm {meta.npm} · {String(total)} {t('icons.iconsUnit')}</span>
-                              <span className="text-text-muted/70">{meta.license} · {meta.repo}</span>
-                              <span className="ml-auto font-mono text-2xs text-text-muted/60">{meta.usage}</span>
+                  : manifest.map((meta) => {
+                    const data = setCache[meta.prefix]
+                    const open = expanded.has(meta.prefix) || needle.length > 0
+                    const slice = open ? setSlice(meta) : []
+                    const total = needle.length > 0 ? setMatchesCount(meta) : meta.iconCount
+                    const cap = visible[meta.prefix] ?? PAGE_SIZE
+                    return (
+                      <div key={meta.prefix} className="rounded-sm border border-border bg-surface-subtle/50 p-3">
+                        <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setExpanded((current) => {
+                                const next = new Set(current)
+                                if (next.has(meta.prefix)) next.delete(meta.prefix)
+                                else next.add(meta.prefix)
+                                return next
+                              })
+                              ensureSet(meta.prefix)
+                            }}
+                            className="font-mono font-semibold text-primary"
+                          >
+                            {meta.prefix}
+                          </button>
+                          <span className="text-text-secondary">{meta.name} · npm {meta.npm} · {String(total)} {t('icons.iconsUnit')}</span>
+                          <span className="text-text-muted/70">{meta.license} · {meta.repo}</span>
+                          <span className="ml-auto font-mono text-2xs text-text-muted/60">{meta.usage}</span>
+                        </div>
+                        {meta.note !== '' && <p className="mb-2 text-2xs text-text-muted/60">{meta.note}</p>}
+                        {data === undefined && open
+                          ? (
+                            <div className="py-3">
+                              <div className="h-1.5 overflow-hidden rounded-full bg-surface-subtle">
+                                <div className="h-full w-1/3 animate-icon-load rounded-full bg-primary" />
+                              </div>
+                              <p className="mt-1.5 text-2xs text-text-muted/60">{t('icons.loading')}</p>
                             </div>
-                            {meta.note !== '' && <p className="mb-2 text-2xs text-text-muted/60">{meta.note}</p>}
-                            {data === undefined && open
-                              ? <p className="py-2 text-2xs text-text-muted/60">{t('icons.loading')}</p>
-                              : open
-                                ? (
-                                  <>
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-9 gap-2">
-                                      {slice.map(iconName => tile(`${meta.prefix}:${iconName}`, meta.prefix, iconName, data.icons[iconName]))}
-                                    </div>
-                                    {slice.length === 0 && <p className="py-2 text-2xs text-text-muted/60">{t('icons.empty')}</p>}
-                                    {needle.length === 0 && total > cap
-                                      ? (
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          className="mt-2 text-2xs"
-                                          onClick={() => {
-                                            setVisible((current) => {
-                                              const cap = current[meta.prefix] ?? PAGE_SIZE
-                                              return { ...current, [meta.prefix]: cap + PAGE_SIZE }
-                                            })
-                                          }}
-                                        >
-                                          {t('icons.showMore')} (+{String(PAGE_SIZE)})
-                                        </Button>
-                                      )
-                                      : null}
-                                  </>
-                                )
-                                : null}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-              </section>
-            </div>
-          )}
+                          )
+                          : open
+                            ? (
+                              <>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-9 gap-2">
+                                  {slice.map(iconName => tile(`${meta.prefix}:${iconName}`, meta.prefix, iconName, data.icons[iconName]))}
+                                </div>
+                                {slice.length === 0 && <p className="py-2 text-2xs text-text-muted/60">{t('icons.empty')}</p>}
+                                {needle.length === 0 && total > cap
+                                  ? (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="mt-2 text-2xs"
+                                      onClick={() => {
+                                        setVisible((current) => {
+                                          const cap = current[meta.prefix] ?? PAGE_SIZE
+                                          return { ...current, [meta.prefix]: cap + PAGE_SIZE }
+                                        })
+                                      }}
+                                    >
+                                      {t('icons.showMore')} (+{String(PAGE_SIZE)})
+                                    </Button>
+                                  )
+                                  : null}
+                              </>
+                            )
+                            : null}
+                      </div>
+                    )
+                  })}
+              </div>
+            )}
+        </section>
       </div>
     </PanelCard>
   )

@@ -235,6 +235,7 @@
   --animate-setting-flash: aekSettingFlash 900ms ease;
   --animate-tier-in: aek-tier-in 320ms var(--aek-ease) both;
   --animate-aek-shimmer: aek-shimmer 1.4s ease-in-out infinite;
+  --animate-icon-load: aek-icon-load 1.2s var(--aek-ease) infinite;
 }
 
 /* FF round, Setup/PluginSubNav subagent requests: sub-scale type and shape
@@ -563,6 +564,16 @@
   }
   100% {
     background-position: -100% 0;
+  }
+}
+
+/* V6.2: the icon-manager's indeterminate "set chunk downloading" bar. */
+@keyframes aek-icon-load {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(410%);
   }
 }
 
