@@ -36,6 +36,9 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
 2. **本仓永不发、不链、不调用任何 `dsh` 前缀命令**。`dsh` 是**真 DeepSeek Harness 软件**的命令（用户机器上与本仓共存，是另一个产品）；仓里出现 `dsh web` 之类 shell 命令一律视为**上游分叉时代的过时措辞**，实际动作面 = `aek` 命令族或 `node scripts/aek/launch.mjs`。
 3. `@deepseek-ai/dsh-*`（含 `apps/cli` = `@deepseek-ai/dsh`）只是**分叉壳的内部包名**（历史 fork 产物），不构成命令面；壳包已摘掉全局 bin（不再向 PATH 发任何命令）。
 4. `python/`、`snapshots/` 等**上游资产**文档里的 `dsh` 命令措辞 = 真 DSH 软件的合法上游描述，**不**强改；但 aek 活面（本文件、根 README、`scripts/aek/**`、`packages/aek/**` 的 README/AGENTS）**禁止**出现 shell 命令形态的 `dsh` 前缀。发现即改，并跑 `node scripts/aek/verify-command-namespace.mjs`（只读）确认。
+5. **命名边界 + `aeknext` 运行器（双树 CLI 隔离）**：`aek*` 前缀只是 AEK **自家**能力 CLI 的命名惯例（`aek{能力名}`）；**第三方 / 个人插件自由命名**（只占不冲突的命名空间即可），**机械上唯一被禁的是 `dsh` 前缀**（`verify-command-namespace` 维持只禁 `dsh`，**不**反向强制 `aek` 前缀——隔离机制必须名字无关）。
+   - **`aeknext` 是「开发树 / next 槽运行器」**：一个**开发期专用工具**（`scripts/aek/aeknext.mjs`），**不是**随发能力 CLI、**不是**「并存命令」，也不进发布 / 安装清单。它是**唯一**进入开发树 CLI 的入口：`aeknext <cmd> [args…]` 运行开发树的 `<cmd>` bin，并注入 `AEK_HOME`=next 数据根（命令集从 `packages/aek/` 各包 `bin` 字段自动发现，名字无关）。
+   - **bare 名（`aeksm` / `aekws` / …）永远钉在 current**（稳定树软链或全局 packed 安装，落 `~/.aek/current` 数据根）；`aeknext <cmd>` 则跑**开发树**的同名命令、落 next 数据根。二者在 PATH 上**不并存**（bare 名一个名字只有一个目标），`aeknext` 提供的是「显式够到 dev」，不是「两个 aeksm 并排」。装机：`node scripts/aek/aeknext.mjs link --yes`；只读查命令集：`aeknext registry`。
 
 > 命名面漂移检测 = 该脚本的 `command-surface` 面（断言本注释节存在 + 扫 aek 活面的 `dsh <命令>` 形态），已内嵌 `dev-cycle verify`。
 
@@ -108,6 +111,7 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
 ### 双槽开发循环（硬规则，2026-11-11 确立）
 
 - **开发 / 验收一律先在 `next` 槽做**（`node scripts/aek/launch.mjs --slot next dev-web`），不要直接在 `current` 上试改动。
+- **开发 / 验收 CLI（能力包）用 `aeknext` 运行器**（`aeknext <cmd> [args…]`）：它把开发树的同名命令跑在 next 数据根，**绝不碰 current**；bare 名永远钉在 current（口径见 §2.5 第 5 条）。装机一次 `node scripts/aek/aeknext.mjs link --yes`，只读查命令集 `aeknext registry`。
 - 验收通过后执行收尾：`node scripts/aek/dev-cycle.mjs`（默认只读出计划）→ 确认后 `node scripts/aek/dev-cycle.mjs run --yes`。
 - 收尾的四步顺序**不可换**：先备份并卸载两槽 LaunchAgent（`KeepAlive=true` 会把刚停掉的后端拉回来）→ `slots.mjs --stop-all --yes` 让端口空闲 → `promote.mjs --yes` 把 next 的新配置同步进 current → `slots.mjs --only aek --yes` 只起 current，再把 current 的 LaunchAgent 装回自启动。
 - **最终状态只允许一个实例：`current`**。禁止长期双实例；开发期临时双开用 `slots.mjs --both --yes`，收尾时必须恢复。

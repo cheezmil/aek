@@ -34,7 +34,7 @@
  * @module scripts/aek/dev-cycle
  */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -388,6 +388,53 @@ function verify(devMode, json) {
         detail: '单树布局（S1 迁移未执行或 >1 个 detached worktree，双树规则不生效；AEK_STABLE_TREE 可显式指定）',
       })
     }
+  }
+  {
+    // ── CLI isolation (dual-tree): the DEV tree is reachable ONLY via the
+    // `aeknext` runner. Every bare aek* command on this machine's PATH must
+    // resolve somewhere ELSE — a stable-tree symlink, a pnpm/npm global install
+    // of the published package, etc. — never into the dev checkout. This is
+    // what keeps current crash-proof against dev edits (S-round rule) at the
+    // command surface. Self-skipping: no bare aek* on PATH → nothing to check.
+    const BARE_NAMES = ['aek', 'aeksm', 'aekws', 'aekpm', 'aek-prompt-manager']
+    // Boundary-aware: the dev dir is a path PREFIX of the stable dir
+    // (`…/aek` vs `…/aek-next`), so the trailing slash keeps them apart.
+    const inDev = (p) => p === ROOT || p.startsWith(ROOT + '/')
+    /** @param {string} name @returns {string[]} every distinct realpath on PATH. */
+    const allOnPath = (name) => {
+      const out = []
+      const seen = new Set()
+      for (const dir of (process.env.PATH ?? '').split(':').filter(Boolean)) {
+        const p = join(dir, name)
+        if (!existsSync(p)) continue
+        let rp
+        try { rp = realpathSync(p) } catch { rp = p }
+        if (!seen.has(rp)) { seen.add(rp); out.push(rp) }
+      }
+      return out
+    }
+    const bareInDev = BARE_NAMES.flatMap((n) => allOnPath(n).filter(inDev))
+    const bareLocations = BARE_NAMES.flatMap((n) => allOnPath(n).map((t) => `${n} -> ${t}`))
+    checks.push({
+      rule: 'bare-bins-not-in-dev',
+      ok: bareInDev.length === 0,
+      detail: bareLocations.length === 0
+        ? '本 PATH 无 bare aek* 可执行（全局 clone / 未安装）——无错接可查'
+        : (bareInDev.length === 0
+          ? `${bareLocations.length} 处 bare aek* 均未落进 dev 树（stable 软链或全局 packed 安装皆可）`
+          : `bare 名落进 dev 树，隔离被破坏：${bareInDev.join('；')}`),
+    })
+    const aeknextOnPath = allOnPath('aeknext')
+    const aeknextBad = aeknextOnPath.filter((t) => !inDev(t))
+    checks.push({
+      rule: 'aeknext-points-dev',
+      ok: aeknextBad.length === 0,
+      detail: aeknextOnPath.length === 0
+        ? 'aeknext 未装入 PATH（`node scripts/aek/aeknext.mjs link --yes` 可装）——运行器检查跳过'
+        : (aeknextBad.length === 0
+          ? `aeknext 全部指向 dev 树（next 槽运行器接线正确）：${aeknextOnPath.join('；')}`
+          : `aeknext 指向的不是 dev 树：${aeknextBad.join('；')}`),
+    })
   }
   const ok = checks.every(check => check.ok)
   if (json) {
