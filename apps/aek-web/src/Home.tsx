@@ -45,7 +45,7 @@ import type { FreeFilter } from './useWebsearchRanking.ts'
 
 /** All valid panel ids, used to validate a persisted value. */
 const PANEL_IDS: readonly PanelId[] = [
-  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'websearchSettings', 'settings', 'about',
+  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'websearchSettings', 'icons', 'settings', 'about',
 ]
 
 /**
