@@ -235,25 +235,25 @@ function Console() {
       // III round: pl-3 (12) → pl-4 (16) — the title text now aligns exactly
       // with the card body inset (p-4 = 16px, the single-card-scale step);
       // the accent bar (before:left-0) stays on the card edge.
-      const sectionTitleClass = 'relative mb-8 pl-8 text-base font-bold tracking-normal text-text before:absolute before:content-[""] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary'
+      const sectionTitleClass = 'relative mb-4 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[""] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary'
       return (
         <div>
           {/* III round: section gap 32 (mt-8) → 24 (mt-6). The spacing ladder
               is now strictly descending: page 32 > section 24 > card body
               16 > row box 12 > rows 8 > micro 4 (Windmill 4px-grid +
               Vercel content-24/card-16 references, borrowed 2026-11-17). */}
-          <section className="mt-10 first:mt-0">
+          <section className="mt-8 first:mt-0">
             <h2 className={sectionTitleClass}>{t('panel.runtimeSection')}</h2>
             <RuntimeModePanel refreshSignal={signalFor('runtime')} />
           </section>
           {/* 2026-11-17: the 基础语言 / A1A2 stackHint line was removed on
               user demand ("去掉这个文字" — the title + roster speak for
               themselves; the hint duplicated the chip legend). */}
-          <section className="mt-10 first:mt-0">
+          <section className="mt-8 first:mt-0">
             <h2 className={sectionTitleClass}>{t('panel.pluginsSection')}</h2>
             <PluginsPanel refreshSignal={signalFor('plugins')} />
           </section>
-          <section className="mt-10 first:mt-0">
+          <section className="mt-8 first:mt-0">
             <h2 className={sectionTitleClass}>{t('panel.infoSection')}</h2>
             <AboutPanel inventory={inventory} refreshSignal={signalFor('about')} compactPlugins />
           </section>
