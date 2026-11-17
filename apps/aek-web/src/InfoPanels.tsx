@@ -1710,7 +1710,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                           measured right-side track (ml-auto chip, empty
                           actions grid) are kept so entry and plugin cards
                           stay column-aligned. */}
-                      <Card size="sm" className="shadow-none">
+                      <Card size="lg" className="shadow-none">
                         <CardContent className="flex flex-col gap-2">
                           <div className="mb-0 flex items-start gap-3">
                             <span className={FEATURE_ICON}><Icon name={ENTRY_ICONS[entry.id] ?? 'layout'} size={18} /></span>
@@ -1790,7 +1790,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                 const switchable = plugin.switchable !== false
                 return (
                   <li key={plugin.id}>
-                    <Card size="sm" className="shadow-none">
+                    <Card size="lg" className="shadow-none">
                       <CardContent className="flex flex-col gap-2">
                         <div className="mb-0 flex items-start gap-3">
                           {/* X2 item 17: the category icon (layers = real coraek plugins only). */}

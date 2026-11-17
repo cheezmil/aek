@@ -198,7 +198,7 @@ export function RuntimesBlock({ refreshSignal }: { refreshSignal: number }): Rea
   const hint = isWin32 ? t('runtimes.hint.win32') : t('runtimes.hint.posix')
   const term = isWin32 ? t('runtimes.memTerm.win32') : t('runtimes.memTerm.posix')
   return (
-    <Card size="sm" className="mb-3 shadow-none">
+    <Card size="lg" className="mb-3 shadow-none">
       {/* HH round: one explicit 8px block rhythm (hint / table / add row) —
           the ad-hoc mt-2 / py-1 margins are gone. */}
       <CardContent className="flex flex-col gap-2">

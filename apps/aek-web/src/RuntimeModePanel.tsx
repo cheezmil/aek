@@ -298,7 +298,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                     the title row is CardHeader + CardAction (the standard
                     right-anchored action slot), the state pill a Badge, the
                     three half-controls ghost icon Buttons. */}
-                <Card size="sm" className={cn('shadow-none transition duration-180 ease-aek', running ? 'border-success-border bg-success-soft' : 'border-border bg-surface-subtle')}>
+                <Card size="lg" className={cn('shadow-none transition duration-180 ease-aek', running ? 'border-success-border bg-success-soft' : 'border-border bg-surface-subtle')}>
                   <CardHeader>
                     <CardTitle className="text-sm-plus font-bold text-text">
                       {name}
@@ -352,7 +352,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                       in-flight / endpoints) — the ad-hoc mb-2.5 is gone. */}
                   <CardContent className="flex flex-col gap-2.5">
 
-                    <ul className="flex flex-col gap-0.5 p-0 list-none">
+                    <ul className="flex flex-col gap-1 p-0 list-none">
                       <HalfRow
                         label={t('runtime.web')}
                         on={web}
@@ -402,7 +402,7 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
                       : null}
 
 
-                    <ul className="flex flex-col gap-1">
+                    <ul className="flex flex-col gap-1.5">
                       {endpoint !== undefined
                         ? (
                           <>
