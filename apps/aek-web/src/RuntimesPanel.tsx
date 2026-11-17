@@ -82,31 +82,34 @@ function RuntimeRowView({ row, host, term, onRename, onRemove, busy }: {
   if (confirming && !host) {
     // The unified inline confirm strip: the row's content is replaced by the
     // question + the two buttons (no native dialog, ever).
+    // HH fix: the old layout squeezed BOTH buttons into the 56px actions
+    // track (they overflowed under the question text at wide windows) —
+    // now the question cell spans the whole fluid width (colSpan 4) and the
+    // buttons ride the flex row, right-aligned on the same track; the label
+    // travels with the question so "which runtime" is never lost.
     return (
       <TableRow className="bg-danger-soft hover:bg-danger-soft">
         <TableCell className={RT_CELL_NUMBER}>{String(row.number)}</TableCell>
-        <TableCell>
-          <span className={RT_LABEL} title={row.label}>{row.label}</span>
-        </TableCell>
-        <TableCell colSpan={2} className={cn(RT_CELL_MEM, 'w-auto')}>
-          <span className={RT_QUESTION}>{t('runtimes.removeConfirmInline')}</span>
-        </TableCell>
-        <TableCell className={RT_CELL_ACTIONS}>
-          <div className="flex gap-1 justify-end">
-            <Button
-              variant="destructive"
-              size="xs"
-              title={t('runtimes.confirmOk')}
-              onClick={() => { setConfirming(false); onRemove(row.id) }}
-              disabled={busy !== undefined}
-            >{t('runtimes.confirmOk')}</Button>
-            <Button
-              variant="outline"
-              size="xs"
-              title={t('runtimes.confirmCancel')}
-              onClick={() => { setConfirming(false) }}
-              disabled={busy !== undefined}
-            >{t('runtimes.confirmCancel')}</Button>
+        <TableCell colSpan={4} className={RT_CELL}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+            <span className={cn(RT_LABEL, 'shrink-0')} title={row.label}>{row.label}</span>
+            <span className={RT_QUESTION}>{t('runtimes.removeConfirmInline')}</span>
+            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="xs"
+                title={t('runtimes.confirmCancel')}
+                onClick={() => { setConfirming(false) }}
+                disabled={busy !== undefined}
+              >{t('runtimes.confirmCancel')}</Button>
+              <Button
+                variant="destructive"
+                size="xs"
+                title={t('runtimes.confirmOk')}
+                onClick={() => { setConfirming(false); onRemove(row.id) }}
+                disabled={busy !== undefined}
+              >{t('runtimes.confirmOk')}</Button>
+            </span>
           </div>
         </TableCell>
       </TableRow>
