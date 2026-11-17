@@ -43,6 +43,9 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
   prompts: 'type',
   /** Web Search settings: the sliders glyph is the house style for "tune". */
   websearchSettings: 'settings',
+  /** IV round: icon manager — the layout grid says "a wall of glyphs"; it is
+      the one icon whose meaning is literally "the icon catalog". */
+  icons: 'layout',
   /** 基础设置: the same sliders glyph — one house style for "settings". */
   settings: 'settings',
   /** 关于 / 系统信息: the "i" in a circle says "info about this". */

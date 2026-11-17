@@ -8,8 +8,13 @@
  */
 import { createRoot } from 'react-dom/client'
 import { AekHome } from './Home.tsx'
+import { TooltipProvider } from './components/ui/tooltip'
 import './index.css'
 
 const el = document.getElementById('root')
 if (el === null) throw new Error('aek-web: missing #root')
-createRoot(el).render(<AekHome />)
+createRoot(el).render(
+  <TooltipProvider>
+    <AekHome />
+  </TooltipProvider>,
+)

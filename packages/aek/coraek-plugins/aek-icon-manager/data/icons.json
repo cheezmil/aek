@@ -1,0 +1,153 @@
+{
+  "generatedFrom": "apps/aek-web/src/Icons.tsx",
+  "generatedAt": "2026-11-17T14:59:45.594Z",
+  "source": "apps/aek-web/src/Icons.tsx (the host webui registry — import { Icon } from it in the host tree)",
+  "style": "Lucide stroke style, 24×24 viewBox, stroke-width 2, ISC license (https://lucide.dev/license)",
+  "usageHeader": "AEK frontend icons (registry apps/aek-web/src/Icons.tsx, Lucide stroke style, 24×24 viewBox; usage <Icon name=\"…\" size={18} />):",
+  "icons": [
+    {
+      "name": "activity",
+      "usage": "<Icon name=\"activity\" size={18} />"
+    },
+    {
+      "name": "search",
+      "usage": "<Icon name=\"search\" size={18} />"
+    },
+    {
+      "name": "plugins",
+      "usage": "<Icon name=\"plugins\" size={18} />"
+    },
+    {
+      "name": "settings",
+      "usage": "<Icon name=\"settings\" size={18} />"
+    },
+    {
+      "name": "about",
+      "usage": "<Icon name=\"about\" size={18} />"
+    },
+    {
+      "name": "chevronDown",
+      "usage": "<Icon name=\"chevronDown\" size={18} />"
+    },
+    {
+      "name": "refresh",
+      "usage": "<Icon name=\"refresh\" size={18} />"
+    },
+    {
+      "name": "shield",
+      "usage": "<Icon name=\"shield\" size={18} />"
+    },
+    {
+      "name": "alert",
+      "usage": "<Icon name=\"alert\" size={18} />"
+    },
+    {
+      "name": "check",
+      "usage": "<Icon name=\"check\" size={18} />"
+    },
+    {
+      "name": "language",
+      "usage": "<Icon name=\"language\" size={18} />"
+    },
+    {
+      "name": "star",
+      "usage": "<Icon name=\"star\" size={18} />"
+    },
+    {
+      "name": "plus",
+      "usage": "<Icon name=\"plus\" size={18} />"
+    },
+    {
+      "name": "trash",
+      "usage": "<Icon name=\"trash\" size={18} />"
+    },
+    {
+      "name": "edit",
+      "usage": "<Icon name=\"edit\" size={18} />"
+    },
+    {
+      "name": "close",
+      "usage": "<Icon name=\"close\" size={18} />"
+    },
+    {
+      "name": "eye",
+      "usage": "<Icon name=\"eye\" size={18} />"
+    },
+    {
+      "name": "eyeOff",
+      "usage": "<Icon name=\"eyeOff\" size={18} />"
+    },
+    {
+      "name": "eyeAll",
+      "usage": "<Icon name=\"eyeAll\" size={18} />"
+    },
+    {
+      "name": "layers",
+      "usage": "<Icon name=\"layers\" size={18} />"
+    },
+    {
+      "name": "copy",
+      "usage": "<Icon name=\"copy\" size={18} />"
+    },
+    {
+      "name": "pin",
+      "usage": "<Icon name=\"pin\" size={18} />"
+    },
+    {
+      "name": "book",
+      "usage": "<Icon name=\"book\" size={18} />"
+    },
+    {
+      "name": "sparkles",
+      "usage": "<Icon name=\"sparkles\" size={18} />"
+    },
+    {
+      "name": "terminal",
+      "usage": "<Icon name=\"terminal\" size={18} />"
+    },
+    {
+      "name": "layout",
+      "usage": "<Icon name=\"layout\" size={18} />"
+    },
+    {
+      "name": "restore",
+      "usage": "<Icon name=\"restore\" size={18} />"
+    },
+    {
+      "name": "play",
+      "usage": "<Icon name=\"play\" size={18} />"
+    },
+    {
+      "name": "stop",
+      "usage": "<Icon name=\"stop\" size={18} />"
+    },
+    {
+      "name": "lock",
+      "usage": "<Icon name=\"lock\" size={18} />"
+    },
+    {
+      "name": "grip",
+      "usage": "<Icon name=\"grip\" size={18} />"
+    },
+    {
+      "name": "save",
+      "usage": "<Icon name=\"save\" size={18} />"
+    },
+    {
+      "name": "puzzle",
+      "usage": "<Icon name=\"puzzle\" size={18} />"
+    },
+    {
+      "name": "type",
+      "usage": "<Icon name=\"type\" size={18} />"
+    },
+    {
+      "name": "globe",
+      "usage": "<Icon name=\"globe\" size={18} />"
+    },
+    {
+      "name": "bookOpenText",
+      "usage": "<Icon name=\"bookOpenText\" size={18} />"
+    }
+  ]
+}

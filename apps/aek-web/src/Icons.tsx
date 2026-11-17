@@ -31,7 +31,7 @@ export type IconName =
   | 'bookOpenText'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
-const ICONS: Record<IconName, ReactNode> = {
+export const ICONS: Record<IconName, ReactNode> = {
   activity: <path d="M3 12h4l3-8 4 16 3-8h4" />,
   search: (
     <>
@@ -285,6 +285,23 @@ const ICONS: Record<IconName, ReactNode> = {
 }
 
 /** Props for {@link Icon}. */
+/** IV round: the icon registry's name list (icon-manager panel + aekim CLI
+    manifest). Declaration order of `IconName`; keep the two in sync. */
+export const ICON_NAMES: readonly IconName[] = [
+  'activity', 'search', 'plugins', 'settings', 'about',
+  'chevronDown', 'refresh',
+  'shield', 'alert', 'check',
+  'language', 'star', 'plus', 'trash', 'edit', 'close',
+  'eye', 'eyeOff', 'eyeAll', 'layers',
+  'copy', 'pin', 'book', 'sparkles', 'terminal', 'layout', 'restore',
+  'play', 'stop',
+  'lock', 'grip',
+  'save',
+  'puzzle', 'type',
+  'globe',
+  'bookOpenText',
+]
+
 export interface IconProps {
   /** Which glyph to draw. */
   name: IconName

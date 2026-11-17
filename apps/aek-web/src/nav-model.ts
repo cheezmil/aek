@@ -21,7 +21,7 @@ import type { IconName } from './Icons.tsx'
 import { NAV_ICONS } from './icon-registry.ts'
 
 /** Every surface the console can show. */
-export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'websearchSettings' | 'settings' | 'about'
+export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'websearchSettings' | 'icons' | 'settings' | 'about'
 
 /** The two drawer groups the user asked for (plus the pinned bucket). */
 export type NavGroup = 'plugins' | 'other'
@@ -65,6 +65,9 @@ export const NAV: readonly NavEntry[] = [
   // page instead of one giant Settings page. Web Search owns the ranking
   // refresh interval; the base "Settings" page was renamed 基础设置.
   { id: 'websearchSettings', labelKey: 'panel.websearchSettings', icon: NAV_ICONS.websearchSettings, group: 'plugins', subOf: 'websearch', keywords: ['websearch', 'search', 'ranking', '排行', '设置'] },
+  // IV round: the icon manager — every frontend icon with click-to-copy usage
+  // and multi-select bulk copy, so the user can point the icons at an agent.
+  { id: 'icons', labelKey: 'panel.icons', icon: NAV_ICONS.icons, group: 'plugins', keywords: ['icon', 'glyph', '复制', '图标', 'agent', 'lucide'] },
   { id: 'settings', labelKey: 'panel.settings', icon: NAV_ICONS.settings, group: 'other', keywords: ['preferences', 'options', 'sidebar', '基础设置', '设置'] },
   { id: 'about', labelKey: 'panel.about', icon: NAV_ICONS.about, group: 'other', keywords: ['version', 'info', 'entry', '关于'] },
 ]

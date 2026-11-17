@@ -38,6 +38,7 @@ import { useInventory } from './useInventory.ts'
 import { useCurrentSlot } from './useRuntimeMode.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
 import { WebSearchPanel } from './WebSearchPanel.tsx'
+import { IconManagerPanel } from './IconManagerPanel.tsx'
 import { useWebsearchStatus } from './useWebsearchStatus.ts'
 import { prefetchRanking } from './useWebsearchRanking.ts'
 import type { FreeFilter } from './useWebsearchRanking.ts'
@@ -261,6 +262,8 @@ function Console() {
       )
     }
     if (id === 'websearch') return <WebSearchPanel state={state} refreshSignal={signalFor('websearch')} facts={facts} />
+    // IV round: the icon manager (every frontend icon, click-to-copy + bulk copy).
+    if (id === 'icons') return <IconManagerPanel />
     if (id === 'plugins' || id === 'settings' || id === 'websearchSettings' || id === 'about') {
       return <InfoPanels panel={id} inventory={inventory} refreshSignal={signalFor(id)} />
     }

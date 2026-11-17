@@ -44,6 +44,7 @@ import { allSettingFields, coerce, SETTINGS_SCHEMA, WEBSEARCH_SETTINGS_SCHEMA } 
 import type { SettingField } from './settings-schema.ts'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -121,6 +122,27 @@ const SETTING_TOGGLE_LABEL = 'text-text font-semibold'
 const SETTING_TOGGLE_ROW = 'flex items-center gap-3 min-h-6 cursor-pointer'
 const SETTING_VALUE = 'shrink-0 grow-0 p-0.5 px-2 rounded-full bg-accent-soft text-accent-ink text-2xs font-semibold tabular-nums'
 const STACK_CHIP = 'shrink-0 grow-0 p-0.5 px-2 border border-border rounded-full bg-surface-subtle text-text-muted text-2xs font-semibold'
+
+/** IV round: the A1/A2 distribution chip — single letter; the full meaning shows
+    on hover (the user pointed at the "A1 · 可公开发布" badge and wanted just "A1"
+    with the hint on the pointer). `pill` = the About-page stack list's rounded
+    chip styling instead of the outline Badge. */
+function ClassChip({ distribution, pill = false, t }: { distribution: string; pill?: boolean; t: (key: string) => string }): ReactNode {
+  if (distribution === '') return null
+  const isA2 = distribution === 'A2'
+  const label = t(isA2 ? 'about.class.a2' : 'about.class.a1')
+  const tip = t(isA2 ? 'about.class.a2.tip' : 'about.class.a1.tip')
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {pill
+          ? <span className={STACK_CHIP}>{label}</span>
+          : <Badge variant="outline">{label}</Badge>}
+      </TooltipTrigger>
+      <TooltipContent>{tip}</TooltipContent>
+    </Tooltip>
+  )
+}
 /* 2026-11-17: no `grow` — a stretching text span was stealing the row's slack,
    so the right-anchored memory chips (ml-auto) of the rows above it never reached the
    right edge and floated at different x per card. Compact left-aligned text; the
@@ -1726,9 +1748,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                                     {entry.version !== undefined && entry.version !== ''
                                       ? <Badge variant="secondary" className="tabular-nums">{entry.version}</Badge>
                                       : null}
-                                    {entry.distribution !== undefined && entry.distribution !== ''
-                                      ? <Badge variant="outline">{entry.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</Badge>
-                                      : null}
+                                    <ClassChip distribution={entry.distribution ?? ''} t={t} />
                                     {languages.length > 0
                                       ? <span className={STACK_TEXT} title={languages.join(' · ')}>{languages.join(' · ')}</span>
                                       : null}
@@ -1814,9 +1834,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                                 HH round: the chips are shadcn Badges. */}
                             <div className={FEATURE_TEXT}>
                               <Badge variant="secondary" className="tabular-nums">{plugin.version}</Badge>
-                              {plugin.distribution !== ''
-                                ? <Badge variant="outline">{plugin.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</Badge>
-                                : null}
+                              <ClassChip distribution={plugin.distribution} t={t} />
                               {switchable ? null : <Badge variant="outline">{t('plugins.switch.readonly')}</Badge>}
                               {plugin.languages.length > 0
                                 ? <span className={STACK_TEXT} title={plugin.languages.join(' · ')}>{plugin.languages.join(' · ')}</span>
@@ -2052,9 +2070,7 @@ export function AboutPanel({
                   <li key={pkg.name} className="flex items-center gap-2.5 rounded-sm border border-border bg-surface-subtle p-2 px-3 text-xs">
                     <span className="flex-auto min-w-0 font-semibold text-text">{displayName(pkg.name)}</span>
                     <span className={COUNT_CHIP}>{pkg.version}</span>
-                    {meta?.distribution
-                      ? <span className={STACK_CHIP}>{meta.distribution === 'A2' ? t('about.class.a2') : t('about.class.a1')}</span>
-                      : null}
+                    <ClassChip pill distribution={meta?.distribution ?? ''} t={t} />
                     {languages.length > 0
                       ? <span className={STACK_TEXT} title={languages.join(' · ')}>{languages.join(' · ')}</span>
                       : null}
