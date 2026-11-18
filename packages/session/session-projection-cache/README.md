@@ -103,7 +103,7 @@ Read these pages when the package-level contract is not enough. They move from t
 - [Session projections subsystem](../../../docs/subsystems/session-projection.md) — the projection unit contract and drive semantics this cache checkpoints.
 - [Session projection registry](../session-projection/README.md) — the `ctx.sessionProjections` service whose checkpoints this cache persists.
 - [Storage subsystem](../../../docs/subsystems/storage.md) — the domain routing and backend behavior that store cache records.
-- [Session package map](../README.md) — adjacent persistence, title, and telemetry packages.
+- [Session package map](../README.md) — adjacent persistence and title packages.
 - [Session-projection RFC](../../../.agents/notes/proposed/architecture/2026-07-27-session-projection-and-command-log.md) — the persisted projection cache design rationale.
 
 -----

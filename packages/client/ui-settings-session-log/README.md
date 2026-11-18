@@ -25,7 +25,7 @@ Use **Upload Session Log when using the official model API** above the version n
 <a id="use-this-package"></a>
 ## Use this package
 
-The Web bundle mounts this companion. Its switch edits the Host plugin's `enabled` field through the shared configuration form. A save failure keeps the accepted value and shows a toast that survives closing Settings. See [Session-log upload](../../session/session-log-deepseek/README.md#configuration) for request timing, resumed uploads, and the separate OpenTelemetry setting.
+The Web bundle mounts this companion. Its switch edits the Host plugin's `enabled` field through the shared configuration form. A save failure keeps the accepted value and shows a toast that survives closing Settings. See [Session-log upload](../../session/session-log-deepseek/README.md#configuration) for request timing, resumed uploads, .
 
 -----
 

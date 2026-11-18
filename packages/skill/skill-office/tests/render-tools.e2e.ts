@@ -15,7 +15,7 @@ const python = runtime && join(runtime, 'dependencies/python', process.platform 
 const launch = {
   binScript: join(repo, 'apps/cli/src/bin.ts'), sourceImport: 'tsx/esm' as const, tsconfigPath: join(repo, 'tsconfig.base.json'),
   configPath: 'office.patch.json', processTimeoutMs: 110_000,
-  env: { DSH_PRIMARY_RUNTIME: runtime, DSH_PERMISSION_MODE: 'danger-full-access', DSH_TELEMETRY_DISABLED: '1', DSH_TOOLS_MODE: 'native',
+  env: { DSH_PRIMARY_RUNTIME: runtime, DSH_PERMISSION_MODE: 'danger-full-access', DSH_TOOLS_MODE: 'native',
     HTTP_PROXY: process.env.DSH_OFFICE_TEST_PROXY, HTTPS_PROXY: process.env.DSH_OFFICE_TEST_PROXY },
 }
 

@@ -293,7 +293,7 @@ describe('fork boundaries inside an open turn', () => {
       data: { turn: 2, reason: { kind: 'forked' } },
     })
     // The closer is child work: `seedLength` names only events that exist in
-    // the parent's log, so telemetry receivers stitching a fork's prefix from
+    // the parent's log, so observers stitching a fork's prefix from
     // the parent's stream on `(parent_id, seed_length)` read exactly the
     // copied prefix.
     expect(child.inheritedEventCount).toBe(source.snapshotEvents().length)

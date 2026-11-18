@@ -77,7 +77,7 @@ describe.skipIf(!existsSync(join(root, 'apps/cli/lib/bin.js')))('Official option
     const home = join(temporary, 'home')
     const values = {
       DSH_HOME: home, DSH_AGENTS_HOME: join(temporary, 'agents'), DSH_BUNDLED_SKILL_DIR: join(temporary, 'skills'),
-      DSH_TELEMETRY_DISABLED: '1', TMUX: '', TMUX_PANE: '',
+      TMUX: '', TMUX_PANE: '',
     }
     originalEnvironment = Object.fromEntries(Object.keys(values).map(key => [key, process.env[key]]))
     Object.assign(process.env, values)
@@ -93,7 +93,7 @@ describe.skipIf(!existsSync(join(root, 'apps/cli/lib/bin.js')))('Official option
     const profile = app.loadProfileDirectory('bundle-test', directory, installAnchor)
     const profileContext: ProfileContext = {
       name: 'web', dir: directory, patchPath: profile.patchPath, installAnchor, cwd: workspace, home,
-      startedBundles: profile.layers.map(layer => layer.packageName), overlays: [], telemetryDisabledEnv: '1',
+      startedBundles: profile.layers.map(layer => layer.packageName), overlays: [],
     }
     const resolution = await app.createRuntimeResolution({ installAnchor, home, profile })
     const listeners = new Set<() => void>()

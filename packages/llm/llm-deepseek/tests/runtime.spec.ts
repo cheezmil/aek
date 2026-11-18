@@ -18,7 +18,7 @@ import LlmRuntime, { ToolCallId, createUserMessage,
   userAgent,
 } from '@deepseek-ai/dsh-llm'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
-import { getOrCreateAnonymousUserId, type AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
+import { getOrCreateUserId } from '../src/user-id.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import DeepSeekLlmApiExtensionRegistry from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import type { PreparedDeepSeekLlmApiExtensions } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
@@ -38,7 +38,7 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 }
 
-const TEST_USER_ID = '00000000-0000-4000-8000-000000000001' as AnonymousUserId
+const TEST_USER_ID = '00000000-0000-4000-8000-000000000001'
 let testHome: string
 
 beforeEach(() => {
@@ -381,7 +381,7 @@ describe('DeepSeekAdapter against a mock server', () => {
     })
     // App attribution and DeepSeek request identity are independent wire facts.
     expect(server.headers[0]?.['user-agent']).toBe(userAgent())
-    expect(server.headers[0]?.['x-deepseek-harness-user-id']).toBe(getOrCreateAnonymousUserId())
+    expect(server.headers[0]?.['x-deepseek-harness-user-id']).toBe(getOrCreateUserId())
     expect(server.headers[0]).not.toHaveProperty('x-deepseek-harness-session-id')
     expect(server.headers[0]).not.toHaveProperty('http-referer')
     expect(server.headers[0]).not.toHaveProperty('x-openrouter-title')
@@ -1224,7 +1224,7 @@ describe('DeepSeekAdapter against a mock server', () => {
     })
 
     expect(server.headers[0]?.['x-deepseek-harness-session-id']).toBe('child-session')
-    expect(server.headers[0]?.['x-deepseek-harness-user-id']).toBe(getOrCreateAnonymousUserId())
+    expect(server.headers[0]?.['x-deepseek-harness-user-id']).toBe(getOrCreateUserId())
   })
 
   it('marks the auxiliary compaction call on the wire', async () => {

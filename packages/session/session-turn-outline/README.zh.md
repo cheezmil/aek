@@ -89,7 +89,7 @@ wire 值是按 `turn` 严格递增的完整条目数组（整值规则）：消�
 
 - [会话投影子系统](../../../docs/subsystems/session-projection.zh.md)——驱动单元并提供快照与变更流值的注册表。
 - [会话投影注册表包](../session-projection/README.zh.md)——单元注册所依据的注册表约定。
-- [会话包映射](../README.zh.md)——相邻的持久化、投影、标题与遥测包。
+- [会话包映射](../README.zh.md)——相邻的持久化、投影与标题包。
 
 -----
 

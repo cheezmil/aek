@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-Web bundle 挂载本配套插件。开关通过共享配置表单修改 Host 插件的 `enabled` 字段。保存失败时保留已接受的值，并显示关闭设置后仍可见的提示。请求生效时机、恢复上传和独立的 OpenTelemetry 设置见[会话日志上传](../../session/session-log-deepseek/README.zh.md#configuration)。
+Web bundle 挂载本配套插件。开关通过共享配置表单修改 Host 插件的 `enabled` 字段。保存失败时保留已接受的值，并显示关闭设置后仍可见的提示。请求生效时机、恢复上传见[会话日志上传](../../session/session-log-deepseek/README.zh.md#configuration)。
 
 -----
 

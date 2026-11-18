@@ -30,7 +30,7 @@ describe('external tasks with a nested fork', () => {
     const idle = join(root, 'idle')
     const patch = join(root, 'nested.patch.yml')
     const env = {
-      DSH_HOME: join(root, 'home'), DSH_TELEMETRY_DISABLED: '1',
+      DSH_HOME: join(root, 'home'),
       DSH_TEST_CHILD_READY: ready, DSH_TEST_CHILD_RELEASE: release, DSH_TEST_ROOT_IDLE: idle,
       DSH_TEST_SUMMARY_ERROR: outcome === 'error' ? '1' : '0',
     }

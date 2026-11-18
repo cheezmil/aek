@@ -87,7 +87,7 @@ kind: "package-library"
 - [会话标题子系统](../../../docs/subsystems/session-title.zh.md)——持久标题状态与辅助请求记录。
 - [首消息标题提供方](../session-title-first-prompt-llm/README.zh.md)——根据第一条符合条件的用户消息生成标题。
 - [全消息标题提供方](../../experimental/session-title-all-prompts-llm/README.zh.md)——根据所有符合条件的用户消息生成标题。
-- [会话包映射](../README.zh.md)——相邻的持久化、投影、标题与遥测包。
+- [会话包映射](../README.zh.md)——相邻的持久化、投影与标题包。
 
 -----
 

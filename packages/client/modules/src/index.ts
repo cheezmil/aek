@@ -558,7 +558,7 @@ const PARSER_PRELOAD_IDS = [CLIENT_MODULES_ID] as const
  */
 export function bootInjections(graph: WebBootGraph): IndexInjection[] {
   const bootstrapId = JSON.stringify(CLIENT_MODULES_ID)
-  // T round: the emitted bootstrap carries `[aek-boot]` telemetry. In the
+  // T round: the emitted bootstrap carries `[aek-boot]` diagnostics. In the
   // desktop shell, the main process captures renderer console output into the
   // slot log (`desktop.log`), so a white screen (boot stalled / script 404)
   // is diagnosable from `aek logs` text alone — no GUI tooling. In a browser

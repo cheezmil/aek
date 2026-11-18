@@ -639,7 +639,7 @@ it('stores signed application consent in the current profile and refuses unavail
   await writeFile(join(dir, 'cordis.yml'), '[]\n')
   const profile: ProfileContext = { name: 'test', startedBundles: ['permission-fixture-bundle'], dir,
     patchPath: join(dir, 'cordis.patch.yml'), installAnchor: join(home, 'package.json'), cwd: home, home,
-    overlays: [], telemetryDisabledEnv: undefined }
+    overlays: [] }
   f.ctx.baseUrl = pathToFileURL(home).href + '/'
   f.ctx.provide('profileContext', profile)
   f.ctx.provide('appReady', { onReady: (listener: () => void) => { listener(); return () => {} } })

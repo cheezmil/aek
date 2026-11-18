@@ -658,7 +658,7 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
     showReconnect()
   }
 
-  // Renderer console capture: the web client's `[aek-boot]` telemetry (module
+  // Renderer console capture: the web client's `[aek-boot]` diagnostics (module
   // system created / boot stalled / script failed) plus any page error lands
   // in desktop.log as `renderer console` events. In a plain browser the same
   // lines stay in the devtools console; here they become durable text.

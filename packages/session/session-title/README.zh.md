@@ -107,7 +107,7 @@ kind: "package-reference"
 - [共享 LLM 执行模块](../session-title-llm/README.zh.md)——两个随附提供方共用的模型执行模块。
 - [首消息标题提供方](../session-title-first-prompt-llm/README.zh.md)——根据第一条符合条件的用户消息生成标题。
 - [全消息标题提供方](../../experimental/session-title-all-prompts-llm/README.zh.md)——根据所有符合条件的用户消息生成标题。
-- [会话包映射](../README.zh.md)——相邻的持久化、投影、标题与遥测包。
+- [会话包映射](../README.zh.md)——相邻的持久化、投影与标题包。
 
 -----
 

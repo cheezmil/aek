@@ -41,10 +41,16 @@ function isBuildFaceClient(value: unknown): boolean {
  * workspace devDependencies from their lib/ output, and tsdown builds
  * workspace members concurrently without ordering them.
  */
+// build-scope allowlist (written by scripts/aek/build-scope.mjs --yes)
+const buildScopeAllowlist = existsSync(join(import.meta.dirname, 'scripts/aek/build-scope.allowlist.json'))
+  ? new Set(JSON.parse(readFileSync(join(import.meta.dirname, 'scripts/aek/build-scope.allowlist.json'), 'utf8')).includes)
+  : undefined // 白名单文件缺失 = 全量构建（软路线默认，恢复路径保持打开）
+// /build-scope allowlist
 export default defineConfig(({ env }) => {
   const client = isBuildFaceClient(env?.DSH_BUILD_FACE)
   const packages = workspacePackageGlobs(globSync(['vendor/*/package.json', 'packages/*/*/package.json', 'packages/aek/*/*/package.json', 'packages/aek/*/*/*/package.json'], { cwd: import.meta.dirname }))
     .filter(isWorkspaceBundled)
+.filter(dir => buildScopeAllowlist === undefined || buildScopeAllowlist.has(dir))
   return {
     workspace: [...packages, 'apps/cli'],
     entry: client ? '' : ['lib/types/{index,startup}.js'],

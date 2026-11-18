@@ -96,7 +96,7 @@ async function dump(
     builtBin, '--profile', profileName, format, ...args,
   ], {
     cwd: fixture.root,
-    env: { ...env, DSH_HOME: fixture.home, DSH_TELEMETRY_DISABLED: '1' },
+    env: { ...env, DSH_HOME: fixture.home },
     extendEnv: false,
     input: '',
     timeout: processTimeoutMs,

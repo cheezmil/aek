@@ -1,6 +1,5 @@
 /** HTTP lifecycle, routing and optional Cordis services under real composition. */
 import { installAccountTaskCancellation, type DeepSeekAccount } from '@deepseek-ai/dsh-deepseek-account'
-import type { AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -181,7 +180,7 @@ describe('direct Messages HTTP', () => {
     const files = new DeepSeekFileStore()
     const llm = new DeepSeekAdapter({
       options: () => Messages.resolveAdapterOptions({ baseURL: source.url }),
-      resolveAuth: () => Promise.resolve({ headers: { 'x-api-key': 'test-key' } }), resolveUserId: () => 'test-user' as AnonymousUserId,
+      resolveAuth: () => Promise.resolve({ headers: { 'x-api-key': 'test-key' } }), resolveUserId: () => 'test-user',
       resolveAttachments: () => undefined, resolveImageAccess: () => undefined, resolveFiles: () => files,
       prepareExtensions: prepare,
     })
@@ -198,7 +197,7 @@ describe('direct Messages HTTP', () => {
     const first = await endpoint(), second = await endpoint()
     let config = Messages.resolveAdapterOptions({ baseURL: first.url, maxTokens: 10, models: [{ id: MODEL, systemPromptUpdate: 'in-history' }] })
     const files = new DeepSeekFileStore()
-    const llm = new DeepSeekAdapter({ options: () => config, resolveAuth: snapshot => Promise.resolve({ headers: { 'x-api-key': snapshot.maxTokens === 10 ? 'first' : 'second' } }), resolveUserId: () => 'user' as AnonymousUserId, resolveAttachments: () => undefined, resolveImageAccess: () => undefined, resolveFiles: () => files, prepareExtensions })
+    const llm = new DeepSeekAdapter({ options: () => config, resolveAuth: snapshot => Promise.resolve({ headers: { 'x-api-key': snapshot.maxTokens === 10 ? 'first' : 'second' } }), resolveUserId: () => 'user', resolveAttachments: () => undefined, resolveImageAccess: () => undefined, resolveFiles: () => files, prepareExtensions })
     const prepared = await llm.prepareCall('deepseek-official', MODEL)
     config = Messages.resolveAdapterOptions({ baseURL: second.url, maxTokens: 20 })
     expect(prepared.model.systemPromptUpdate).toBe('in-history')
@@ -262,7 +261,7 @@ describe('direct Messages HTTP', () => {
       resolveAuth: () => Promise.resolve({ headers: { 'x-api-key': 'fixture-key' },
         onRequestError: async () => { throw new Error('credential storage unavailable') },
       }),
-      resolveUserId: () => 'fixture-user' as import('@deepseek-ai/dsh-anonymous-user-id').AnonymousUserId,
+      resolveUserId: () => 'fixture-user',
       prepareExtensions,
     })
     await expect(chunks(llm.stream(options()))).rejects.toMatchObject({ code: 'AUTH', failure: { status: 401 } })

@@ -41,7 +41,6 @@ function consumerEnvironment(consumerRoot: string): NodeJS.ProcessEnv {
   delete environment.NODE_PATH
   environment.DSH_HOME = resolve(consumerRoot, '.dsh')
   environment.DSH_AGENTS_HOME = resolve(consumerRoot, '.agents')
-  environment.DSH_TELEMETRY_DISABLED = '1'
   return environment
 }
 

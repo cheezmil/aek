@@ -247,7 +247,7 @@ export function testProfileResolution(mode: ExampleMode): void {
         mode, sourceImport: 'tsx/esm', tsconfigPath: join(repoRoot, 'tsconfig.json'),
         configArgs: ['--profile', 'headless'],
         env: {
-          DSH_HOME: home, DSH_AGENTS_HOME: join(root, 'agents'), DSH_TELEMETRY_DISABLED: '1',
+          DSH_HOME: home, DSH_AGENTS_HOME: join(root, 'agents'),
           NODE_OPTIONS: undefined, TSX_TSCONFIG_PATH: undefined,
         },
       })

@@ -119,7 +119,7 @@ seam 的共享辅助函数校验由 `SESSION_FORMAT_VERSION` 标识的当前逻�
 - [基于句柄的持久化 Agent Note](../../../.agents/notes/implemented/architecture/2026-08-27-handle-based-session-persistence.zh.md)——seam 设计及其所有权模型。
 - [JSONL 持久化后端](../session-persistence-jsonl/README.zh.md)——随产品交付、按会话存储文件的后端。
 - [会话检查点策略](../session-checkpoint-policy/README.zh.md)——在语义边界上经由 `session/flush` 刷新的插件。
-- [会话包映射](../README.zh.md)——相邻的持久化、投影、标题与遥测包。
+- [会话包映射](../README.zh.md)——相邻的持久化、投影与标题包。
 
 -----
 

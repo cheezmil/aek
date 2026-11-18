@@ -81,6 +81,15 @@ const DROP = [
   '.github/**',
 ]
 
+/**
+ * X5 轮（2026-11-16）用户裁定：允许新增且仅新增 electron 云构建 workflow
+ * （多平台矩阵产物进 GitHub release、手动触发）；dsh 治理层其余 CI 绝不搬回。
+ * node:fs 的 globSync 不支持否定 glob，豁免在 expand() 里按前缀剔除。
+ */
+const DROP_EXEMPT = [
+  '.github/workflows/electron',
+]
+
 /** 上游文档站门禁：只在 dsh 的 doc-sync / ci-static 聚合里跑，AEK 不跑这些 mode。 */
 const DOC_GATES = [
   'doc-typecheck',
@@ -180,11 +189,12 @@ function fail(message) {
 const SKIP_SEGMENTS = new Set(['node_modules', '.git', 'lib', 'dist', 'build', '.turbo'])
 
 /** globSync 会把目录一并返回，这里只留真实文件，并跳过符号链接与生成物。 */
-function expand(patterns, cwd) {
+function expand(patterns, cwd, exempt = []) {
   const hits = new Set()
   for (const hit of globSync(patterns, { cwd })) {
     const rel = String(hit).split('\\').join('/')
     if (rel.split('/').some(segment => SKIP_SEGMENTS.has(segment))) continue
+    if (exempt.some(prefix => rel.startsWith(prefix))) continue
     const full = join(cwd, rel)
     try {
       if (lstatSync(full).isSymbolicLink()) continue
@@ -261,7 +271,7 @@ function printFileList(files, limit = 12) {
 }
 
 function report() {
-  const dropHits = expand(DROP, ROOT)
+  const dropHits = expand(DROP, ROOT, DROP_EXEMPT)
   const keepHits = expand(KEEP, ROOT)
   const gates = registeredGates()
   const liveDocGates = DOC_GATES.filter(id => gates.has(id))

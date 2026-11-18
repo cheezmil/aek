@@ -56,7 +56,6 @@ function cleanEnvironment(root: string, dshHome: string): NodeJS.ProcessEnv {
     ...env,
     DSH_AGENTS_HOME: join(root, '.agents'),
     DSH_HOME: dshHome,
-    DSH_TELEMETRY_DISABLED: '1',
     NODE_NO_WARNINGS: '1',
     SSH_CONNECTION: '',
     SSH_TTY: '',

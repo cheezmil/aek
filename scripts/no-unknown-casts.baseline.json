@@ -1714,10 +1714,6 @@
   "packages/session/session-stats/tests/projection.spec.ts": {
     "3b32ebf30406556d63564044fac22d757947dc603a753559840117a2fefc84e8": 1
   },
-  "packages/session/session-telemetry-otel/tests/otel.spec.ts": {
-    "1fd47c3bb8978851a7cf8a4cca96075b175f412914ec4338edd14f7a575a1e8b": 1,
-    "69d8df14a925caff56167c34923afee145db24fe9e208c129f2b5e45649f7367": 1
-  },
   "packages/session/session-title-first-prompt-llm/tests/loader-composition.spec.ts": {
     "59c63f734e8bba862325f776e3fcbebd78a84cfb4161f8df41c216950d9bf351": 1
   },

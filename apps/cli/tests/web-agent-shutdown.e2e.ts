@@ -36,7 +36,6 @@ it.each([
       env: {
         DSH_HOME: join(root, '.dsh'),
         DSH_AGENTS_HOME: join(root, '.agents'),
-        DSH_TELEMETRY_DISABLED: '1',
       },
     })
     const child = execa(launch.command, launch.args, {

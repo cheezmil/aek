@@ -20,7 +20,7 @@ it.skipIf(!process.env.DEEPSEEK_API_KEY || !runtime).each(['native', 'ptc'])('ch
     configPath: 'office.patch.json', processTimeoutMs: 110_000,
     binArgs: ['--profile', 'headless', '--patch', 'office.patch.json',
       'In input.docx, change the title paragraph text to Quarterly results without changing its formatting; save result.docx. Do not render or visually inspect the finished file. Respond briefly in English.'],
-    env: { DSH_PRIMARY_RUNTIME: runtime, DSH_PERMISSION_MODE: 'danger-full-access', DSH_TELEMETRY_DISABLED: '1', DSH_TOOLS_MODE: mode,
+    env: { DSH_PRIMARY_RUNTIME: runtime, DSH_PERMISSION_MODE: 'danger-full-access', DSH_TOOLS_MODE: mode,
       HTTP_PROXY: process.env.DSH_OFFICE_TEST_PROXY, HTTPS_PROXY: process.env.DSH_OFFICE_TEST_PROXY },
     async prepare(cwd) {
       await execa(python!, ['-c', `

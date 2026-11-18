@@ -77,7 +77,7 @@ Read these pages when the provider contract is not enough. They move from the sh
 - [Shared LLM execution module](../../session/session-title-llm/README.md) — the execution module this provider uses.
 - [First-message title provider](../../session/session-title-first-prompt-llm/README.md) — the cadence that titles a session once from its first prompt.
 - [Session title service](../../session/session-title/README.md) — fallback behavior, rename, refresh, and provider registration.
-- [Session package map](../../session/README.md) — adjacent persistence, projection, title, and telemetry packages.
+- [Session package map](../../session/README.md) — adjacent persistence, projection, and title packages.
 
 -----
 

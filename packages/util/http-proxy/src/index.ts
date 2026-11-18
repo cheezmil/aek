@@ -4,7 +4,7 @@
  * Node's built-in `fetch` ignores `HTTP_PROXY` and friends, so every harness request would connect
  * directly no matter what the user exported. The launcher resolves one policy from the launch
  * environment and installs it as undici's global dispatcher, which is what `fetch` resolves — so
- * LLM adapters, web search, MCP over HTTP, and telemetry are covered without touching their code.
+ * LLM adapters, web search, and MCP over HTTP are covered without touching their code.
  *
  * This is a library, not a plugin: transport policy has one answer per process, so there is nothing
  * for a composition to mount, swap, or scope.

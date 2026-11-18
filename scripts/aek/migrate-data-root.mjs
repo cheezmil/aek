@@ -187,7 +187,7 @@ function alreadyMigrated() {
  * data, which this script must never move aside.
  */
 const SKELETON_ENTRIES = new Set([
-  '.DS_Store', '.anonymous-user-id', '.credentials.yaml', '.aek-runtime.pid',
+  '.DS_Store', '.credentials.yaml', '.aek-runtime.pid',
   'profiles', 'storages',
 ])
 

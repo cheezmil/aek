@@ -93,9 +93,6 @@
         provider: deepseek-official
         model: deepseek-flash
 
-    - id: jobs
-      name: '@deepseek-ai/dsh-jobs-local'
-
     - id: llm-retry
       name: '@deepseek-ai/dsh-llm-retry'
 
@@ -124,16 +121,6 @@
 
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
-
-    # The pi-ai multi-provider twin, mounted dormant: zero routes (and no extra
-    # models in the picker) until a `llm-pi-ai:` settings section supplies provider
-    # profiles — then those routes register live, keys resolving per request
-    # through their apiKeyEnv references, and drop again when the section empties.
-    # Supplying those profiles is exactly what the web Models page does. Which
-    # adapters exist is composition; which providers run is the user's settings
-    # document.
-    - id: llm-pi-ai
-      name: '@deepseek-ai/dsh-llm-pi-ai'
 
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'
@@ -199,38 +186,6 @@
         writeEveryEvents: 200
         writeIntervalMs: 5000
 
-    - id: otel
-      name: '@deepseek-ai/dsh-otel'
-
-    # OTel releases a Session-log prefix only after explicit user feedback,
-    # regardless of model provider. Ordinary activity never triggers capture.
-    # DSH_TELEMETRY_OTLP_URL overrides the production endpoint. A non-empty
-    # DSH_TELEMETRY_DISABLED — any value, including '0'/'false' — opts the
-    # process out (the launchers patch the row disabled; config cannot disable
-    # a row). Exports carry the harness home's anonymous user id ($DSH_HOME/.anonymous-user-id,
-    # random UUID; delete the file to reset the identity) as the Resource's
-    # user.id. Byte-bounded batching may turn an authorized prefix into
-    # several HTTP requests. Requests run serially; each has its own 1s
-    # transport timeout and 1.5s watchdog. A watchdog does not release the
-    # active request slot. The outer 3s shutdown deadline stops queued sends;
-    # large prefixes or an unsettled transport may leave records unsent.
-    # Every CLI exit path drains by disposing the root on SIGINT/SIGTERM.
-    - id: session-telemetry-otel
-      name: '@deepseek-ai/dsh-session-telemetry-otel'
-      config:
-        mode: !!js process.env.DSH_TELEMETRY_MODE || 'FEEDBACK_ONLY'
-        shutdownTimeoutMillis: 3000
-        maxRequestBytes: 4000000
-        exporter:
-          url: !!js process.env.DSH_TELEMETRY_OTLP_URL ?? 'https://dsh-otel-collector.deepseeksvc.com/v1/logs'
-          compression: gzip
-          timeoutMillis: 1000
-        processor:
-          scheduledDelayMillis: 10000
-          maxQueueSize: 2048
-          maxExportBatchSize: 2048
-          exportTimeoutMillis: 1500
-
     - id: subprocess
       name: '@deepseek-ai/dsh-subprocess-local'
 
@@ -286,9 +241,6 @@
       name: '@deepseek-ai/dsh-tool-pwsh'
       disabled: !!js process.platform !== 'win32'
 
-    - id: tool-jobs
-      name: '@deepseek-ai/dsh-tool-jobs'
-
     - id: fs-observation-policy
       name: '@deepseek-ai/dsh-fs-observation-policy'
 
@@ -305,45 +257,11 @@
       config:
         maxBytes: 65536
 
-    - id: skill
-      name: '@deepseek-ai/dsh-skill'
-
-    - id: skill-filesystem
-      name: '@deepseek-ai/dsh-skill-filesystem'
-
-    - id: tool-skill
-      name: '@deepseek-ai/dsh-tool-skill'
-
-    - id: commands
-      name: '@deepseek-ai/dsh-commands'
-
     - id: command-feedback
       name: '@deepseek-ai/dsh-command-feedback'
 
-    - id: goal
-      name: '@deepseek-ai/dsh-goal'
-
     - id: goal-round-driver
       name: '@deepseek-ai/dsh-goal-round-driver'
-
-    - id: command-goal
-      name: '@deepseek-ai/dsh-command-goal'
-
-    - id: plan-mode
-      name: '@deepseek-ai/dsh-plan-mode'
-      config:
-        section: |
-              You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
-
-              Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
-
-              The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed only to keep the request shape stable. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
-
-              Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
-
-              Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
-
-              When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
 
     - id: token-meter
       name: '@deepseek-ai/dsh-token-meter'
@@ -393,17 +311,6 @@
       config:
         provider: fork
         toolName: subagent_fork
-
-    - id: ptc-runtime
-      name: '@deepseek-ai/dsh-ptc-runtime-node'
-
-    - id: workflow-ptc
-      name: '@deepseek-ai/dsh-workflow-ptc'
-      config:
-        provider: spawn
-
-    - id: tool-workflow
-      name: '@deepseek-ai/dsh-tool-workflow'
 
     - id: timeout-policy
       name: '@deepseek-ai/dsh-tool-call-timeout-policy'
@@ -469,19 +376,6 @@
       config:
         searchProvider: aggregated
         fetchProvider: http
-
-    - id: web-search-deepseek
-      name: '@deepseek-ai/dsh-web-search-deepseek'
-      config:
-        apiKeyEnv: DEEPSEEK_API_KEY
-
-    - id: web-deepseek-api
-      name: '@deepseek-ai/dsh-web-deepseek-api'
-      config:
-        apiKeyEnv: DEEPSEEK_API_KEY
-
-    - id: web-fetch-http
-      name: '@deepseek-ai/dsh-web-fetch-http'
 
     - id: tool-web
       name: '@deepseek-ai/dsh-tool-web'

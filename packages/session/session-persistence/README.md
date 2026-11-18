@@ -119,7 +119,7 @@ Read these pages when the package-level contract is not enough. They move from t
 - [Handle-based persistence Agent Note](../../../.agents/notes/implemented/architecture/2026-08-27-handle-based-session-persistence.md) — the seam design and its ownership model.
 - [JSONL persistence backend](../session-persistence-jsonl/README.md) — the shipped per-session-file backend.
 - [Session checkpoint policy](../session-checkpoint-policy/README.md) — the plugin that flushes through `session/flush` at semantic boundaries.
-- [Session package map](../README.md) — adjacent persistence, projection, title, and telemetry packages.
+- [Session package map](../README.md) — adjacent persistence, projection, and title packages.
 
 -----
 
