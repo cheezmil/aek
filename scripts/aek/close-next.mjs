@@ -86,11 +86,74 @@ function agentLoaded() {
 }
 
 // ── enumerate (read-only) ───────────────────────────────────────────────────
+
+// The dev-web / dev-shell LAUNCHER chain the AI opens:
+//   `bash -c … launch.mjs --slot next web` → `launch.mjs` → `aek.mjs web --port
+//   1687` → tsx → `bin.js web --port 1687`. `slotOwnedPids` only sees the
+//   PORT LISTENER (the leaf `bin.js`); its launcher ancestors carry no
+//   listen-socket marker, so killing the leaf alone lets the parent `launch.mjs`
+//   respawn it. Expand the kill set up the ancestor chain while each ancestor's
+//   command line carries a next-slot launcher marker, stopping at the FIRST
+//   ancestor that does not (that boundary is the operator/harness — never kill
+//   it). Bounded: ≤ 20 hops and never above pid 1.
+const NEXT_LAUNCH_MARKERS = [
+  `--slot ${TARGET_SLOT}`,
+  `--port ${SLOTS[TARGET_SLOT].webPort}`,
+  `--trusted-host ${SLOTS[TARGET_SLOT].webHost}`,
+  `--remote-debugging-port=${SLOTS[TARGET_SLOT].cdpPort}`,
+]
+
+/** `ps -p <pid> -o ppid=,command=` → `{ ppid, cmd }`, or null when gone. */
+function psLink(pid) {
+  try {
+    const raw = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'ppid=,command='], {
+      encoding: 'utf8',
+    }).trim()
+    const space = raw.indexOf(' ')
+    if (space < 0) return null
+    return { ppid: Number(raw.slice(0, space)), cmd: raw.slice(space + 1) }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The launcher ancestors to kill WITH the owned leaves. For each seed pid
+ * walk up the ppid chain; collect every ancestor whose command line carries a
+ * next-slot launcher marker, stopping at the first non-matching ancestor
+ * (the operator / harness boundary). Returns them top-most-first so the root
+ * launcher is signalled before its children (no mid-kill respawn).
+ * @param {number[]} seedPids
+ * @returns {number[]}
+ */
+function launcherChainAncestors(seedPids) {
+  const extra = new Set()
+  for (const seed of seedPids) {
+    let pid = seed
+    for (let depth = 0; depth < 20; depth++) {
+      const link = psLink(pid)
+      if (!link || !Number.isInteger(link.ppid) || link.ppid <= 1) break
+      if (!NEXT_LAUNCH_MARKERS.some((m) => link.cmd.includes(m))) break
+      extra.add(link.ppid)
+      pid = link.ppid
+    }
+  }
+  // Sequential dev-web spawn assigns rising pids down the chain, so ascending
+  // pid order = top-most-first in the common case (signal the root launcher
+  // before its children → no mid-kill respawn). SIGTERM is graceful and
+  // idempotent, so a rare out-of-order pid is still safe.
+  return [...extra].sort((a, b) => a - b)
+}
+
 const gateHome = slotHome(gateSlot)
 const gate = readAiRelease(gateHome)
 const owned = process.platform === 'win32' ? [] : slotOwnedPids(TARGET_SLOT)
 const { foreign } = process.platform === 'win32' ? { foreign: [] } : slotProcesses(TARGET_SLOT)
 const agent = agentLoaded()
+// The full close set: the owned port-listener leaves + the launcher ancestors
+// that would respawn them.
+const chainPids = owned.length ? launcherChainAncestors(owned) : []
+const killSet = [...new Set([...chainPids, ...owned])]
 
 const report = {
   slot: TARGET_SLOT,
@@ -101,6 +164,8 @@ const report = {
     aiReleaseAllowed: gate.allowed,
   },
   ownedPids: owned,
+  launcherChain: chainPids,
+  killSet,
   foreignHolders: foreign,
   nextAgent: agent,
   action: 'pending',
@@ -111,6 +176,9 @@ function describe(r) {
     `close-next: slot=${TARGET_SLOT} (report only — add --yes to close)`,
     `  gate: ${r.gate.file} → autoCloseNext=${String(r.gate.autoCloseNext)}${r.gate.autoCloseNext ? '' : ' (OFF: --yes will REFUSE to kill)'}`,
     `  next-slot owned pids: ${r.ownedPids.length ? r.ownedPids.join(' ') : '(none running)'}`,
+    r.launcherChain.length
+      ? `  launcher chain (would also close, top-first): ${r.launcherChain.join(' ')}`
+      : null,
     r.foreignHolders.length
       ? `  foreign holders (left alone): ${r.foreignHolders.map((f) => `${f.kind} :${f.port} pid ${f.pid}`).join(', ')}`
       : null,
@@ -145,25 +213,53 @@ if (gate.autoCloseNext !== true) {
   process.exit(1)
 }
 
-if (owned.length === 0) {
+if (killSet.length === 0) {
   report.action = 'nothing-to-close'
   console.log('[close-next] gate ON, but no next-slot owned instances are running — nothing to close.')
   if (JSON_OUT) console.log(JSON.stringify(report, null, 2))
   process.exit(0)
 }
 
+// Close the launcher ancestors FIRST (top-most first, already sorted), so the
+// parent `launch.mjs` / `bash` chain cannot respawn the leaf mid-kill. A
+// graceful SIGTERM to the ancestors; a process that survives is left for the
+// operator (no SIGKILL escalation, matching killSlot's posture).
+const chainKilled = []
+const chainStuck = []
+if (chainPids.length) {
+  for (const pid of chainPids) {
+    try {
+      process.kill(pid, 'SIGTERM')
+      chainKilled.push(pid)
+    } catch {
+      continue // vanished or not ours — report it, never escalate
+    }
+  }
+  // Bounded settle: give the ancestors a moment to tear their children down.
+  await new Promise((r) => setTimeout(r, 500))
+  for (const pid of chainKilled) {
+    try {
+      process.kill(pid, 0) // 0 = liveness probe, no signal sent
+      chainStuck.push(pid)
+      chainKilled.splice(chainKilled.indexOf(pid), 1)
+    } catch {
+      /* exited as expected */
+    }
+  }
+}
+
 const result = await killSlot(TARGET_SLOT)
 report.action = 'closed'
-report.killed = result.killed
-report.stuck = result.stuck
+report.killed = [...chainKilled, ...result.killed]
+report.stuck = [...chainStuck, ...result.stuck]
 if (JSON_OUT) {
   console.log(JSON.stringify(report, null, 2))
 } else {
   console.log(
     [
-      `[close-next] gate ON → closed ${result.killed.length} pid(s): ${result.killed.join(' ') || '(none)'}`,
-      result.stuck.length
-        ? `[close-next] STUCK after SIGTERM: ${result.stuck.join(' ')} (check manually; no SIGKILL escalation)`
+      `[close-next] gate ON → closed ${report.killed.length} pid(s): ${report.killed.join(' ') || '(none)'}${chainPids.length ? ` (incl. launcher chain ${chainPids.join(' ')})` : ''}`,
+      report.stuck.length
+        ? `[close-next] STUCK after SIGTERM: ${report.stuck.join(' ')} (check manually; no SIGKILL escalation)`
         : null,
       result.foreign.length
         ? `[close-next] FOREIGN holders left alone: ${result.foreign.map((f) => `${f.kind} :${f.port} pid ${f.pid}`).join(', ')}`
