@@ -286,6 +286,21 @@ function verify(devMode, json) {
         : ((i18n.stderr ?? '') + (i18n.stdout ?? '')).trim().split('\n').join(' '),
     })
   }
+  {
+    // R2 round: the second-level rail contract — every webui plugin owns a
+    // home + settings page on its family rail, the three built-in pages own
+    // section-tab rails, and every anchor tab has a live data-nav-anchor site.
+    const rails = spawnSync(NODE, [join(HERE, 'verify-plugin-rails.mjs'), '--quiet'], {
+      cwd: ROOT, encoding: 'utf8', timeout: 30_000,
+    })
+    checks.push({
+      rule: 'plugin-rails',
+      ok: rails.status === 0,
+      detail: rails.status === 0
+        ? '二级侧边栏契约：webui 插件均有首页 + 设置页，内建页面均有分节 tab，锚点目标齐全'
+        : ((rails.stderr ?? '') + (rails.stdout ?? '')).trim().split('\n').join(' '),
+    })
+  }
 
   {
     // W round: at most ONE AEK desktop shell per slot (the production install

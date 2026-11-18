@@ -9,10 +9,18 @@
  *   plain panel answers nothing (the route case was the direction bug of
  *   2026-11-14: "entries nested under X" ≠ "X's parent").
  *
+ * R2 round (2026-11-18) additions — the second-level rail CONTRACT:
+ * - every webui plugin (a `plugins`-drawer family) owns a settings-page
+ *   route (`panel.*Settings`);
+ * - the three built-in families (`runtime` / `settings` / `about`) own a
+ *   non-empty set of section-tab routes;
+ * - an ANCHOR route renders the FAMILY's page (panelRenderIdOf) and carries
+ *   its in-page position (panelAnchorOf); plain ids answer themselves.
+ *
  * @module aek-home/tests/nav-model.spec
  */
 import { describe, expect, it } from 'vitest'
-import { NAV, NAV_TOP, panelFamilyOf, subEntriesOf } from '../src/nav-model.ts'
+import { NAV, NAV_TOP, panelAnchorOf, panelFamilyOf, panelRenderIdOf, subEntriesOf } from '../src/nav-model.ts'
 
 describe('nav-model: two-level rail contract', () => {
   it('lists every panel exactly once', () => {
@@ -56,9 +64,47 @@ describe('nav-model: panelFamilyOf', () => {
     expect(panelFamilyOf('websearchSettings')).toBe('websearch')
   })
 
-  it('plain panels have no family', () => {
-    for (const id of ['runtime', 'plugins', 'skills', 'prompts', 'settings', 'about'] as const) {
-      expect(panelFamilyOf(id)).toBeUndefined()
+  it('plain panels have no family (R2: only the retired bucket id stays plain)', () => {
+    // skills / prompts / websearch / icons gained settings-page routes (R2),
+    // and runtime / settings / about gained section-tab routes (R2) — they
+    // are all family roots now. The retired `plugins` bucket id owns no
+    // routes, so it is the only panel that answers "no family".
+    expect(panelFamilyOf('plugins')).toBeUndefined()
+  })
+})
+
+describe('nav-model R2 round: the second-level rail contract', () => {
+  it('every webui plugin family owns a settings-page route', () => {
+    const webuiFamilies = NAV.filter(entry => entry.subOf === undefined && entry.group === 'plugins')
+    expect(webuiFamilies.length).toBeGreaterThan(0)
+    for (const family of webuiFamilies) {
+      const hasSettings = subEntriesOf(family.id).some(route => /^panel\.[A-Za-z0-9]+Settings$/.test(route.labelKey))
+      expect(hasSettings, `family "${family.id}" must own a settings page`).toBe(true)
+    }
+  })
+
+  it('the built-in families own section-tab routes — except 关于 (version-only)', () => {
+    // 2026-11-18 user ruling: the 关于 page carries ONLY the desktop version
+    // number, so it owns no sections and no rail. runtime / settings keep
+    // their section tabs.
+    for (const family of ['runtime', 'settings'] as const) {
+      expect(subEntriesOf(family).length, `family "${family}" must own rail routes`).toBeGreaterThan(0)
+    }
+    expect(subEntriesOf('about').length, 'the 关于 page is version-only and must stay rail-less').toBe(0)
+  })
+
+  it('anchored routes position their FAMILY page (render = family, anchor = position)', () => {
+    for (const entry of NAV.filter(item => item.anchor !== undefined)) {
+      expect(entry.subOf, `anchored route "${entry.id}" must hang off a family`).toBeDefined()
+      expect(panelRenderIdOf(entry.id)).toBe(entry.subOf)
+      expect(panelAnchorOf(entry.id)).toBe(entry.anchor)
+    }
+  })
+
+  it('plain panels render themselves', () => {
+    for (const id of ['runtime', 'websearch', 'settings', 'about', 'skillsSettings'] as const) {
+      expect(panelRenderIdOf(id)).toBe(id)
+      expect(panelAnchorOf(id)).toBeUndefined()
     }
   })
 })

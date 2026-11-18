@@ -408,6 +408,35 @@
     filter: drop-shadow(0 2px 10px rgba(234, 88, 12, 0.45));
   }
 
+  /* 2026-11-18: the plugin-rail fold (the column tucking / un-tucking) is a
+     functional layout change, not decorative motion — it must glide even
+     when the system "reduce motion" setting is on: the global crush below
+     (0.01ms on `*`) would snap the width in one frame, which reads as the
+     flash the user reported. `.aek-rail-fold` owns the fold transition;
+     the media block re-establishes the duration with a HIGHER-specificity
+     `!important` so the `*` crush does not swallow it. Placed BEFORE
+     `.aek-no-transition` on purpose: while the rail edge is being dragged,
+     that later rule (equal specificity, `!important`) still wins and the
+     width tracks the pointer 1:1. */
+  .aek-rail-fold {
+    transition:
+      width var(--aek-sidebar-duration) var(--aek-ease-out),
+      flex-basis var(--aek-sidebar-duration) var(--aek-ease-out),
+      padding var(--aek-sidebar-duration) var(--aek-ease-out),
+      border-right-width var(--aek-sidebar-duration) var(--aek-ease-out);
+  }
+
+  .aek-rail-fold ul {
+    transition: opacity var(--aek-sidebar-duration) var(--aek-ease-out);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .aek-rail-fold,
+    .aek-rail-fold ul {
+      transition-duration: var(--aek-sidebar-duration) !important;
+    }
+  }
+
   /* No-fade rail setting: the row-actions card shows/hides instantly. */
   .aek-nav-no-fade .aek-row-actions {
     transition: none;

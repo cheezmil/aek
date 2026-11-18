@@ -228,7 +228,13 @@ export function IconManagerPanel({ activeSet }: { activeSet?: string }): ReactNo
   // active row's header line even in focused mode.
   const activeSetMeta = useMemo((): SetMeta | undefined => {
     if (activeSet === undefined) return undefined
-    return manifest.find(m => m.prefix === activeSet)
+    // The rail sub-route ids are `icons<Set>` — `Home.tsx` slices off the
+    // `icons` prefix, so `activeSet` carries the manifest `meta.name` casing
+    // (`Lucide`, `Tabler`, …) while the manifest's `prefix` is lowercase.
+    // Match case-insensitively; an unknown set falls back to the family
+    // root (every catalog).
+    const needle = activeSet.toLowerCase()
+    return manifest.find(m => m.prefix.toLowerCase() === needle)
   }, [activeSet, manifest])
   const fwNames = useMemo(
     () => ICON_NAMES.filter(name => needle.length === 0 || name.toLowerCase().includes(needle) || matchesZhAlias(name, needle, aliases)),

@@ -13,6 +13,17 @@
  * nav never shows third-level boards; plugins manage their own routes with a
  * side rail of their own).
  *
+ * R2 round (2026-11-18): the second-level rail becomes a hard contract —
+ * every AEK plugin that owns a webui face AND the three built-in pages
+ * (插件与程序管理 / 基础设置 / 关于) get their own route rail. The rail
+ * gained a third row KIND besides "synthetic home" and "different page":
+ * an ANCHOR tab (`NavEntry.anchor`) that stays on the family's page and
+ * positions it to one of the page's own sections (`data-nav-anchor`).
+ * Plugin developers freely choose: tabs may jump pages OR position the
+ * page (the user's freedom, 2026-11-18 ruling). `scripts/aek/
+ * verify-plugin-rails.mjs` machine-enforces the contract (dev-cycle
+ * verify `plugin-rails` rule).
+ *
  * @module @cheezmil/aek-home/src/client/nav-model
  */
 import { useCallback, useMemo } from 'react'
@@ -22,8 +33,16 @@ import { NAV_ICONS } from './icon-registry.ts'
 
 /** Every surface the console can show. */
 export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts' | 'websearchSettings' | 'icons'
-  | 'iconsAll'
   | 'iconsLucide' | 'iconsTabler' | 'iconsPhosphor' | 'iconsHeroicons' | 'iconsBootstrap'
+  | 'iconsSettings'
+  | 'skillsSettings' | 'promptsSettings'
+  // R2 round: the second-level rail of the 插件与程序管理 page — one tab
+  // per section of the composed page (an in-page POSITION, not a new page).
+  | 'runtimeRuntimes' | 'runtimePlugins' | 'runtimeInfo'
+  // R2 round: the second-level rail of the 基础设置 page — one tab per
+  // settings section (in-page position).
+  | 'settingsSidebarFirst' | 'settingsSidebarSecond' | 'settingsNavigation'
+  | 'settingsGeneral' | 'settingsAccess' | 'settingsPermissions' | 'settingsDefaults'
   | 'settings' | 'about'
 
 /** The two drawer groups the user asked for (plus the pinned bucket). */
@@ -46,6 +65,17 @@ export interface NavEntry {
    * of the owning plugin, shown in the plugin's own side rail.
    */
   subOf?: string
+  /**
+   * R2 round: the two row kinds of a second-level rail. Without `anchor`
+   * the row is a DIFFERENT PAGE (its own panel id, its own content tree).
+   * WITH `anchor` the row stays on the `subOf` page and only positions it:
+   * clicking it activates this row's panel id (selection / last-sub
+   * memory / URL all key off it) while the CONTENT that renders is the
+   * family's, scrolled to the element carrying
+   * `data-nav-anchor="<anchor>"`. Plugin authors pick per tab — the same
+   * rail may mix both kinds.
+   */
+  anchor?: string
   /** Extra aliases for the search box. */
   keywords: readonly string[]
 }
@@ -72,13 +102,38 @@ export const NAV: readonly NavEntry[] = [
   // and multi-select bulk copy, so the user can point the icons at an agent.
   { id: 'icons', labelKey: 'panel.icons', icon: NAV_ICONS.icons, group: 'plugins', keywords: ['icon', 'glyph', '复制', '图标', 'agent', 'lucide'] },
   // V6.7: icon-set sub-routes — clicking a row in the rail shows just one
-  // curated library on its own page; the "all" route stays as the family root.
-  { id: 'iconsAll', labelKey: 'panel.iconsAll', icon: NAV_ICONS.icons, group: 'plugins', subOf: 'icons', keywords: ['icon', 'all', '全览', '全部图标'] },
+  // curated library on its own page; the family root (`icons`) stays the
+  // "all" view, so no separate "all" sub-route is needed.
   { id: 'iconsLucide', labelKey: 'panel.iconsLucide', icon: NAV_ICONS.icons, group: 'plugins', subOf: 'icons', keywords: ['icon', 'lucide'] },
   { id: 'iconsTabler', labelKey: 'panel.iconsTabler', icon: NAV_ICONS.icons, group: 'plugins', subOf: 'icons', keywords: ['icon', 'tabler'] },
   { id: 'iconsPhosphor', labelKey: 'panel.iconsPhosphor', icon: NAV_ICONS.icons, group: 'plugins', subOf: 'icons', keywords: ['icon', 'phosphor'] },
   { id: 'iconsHeroicons', labelKey: 'panel.iconsHeroicons', icon: NAV_ICONS.icons, group: 'plugins', subOf: 'icons', keywords: ['icon', 'heroicons'] },
   { id: 'iconsBootstrap', labelKey: 'panel.iconsBootstrap', icon: NAV_ICONS.icons, group: 'plugins', subOf: 'icons', keywords: ['icon', 'bootstrap'] },
+  // R2 round: the webui plugin rail contract — EVERY AEK plugin that has a
+  // webui face owns a settings page on its family rail (the rail's synthetic
+  // "{name}首页" row is the home page; this row is the settings page).
+  { id: 'skillsSettings', labelKey: 'panel.skillsSettings', icon: NAV_ICONS.skillsSettings, group: 'plugins', subOf: 'skills', keywords: ['skill', 'settings', '设置'] },
+  { id: 'promptsSettings', labelKey: 'panel.promptsSettings', icon: NAV_ICONS.promptsSettings, group: 'plugins', subOf: 'prompts', keywords: ['prompt', 'settings', '设置'] },
+  { id: 'iconsSettings', labelKey: 'panel.iconsSettings', icon: NAV_ICONS.iconsSettings, group: 'plugins', subOf: 'icons', keywords: ['icon', 'settings', '设置'] },
+  // R2 round: the built-in pages get the second-level rail too.
+  // (The 关于 page was later reduced to a single version row by user ruling,
+  // so it owns no tabs — see below.)
+  // 插件与程序管理: one ANCHOR tab per section of the composed page — the
+  // tabs position the page, they do not switch to a new page.
+  { id: 'runtimeRuntimes', labelKey: 'panel.runtimeSection', icon: NAV_ICONS.runtime, group: 'other', subOf: 'runtime', anchor: 'runtimes', keywords: ['runtime', 'instance', '运行实例'] },
+  { id: 'runtimePlugins', labelKey: 'panel.pluginsSection', icon: NAV_ICONS.plugins, group: 'other', subOf: 'runtime', anchor: 'plugins', keywords: ['plugin', 'program', '插件与程序'] },
+  { id: 'runtimeInfo', labelKey: 'panel.infoSection', icon: NAV_ICONS.about, group: 'other', subOf: 'runtime', anchor: 'info', keywords: ['info', 'system', '系统信息'] },
+  // 基础设置: one ANCHOR tab per settings section (in-page position).
+  { id: 'settingsSidebarFirst', labelKey: 'settings.group.sidebarFirst', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'sidebarFirst', keywords: ['sidebar', '侧栏'] },
+  { id: 'settingsSidebarSecond', labelKey: 'settings.group.sidebarSecond', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'sidebarSecond', keywords: ['plugin rail', '二级侧栏'] },
+  { id: 'settingsNavigation', labelKey: 'settings.group.navigation', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'navigation', keywords: ['navigation', '导航'] },
+  { id: 'settingsGeneral', labelKey: 'settings.group.general', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'general', keywords: ['general', '通用'] },
+  { id: 'settingsAccess', labelKey: 'settings.group.access', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'access', keywords: ['access', 'lan', '访问设置'] },
+  { id: 'settingsPermissions', labelKey: 'settings.group.permissions', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'permissions', keywords: ['permissions', '权限'] },
+  { id: 'settingsDefaults', labelKey: 'settings.group.defaults', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'defaults', keywords: ['defaults', '默认值'] },
+  // 2026-11-18 user ruling: the 关于 page carries ONLY the desktop version
+  // number (no sections, no rosters) — with no sections to position, the
+  // about family owns no anchor tabs and renders no rail.
   { id: 'settings', labelKey: 'panel.settings', icon: NAV_ICONS.settings, group: 'other', keywords: ['preferences', 'options', 'sidebar', '基础设置', '设置'] },
   { id: 'about', labelKey: 'panel.about', icon: NAV_ICONS.about, group: 'other', keywords: ['version', 'info', 'entry', '关于'] },
 ]
@@ -106,6 +161,30 @@ export function panelFamilyOf(id: PanelId): string | undefined {
   // "entries nested UNDER this panel", a direction that exists for no panel
   // today and hides the route's own family.)
   return NAV.find(entry => entry.id === id)?.subOf
+}
+
+/**
+ * R2 round: which CONTENT TREE a panel id renders. An ANCHOR route
+ * (`NavEntry.anchor`) does not own a page of its own — it renders the
+ * family's page (the `subOf` root) positioned to its own section, so the
+ * keep-alive mount set must merge it into the family. Every other id
+ * answers itself.
+ * @param id - a panel id.
+ * @returns the panel id whose content tree is rendered for `id`.
+ */
+export function panelRenderIdOf(id: string): string {
+  const entry = NAV.find(item => item.id === id)
+  if (entry !== undefined && entry.anchor !== undefined && entry.subOf !== undefined) return entry.subOf
+  return id
+}
+
+/**
+ * R2 round: the in-page position an ANCHOR route carries.
+ * @param id - a panel id.
+ * @returns the `data-nav-anchor` value to scroll to, or undefined for plain panels.
+ */
+export function panelAnchorOf(id: string): string | undefined {
+  return NAV.find(item => item.id === id)?.anchor
 }
 
 /** The host preference holding the per-plugin third-level (now: route) memory. */

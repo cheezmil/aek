@@ -65,12 +65,27 @@ In this repo (dev checkout) the `bin/aeksm` wrapper runs the TypeScript
 source through `tsx` automatically; set `~/.aek/aeksm-mode` to `npm` to
 delegate to the globally installed build instead.
 
-## Coraek plugin (auxiliary webui face) — pending
+## Webui face (auxiliary)
 
-The package is declared `aek: { type: "dual", cordis: true }`. The backend
-half (`src/index.ts`, registering the engine + model tools into the host
-`ctx`) and the frontend half (`client/`, the settings-page card) are the next
-work items (worklist T5/T6). Until then the package is a standalone CLI.
+The package is declared `aek: { type: "dual", cordis: true }`. Its webui
+face lives in the AEK web console (`apps/aek-web`), not in this package:
+
+- **the `skills` family panel** (`apps/aek-web/src/ConsolePanels.tsx`) — a
+  command console over the host bridge `/api/aek/plugin-console`: the full
+  `aeksm` catalogue, one-click read-only actions, and write runs that need
+  an explicit confirmation. This plugin is **not** mounted in the web
+  profile's `cordis.patch.yml`, so the panel drives the CLI — the backend
+  half (`src/index.ts`, `ctx.skillsManager`) only matters to profiles that
+  mount it.
+- **the `Skill 设置` tab** — the family's second-level rail. Schema-driven
+  (the console's `SKILLS_SETTINGS_SCHEMA`): the single `aeksm.home` row
+  (`aek-home.aeksm.home` host preference).
+
+Contract (R2 round): every AEK plugin with a webui face owns a second-level
+rail with at least a home + settings tab; a tab may either switch pages or
+anchor to a section of the same page. Machine-checked by
+`scripts/aek/verify-plugin-rails.mjs` (the `plugin-rails` face of
+`dev-cycle verify`).
 
 ## Model / token experience
 
@@ -86,8 +101,12 @@ is a CI gate that exits 1 when the total exceeds a token budget.
 - **Windows junctions** — the ported link layer uses plain symlinks/directory
   links. The `asm` junction abstraction (no developer-mode requirement on
   Windows) is a planned port (worklist T3).
-- **Coraek plugin halves** — backend `src/index.ts` + frontend `client/`
-  (worklist T5/T6) not yet written; the package is CLI-only for now.
+- **Webui mount face** — the backend half (`src/index.ts`) and the card
+  face (`client/`) are both written, but the web profile does not mount
+  this plugin's cordis face: the webui drives the CLI through the host
+  plugin-console bridge (`/api/aek/plugin-console`, `aek-web`'s family
+  panel) instead. Mounting `ctx.skillsManager` into a profile (and wiring
+  `client/` to it) stays open work.
 - **Agent model tools** — `aeksm_*` host tools (worklist T8) not yet exposed.
 - **Transfer-sync (WSL↔Windows)** — AEK-specific cross-machine alignment
   (worklist T9) not yet ported; upstream `sync` covers multi-machine via git.

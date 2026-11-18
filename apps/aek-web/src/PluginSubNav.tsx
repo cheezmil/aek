@@ -26,6 +26,13 @@
  *   Settings row switches it back on (no second "dismissed" state, so a
  *   reload can never lose the transition).
  *
+ * 2026-11-18 flicker fix: the per-family HIDDEN state (tucked away by
+ * single-clicking the family row) no longer unmounts the rail — `Home`
+ * keeps it mounted and passes `hidden`, which collapses the column to a
+ * zero width with the same transition timing as the main rail. Switching
+ * into a tucked-away page therefore animates the fold instead of
+ * jumping the whole content area one frame; expanding back animates too.
+ *
  * @module @cheezmil/aek-web/src/PluginSubNav
  */
 import { useState } from 'react'
@@ -68,6 +75,15 @@ export interface PluginSubNavProps {
    * the main rail's double click on the family row).
    */
   labelsHidden?: boolean
+  /**
+   * 2026-11-18 flicker fix: this family's rail is in the hidden state (single
+   * click on the family row). The rail element STAYS MOUNTED and animates to
+   * a zero-width column instead of unmounting: a panel switch into a
+   * tucked-away rail must read as a smooth fold, not a one-frame reflow
+   * ("突然闪一下收纳起来"). The per-family hidden state itself is unchanged —
+   * only the rendering of it.
+   */
+  hidden?: boolean
 }
 
 /** A round: the width a drag of the rail's right edge may reach (px). */
@@ -102,7 +118,7 @@ function parseRailWidth(raw: unknown): number | undefined {
  * @param props - active panel, selection and the label state.
  * @returns the rail, or `null` when the active panel has no family routes.
  */
-export function PluginSubNav({ active, onSelect, labelsHidden = false }: PluginSubNavProps) {
+export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = false }: PluginSubNavProps) {
   const { t, tf } = useI18n()
   const { record } = useLastSubMemory()
   // `panelFamilyOf` returns the owning family as a plain string; every family
@@ -127,7 +143,11 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false }: PluginS
   const [resized, setResized] = useState<number | undefined>(undefined)
   // A round: hidden labels → the rail compacts to the icon column; the
   // dragged width pref is untouched and comes back when the labels return.
-  const width = labelsHidden ? railCompactWidth : (resized ?? railWidth)
+  // 2026-11-18 flicker fix: the HIDDEN state (family rail tucked away) is
+  // rendered as a ZERO-WIDTH column, not an unmount — the fold / unfold is
+  // the width transition below, so a panel switch into a tucked-away rail
+  // reads as a smooth collapse instead of a one-frame layout jump.
+  const width = hidden ? 0 : (labelsHidden ? railCompactWidth : (resized ?? railWidth))
   /** @param event - the pointerdown on the rail's right-edge handle. */
   const startResize = (event: ReactPointerEvent<HTMLDivElement>): void => {
     event.preventDefault()
@@ -157,8 +177,12 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false }: PluginS
 
   return (
     <nav
-      className="sticky top-0 flex h-screen flex-col grow-0 shrink-0 basis-(--aek-plugin-rail-width) w-(--aek-plugin-rail-width) bg-surface border-r border-border pt-6 px-3 pb-3"
+      className={cn(
+        'aek-rail-fold sticky top-0 flex h-screen flex-col grow-0 shrink-0 basis-(--aek-plugin-rail-width) w-(--aek-plugin-rail-width) bg-surface border-r border-border pt-6 px-3 pb-3 overflow-hidden',
+        resized !== undefined && 'aek-no-transition',
+      )}
       aria-label={t('nav.pluginRoutes')}
+      aria-hidden={hidden ? true : undefined}
       // A round: the width is set as a LAYOUT property directly (inline
       // width + flex-basis), not through a custom property: Chromium fails
       // to invalidate the layout of this sticky flex item when only the
@@ -166,17 +190,32 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false }: PluginS
       // compact/drag transitions would render one step behind until a full
       // reflow. A direct width change invalidates layout normally. The CSS
       // variable stays as the rule-level fallback for the initial render.
+      // 2026-11-18 flicker fix: the fold transition is the `.aek-rail-fold`
+      // class in index.css (with its reduced-motion exemption — see there).
+      // `minWidth: 0` is what lets the column truly collapse: without it the
+      // flex item's `min-width: auto` floors the width at the content size
+      // (a 25px stub stayed behind the fold). While dragging the rail edge,
+      // `aek-no-transition` (!important, later in the stylesheet) keeps the
+      // width glued to the pointer.
       style={{
         '--aek-plugin-rail-width': `${String(width)}px`,
         width: `${String(width)}px`,
         flexBasis: `${String(width)}px`,
+        minWidth: '0px',
+        ...(hidden ? { padding: '0px', borderRightWidth: '0px' } : null),
       } as CSSProperties}
     >
-      <ul className="flex flex-col gap-1">
+      {/* The rows fade with the fold (`.aek-rail-fold ul` in index.css);
+          the clipping of the zero-width column does the rest. */}
+      <ul
+        className="flex flex-col gap-1"
+        style={{ opacity: hidden ? 0 : 1 }}
+      >
         {routes.map(route => (
           <li key={route.id} data-panel={route.id}>
             <button
               type="button"
+              tabIndex={hidden ? -1 : undefined}
               className={cn(
                 'relative flex h-8.5 w-full items-center gap-2 rounded-sm px-2 text-aek-13 font-medium text-text-secondary bg-transparent border-0 text-left whitespace-nowrap cursor-pointer transition-colors duration-140 ease-aek hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2',
                 active === route.id
@@ -199,10 +238,17 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false }: PluginS
 
       {hintVisible
         ? (
-          <div className={cn('mt-auto flex items-center justify-between gap-2 rounded-sm border border-border bg-surface-hover p-2', labelsHidden && 'justify-center')}>
+          <div
+            className={cn(
+              'mt-auto flex items-center justify-between gap-2 rounded-sm border border-border bg-surface-hover p-2',
+              labelsHidden && 'justify-center',
+              hidden && 'opacity-0',
+            )}
+          >
             {!labelsHidden ? <span className="text-aek-11 leading-normal text-text-muted">{t('nav.railHint.text')}</span> : null}
             <button
               type="button"
+              tabIndex={hidden ? -1 : undefined}
               className="inline-flex size-5.5 flex-none items-center justify-center rounded-sm border-0 bg-transparent p-0 text-text-muted cursor-pointer hover:bg-surface hover:text-text"
               title={t('nav.railHint.dismiss')}
               aria-label={t('nav.railHint.dismiss')}
@@ -216,8 +262,9 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false }: PluginS
 
       {/* A round: drag the rail's right edge to resize; the width lands in
           the `aek-home.pluginRailWidth` pref (and its settings-schema row).
-          The compact (labels-hidden) rail is fixed-width — no resizer. */}
-      {!labelsHidden
+          The compact (labels-hidden) rail is fixed-width — no resizer; a
+          hidden (zero-width) rail is clipped and inert — none either. */}
+      {!labelsHidden && !hidden
         ? (
           <div
             className="absolute top-0 -right-0.75 z-1 h-full w-1.75 cursor-col-resize hover:bg-accent-soft active:bg-accent-soft"

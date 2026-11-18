@@ -52,8 +52,14 @@ Project-rules failures throw `PromptManagerError` with a machine-readable
 `code` that travels over the typert remote intact. The `Config` schema is
 empty in v1 (settings namespace `aek-prompt-manager`): a live-editable
 `home` override is deferred until a webui card or agent model tool
-consumes it. The webui face and `aekpm_*` model tools are phase-2 work,
-like the skill-manager's.
+consumes it.
+
+The webui face of this plugin lives in the AEK web console: the `prompts`
+family panel (the `aekpm` command console over the host plugin-console
+bridge) and the `Prompt 设置` tab of its second-level rail (schema-driven
+from `aek-web`'s `PROMPTS_SETTINGS_SCHEMA` — currently an empty schema, so
+the page shows the "no settings yet" state). The `aekpm_*` agent model
+tools are the remaining phase-2 work.
 
 ## Install
 

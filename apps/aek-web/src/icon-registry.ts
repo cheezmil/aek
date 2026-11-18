@@ -48,7 +48,6 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
   icons: 'layout',
   // V6.7: icon-set sub-routes reuse the same "catalog" glyph — the rail labels
   // carry the library name so a unique mark would be redundant.
-  iconsAll: 'layout',
   iconsLucide: 'layout',
   iconsTabler: 'layout',
   iconsPhosphor: 'layout',
@@ -58,6 +57,32 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
   settings: 'settings',
   /** 关于 / 系统信息: the "i" in a circle says "info about this". */
   about: 'about',
+  /**
+   * R2 round: the settings pages of the three remaining webui plugins — the
+   * sliders glyph, the house style for "settings" (one glyph, one meaning).
+   */
+  skillsSettings: 'settings',
+  promptsSettings: 'settings',
+  iconsSettings: 'settings',
+  /**
+   * R2 round: the three ANCHOR tabs of 插件与程序管理 — each tab re-uses the
+   * mark of the SECTION it positions to (heartbeat / stack / info), so the
+   * rail row and the section header agree on the glyph.
+   */
+  runtimeRuntimes: 'activity',
+  runtimePlugins: 'layers',
+  runtimeInfo: 'about',
+  /**
+   * R2 round: the ANCHOR tabs of 基础设置 — the sliders glyph again; the
+   * labels (一级侧栏 / 二级侧栏 / 导航 / …) carry the distinction.
+   */
+  settingsSidebarFirst: 'settings',
+  settingsSidebarSecond: 'settings',
+  settingsNavigation: 'settings',
+  settingsGeneral: 'settings',
+  settingsAccess: 'settings',
+  settingsPermissions: 'settings',
+  settingsDefaults: 'settings',
   /** (retired bucket id, never rendered as a rail row.) */
   plugins: 'layers',
 }

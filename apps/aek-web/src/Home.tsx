@@ -23,7 +23,10 @@ import { oneOf, PREF_KEYS, PrefProvider, usePref, usePrefLanded, useSettings, pa
 import { Sidebar } from './Sidebar.tsx'
 import type { PanelId } from './nav-model.ts'
 import {
+  NAV_IDS,
+  panelAnchorOf,
   panelFamilyOf,
+  panelRenderIdOf,
   parseCommaList,
   RAIL_HIDDEN_KEY,
   RAIL_LABELS_HIDDEN_KEY,
@@ -34,7 +37,6 @@ import { AboutPanel, PluginsPanel } from './InfoPanels.tsx'
 import { SetupWizard } from './Setup.tsx'
 import { sidebarCssVars } from './settings-schema.ts'
 import { cn } from '@/lib/utils'
-import { useInventory } from './useInventory.ts'
 import { useCurrentSlot } from './useRuntimeMode.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
 import { WebSearchPanel } from './WebSearchPanel.tsx'
@@ -43,13 +45,16 @@ import { useWebsearchStatus } from './useWebsearchStatus.ts'
 import { prefetchRanking } from './useWebsearchRanking.ts'
 import type { FreeFilter } from './useWebsearchRanking.ts'
 
-/** All valid panel ids, used to validate a persisted value. */
-const PANEL_IDS: readonly PanelId[] = [
-  'runtime', 'websearch', 'plugins', 'skills', 'prompts', 'websearchSettings',
-  'icons', 'iconsAll', 'iconsLucide', 'iconsTabler', 'iconsPhosphor',
-  'iconsHeroicons', 'iconsBootstrap',
-  'settings', 'about',
-]
+/**
+ * All valid panel ids, used to validate a persisted value.
+ *
+ * R2 round: derived from the nav model (`NAV_IDS`) instead of a hand list, so a
+ * new rail row (plugin settings page / built-in ANCHOR tab) is a valid deep
+ * link + persisted pref the moment it lands in `nav-model.ts` — no second
+ * place to remember. `plugins` is the retired bucket id the rail filters out
+ * of display but the console still renders (InfoPanels), so it is appended.
+ */
+const PANEL_IDS: readonly PanelId[] = [...NAV_IDS, 'plugins'] as PanelId[]
 
 /**
  * B round: parse the pre-warmed Web Search settings at the console root
@@ -91,7 +96,6 @@ function Console() {
   const [panel, setPanel] = usePref<PanelId>(PREF_KEYS.panel, 'runtime', oneOf(PANEL_IDS))
   const { prefs } = useSettings()
   const state = useWebsearchStatus()
-  const inventory = useInventory()
   const currentSlot = useCurrentSlot()
 
   // B round: URL routing — the active panel mirrors into the address bar as
@@ -174,6 +178,29 @@ function Console() {
   useEffect(() => {
     setVisitedPanels(previous => (previous.includes(panel) ? previous : [...previous, panel]))
   }, [panel])
+
+  // R2 round: ANCHOR tabs position the active page — after the panel lands,
+  // scroll the visible tree's `[data-nav-anchor]` target into view. One frame
+  // delay so the target tree has been un-hidden first; hidden keep-alive
+  // trees are filtered out (`offsetParent` is null while display:none).
+  //
+  // The scroll is INSTANT, mirroring the I-round lesson in InfoPanels'
+  // dirty-row locator: `behavior: 'smooth'` scrollIntoView silently no-ops in
+  // this shell whenever the compositor stalls (occluded / backgrounded dev
+  // window), leaving the tab's target unpositioned — an instant jump is
+  // reliable in every state.
+  useEffect(() => {
+    const anchor = panelAnchorOf(panel)
+    if (anchor === undefined) return
+    let cancelled = false
+    const request = requestAnimationFrame(() => {
+      if (cancelled) return
+      const targets = Array.from(document.querySelectorAll(`[data-nav-anchor="${anchor}"]`))
+      const visible = targets.find(element => element.offsetParent !== null)
+      visible?.scrollIntoView({ behavior: 'instant', block: 'start' })
+    })
+    return () => { cancelled = true; cancelAnimationFrame(request) }
+  }, [panel])
   // Host facts lifted to the root: the Web Search page needs them for the
   // path display-style setting, and this keeps one shared fetch for every
   // surface instead of one per panel mount.
@@ -211,23 +238,38 @@ function Console() {
   // main rail (host pref `aek-home.pluginRailHidden`), and its labels can be
   // collapsed to icons by double-clicking (host pref
   // `aek-home.pluginRailLabelsHidden`). Both live in `nav-model.ts`.
+  // 2026-11-18: hidden is a zero-width ANIMATION on the mounted rail, not a
+  // conditional render (see the `railHidden` note below).
   const family = panelFamilyOf(panel) as PanelId | undefined
   const [hiddenRails] = usePref<string>(RAIL_HIDDEN_KEY, '', parseCommaList)
   const [labelsHidden] = usePref<string>(RAIL_LABELS_HIDDEN_KEY, '', parseCommaList)
-  const railVisible = family !== undefined && !hiddenRails.split(',').filter(Boolean).includes(family)
+  // 2026-11-18 flicker fix: the rail stays MOUNTED for every family panel;
+  // the per-family tucked-away state is passed down as `hidden` and renders
+  // as a zero-width ANIMATED column (PluginSubNav), never an unmount. A
+  // panel switch into a tucked-away rail was the old "sudden fold" (one
+  // frame of full width, then the column vanishes and the content reflows)
+  // — the user called it out; the fold now animates like the main rail's.
+  const railHidden = family !== undefined && hiddenRails.split(',').filter(Boolean).includes(family)
   const labelsCollapsed = family !== undefined && labelsHidden.split(',').filter(Boolean).includes(family)
 
   /**
    * B round: the panel → content mapping lives in ONE function so the
    * held-previous tree (switching, no blank) and the live tree share it.
+   *
+   * R2 round: the switch runs on the panel's RENDER target, not the panel
+   * itself — an ANCHOR route (a built-in page's section tab) renders the
+   * FAMILY's page (`panelRenderIdOf`) and is positioned in-page by the
+   * scroll effect below. The keep-alive mount set dedupes the same way, so
+   * every anchor tab of one page shares ONE live tree.
    * @param id - the panel to render.
    * @returns that panel's content component (or nothing).
    */
   const renderPanelContent = (id: PanelId) => {
+    const renderId = panelRenderIdOf(id)
     // M round: 运行实例管理 was renamed 插件与程序管理 and now hosts the
     // former 插件管理 page AND the former 关于 content — one combined page.
     // The 插件管理 entry is gone from the nav; 关于 stays but is empty.
-    if (id === 'runtime') {
+    if (renderId === 'runtime') {
       // N round: the three stacked cards read as "排版混乱，分类混乱" — no
       // section titles, and the plugin list duplicated across two cards.
       // T round: the 运行时与内存 section was folded INTO the 插件与程序 card
@@ -246,38 +288,59 @@ function Console() {
               is now strictly descending: page 32 > section 24 > card body
               16 > row box 12 > rows 8 > micro 4 (Windmill 4px-grid +
               Vercel content-24/card-16 references, borrowed 2026-11-17). */}
-          <section className="mt-8 first:mt-0">
+          {/* R2 round: the 插件与程序管理 rail's ANCHOR tabs position this
+              composed page to its three sections (the scroll effect reads
+              `data-nav-anchor`). */}
+          <section className="mt-8 first:mt-0" data-nav-anchor="runtimes">
             <h2 className={sectionTitleClass}>{t('panel.runtimeSection')}</h2>
             <RuntimeModePanel refreshSignal={signalFor('runtime')} />
           </section>
           {/* 2026-11-17: the 基础语言 / A1A2 stackHint line was removed on
               user demand ("去掉这个文字" — the title + roster speak for
               themselves; the hint duplicated the chip legend). */}
-          <section className="mt-8 first:mt-0">
+          <section className="mt-8 first:mt-0" data-nav-anchor="plugins">
             <h2 className={sectionTitleClass}>{t('panel.pluginsSection')}</h2>
             <PluginsPanel refreshSignal={signalFor('plugins')} />
           </section>
-          <section className="mt-8 first:mt-0">
+          <section className="mt-8 first:mt-0" data-nav-anchor="info">
             <h2 className={sectionTitleClass}>{t('panel.infoSection')}</h2>
-            <AboutPanel inventory={inventory} refreshSignal={signalFor('about')} compactPlugins />
+            <AboutPanel refreshSignal={signalFor('about')} />
           </section>
         </div>
       )
     }
-    if (id === 'websearch') return <WebSearchPanel state={state} refreshSignal={signalFor('websearch')} facts={facts} />
+    if (renderId === 'websearch') return <WebSearchPanel state={state} refreshSignal={signalFor('websearch')} facts={facts} />
     // IV / V6.7 round: the icon manager. When id matches one of the set
     // sub-routes we hand it an `activeSet` prefix so it renders just that
     // library on its own page; the family root (`icons`) shows the full
     // compendium (same as before). No separate component is needed — the
     // same panel handles both views.
-    if (id === 'icons' || id.startsWith('icons')) {
-      const activeSet = id === 'icons' ? undefined : (id as PanelId).slice('icons'.length) || undefined
+    // R2 round: EXACT ids only — the new `iconsSettings` page starts with
+    // "icons" but is the plugin's SETTINGS page (InfoPanels), never a
+    // library view.
+    if (renderId === 'icons'
+      || renderId === 'iconsLucide'
+      || renderId === 'iconsTabler'
+      || renderId === 'iconsPhosphor'
+      || renderId === 'iconsHeroicons'
+      || renderId === 'iconsBootstrap') {
+      const activeSet = renderId === 'icons' ? undefined : renderId.slice('icons'.length) || undefined
       return <IconManagerPanel activeSet={activeSet} />
     }
-    if (id === 'plugins' || id === 'settings' || id === 'websearchSettings' || id === 'about') {
-      return <InfoPanels panel={id} inventory={inventory} refreshSignal={signalFor(id)} />
+    // R2 round: the three plugin SETTINGS pages (skills / prompts / icons)
+    // and 基础设置 / Web Search 设置 / 关于 all live in InfoPanels.
+    if (renderId === 'plugins'
+      || renderId === 'settings'
+      || renderId === 'websearchSettings'
+      || renderId === 'skillsSettings'
+      || renderId === 'promptsSettings'
+      || renderId === 'iconsSettings'
+      || renderId === 'about') {
+      // R2: `renderId` is narrowed to the InfoPanelId union by the if-chain,
+      // so no cast is needed (and an unnecessary one is a lint error).
+      return <InfoPanels panel={renderId} refreshSignal={signalFor(renderId)} />
     }
-    if (id === 'skills') return <SkillsPanel refreshSignal={signalFor('skills')} />
+    if (renderId === 'skills') return <SkillsPanel refreshSignal={signalFor('skills')} />
     return <PromptsPanel refreshSignal={signalFor('prompts')} />
   }
 
@@ -291,8 +354,10 @@ function Console() {
         onRefresh={requestRefresh}
       />
 
-      <div className={cn('flex flex-1 flex-col min-w-0', railVisible && 'flex-row')}>
-        {railVisible ? <PluginSubNav active={panel} onSelect={setPanel} labelsHidden={labelsCollapsed} /> : null}
+      <div className={cn('flex flex-1 flex-col min-w-0', family !== undefined && 'flex-row')}>
+        {family !== undefined
+          ? <PluginSubNav active={panel} onSelect={setPanel} labelsHidden={labelsCollapsed} hidden={railHidden} />
+          : null}
         <div className="flex flex-1 flex-col min-w-0">
           {/* FF-NOTE: .content had max-width: 1320px → max-w-330 (v4 dynamic spacing: 330 × 4px);
               @media (max-width: 860px) padding: 20px 16px → max-[860px]:px-4 max-[860px]:py-5. */}
@@ -301,10 +366,14 @@ function Console() {
           <main className="mx-auto flex-1 w-full max-w-330 py-12 px-20 max-[860px]:px-8 max-[860px]:py-10">
             {/* EE round: keep-alive — every visited panel renders; only the
                 active one is visible. Hidden trees keep their state, so a
-                switch back never rebuilds the elements from nothing. */}
-            {visitedPanels.map(id => (
-              <div key={id} style={{ display: id === panel ? 'block' : 'none' }}>
-                {renderPanelContent(id)}
+                switch back never rebuilds the elements from nothing.
+                R2 round: the mount set is keyed by RENDER target — every
+                ANCHOR tab of one page dedupes into that page's single tree
+                (the tabs only differ in scroll position, the anchor scroll
+                effect above). */}
+            {[...new Set(visitedPanels.map(panelRenderIdOf))].map(renderId => (
+              <div key={renderId} style={{ display: renderId === panelRenderIdOf(panel) ? 'block' : 'none' }}>
+                {renderPanelContent(renderId as PanelId)}
               </div>
             ))}
           </main>

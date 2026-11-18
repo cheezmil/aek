@@ -49,6 +49,15 @@ single source of truth) and checks that every union member has a
 the same commit — the panel stays in sync automatically (it imports the
 registry in-process); only this manifest needs the regeneration.
 
+## Webui face
+
+This package is CLI-only (`aek: { type: "cli", cordis: false }`) — it
+ships no host plugin. The webui 图标管理 panel is host-side
+(`aek-web`), and under the R2 rail contract its family owns a second-level
+rail with an `Icon 设置` tab; the schema behind that tab
+(`ICONS_SETTINGS_SCHEMA`) is empty, so the page renders the "no settings
+yet" state until rows are added.
+
 ## Known Limitations and Deferred Work
 
 - No per-glyph meaning glossary yet: the registry documents which THING

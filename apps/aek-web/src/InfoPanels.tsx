@@ -32,7 +32,7 @@
  *
  * @module @cheezmil/aek-web/src/InfoPanels
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import type { IconName } from './Icons.tsx'
@@ -40,7 +40,15 @@ import { BUCKET_ICONS, ENTRY_ICONS, ENTRIES_SECTION_ICON, APP_BUNDLE_ICON } from
 import { useI18n } from './i18n.tsx'
 import { PREF_KEYS, useAccessDraft, useDraftSettings, usePref, useSettings } from './preferences.tsx'
 import type { PrefValue } from './preferences.tsx'
-import { allSettingFields, coerce, SETTINGS_SCHEMA, WEBSEARCH_SETTINGS_SCHEMA } from './settings-schema.ts'
+import {
+  allSettingFields,
+  coerce,
+  ICONS_SETTINGS_SCHEMA,
+  PROMPTS_SETTINGS_SCHEMA,
+  SETTINGS_SCHEMA,
+  SKILLS_SETTINGS_SCHEMA,
+  WEBSEARCH_SETTINGS_SCHEMA,
+} from './settings-schema.ts'
 import type { SettingField } from './settings-schema.ts'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -55,8 +63,6 @@ import { Label } from '@/components/ui/label'
    @theme tokens + .aek-* component helpers). */
 const ACCESS_ACTIONS = 'flex items-center gap-3 mt-4'
 const ACCESS_TEXTAREA = 'block box-border w-full min-h-22 p-2 px-2.5 border border-input rounded-xs bg-card text-text font-inherit text-xs leading-170 resize-y focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-1'
-const CAPABILITY_LINE = 'px-1 text-text-muted text-2xs leading-140'
-const CAPABILITY_ROW = 'aek-grid-capability-row'
 const COUNT_CHIP = 'inline-flex items-center p-0.5 px-2.25 rounded-full text-xs font-semibold tabular-nums border border-border bg-surface-subtle text-text-secondary'
 const DIRTY_BACKDROP = 'fixed inset-0 z-15'
 const DIRTY_DOT = 'size-2 rounded-full bg-danger'
@@ -70,7 +76,6 @@ const DIRTY_ROW_LABEL = 'grow shrink min-w-0 text-left border-0 bg-none p-0 font
 const DIRTY_ROW_VALUE = 'text-2xs text-text-muted font-mono max-w-22.5 whitespace-nowrap overflow-hidden text-ellipsis'
 const DIRTY_SAVE_ALL = 'relative inline-flex items-center justify-center size-8 border border-accent-border rounded-lg bg-accent-soft text-accent-ink cursor-pointer'
 const DIRTY_SAVE_ALL_DOT = 'absolute -top-0.5 -right-0.5 size-2 rounded-full bg-danger border-2 border-card'
-const DIVIDER = 'h-px my-6 bg-border'
 const EMPTY_STATE = 'flex items-center justify-center gap-2 min-h-30 text-text-muted text-xs-plus'
 const ENTRY_LIST = 'flex flex-col gap-1.5 list-none m-0 p-0'
 const ERROR_BANNER = 'flex items-center gap-2 mb-4 p-3 px-4 border border-danger-border rounded-sm bg-danger-soft text-danger text-xs-plus'
@@ -87,7 +92,6 @@ const INFO_LABEL = 'shrink-0 grow-0 text-text-muted'
 const INFO_LIST = 'flex flex-col list-none m-0 p-0'
 const INFO_ROW = 'flex items-baseline justify-between gap-4 py-3 border-b border-border text-xs-plus last:border-b-0'
 const INFO_VALUE = 'text-right text-text font-medium break-all'
-const LOADING_STATE = EMPTY_STATE
 /* EE-fix (2026-11-17): mb-2 keeps the row off the 入口 card list below it
    (the list's own gap-2 only separates the CARDS from each other). */
 const MEM_CHECK_ROW = 'mb-2 flex items-center gap-2'
@@ -151,7 +155,6 @@ const STACK_TEXT = 'shrink min-w-0 max-w-aek-stack overflow-hidden text-ellipsis
 const STICKY_DIVIDER = 'h-px bg-border mb-5'
 const STICKY_PANEL_SEARCH = 'aek-sticky-panel-search'
 const TEXT_INPUT = 'w-full p-1.25 px-2 border border-input rounded-xs bg-card text-text text-xs'
-const BADGE = 'inline-flex items-center gap-1.25 p-0.75 px-2.25 rounded-full text-2xs font-semibold border border-border bg-surface-subtle text-text-secondary'
 const NOTE_ICON = 'shrink-0 grow-0 text-primary'
 // III round: card body 24 (p-6) → 16 (p-4). The spacing ladder is
 // strictly descending (page 32 > section 24 > card body 16 > row 12 >
@@ -159,11 +162,8 @@ const NOTE_ICON = 'shrink-0 grow-0 text-primary'
 // references 2026-11-17; the card was reading "floaty" at 24.
 const CARD_BODY = 'p-8'
 import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner, ToggleSwitch } from './ui-kit.tsx'
-import type { InventoryState } from './useInventory.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
-import { copyToClipboard } from './clipboard.ts'
 import type { AppEntry, PluginBucket, PluginEntry } from './useConsoleFacts.ts'
-import { useCapabilities } from './useCapabilities.ts'
 import { useRuntimes } from './useRuntimes.ts'
 import { useOps } from './useOps.ts'
 import type { OpEntry } from './useOps.ts'
@@ -173,6 +173,7 @@ import { RuntimesBlock, fmtBytes } from './RuntimesPanel.tsx'
 
 /** Panels handled here. */
 export type InfoPanelId = 'plugins' | 'settings' | 'websearchSettings' | 'about'
+  | 'skillsSettings' | 'promptsSettings' | 'iconsSettings'
 
 /** Host routes. */
 const PLUGIN_ACTION_API = '/api/aek/plugins/action'
@@ -197,8 +198,6 @@ export function displayName(name: string): string {
 export interface InfoPanelsProps {
   /** Which informational surface to render. */
   panel: InfoPanelId
-  /** Live host package inventory. */
-  inventory: InventoryState
   /**
    * Q round: how many refresh requests the sidebar has recorded for THIS
    * surface since it was last opened. `> 0` consumes one re-read.
@@ -334,7 +333,7 @@ function AccessSection() {
   const missingCredentials = publicMode && (username.trim().length === 0 || (password.length === 0 && !hasPassword))
 
   return (
-    <section className="mb-8 last:mb-0" data-access-section>
+    <section className="mb-8 last:mb-0" data-access-section data-nav-anchor="access">
       {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
       <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.access')}</h3>
       <p className={HINT}>{t('access.defaultHint')}</p>
@@ -428,7 +427,7 @@ function PermissionsSection() {
   }
 
   return (
-    <section className="mb-8 last:mb-0">
+    <section className="mb-8 last:mb-0" data-nav-anchor="permissions">
       {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
       <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.permissions')}</h3>
       <ul className={INFO_LIST}>
@@ -779,9 +778,11 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             put (and scrolls away) while the toolbar above pins; the
             floating box must not carry a bottom line. */}
         <div className={STICKY_DIVIDER} aria-hidden="true" />
+        {/* R2 round: the 基础设置 rail's ANCHOR tabs position the page to
+            these sections (`data-nav-anchor` + the Home scroll effect). */}
         {firstRailRows.length > 0
           ? (
-            <section className="mb-8 last:mb-0">
+            <section className="mb-8 last:mb-0" data-nav-anchor="sidebarFirst">
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.sidebarFirst')}</h3>
               <p className={HINT}>{t('settings.group.sidebarFirstHint')}</p>
@@ -793,7 +794,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
           : null}
         {secondRailFields.length > 0
           ? (
-            <section className="mb-8 last:mb-0">
+            <section className="mb-8 last:mb-0" data-nav-anchor="sidebarSecond">
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.sidebarSecond')}</h3>
               <p className={HINT}>{t('settings.group.sidebarSecondHint')}</p>
@@ -805,7 +806,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
           : null}
         {navigationRows.length > 0
           ? (
-            <section className="mb-8 last:mb-0">
+            <section className="mb-8 last:mb-0" data-nav-anchor="navigation">
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.navigation')}</h3>
               <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
@@ -816,7 +817,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
           : null}
         {generalRows.length > 0
           ? (
-            <section className="mb-8 last:mb-0">
+            <section className="mb-8 last:mb-0" data-nav-anchor="general">
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.general')}</h3>
               <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
@@ -841,7 +842,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
         {matches(['permission', 'tcc', 'accessibility', t('settings.group.permissions')]) ? <PermissionsSection /> : null}
         {matches(['default', t('settings.group.defaults'), t('settings.restoreDefaults')])
           ? (
-            <section className="mb-8 last:mb-0">
+            <section className="mb-8 last:mb-0" data-nav-anchor="defaults">
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.defaults')}</h3>
               <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
@@ -903,13 +904,20 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
 }
 
 /**
- * The Web Search plugin's own settings page (Q round 14: "each plugin should
- * have its own settings page, not one giant Settings page"). Only plugins
- * that actually have user-facing settings get a page; this one owns the
- * ranking refresh interval. The display filters stay on the search page
- * itself.
+ * The plugin-owned settings page (Q round 14: "each plugin should have its
+ * own settings page, not one giant Settings page"; R2 round: the rail
+ * CONTRACT lifts this to EVERY webui plugin — the page always exists, and a
+ * schema with no fields renders its honest empty state instead of a missing
+ * page). Only the WEB SEARCH display filters stay on the search page itself.
+ *
+ * @param schema - the plugin's declarative setting rows (EMPTY = empty state).
+ * @param titleKey - i18n key of the section heading (the plugin's name).
  */
-function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
+function PluginSchemaSettingsPanel({ schema, titleKey, refreshSignal }: {
+  schema: readonly SettingField[]
+  titleKey: string
+  refreshSignal: number
+}) {
   const { t } = useI18n()
   const { reload } = useSettings()
   // I round: same draft layer as the base settings page (and the same
@@ -918,7 +926,7 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   const [query, setQuery] = useState('')
   const [popoverOpen, setPopoverOpen] = useState(false)
   const needle = query.trim().toLowerCase()
-  const visible = WEBSEARCH_SETTINGS_SCHEMA.filter((field) => {
+  const visible = schema.filter((field) => {
     if (needle.length === 0) return true
     return [t(field.labelKey), field.key, field.group].join(' ').toLowerCase().includes(needle)
   })
@@ -950,7 +958,7 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
           ? (
             <section className="mb-8 last:mb-0">
               {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
-              <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.websearch')}</h3>
+              <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t(titleKey)}</h3>
               <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
                 {visible.map(field => (
                   <li key={field.key} className="p-2 rounded-sm transition duration-120 ease hover:bg-surface-hover" data-setting-key={field.key}>
@@ -965,11 +973,35 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             </section>
           )
           : (
-            <div className={EMPTY_STATE}>{t('common.noMatch')}</div>
+            // R2 round: the rail contract — a plugin WITHOUT user-facing
+            // settings still OWNS a settings page; the page is its honest
+            // empty state (the user's "必须有其对应的设置页" ruling), never
+            // a missing route.
+            <div className={EMPTY_STATE}>{t('settings.pluginSettingsEmpty')}</div>
           )}
       </div>
     </PanelCard>
   )
+}
+
+/** The Web Search plugin's settings page (the ranking refresh interval + friends). */
+function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
+  return <PluginSchemaSettingsPanel schema={WEBSEARCH_SETTINGS_SCHEMA} titleKey="settings.group.websearch" refreshSignal={refreshSignal} />
+}
+
+/** R2 round: the Skill Manager settings page (its one Config field, `home`). */
+function SkillsSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
+  return <PluginSchemaSettingsPanel schema={SKILLS_SETTINGS_SCHEMA} titleKey="panel.skillsSettings" refreshSignal={refreshSignal} />
+}
+
+/** R2 round: the Prompt Manager settings page (EMPTY schema = empty state). */
+function PromptsSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
+  return <PluginSchemaSettingsPanel schema={PROMPTS_SETTINGS_SCHEMA} titleKey="panel.promptsSettings" refreshSignal={refreshSignal} />
+}
+
+/** R2 round: the Icon Manager settings page (CLI-only plugin = empty state). */
+function IconsSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
+  return <PluginSchemaSettingsPanel schema={ICONS_SETTINGS_SCHEMA} titleKey="panel.iconsSettings" refreshSignal={refreshSignal} />
 }
 
 /**
@@ -1932,270 +1964,48 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
 }
 
 /**
- * The release marker of the running slot (C round). `release.mjs` records
- * `{ currentTag, previousTag }` in the slot home on every release; the next
- * slot has no such file → null → the About row stays hidden there.
- * @returns the release state, or null when the slot records none.
+ * The About page (R2 round, 2026-11-18): by user ruling the page carries
+ * ONLY the desktop version number — no 版本与安装 rows, no 组件结构 card, no
+ * 插件 roster, no 外部能力 section (those blocks were noise). The version
+ * comes from the host inventory (the aek-desktop entry), never hardcoded.
+ *
+ * This component is shared by two surfaces: the 关于 page itself and the
+ * 系统信息 section of the composed 插件与程序管理 page (both show the same
+ * one row).
  */
-function useReleaseState(): { currentTag?: string; previousTag?: string } | null {
-  const [state, setState] = useState<{ currentTag?: string; previousTag?: string } | null>(null)
-  useEffect(() => {
-    let live = true
-    fetch('/api/aek/release-state', { headers: { accept: 'application/json' } })
-      .then(response => response.ok ? response.json() : {})
-      .then((data: unknown) => {
-        if (!live) return
-        const record = data as { currentTag?: unknown; previousTag?: unknown }
-        if (typeof record.currentTag === 'string') {
-          const previousTag = typeof record.previousTag === 'string' ? record.previousTag : undefined
-          setState(previousTag === undefined
-            ? { currentTag: record.currentTag }
-            : { currentTag: record.currentTag, previousTag })
-          return
-        }
-        setState(null)
-      })
-      .catch(() => {
-        if (live) setState(null)
-      })
-    return () => {
-      live = false
-    }
-  }, [])
-  return state
-}
-
-/**
- * Render one install-mode label (S round three-way split). Old hosts that
- * still report the legacy two-way `dev | npm` degrade to the matching mode
- * label instead of showing a missing key.
- * @param kind - the install kind from the inventory snapshot.
- * @returns the localized label.
- */
-function installKindLabel(kind: 'dev' | 'build' | 'global' | 'npm' | undefined): string {
-  const { t } = useI18n()
-  switch (kind) {
-    case 'dev':
-      return t('about.mode.dev')
-    case 'build':
-      return t('about.mode.build')
-    case 'global':
-      return t('about.mode.global')
-    case 'npm':
-      // Legacy host: an npm install is the package-manager mode.
-      return t('about.mode.global')
-    default:
-      return '—'
-  }
-}
-
-/** @returns the About page with the three entry points marked. */
-export function AboutPanel({
-  inventory, refreshSignal, compactPlugins = false,
-}: { inventory: InventoryState; refreshSignal: number; compactPlugins?: boolean }) {
-  const { t, tf } = useI18n()
+export function AboutPanel({ refreshSignal }: { refreshSignal: number }) {
   const facts = useConsoleFacts()
-  const release = useReleaseState()
-
-  // Sidebar-row refresh (Q round): re-read both the inventory and the facts.
+  // Sidebar-row refresh (Q round): re-read the facts so the version row is
+  // current after a host restart.
   useEffect(() => {
-    if (refreshSignal > 0) {
-      facts.refresh()
-      inventory.refresh()
-    }
-  }, [refreshSignal, facts.refresh, inventory.refresh])
-  const caps = useCapabilities()
-  const providers = caps.facts?.providers ?? []
-  // V round: the 组件结构 section's "copy for the agent" button (the same
-  // agent-handoff block the host data gives the user, one click).
-  const [componentsCopied, setComponentsCopied] = useState(false)
-  const componentsCopyTimer = useRef<number | undefined>(undefined)
+    if (refreshSignal > 0) facts.refresh()
+  }, [refreshSignal, facts.refresh])
   const entries = facts.facts?.entries ?? []
-  /** Copies the whole 组件结构 block (header + one line per entry) to the clipboard. */
-  const copyComponentsForAgent = async (): Promise<void> => {
-    const ok = await copyToClipboard([
-      tf('about.componentsHeader'),
-      ...entries.map(entry => tf('about.componentsLine', {
-        name: entry.id,
-        version: entry.version ?? '—',
-        distribution: entry.distribution ?? 'A1',
-        langs: (entry.languages ?? []).join(' · ') || '—',
-        role: entry.description,
-      })),
-    ].join('\n'))
-    if (ok) {
-      setComponentsCopied(true)
-      window.clearTimeout(componentsCopyTimer.current)
-      componentsCopyTimer.current = window.setTimeout(() => { setComponentsCopied(false) }, 1200)
-    }
-  }
-  // BB round: the "runtime modes" topology line was removed at the user's
-  // ruling (it read as noise next to an empty section). The external
-  // capabilities section now exists ONLY when a real provider is listed;
-  // an empty section renders nothing — not even its divider.
-  const showExternalSection = providers.length > 0
-  const snapshot = inventory.snapshot
-  const plugins = snapshot?.packages.filter(pkg => pkg.group === 'plugin') ?? []
-  // X2 items 9 + 10: the 入口 section moved INTO the 插件与程序 card
-  // (PluginsPanel), and the base-environment list is gone (the base bucket of
-  // the roster carries it now).
-  // Classification + languages are scanned on the host (never hardcoded in
-  // the client bundle); match them onto the inventory rows by package name.
-  const stackByPackage = new Map(
-    (facts.facts?.plugins ?? []).map(plugin => [plugin.packageName, plugin]),
-  )
+  const desktop = entries.find(entry => entry.id === 'aek-desktop')
 
   return (
     <PanelCard>
       <div className={CARD_BODY}>
-        {inventory.error !== undefined
-          ? <div className={ERROR_BANNER}><Icon name="alert" size={16} /><span>{tf('about.error', { message: inventory.error })}</span></div>
-          : null}
-        {snapshot === undefined && inventory.error === undefined
-          ? <div className={LOADING_STATE}>{t('about.loading')}</div>
-          : null}
-
-        {/* INSTALLATION FIRST. The user explicitly asked for this block at the
-            very top instead of sandwiched between entries and package lists. */}
-        {/* V round: the 关于 page is a REAL page now (the M-round stub is gone) —
-            the install / version block gets its own section title. */}
-        <h3 className="relative mb-4 mt-8 first:mt-0 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[''] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary">{t('about.installSection')}</h3>
-        <ul className={INFO_LIST}>
-          <li className={INFO_ROW}>
-            <span className={INFO_LABEL}>{t('about.install')}</span>
-            <span className={INFO_VALUE}>{installKindLabel(snapshot?.installKind)}</span>
-          </li>
-          {/* C round: the version marker a shipped update actually shows — the
-              release tag the current slot records (next slot: none, hidden). */}
-          {release?.currentTag !== undefined
-            ? <li className={INFO_ROW}>
-              <span className={INFO_LABEL}>{t('about.version')}</span>
-              <span className={INFO_VALUE}>
-                <code className={COUNT_CHIP}>{release.currentTag}</code>
-                {release.previousTag !== undefined
-                  ? <span className={STACK_TEXT}>{tf('about.versionPrevious', { tag: release.previousTag })}</span>
-                  : null}
-              </span>
-            </li>
-            : null}
-          <li className={INFO_ROW}>
-            <span className={INFO_LABEL}>{t('about.source')}</span>
-            <span className={INFO_VALUE}>{snapshot?.source ?? '—'}</span>
-          </li>
-        </ul>
-
-        {/* V round: the 组件结构 card — the user's ask (the page used to show
-            it in the OLD build; the M-round stub dropped it). Same entry rows
-            as the runtime page's 入口 section (EntryRows, one source of
-            truth), plus the "copy for the agent" bulk block. */}
-        {entries.length > 0
-          ? (
-            <div>
-              <div className="mt-8 flex items-center justify-between gap-4 first:mt-0">
-                <h3 className="relative mb-0 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[''] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary">{t('about.components')}</h3>
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { void copyComponentsForAgent() }}>
-                  <Icon name="copy" size={14} />
-                  {componentsCopied ? t('about.componentsCopied') : t('about.copyAgent')}
-                </Button>
-              </div>
-              <p className="mb-4 mt-2 pl-3 text-xs-plus text-text-muted">{t('about.componentsDesc')}</p>
-              <div className="pl-3">
-                <EntryRows entries={entries} t={t} tf={tf} />
-              </div>
-            </div>
-          )
-          : null}
-
-        {/* X5b: the install self-check moved to the /setup first-run wizard
-            (Setup.tsx) — the About card was the wrong carrier (user ruling
-            2026-11-16); no card here anymore. */}
-
-        {/* AA round: the unconditional divider after the info block was
-            removed — every section below carries its OWN leading divider
-            (the plugin group, the external section), so two adjacent lines
-            can never render (in compact mode the plugin section is skipped
-            entirely, which left the two dividers stacked). */}
-        {/* X2 item 9: the 入口 section now lives in the 插件与程序 card. */}
-        {!compactPlugins ? (
-          <>
-            <div className={DIVIDER} />
-            {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
-            <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('about.group.plugin')}</h3>
-            {/* 2026-11-17: the 基础语言 / A1A2 stackHint line was removed on
-                user demand — the roster chips already carry the A1/A2 +
-                language facts per row. */}
-            <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
-              {plugins.map((pkg) => {
-                const meta = stackByPackage.get(pkg.name)
-                const languages = meta?.languages ?? []
-                return (
-                  <li key={pkg.name} className="flex items-center gap-2.5 rounded-sm border border-border bg-surface-subtle p-2 px-3 text-xs">
-                    <span className="flex-auto min-w-0 font-semibold text-text">{displayName(pkg.name)}</span>
-                    <span className={COUNT_CHIP}>{pkg.version}</span>
-                    <ClassChip pill distribution={meta?.distribution ?? ''} t={t} />
-                    {languages.length > 0
-                      ? <span className={STACK_TEXT} title={languages.join(' · ')}>{languages.join(' · ')}</span>
-                      : null}
-                    <span className={BADGE}>{installKindLabel(pkg.kind)}</span>
-                  </li>
-                )
-              })}
-            </ul>
-            {plugins.length === 0 ? <div className={EMPTY_STATE}>{t('about.empty')}</div> : null}
-          </>
-        ) : null}
-
-        {/* X2 item 10: the base-environment list is gone — the roster's base
-            bucket shows those packages with their category icon. */}
-        {/* EXTERNAL capability providers: rendered ONLY when the host lists
-            at least one ACTUALLY-external (isolate-topology, non-container)
-            provider. A class ① capability the operator set to `share` runs
-            in-process and is NOT an external capability, so its inert
-            registration must not be listed here (Y9); AEK's own v3 runtime
-            containers are filtered out host-side (AA round). The compliance
-            line is host-rendered from the provider's own self-description —
-            the client bundle carries no upstream facts. BB round: the neutral
-            "runtime modes" topology line that kept this section alive when no
-            provider existed was removed at the user's ruling (noise, no
-            meaning when empty) — an empty section renders nothing. */}
-        {showExternalSection ? (
-          <>
-            <div className={DIVIDER} />
-            {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
-            <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('about.external.title')}</h3>
-            <div className={HINT}>{t('about.external.hint')}</div>
-            {/* FF-NOTE: .hint + .packageList { margin-top: var(--aek-space-3) } → mt-3 (both lists are
-                preceded by a .hint div here). */}
-            <ul className="m-0 mt-3 flex flex-col gap-2 list-none p-0">
-              {providers.map(provider => (
-                <li key={provider.id} className={CAPABILITY_ROW}>
-                  <div className="flex items-center gap-2.5 rounded-sm border border-border bg-surface-subtle p-2 px-3 text-xs">
-                    <span className="flex-auto min-w-0 font-semibold text-text">{displayName(provider.name)}</span>
-                    <span className={COUNT_CHIP}>{provider.state}</span>
-                    {provider.spdx !== null
-                      ? <span className={STACK_CHIP} title={provider.spdx}>{provider.spdx}</span>
-                      : null}
-                    {provider.runtime !== undefined
-                      ? <span className={COUNT_CHIP} title={t('about.external.runtimeIsolated')}>{provider.runtime.reason}</span>
-                      : null}
-                  </div>
-                  <div className={CAPABILITY_LINE}>{provider.compliance}</div>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
+        <div className={INFO_ROW}>
+          <span className={INFO_LABEL}>AEK Desktop</span>
+          <span className={INFO_VALUE}>
+            {desktop?.version !== undefined
+              ? <code className={COUNT_CHIP}>{desktop.version}</code>
+              : '—'}
+          </span>
+        </div>
       </div>
     </PanelCard>
   )
 }
+
 
 /**
  * Dispatch to one informational surface.
  * @param props - panel id and inventory.
  * @returns the selected surface.
  */
-export function InfoPanels({ panel, inventory, refreshSignal }: InfoPanelsProps) {
+export function InfoPanels({ panel, refreshSignal }: InfoPanelsProps) {
   // M round: the "插件管理" page no longer exists as its own nav entry — its
   // content (and the About content) is merged INTO the 插件与程序管理
   // (runtime) page, composed by Home. The panel id 'plugins' stays a valid
@@ -2203,8 +2013,13 @@ export function InfoPanels({ panel, inventory, refreshSignal }: InfoPanelsProps)
   if (panel === 'plugins') return <PluginsPanel refreshSignal={refreshSignal} />
   if (panel === 'settings') return <SettingsPanel refreshSignal={refreshSignal} />
   if (panel === 'websearchSettings') return <WebSearchSettingsPanel refreshSignal={refreshSignal} />
+  // R2 round: the rail contract — the other three webui plugins own their
+  // settings pages here too (empty schemas render the honest empty state).
+  if (panel === 'skillsSettings') return <SkillsSettingsPanel refreshSignal={refreshSignal} />
+  if (panel === 'promptsSettings') return <PromptsSettingsPanel refreshSignal={refreshSignal} />
+  if (panel === 'iconsSettings') return <IconsSettingsPanel refreshSignal={refreshSignal} />
   // M round: the 关于 page was a stub (its content moved to 插件与程序管理).
-  // V round (2026-11-17): the user wants the 关于 page BACK as a real page —
-  // version + install rows, the 组件结构 card with its copy-for-agent button.
-  return <AboutPanel inventory={inventory} refreshSignal={refreshSignal} />
+  // R2 round (2026-11-18): by user ruling the page now carries ONLY the
+  // desktop version number.
+  return <AboutPanel refreshSignal={refreshSignal} />
 }

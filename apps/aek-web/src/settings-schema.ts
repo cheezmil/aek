@@ -36,6 +36,7 @@ export interface SettingField {
   kind: SettingKind
   /** Group id, used only for headings + in-page search. */
   group: 'sidebar' | 'navigation' | 'general' | 'websearch' | 'test'
+    | 'skills' | 'prompts' | 'icons'
   /** i18n key of the visible label. */
   labelKey: string
   /** i18n key of the hint under the control. */
@@ -254,13 +255,40 @@ export const WEBSEARCH_SETTINGS_SCHEMA: readonly SettingField[] = [
 ]
 
 /**
+ * R2 round: the webui plugin-rail CONTRACT — every AEK plugin that has a
+ * webui face owns a settings page on its family rail (the rail's synthetic
+ * "{name}首页" row is the home page). One schema per plugin; a page whose
+ * schema is EMPTY still renders (its honest empty state), the rail contract
+ * never drops a page.
+ *
+ * Skill Manager: the one field its plugin `Config` declares — the hub root
+ * override (the host-service face is deferred; the value persists on the
+ * host and the CLI env / default rules stay in force).
+ * Prompt Manager: the plugin's `Config` schema is EMPTY (v1 fixed-root
+ * engine) → the page is its empty state, exactly what "no user-adjustable
+ * fields yet" means.
+ * Icon Manager: a CLI-only capability (A2) → no webui settings surface.
+ */
+export const SKILLS_SETTINGS_SCHEMA: readonly SettingField[] = [
+  {
+    key: 'aek-home.aeksm.home', kind: 'text', group: 'skills',
+    labelKey: 'settings.skillHubHome', hintKey: 'settings.skillHubHomeHint',
+    default: '',
+  },
+]
+
+export const PROMPTS_SETTINGS_SCHEMA: readonly SettingField[] = []
+
+export const ICONS_SETTINGS_SCHEMA: readonly SettingField[] = []
+
+/**
  * Every schema row that participates in "restore defaults" (Q round: the
  * reset backs up the live settings file first, then writes these defaults;
  * the undo banner calls the host restore route).
  * @returns the combined base + plugin rows.
  */
 export function allSettingFields(): readonly SettingField[] {
-  return [...SETTINGS_SCHEMA, ...WEBSEARCH_SETTINGS_SCHEMA]
+  return [...SETTINGS_SCHEMA, ...WEBSEARCH_SETTINGS_SCHEMA, ...SKILLS_SETTINGS_SCHEMA]
 }
 
 /**
