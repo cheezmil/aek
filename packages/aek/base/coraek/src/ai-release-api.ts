@@ -1,17 +1,22 @@
 /**
- * Host API for the AI AUTO-RELEASE SWITCH (S7, 2026-11-15).
+ * Host API for the AI AUTO-RELEASE SWITCH (S7, 2026-11-15) + the AUTO-CLOSE
+ * NEXT switch (S9, 2026-11-18).
  *
  * The operator can pre-authorize the AI agent to merge a finished dev tree
  * build into the stable tree and run it (`release.mjs --yes`, which
- * interrupts the live stable instance). The authorization itself is a
+ * interrupts the live stable instance). The authorizations themselves are a
  * persisted file read directly by scripts and the AI agent (`<AEK_HOME>/
  * ai-release.json`, see `ai-release.mjs`); this route only serves the
- * console's switch:
- *   - `GET  /api/aek/ai-release`  `{ protocol, allowed }` (missing / corrupt
- *     file = the safe default `false`)
- *   - `POST /api/aek/ai-release`  body `{ allowed: boolean, confirm: true }`
- *     — a mutation without `confirm: true` answers 428, mirroring the
+ * console's switches:
+ *   - `GET  /api/aek/ai-release`  `{ protocol, allowed, autoCloseNext }`
+ *     (per-key defaults when the file is missing / corrupt:
+ *     `allowed: false`, `autoCloseNext: true`);
+ *   - `POST /api/aek/ai-release`  body `{ allowed?, autoCloseNext?,
+ *     confirm: true }` — at least one switch plus the confirm flag; a
+ *     mutation without `confirm: true` answers 428, mirroring the
  *     console's write-confirm rule (capabilities/stop, /api/aek/runtimes).
+ *     The patch merges over the stored document (untouched keys keep their
+ *     stored value, absent keys keep their defaults).
  *
  * This module is node-builtin-free on purpose: coraek's main tsconfig is a
  * CLIENT shape (no ambient `node` types), so the file I/O lives in
@@ -23,6 +28,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { readAiRelease, writeAiRelease } from '../ai-release.mjs'
+import type { AiReleasePatch } from '../ai-release.mjs'
 import { resolveAekHome } from '../home.mjs'
 
 /** Routes owned by this module. */
@@ -136,7 +142,7 @@ export function registerAiReleaseApi(ctx: Context, options: { aekHome?: string }
         path: AI_RELEASE_API_PATH,
         handler: async (req, res) => {
           if (req.method === 'GET') {
-            sendJson(res, 200, { protocol: 'aek-ai-release/1', ...readAiRelease(aekHome) })
+            sendJson(res, 200, { protocol: 'aek-ai-release/2', ...readAiRelease(aekHome) })
             return
           }
           if (req.method !== 'POST') {
@@ -146,23 +152,52 @@ export function registerAiReleaseApi(ctx: Context, options: { aekHome?: string }
           }
           const body = await readJsonBody(req)
           if (body === undefined) {
-            sendJson(res, 400, { code: 'bad-request', message: 'body { allowed, confirm: true } is required' })
+            sendJson(res, 400, {
+              code: 'bad-request',
+              message: 'body { allowed?, autoCloseNext?, confirm: true } is required',
+            })
             return
           }
           if (body.confirm !== true) {
-            sendJson(res, 428, { code: 'confirm-required', message: 'pass { allowed, confirm: true }' })
+            sendJson(res, 428, {
+              code: 'confirm-required',
+              message: 'pass { allowed?, autoCloseNext?, confirm: true }',
+            })
             return
           }
-          if (typeof body.allowed !== 'boolean') {
+          // A partial patch: at least one switch, and every carried switch a
+          // boolean. Untouched keys are preserved by the merge in writeAiRelease.
+          const hasAllowed = 'allowed' in body
+          const hasAutoCloseNext = 'autoCloseNext' in body
+          if (!hasAllowed && !hasAutoCloseNext) {
+            sendJson(res, 400, {
+              code: 'no-switch',
+              message: 'pass at least one of: allowed, autoCloseNext',
+            })
+            return
+          }
+          if (hasAllowed && typeof body.allowed !== 'boolean') {
             sendJson(res, 400, { code: 'invalid-allowed', message: 'allowed must be a boolean' })
             return
           }
-          const result = writeAiRelease(aekHome, body.allowed)
+          if (hasAutoCloseNext && typeof body.autoCloseNext !== 'boolean') {
+            sendJson(res, 400, { code: 'invalid-autoCloseNext', message: 'autoCloseNext must be a boolean' })
+            return
+          }
+          const patch: AiReleasePatch = {}
+          if (hasAllowed) patch.allowed = body.allowed as boolean
+          if (hasAutoCloseNext) patch.autoCloseNext = body.autoCloseNext as boolean
+          const result = writeAiRelease(aekHome, patch)
           if (!result.ok) {
             sendJson(res, 500, { code: 'persist-failed', problems: result.problems })
             return
           }
-          sendJson(res, 200, { protocol: 'aek-ai-release/1', allowed: body.allowed })
+          const after = readAiRelease(aekHome)
+          sendJson(res, 200, {
+            protocol: 'aek-ai-release/2',
+            allowed: after.allowed,
+            autoCloseNext: after.autoCloseNext,
+          })
         },
       }),
     ]

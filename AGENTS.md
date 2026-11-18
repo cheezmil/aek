@@ -124,11 +124,12 @@ AEK 致敬 `deepseek-harness`（简称 dsh）：主要采用了 dsh 优秀的 co
 - **壳重打包 = 仅 electron 层变更才做（X5 轮 2026-11-16 用户裁定）**：壳 asar 只含 electron main/preload（`lib/**` + package.json，≈13.7MB），**不含 webui**——壳窗口 `loadURL(1685)`，UI 由 1685 从稳定树 HTTP 服务。webui / 宿主代码改动（绝大多数轮）**零 electron 打包 / 签名 / 壳重拉**：release 换血 1685 → 在跑的壳自动重载出新 UI（W 轮 reconnect watcher）。仅当 electron 层（`apps/aek-desktop/v0/{src,lib,electron-builder.config.mjs,package.json}` + electron 版本）变更才跑 `desktop.mjs install` 重打包；`isBuildFresh` 指纹含**编译输入**（`src/` + builder 配置 + 应用 manifest + entitlements，**不含派生产物 `lib/`**——CI 云编译同样从 src 自行 tsc，本地重编译 lib 的 mtime 抖动不该让 dist 显得过期；X5 轮 2026-11-16 订正），「fresh 即跳打包」是正确行为，**不要加 install-marker 之类的强制重打包机制**（曾误加，commit `309f5c4c` 已 revert）。壳重打包不是 release 必做步。
 - 跑重 CPU 的自检 / 验证脚本时**不要和带短超时的测试并行**（dsh 上游存在 5s 超时用例，CPU 被抢会假红）。串行跑；出现超时先单独复跑该用例，再判断是不是回归。
 
-### AI 自动发布开关（硬规则，2026-11-15 S7 用户立规）
+### AI 自动发布开关（硬规则，2026-11-15 S7 用户立规；2026-11-18 S9 扩双开关）
 
-- 开关事实 = `<AEK_HOME>/ai-release.json` 的 `{ "allowed": boolean }`（缺失 / 损坏 = `false`，安全默认关）。控制台「运行实例」节的开关写它（宿主路由 `GET/POST /api/aek/ai-release`，POST 沿用 428 confirm 规则）；**AI 与发布脚本只读这个文件判定，不依赖任何宿主在跑**（零依赖读写见 `@cheezmil/coraek/ai-release`）。
-- **开关开 → AI 可自动执行发布链（`release.mjs --yes` + 运行/换槽），不再逐次询问用户**；**开关关或缺失 → AI 每次发布 / 合并进稳定树前必须在对话中征求用户同意**（这正是用户 2026-11-15 要求：别老问，让开关替用户做决定）。
-- 该开关是**协作事实**，不是发布管道的一部分：`release.mjs` 本身不读它、不因它自动执行——执行与否由 AI / 操作员决定，脚本保持「显式 `--yes` 才动」的既有纪律。
+- 开关事实 = `<AEK_HOME>/ai-release.json` 的 `{ "allowed": boolean, "autoCloseNext": boolean }`（**按 key 独立缺省**：缺失 / 损坏时 `allowed` = `false`（安全默认关），`autoCloseNext` = `true`（默认开，用户 2026-11-18 裁定）；合法文件缺某 key 只对该 key 落默认，禁止一刀切）。控制台「运行实例」节的两行开关写它（宿主路由 `GET/POST /api/aek/ai-release`，POST 沿用 428 confirm 规则，支持只改单个开关的部分 patch）；**AI 与发布脚本只读这个文件判定，不依赖任何宿主在跑**（零依赖读写见 `@cheezmil/coraek/ai-release`）。
+- **`allowed` 开 → AI 可自动执行发布链（`release.mjs --yes` + 运行/换槽），不再逐次询问用户**；**开关关或缺失 → AI 每次发布 / 合并进稳定树前必须在对话中征求用户同意**（这正是用户 2026-11-15 要求：别老问，让开关替用户做决定）。
+- **`autoCloseNext`（S9）开 → 开发验收完而本轮不发版时，AI 自动关闭它自己打开的 AEK Next 实例（next 槽后端 1687 + 开发壳 1688）：跑 `node scripts/aek/close-next.mjs --yes`（内部再读一次开关做门控）**。完整收尾（`release.mjs` / `dev-cycle.mjs run`）尾部的 `slots.mjs --stop-all` 已覆盖 next 实例，close-next 的增量价值在「dev-only 不 release」路径；无论哪条路径都**绝不碰生产安装** `~/Applications/AEK Next.app`。
+- 该开关是**协作事实**，不是发布管道的一部分：`release.mjs` 本身不读它、不因它自动执行——执行与否由 AI / 操作员决定，脚本保持「显式 `--yes` 才动」的既有纪律；`close-next.mjs` 例外：它的「动」由 `--yes` 显式触发，但**是否允许动手由 `autoCloseNext` 开关门控**（关则拒绝并报告）。
 - 措辞去术语化（2026-11-15 S8）：**用户可见文案禁用 git worktree 术语**（「主 worktree / linked worktree」之类），统一说「开发树 / 稳定树」（仓库既有词）；源码注释面向开发者可保留准确 git 术语。
 
 ## 7. 笔记与 Todo

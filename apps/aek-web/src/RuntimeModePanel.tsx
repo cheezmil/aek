@@ -482,6 +482,34 @@ export function RuntimeModePanel({ refreshSignal }: { refreshSignal: number }) {
             </div>
           )}
 
+        {/* S9: the auto-close-next switch, directly under the S7 card.
+            Default ON (the user's ruling) — after a dev round the AI closes
+            the AEK Next instances IT opened (next backend + dev shell); it
+            never touches the production install. Hidden when the host
+            predates the route (404 → unsupported) or answers without the
+            `autoCloseNext` key (protocol 1 host). */}
+        {aiRelease.unsupported || aiRelease.autoCloseNext === undefined
+          ? null
+          : (
+            <div className="flex flex-col gap-1.5 mt-4 p-5 border border-border rounded-sm bg-surface-subtle">
+              <div className="flex items-start justify-between gap-3">
+                <Label className="grow basis-auto text-xs-plus leading-normal text-text">{t('runtime.autoCloseNext.title')}</Label>
+                <ToggleSwitch
+                  checked={aiRelease.autoCloseNext}
+                  locked={aiRelease.busy}
+                  onChange={(next) => { void aiRelease.setAutoCloseNext(next) }}
+                  label={t('runtime.autoCloseNext.title')}
+                />
+              </div>
+              <p className="m-0 text-xs leading-160 text-text-muted">{t('runtime.autoCloseNext.desc')}</p>
+              {/* Same BB-round convention: ON (the expected default) renders
+                  no text; only the OFF state gets a callout. */}
+              {!aiRelease.autoCloseNext
+                ? <span className="text-xs text-text-secondary">{t('runtime.autoCloseNext.off')}</span>
+                : null}
+            </div>
+          )}
+
         {/* BB round: the SOURCE-MAP build flag. Host-persisted exactly like
             the switch above; it takes effect on the NEXT build (the scripts
             export AEK_WEB_SOURCEMAP from this file), never on the running
