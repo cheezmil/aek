@@ -645,7 +645,13 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   return (
     <aside
       className={cn(
-        'sticky top-0 flex flex-col h-screen basis-(--aek-sidebar-width) w-(--aek-sidebar-width) bg-card border-r border-border transition-[flex-basis,width,padding] duration-(--aek-sidebar-duration) ease-aek-out overflow-hidden z-2 text-(length:--aek-sidebar-font-size) tracking-(--aek-sidebar-letter-spacing)',
+        /* 2026-11-19: the rail's show/stow fold is the SAME functional layout
+           motion as the plugin rail's — `.aek-rail-fold` owns the width /
+           flex-basis / padding glide AND its reduced-motion exemption (the
+           global crush below it in index.css would otherwise snap the first-
+           level rail closed under the system "reduce motion" setting while
+           the second-level rail still glides). */
+        'aek-rail-fold sticky top-0 flex flex-col h-screen basis-(--aek-sidebar-width) w-(--aek-sidebar-width) bg-card border-r border-border overflow-hidden z-2 text-(length:--aek-sidebar-font-size) tracking-(--aek-sidebar-letter-spacing)',
         compact
           ? 'basis-(--aek-sidebar-compact) w-(--aek-sidebar-compact) px-0'
           : cn('px-(--aek-sidebar-pad-x)', 'max-[640px]:basis-(--aek-sidebar-compact) max-[640px]:w-(--aek-sidebar-compact)'),
@@ -657,7 +663,9 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
       onMouseLeave={handlePointerLeave}
     >
       <div className={cn(
-        'flex items-center justify-between gap-2 h-18 min-h-18 py-(--aek-sidebar-pad-y) border-b border-border transition-[padding] duration-(--aek-sidebar-duration) ease-aek-out',
+        /* `aek-sidebar-header`: stable class so the reduced-motion exemption
+           in index.css can re-glide the header padding with the fold. */
+        'aek-sidebar-header flex items-center justify-between gap-2 h-18 min-h-18 py-(--aek-sidebar-pad-y) border-b border-border transition-[padding] duration-(--aek-sidebar-duration) ease-aek-out',
         compact ? 'aek-sidebar-header-compact' : 'px-4',
         'max-[640px]:flex-col max-[640px]:justify-center max-[640px]:gap-1 max-[640px]:h-22 max-[640px]:min-h-22 max-[640px]:p-0',
       )}>

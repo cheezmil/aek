@@ -128,6 +128,9 @@ export const NAV: readonly NavEntry[] = [
   { id: 'settingsSidebarSecond', labelKey: 'settings.group.sidebarSecond', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'sidebarSecond', keywords: ['plugin rail', '二级侧栏'] },
   { id: 'settingsNavigation', labelKey: 'settings.group.navigation', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'navigation', keywords: ['navigation', '导航'] },
   { id: 'settingsGeneral', labelKey: 'settings.group.general', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'general', keywords: ['general', '通用'] },
+  // 2026-11-19: the MOTION section of 基础设置 (the app-wide front-end
+  // motion kill switch, `aek-home.disableMotion`).
+  { id: 'settingsMotion', labelKey: 'settings.group.motion', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'motion', keywords: ['motion', 'animation', '动态效果'] },
   { id: 'settingsAccess', labelKey: 'settings.group.access', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'access', keywords: ['access', 'lan', '访问设置'] },
   { id: 'settingsPermissions', labelKey: 'settings.group.permissions', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'permissions', keywords: ['permissions', '权限'] },
   { id: 'settingsDefaults', labelKey: 'settings.group.defaults', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'defaults', keywords: ['defaults', '默认值'] },

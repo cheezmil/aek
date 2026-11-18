@@ -435,6 +435,88 @@
     .aek-rail-fold ul {
       transition-duration: var(--aek-sidebar-duration) !important;
     }
+
+    /* 2026-11-19: the MAIN rail (first-level sidebar) show/stow is the SAME
+       functional fold as the plugin rail — it must glide under the system
+       "reduce motion" setting too, not snap: the rail's width / padding
+       glide plus the label + row choreography that makes the stow readable.
+       `aek-rail-fold` now lives on BOTH rails; the descendant selectors
+       below only exist inside the MAIN rail, so this block exempts the
+       first-level fold without touching the plugin rail. Hover decoration
+       (row color, the floating action box, search focus) stays crushed. */
+    .aek-rail-fold .aek-label-fade {
+      transition-duration:
+        150ms,
+        var(--aek-sidebar-duration),
+        var(--aek-sidebar-duration),
+        var(--aek-sidebar-duration),
+        0s !important;
+    }
+    .aek-rail-fold .aek-label-fade-hidden {
+      transition-duration:
+        140ms,
+        var(--aek-sidebar-duration),
+        var(--aek-sidebar-duration),
+        var(--aek-sidebar-duration),
+        0s !important;
+      /* The visibility flip must still wait for the width animation. */
+      transition-delay:
+        0s, 0s, 0s, 0s, var(--aek-sidebar-duration) !important;
+    }
+    /* Rows: the hover color / background stays snapped; the fold geometry
+       (gap / padding re-centering) glides. */
+    .aek-rail-fold .aek-rail-item {
+      transition-duration:
+        0.01ms, 0.01ms, var(--aek-sidebar-duration), var(--aek-sidebar-duration) !important;
+    }
+    .aek-rail-fold .aek-brand-button,
+    .aek-rail-fold .aek-sidebar-body,
+    .aek-rail-fold .aek-sidebar-header {
+      transition-duration: var(--aek-sidebar-duration) !important;
+    }
+    .aek-rail-fold .aek-drawer-group-compact::before {
+      transition-duration: 140ms !important;
+      /* The 200ms wait for the rail to stop narrowing (see the rule above). */
+      transition-delay: 200ms !important;
+    }
+  }
+
+  /* 2026-11-19: the app-level MOTION kill switch (`aek-home.disableMotion`,
+     the 基础设置 → 动态效果 row): the console root carries `aek-no-motion`
+     and every transition / animation / delay in the whole app collapses to
+     0.01ms — the same shape as the SYSTEM crush at the bottom of this
+     file, but owned by AEK, not the OS (for cross-platform consistency AEK
+     ignores `prefers-reduced-motion`; this row is the user's own switch).
+     Placed AFTER the media exemption block above on purpose: the fold-exempt
+     rules there are equal-specificity `!important`, and a later rule wins
+     the tie — so turning the app switch on crushes the glide even on a
+     machine where the OS reduce-motion is on. */
+  .aek-no-motion *,
+  .aek-no-motion *::before,
+  .aek-no-motion *::after {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+  }
+
+  /* The 2026-11-19 first-level fold exemption (and its plugin-rail twin) is
+     a TWO-class `!important` rule, so it outranks the `*` crush above on the
+     elements it targets — with the OS reduce-motion setting on, the labels
+     would keep gliding even with the app switch on. The switch is the
+     user's explicit choice and must win: re-crush exactly those selectors
+     at higher specificity (three classes beat two). */
+  .aek-no-motion .aek-rail-fold,
+  .aek-no-motion .aek-rail-fold ul,
+  .aek-no-motion .aek-rail-fold .aek-label-fade,
+  .aek-no-motion .aek-rail-fold .aek-label-fade-hidden,
+  .aek-no-motion .aek-rail-fold .aek-rail-item,
+  .aek-no-motion .aek-rail-fold .aek-brand-button,
+  .aek-no-motion .aek-rail-fold .aek-sidebar-body,
+  .aek-no-motion .aek-rail-fold .aek-sidebar-header,
+  .aek-no-motion .aek-rail-fold .aek-drawer-group-compact::before {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
   }
 
   /* No-fade rail setting: the row-actions card shows/hides instantly. */

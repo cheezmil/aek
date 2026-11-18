@@ -228,6 +228,14 @@ function Console() {
   // properties, even though the DOM accepts them.
   const style = sidebarCssVars(prefs) as CSSProperties
 
+  // 2026-11-19: the MOTION kill switch (`aek-home.disableMotion`, the 基础设置
+  // → 动态效果 section): when on, the console root carries `aek-no-motion`
+  // and index.css crushes every transition / animation / delay in the app to
+  // 0.01ms — AEK's own front-end motion, independent of the OS "reduce
+  // motion" setting. The persisted value applies after the settings commit
+  // (save-all / auto-save) re-fetches the map, exactly like every schema row.
+  const noMotion = prefs['aek-home.disableMotion'] === true
+
   const signalFor = (id: PanelId): number => refreshTicks[id] ?? 0
 
   // Z round: a panel owned by a plugin that has internal routes (a family
@@ -346,7 +354,7 @@ function Console() {
 
   return (
     // .app: font 14px/1.6 + antialiased is now the global body rule, so only layout + color remain.
-    <div className="flex min-h-screen bg-background text-text" style={style}>
+    <div className={cn('flex min-h-screen bg-background text-text', noMotion && 'aek-no-motion')} style={style}>
       <Sidebar
         active={panel}
         onSelect={setPanel}

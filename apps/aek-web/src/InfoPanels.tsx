@@ -748,6 +748,11 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   const firstRailRows = visible.filter(field => field.group === 'sidebar' && !SECOND_RAIL_KEYS.has(field.key))
   const navigationRows = visible.filter(field => field.group === 'navigation' && !SECOND_RAIL_KEYS.has(field.key))
   const generalRows = visible.filter(field => field.group === 'general')
+  // 2026-11-19: the MOTION group — AEK's own app-wide kill switch for front-end
+  // motion (the OS "reduce motion" setting is deliberately ignored, see the
+  // section hint). A real schema row, so it stages / commits through the same
+  // draft system as every other setting.
+  const motionRows = visible.filter(field => field.group === 'motion')
   // K round: the dedicated TEST section — a real schema row (so it flows
   // through the draft/commit system exactly like every setting) but wired
   // to NOTHING; it exists so the user (and agents) can poke the settings
@@ -822,6 +827,18 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
               <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.general')}</h3>
               <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
                 {generalRows.map(fieldRow)}
+              </ul>
+            </section>
+          )
+          : null}
+        {motionRows.length > 0
+          ? (
+            <section className="mb-8 last:mb-0" data-nav-anchor="motion">
+              {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+              <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.motion')}</h3>
+              <p className={HINT}>{t('settings.group.motionHint')}</p>
+              <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
+                {motionRows.map(fieldRow)}
               </ul>
             </section>
           )

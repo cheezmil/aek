@@ -35,7 +35,7 @@ export interface SettingField {
   /** Which control to render. */
   kind: SettingKind
   /** Group id, used only for headings + in-page search. */
-  group: 'sidebar' | 'navigation' | 'general' | 'websearch' | 'test'
+  group: 'sidebar' | 'navigation' | 'general' | 'motion' | 'websearch' | 'test'
     | 'skills' | 'prompts' | 'icons'
   /** i18n key of the visible label. */
   labelKey: string
@@ -196,6 +196,17 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
       { value: 'abbreviated', labelKey: 'settings.pathStyle.abbreviated' },
       { value: 'full', labelKey: 'settings.pathStyle.full' },
     ],
+  },
+  {
+    // 2026-11-19: the app-level MOTION kill switch. AEK deliberately ignores
+    // the OS "reduce motion" setting for cross-platform consistency, so a
+    // user who wants zero front-end motion needs an AEK-owned switch: when
+    // on, the console root gets the `aek-no-motion` class and index.css
+    // crushes every transition / animation / delay to 0.01ms app-wide.
+    // Like every setting it stages in the draft layer and lands on commit.
+    key: 'aek-home.disableMotion', kind: 'toggle', group: 'motion',
+    labelKey: 'settings.disableMotion', hintKey: 'settings.disableMotionHint',
+    default: false,
   },
   {
     // A round: the per-plugin route rail (PluginSubNav) width. Dragging the
