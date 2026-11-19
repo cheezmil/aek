@@ -19,6 +19,10 @@
  *   7. key material (`websearch/*.db`) needs `--include-secrets`
  *   8. `--rollback` restores the pre-run state exactly
  *   9. running with no arguments writes nothing
+ *   10. closed-list boundary: a FOREIGN directory (not in the manifest `dirs`
+ *       table) and a known AEK runtime directory (in `dirs`, not in CATALOG)
+ *       are both reported as ignored and neither ever reaches the
+ *       destination
  *
  * The temp container is deleted on success and KEPT on failure (the path is
  * printed) so a failing case can be inspected.
@@ -106,6 +110,14 @@ symlinkSync('../does-not-exist', join(nxt, 'skill-manager/skills/linker/dead'))
 // Key material: never written without --include-secrets.
 put(nxt, 'websearch/brave.db', 'PRETEND-KEY-MATERIAL\n')
 
+// Closed-list boundary: a FOREIGN directory — data the operator dropped into
+// the slot root for a tool that is NOT AEK (its home is pre-defined under the
+// slot). AEK must report it as ignored and never write it to `current`.
+put(nxt, 'mytool/config.json', 'foreign data\n')
+// And a known AEK RUNTIME directory that is not in CATALOG: rebuilt, not
+// promoted.
+put(nxt, 'sessions/one.json', 'runtime state\n')
+
 // ── Run ──────────────────────────────────────────────────────────────────────
 
 const env = { ...process.env, AEK_ROOT: root }
@@ -127,6 +139,8 @@ const dry = run([])
 check('无参数 exit 0', dry.code === 0)
 check('无参数没有写入新文件', !existsSync(join(cur, 'skill-manager/skills/added')))
 check('计划里有 add 3（两个文件 + 一条链接）', /统计\s*=\s*add 3/.test(dry.out))
+check('10. 外来目录 mytool 被报告忽略', /忽略·外来数据 = .*\bmytool\b/.test(dry.out))
+check('10. AEK 运行时目录 sessions 被报告忽略', /忽略·AEK 运行时 = .*\bsessions\b/.test(dry.out))
 
 process.stdout.write('\n── 1/2/3/5/6/7 计划与首次执行 ──\n')
 const plan = run(['--only', 'skills,websearch'])
@@ -140,6 +154,15 @@ check('1. 新文件已写入', existsSync(join(cur, 'skill-manager/skills/added/
 check('2. 相同文件原样', readFileSync(join(cur, 'skill-manager/skills/samed/SKILL.md'), 'utf8') === 'same body\n')
 check('3. 冲突文件未被覆盖', readFileSync(join(cur, 'skill-manager/skills/changed/SKILL.md'), 'utf8') === 'current version\n')
 check('7. 密钥文件未写入', !existsSync(join(cur, 'websearch/brave.db')))
+
+process.stdout.write('\n── 10. 封闭边界（外来 / 运行时目录不进 current）──\n')
+const jsonRun = run(['--json'])
+const planJson = JSON.parse(jsonRun.out)
+check('10. JSON closedList = CATALOG 8 类', Array.isArray(planJson.closedList) && planJson.closedList.length === 8)
+check('10. JSON ignoredForeign 含 mytool', Array.isArray(planJson.ignoredForeign) && planJson.ignoredForeign.includes('mytool'))
+check('10. JSON ignoredRuntime 含 sessions', Array.isArray(planJson.ignoredRuntime) && planJson.ignoredRuntime.includes('sessions'))
+check('10. 外来目录未进 current', !existsSync(join(cur, 'mytool')))
+check('10. 运行时目录未晋升', !existsSync(join(cur, 'sessions/one.json')))
 
 const newLink = join(cur, 'skill-manager/skills/linker/ref')
 check('5. 链接已创建', existsSync(newLink) && lstatSync(newLink).isSymbolicLink())

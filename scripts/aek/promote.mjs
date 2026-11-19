@@ -22,9 +22,25 @@
  *   permissions   `<home>/permissions.json`
  *   websearch     `<home>/websearch`                  contains key material
  *
- * Everything else in a data root (sessions, logs, desktop Chromium profile,
- * dev bundles, rollback copies, quick-git mirrors, pid locks) is runtime state
- * and is NOT in the catalogue by design — it cannot be promoted, only rebuilt.
+ * Everything else in a slot data root is ignored by design. CATALOG is a
+ * CLOSED LIST, defined in code on purpose: it is the ENTIRE set of what
+ * travels next → current, and aek.yaml has no hook to add a category —
+ * aek.yaml decides WHERE directories live, not WHICH ones travel. The plan
+ * reports the boundary (the `忽略·` lines / JSON `ignoredRuntime` and
+ * `ignoredForeign`) so it stays visible, in two classes:
+ *
+ *   - runtime dirs: in the manifest `dirs` table but NOT in CATALOG
+ *     (sessions, logs, the desktop Chromium profile, dev bundles, rollback
+ *     copies, quick-git mirrors, pid locks). Runtime state — it cannot be
+ *     promoted, only rebuilt.
+ *   - foreign dirs: not in the manifest `dirs` table at all — data the
+ *     operator dropped into the slot root for a tool that is NOT AEK (for
+ *     example a standalone browser-driver project that pre-defines its home
+ *     under `<slot>/`). AEK never reads, writes, or moves it; it simply is
+ *     not AEK's.
+ *
+ * Extending the boundary is a reviewed code change to CATALOG (+ the manifest
+ * `dirs` table if the folder is renamed), never a per-user declaration.
  *
  * LINK RULES (the reason this file is long)
  *   1. A symlink is never dereferenced. Copying 126 Electron framework aliases
@@ -191,6 +207,34 @@ function slotPath(slot, ...segments) {
 const HOMES = { aek: realOrSelf(slotHome('aek')), next: realOrSelf(slotHome('next')) }
 const SRC_HOME = HOMES[FROM]
 const DST_HOME = HOMES[TO]
+
+// ── Closed-list boundary: what this run ignores by design ────────────────────
+
+// Top-level names CATALOG actually covers: the first path segment of every
+// entry (root files like `plugins.json` never collide with a directory name).
+const CATALOG_FIRST = new Set(CATALOG.flatMap(c => c.paths).map(p => p.split('/')[0]))
+// The source slot's manifest decides what AEK KNOWS; everything else in its
+// root is foreign. A missing manifest falls back to the code defaults.
+const knownDirs = new Set(Object.keys(manifestFor(SRC_HOME)?.dirs ?? {}))
+
+/**
+ * Directory names directly inside a slot root (symlinks to dirs count;
+ * broken symlinks and files do not).
+ * @param {string} r @returns {string[]}
+ */
+function rootDirNames(r) {
+  let names = []
+  try { names = readdirSync(r) } catch { names = [] }
+  return names.filter(n => {
+    try { return statSync(join(r, n)).isDirectory() } catch { return false }
+  })
+}
+
+const srcRootNames = rootDirNames(SRC_HOME)
+/** In the manifest `dirs` table, not in CATALOG: runtime state, rebuilt only. */
+const ignoredRuntime = srcRootNames.filter(n => !CATALOG_FIRST.has(n) && knownDirs.has(n))
+/** Not in the manifest `dirs` table at all: foreign data, never AEK's. */
+const ignoredForeign = srcRootNames.filter(n => !CATALOG_FIRST.has(n) && !knownDirs.has(n))
 
 // ── Filesystem helpers ───────────────────────────────────────────────────────
 
@@ -472,6 +516,9 @@ if (JSON_OUT) {
     destination: DST_HOME,
     slots: { from: FROM, to: TO },
     selected,
+    closedList: CATALOG.map(c => c.key),
+    ignoredRuntime,
+    ignoredForeign,
     counts,
     wouldWrite: writable.length,
     conflicts: blocked.length,
@@ -492,6 +539,9 @@ process.stdout.write(`[promote] 方向    = ${FROM} → ${TO}\n`)
 process.stdout.write(`[promote] ${FROM.padEnd(7)} = ${SRC_HOME}\n`)
 process.stdout.write(`[promote] ${TO.padEnd(7)} = ${DST_HOME}\n`)
 process.stdout.write(`[promote] 条目    = ${selected.join(', ')}\n`)
+process.stdout.write(`[promote] 白名单  = CATALOG ${String(CATALOG.length)} 类（代码定死的封闭清单，aek.yaml 无扩展口；槽根其余目录按设计忽略）\n`)
+if (ignoredRuntime.length > 0) process.stdout.write(`[promote] 忽略·AEK 运行时 = ${ignoredRuntime.join(', ')}（在 dirs 表、不在 CATALOG：运行时状态，只重建不晋升）\n`)
+if (ignoredForeign.length > 0) process.stdout.write(`[promote] 忽略·外来数据 = ${ignoredForeign.join(', ')}（不在 dirs 表：非 AEK 数据，不读不写不搬）\n`)
 process.stdout.write(`[promote] 统计    = add ${counts.add ?? 0} · 内容相同 ${counts.identical ?? 0} · 冲突 ${counts.conflict ?? 0} · 跳过 ${counts.skip ?? 0}\n`)
 
 const show = (title, list, limit = 10) => {
