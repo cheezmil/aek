@@ -36,7 +36,12 @@ export const name = 'aek-skill-manager'
 
 /**
  * Service seams this plugin registers into. It only PROVIDES `skillsManager`
- * and consumes no host seam, so the inject list is empty.
+ * and consumes no host seam, so the inject list is empty, keeping this entry
+ * mountable in every composition, CLI test harness included. The host
+ * management API lives in the separate ADMIN face (`./admin`, the
+ * `aek-skill-manager-admin` profile entry): it declares `webServer` +
+ * `skillsManager` in its own inject list, so a headless composition that
+ * mounts only this face never waits for a web server that never comes.
  */
 export const inject: string[] = []
 
@@ -59,6 +64,10 @@ export { SkillsManagerService }
  */
 export function apply(ctx: Context, config: AeksmPluginConfig): void {
   // The service registers itself (and auto-disposes with the owning fiber) in
-  // its constructor; nothing here spawns a process or touches the hub.
+  // its constructor; nothing here spawns a process or touches the hub. The
+  // console routes are registered by the ADMIN face (`./admin`), which
+  // injects this face's `skillsManager` service plus the composition's
+  // `webServer` seam — the SAME engine the CLI drives, over the
+  // browser-reachable channel, only where a web server exists.
   new SkillsManagerService(ctx, config)
 }

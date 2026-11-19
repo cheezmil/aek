@@ -17,6 +17,10 @@
       "types": "./lib/cli.d.ts",
       "default": "./lib/cli.js"
     },
+    "./admin": {
+      "types": "./lib/admin.d.ts",
+      "default": "./lib/admin.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

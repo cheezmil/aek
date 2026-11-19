@@ -37,7 +37,7 @@
 # node_modules for no benefit.
 - id: hmr
   config:
-    root: !!js "process.env.AEK_MODE === 'dev' ? ['node_modules/@cheezmil/coraek/lib', 'node_modules/@cheezmil/aek-web/dist', 'node_modules/@cheezmil/aek-websearch/lib'] : []"
+    root: !!js "process.env.AEK_MODE === 'dev' ? ['node_modules/@cheezmil/coraek/lib', 'node_modules/@cheezmil/aek-web/dist', 'node_modules/@cheezmil/aek-websearch/lib', 'node_modules/@cheezmil/aek-skill-manager/lib'] : []"
     debounce: 100
     ignored: ['**/*.map']
 
@@ -59,3 +59,22 @@
     # seam, and coraek-profile does not own that composition.
     - id: aek-websearch-admin
       name: '@cheezmil/aek-websearch/admin'
+
+    # aek-skill-manager: the host-side skill-hub face of the aeksm engine.
+    # The main entry registers ONLY the `ctx.skillsManager` service; it
+    # injects nothing, so it mounts in every composition (the headless CLI
+    # test harness included) and the engine stays lazy (nothing touches the
+    # hub until the first operation). `home` defaults to the standard hub
+    # (`~/.aek/skill-manager`); the console's skills settings page overrides
+    # it through the volatile `home` config field.
+    - id: aek-skill-manager
+      name: '@cheezmil/aek-skill-manager'
+
+    # aek-skill-manager-admin: the ADMIN half of the skill-hub plugin, mounted
+    # as its own entry the way aek-websearch-admin is. It declares
+    # `webServer` + `skillsManager` in its inject list and registers the
+    # console's routes (`GET /api/aek/skills…`, writes 428-confirm) on the
+    # `webServer` seam. Headless compositions never mount this face, so a
+    # web-server dependency is declared exactly where a web server exists.
+    - id: aek-skill-manager-admin
+      name: '@cheezmil/aek-skill-manager/admin'

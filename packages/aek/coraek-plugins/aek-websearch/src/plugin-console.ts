@@ -3,13 +3,15 @@
  * the console front end.
  *
  * WHY A BRIDGE INSTEAD OF `ctx.promptManager` / `ctx.skillsManager`
- * The web profile's `cordis.patch.yml` mounts only coraek, websearch/admin and
- * the aek-web static console. Prompt Manager and Skill Manager are mounted in
- * the *dsh* profile,
- * so their in-process services simply do not exist in this host. Their CLIs
- * (`aekpm`, `aeksm`) are the primary human/script face anyway, so this route
- * drives exactly those CLIs — the same engine, the same commands, zero
- * duplicated business logic.
+ * The web profile's `cordis.patch.yml` mounts coraek, websearch/admin, and —
+ * since the BG round — the two Skill Manager faces (`aek-skill-manager`
+ * service face + `aek-skill-manager-admin` web route face), so the Skill
+ * Manager panel talks to the host through the native `/api/aek/skills` routes
+ * (its own package, aek-skill-manager/src/admin.ts). Prompt Manager is still
+ * mounted in the *dsh* profile only, so its `ctx.promptManager` service does
+ * not exist in this host. Both CLIs (`aekpm`, `aeksm`) remain the primary
+ * human/script face, so this route keeps driving exactly those CLIs — the
+ * same engine, the same commands, zero duplicated business logic.
  *
  * SECURITY
  * - Plugin ids are a fixed whitelist; no arbitrary binary can be selected.

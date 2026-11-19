@@ -214,7 +214,7 @@ function selftest() {
   // Declared stack members must pass the manifest scan.
   expectClean('FF stack dependencies', scanManifest('apps/aek-web/package.json', {
     dependencies: {
-      react: '^18.2.0', 'react-dom': '^18.2.0',
+      react: '^19.0.0', 'react-dom': '^19.0.0',
       'class-variance-authority': '^0.7.0',
       cn: '^0.5.0', 'radix-ui': '^1.8.0', shadcn: '^4.0.0',
       'tw-animate-css': '^1.0.0', 'lucide-react': '^1.0.0',

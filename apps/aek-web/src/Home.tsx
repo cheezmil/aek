@@ -18,7 +18,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CanonicalHostRedirect, isLegacyLoopback } from './CanonicalHost.tsx'
 import { I18nProvider, useI18n } from './i18n.tsx'
 import { InfoPanels } from './InfoPanels.tsx'
-import { PromptsPanel, SkillsPanel } from './ConsolePanels.tsx'
+import { PromptsPanel } from './ConsolePanels.tsx'
+import { SkillsManagerPanel } from './SkillsManagerPanel.tsx'
 import { oneOf, PREF_KEYS, PrefProvider, usePref, usePrefLanded, useSettings, parseBoolean } from './preferences.tsx'
 import { Sidebar } from './Sidebar.tsx'
 import type { PanelId } from './nav-model.ts'
@@ -348,7 +349,7 @@ function Console() {
       // so no cast is needed (and an unnecessary one is a lint error).
       return <InfoPanels panel={renderId} refreshSignal={signalFor(renderId)} />
     }
-    if (renderId === 'skills') return <SkillsPanel refreshSignal={signalFor('skills')} />
+    if (renderId === 'skills') return <SkillsManagerPanel refreshSignal={signalFor('skills')} />
     return <PromptsPanel refreshSignal={signalFor('prompts')} />
   }
 
