@@ -56,8 +56,13 @@ import { cn } from '@/lib/utils'
 /**
  * The skill-manager panel.
  * @param refreshSignal - a number bump re-fetches the overview.
+ * @param railNavSignal - the host's rail-row click counter (BL-13 round): every
+ *   first/second-rail row click bumps it, and the body clears its panel-local
+ *   agent/project drill on any bump — the same-value case (a click landing on
+ *   the panel's own face, where the host pref never changes) is exactly the
+ *   one the host [panel] effect cannot see.
  */
-export function SkillsManagerPanel({ refreshSignal }: { refreshSignal: number }) {
+export function SkillsManagerPanel({ refreshSignal, railNavSignal }: { refreshSignal: number; railNavSignal: number }) {
   const { t } = useI18n()
   const skills = useSkills(refreshSignal)
   // Older host (no skill-hub API): degrade to the CLI-bridge console, never
@@ -84,7 +89,7 @@ export function SkillsManagerPanel({ refreshSignal }: { refreshSignal: number })
     )
   }
 
-  return <SkillsPanelBody skills={skills} />
+  return <SkillsPanelBody skills={skills} railNavSignal={railNavSignal} />
 }
 
 /**
@@ -95,7 +100,7 @@ export function SkillsManagerPanel({ refreshSignal }: { refreshSignal: number })
  * project drill-throughs are panel-local state the extras rows (and the
  * views' own buttons) drive.
  */
-function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
+function SkillsPanelBody({ skills, railNavSignal }: { skills: ReturnType<typeof useSkills>; railNavSignal: number }) {
   const { t } = useI18n()
   const [panel, setPanel] = usePref<PanelId>(PREF_KEYS.panel, 'runtime', oneOf([...NAV_IDS, 'plugins'] as readonly PanelId[]))
   const [drill, setDrill] = useState<SkillNav | null>(null)
@@ -156,6 +161,15 @@ function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
     keepDrillOnPanelChange.current = false
     if (!keep) { setDrill(null) }
   }, [panel])
+
+  // BL-13 round (m06737): the host bumps railNavSignal on EVERY rail row
+  // click — including the same-value case where the active panel does not
+  // change and the [panel] effect above therefore never fires. Clear the
+  // panel-local drill on any bump; extras-row drill clicks go through goNav
+  // (no bump), so the BL-12 keep semantics are untouched.
+  useEffect(() => {
+    setDrill(null)
+  }, [railNavSignal])
 
   const nav: SkillNav = drill !== null ? drill : { view: skillViewOfPanel(panel) }
 

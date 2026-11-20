@@ -99,6 +99,15 @@ function Console() {
   const state = useWebsearchStatus()
   const currentSlot = useCurrentSlot()
 
+  // BL-13 round (m06737): a host rail row click that lands on the ACTIVE
+  // panel is a same-value no-op for the pref above — the skills panel's
+  // [panel] effect never fires, and its panel-local agent/project drill
+  // survives, so the 首页 row looks dead while a drill is up. Bump this
+  // counter on every first/second-rail row click; the skills panel clears
+  // its drill on any bump. Extras-row drill clicks go through the panel's
+  // own goNav and never bump this signal, so the BL-12 keep semantics hold.
+  const [railNavSignal, setRailNavSignal] = useState(0)
+
   // B round: URL routing — the active panel mirrors into the address bar as
   // `/<panelId>` (clean path routing, no `#`) so the console behaves like a
   // routed app: the URL is copyable (deep links) and browser back/forward
@@ -223,6 +232,14 @@ function Console() {
   const requestRefresh = useCallback((id: PanelId): void => {
     setRefreshTicks(previous => ({ ...previous, [id]: (previous[id] ?? 0) + 1 }))
   }, [])
+
+  // BL-13 round: every rail row click also bumps the rail nav signal, so a
+  // click that lands on the already-active panel (a same-value no-op for the
+  // pref) still reaches the skills panel and clears its panel-local drill.
+  const handleRailSelect = useCallback((id: PanelId): void => {
+    setPanel(id)
+    setRailNavSignal(previous => previous + 1)
+  }, [setPanel])
 
   // Schema-driven CSS: every numeric sidebar setting lands here. The cast is
   // needed because React's CSSProperties type does not enumerate custom
@@ -349,7 +366,9 @@ function Console() {
       // so no cast is needed (and an unnecessary one is a lint error).
       return <InfoPanels panel={renderId} refreshSignal={signalFor(renderId)} />
     }
-    if (renderId === 'skills') return <SkillsManagerPanel refreshSignal={signalFor('skills')} />
+    if (renderId === 'skills') {
+      return <SkillsManagerPanel refreshSignal={signalFor('skills')} railNavSignal={railNavSignal} />
+    }
     return <PromptsPanel refreshSignal={signalFor('prompts')} />
   }
 
@@ -358,7 +377,7 @@ function Console() {
     <div className={cn('flex min-h-screen bg-background text-text', noMotion && 'aek-no-motion')} style={style}>
       <Sidebar
         active={panel}
-        onSelect={setPanel}
+        onSelect={handleRailSelect}
         currentSlot={currentSlot}
         onRefresh={requestRefresh}
       />
@@ -368,7 +387,7 @@ function Console() {
           ? (
             <PluginSubNav
               active={panel}
-              onSelect={setPanel}
+              onSelect={handleRailSelect}
               labelsHidden={labelsCollapsed}
               hidden={railHidden}
               onRefresh={requestRefresh}
