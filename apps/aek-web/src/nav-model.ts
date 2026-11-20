@@ -40,7 +40,7 @@ export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts'
   // reference's sidebar nav (library / install / backup); the dashboard is
   // the family home row. The preset + 全局工作区 sections are rail extras
   // filled by the panel (rail-extras.ts), not flat rows.
-  | 'skillsLibrary' | 'skillsAdd' | 'skillsBackup'
+  | 'skillsLibrary' | 'skillsBackup'
   // R2 round: the second-level rail of the 插件与程序管理 page — one tab
   // per section of the composed page (an in-page POSITION, not a new page).
   | 'runtimeRuntimes' | 'runtimePlugins' | 'runtimeInfo'
@@ -123,7 +123,6 @@ export const NAV: readonly NavEntry[] = [
   // home row; the Preset + 全局工作区 sections are rail extras (the panel
   // fills rail-extras.ts; the preset/workspace views have no flat row).
   { id: 'skillsLibrary', labelKey: 'panel.skillsLibrary', icon: NAV_ICONS.skillsLibrary, group: 'plugins', subOf: 'skills', anchor: 'library', keywords: ['skill', 'library', '技能库'] },
-  { id: 'skillsAdd', labelKey: 'panel.skillsAdd', icon: NAV_ICONS.skillsAdd, group: 'plugins', subOf: 'skills', anchor: 'add', keywords: ['skill', 'install', '安装', 'git'] },
   { id: 'skillsBackup', labelKey: 'panel.skillsBackup', icon: NAV_ICONS.skillsBackup, group: 'plugins', subOf: 'skills', anchor: 'backup', keywords: ['skill', 'backup', '备份', 'git'] },
   { id: 'promptsSettings', labelKey: 'panel.promptsSettings', icon: NAV_ICONS.promptsSettings, group: 'plugins', subOf: 'prompts', keywords: ['prompt', 'settings', '设置'] },
   { id: 'iconsSettings', labelKey: 'panel.iconsSettings', icon: NAV_ICONS.iconsSettings, group: 'plugins', subOf: 'icons', keywords: ['icon', 'settings', '设置'] },

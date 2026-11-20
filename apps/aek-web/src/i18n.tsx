@@ -89,12 +89,11 @@ const ZH: Record<string, string | undefined> = {
   'panel.iconsBootstrap': 'Bootstrap',
   // R2 round: the settings page of the three remaining webui plugins
   // (the rail's contract: every webui plugin owns 首页 + 设置页).
-  'panel.skillsSettings': 'Skill 设置',
+  'panel.skillsSettings': 'Skill Manager 设置',
   /* BH round Plan C: the Skill Manager's flat rail rows (the reference's
      sidebar nav: 技能库 / 安装 Skills / 备份; the dashboard is the family
      home row, the preset + 全局工作区 sections are rail extras). */
-  'panel.skillsLibrary': '技能库',
-  'panel.skillsAdd': '安装 Skills',
+  'panel.skillsLibrary': '本地技能中心',
   'panel.skillsBackup': '备份',
   'panel.promptsSettings': 'Prompt 设置',
   'panel.iconsSettings': '图标设置',
@@ -268,7 +267,6 @@ const ZH: Record<string, string | undefined> = {
   'skills.dash.btn.scan': '扫描本地 Skills 导入',
   'skills.dash.btn.install': '安装新 Skills',
   'skills.dash.scanNote': '本地扫描导入面尚未启用（引擎面将在后续轮次落地），先用「安装新 Skills」从来源安装。',
-  'skills.ws.subtitle': '各 Agent 当前全局安装的 Skills',
   'skills.ws.addSkills': '添加 Skills',
   'skills.ws.addTitle': '为 {agent} 添加 Skills',
   'skills.ws.remove': '移除',
@@ -672,12 +670,11 @@ const EN: Record<string, string> = {
   'panel.iconsBootstrap': 'Bootstrap',
   // R2 round: the settings page of the three remaining webui plugins
   // (the rail's contract: every webui plugin owns 首页 + 设置页).
-  'panel.skillsSettings': 'Skill Settings',
+  'panel.skillsSettings': 'Skill Manager Settings',
   /* BH round Plan C: the Skill Manager's flat rail rows (the reference's
      sidebar nav: Library / Install Skills / Backup; the dashboard is the
      family home row, the preset + global-workspace sections are rail extras). */
-  'panel.skillsLibrary': 'Library',
-  'panel.skillsAdd': 'Install Skills',
+  'panel.skillsLibrary': 'Local Skill Center',
   'panel.skillsBackup': 'Backup',
   'panel.promptsSettings': 'Prompt Settings',
   'panel.iconsSettings': 'Icon Settings',
@@ -851,7 +848,6 @@ const EN: Record<string, string> = {
   'skills.dash.btn.scan': 'Import local Skills',
   'skills.dash.btn.install': 'Install new Skills',
   'skills.dash.scanNote': 'The local-scan import face is not enabled yet; use Install new Skills from a source for now.',
-  'skills.ws.subtitle': 'Skills currently installed globally for each agent',
   'skills.ws.addSkills': 'Add Skills',
   'skills.ws.addTitle': 'Add Skills to {agent}',
   'skills.ws.remove': 'Remove',

@@ -118,7 +118,10 @@ function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
   }, [noticeSlot])
 
   const goNav = useCallback((next: SkillNav): void => {
-    if (next.view === 'workspace' || next.view === 'project') {
+    // BJ round: the add face has no host rail row — it is a panel-local
+    // drill (the reference's standalone install page was dropped), like the
+    // workspace / project drill-throughs.
+    if (next.view === 'workspace' || next.view === 'project' || next.view === 'add') {
       setDrill(next)
       return
     }
@@ -151,6 +154,7 @@ function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
             icon: <AgentIcon agentId="all" label={t('skills.nav.allAgents')} />,
             badge: overview.skills.length,
             active: nav.view === 'workspace' && (nav.agentId === null || nav.agentId === undefined),
+            suppressActive: panel,
             onClick: () => { goNav({ view: 'workspace', agentId: null }) },
           },
           ...overview.agents.map(agent => ({
@@ -159,6 +163,7 @@ function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
             icon: <AgentIcon agentId={agent.id} label={agent.label} />,
             badge: counts.get(agent.id) ?? null,
             active: nav.view === 'workspace' && nav.agentId === agent.id,
+            suppressActive: panel,
             onClick: () => { goNav({ view: 'workspace', agentId: agent.id }) },
             className: agent.detected ? undefined : 'opacity-60',
           })),
@@ -175,6 +180,7 @@ function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
             label: root,
             icon: <Icon name="puzzle" size={14} />,
             active: nav.view === 'project' && nav.projectRoot === root,
+            suppressActive: panel,
             onClick: () => { goNav({ view: 'project', projectRoot: root }) },
           })),
           {
@@ -182,13 +188,14 @@ function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
             label: t('skills.nav.addProject'),
             icon: <Icon name="plus" size={14} />,
             active: nav.view === 'project' && (nav.projectRoot === null || nav.projectRoot === undefined),
+            suppressActive: panel,
             onClick: () => { goNav({ view: 'project', projectRoot: null }) },
           },
         ],
       })
     }
     setRailExtras('skills', sections)
-  }, [overview, nav, t, goNav])
+  }, [overview, nav, panel, t, goNav])
 
   // Unmount: hand the host rail back its flat routes only.
   useEffect(() => () => { setRailExtras('skills', []) }, [])
@@ -214,7 +221,7 @@ function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
           : nav.view === 'library'
             ? <div data-nav-anchor="library"><LibraryView /></div>
             : nav.view === 'add'
-              ? <div data-nav-anchor="add"><AddView /></div>
+              ? <AddView />
               : nav.view === 'backup'
                 ? <div data-nav-anchor="backup"><EmptyStateView view="backup" /></div>
                 : nav.view === 'workspace'

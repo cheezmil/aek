@@ -68,7 +68,6 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
    * backup = the restore mark).
    */
   skillsLibrary: 'layers',
-  skillsAdd: 'save',
   skillsBackup: 'restore',
   promptsSettings: 'settings',
   iconsSettings: 'settings',

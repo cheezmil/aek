@@ -30,6 +30,12 @@ export interface RailExtraRow {
   onClick?: () => void
   /** Extra className for the row. */
   className?: string
+  /**
+   * BJ round: while this row is the active one, the host panel id named here
+   * must NOT show its flat-route active highlight (the panel's drill-through
+   * owns the highlight instead — one highlighted row at a time).
+   */
+  suppressActive?: string
 }
 
 export interface RailExtraSection {
@@ -69,6 +75,7 @@ function stableShape(sections: SectionStore): string {
       row.badge ?? null,
       row.active ? 1 : 0,
       row.className ?? '',
+      row.suppressActive ?? '',
     ]),
   })))
 }

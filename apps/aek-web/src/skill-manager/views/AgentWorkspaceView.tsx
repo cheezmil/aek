@@ -115,7 +115,6 @@ export function AgentWorkspaceView() {
       <div className="flex flex-col gap-4">
         <div>
           <h2 className="text-lg font-bold text-text">{t('skills.nav.globalWorkspace')}</h2>
-          <p className="mt-1 text-sm text-text-muted">{t('skills.ws.subtitle')}</p>
         </div>
         <AgentCards />
       </div>
@@ -148,7 +147,6 @@ export function AgentWorkspaceView() {
           <AgentIcon agentId={agentId} label={agent?.label} size={24} />
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-lg font-bold text-text">{agent?.label ?? agentId}</h2>
-            <p className="text-xs text-text-muted">{t('skills.ws.subtitle')}</p>
           </div>
         </div>
         <Button variant="secondary" size="sm" onClick={() => { setPicked([]); setAddOpen(true) }}>

@@ -86,6 +86,11 @@ export interface PluginSubNavProps {
    * only the rendering of it.
    */
   hidden?: boolean
+  /**
+   * BJ round: the host's refresh handler (the row hover action box's refresh
+   * button). Absent = no action box on this rail's rows.
+   */
+  onRefresh?: (id: PanelId) => void
 }
 
 /** A round: the width a drag of the rail's right edge may reach (px). */
@@ -100,6 +105,10 @@ const RAIL_MAX_WIDTH = 360
 const RAIL_COMPACT_DEFAULT = 64
 const RAIL_COMPACT_MIN = 48
 const RAIL_COMPACT_MAX = 96
+/** BJ round: the row hover action box (a refresh button above the row, the
+ *  twin of the main rail's `.aek-row-actions`). */
+const RAIL_ROW_ACTIONS = 'aek-row-actions absolute bottom-full right-0.5 z-3 mb-1 flex items-center gap-0.5 p-0.5 border border-border rounded-sm bg-card shadow-md opacity-0 pointer-events-none translate-x-1.5 transition-[opacity,transform] duration-150 ease-aek group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-x-0'
+const RAIL_ROW_ICON_BUTTON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted cursor-pointer transition-[color,background-color,transform] duration-140 ease-aek hover:text-primary hover:bg-accent-soft'
 
 /** @param raw - the parsed compact width. @returns a clamped number, or undefined. */
 function parseRailCompactWidth(raw: unknown): number | undefined {
@@ -120,7 +129,7 @@ function parseRailWidth(raw: unknown): number | undefined {
  * @param props - active panel, selection and the label state.
  * @returns the rail, or `null` when the active panel has no family routes.
  */
-export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = false }: PluginSubNavProps) {
+export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = false, onRefresh }: PluginSubNavProps) {
   const { t, tf } = useI18n()
   const { record } = useLastSubMemory()
   // `panelFamilyOf` returns the owning family as a plain string; every family
@@ -147,6 +156,17 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
   // agent sub-list) collapse independently; the set holds the CLOSED keys.
   const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set())
   const extras = useRailExtras(family)
+  // BJ round: while an extras row is active AND names a host panel to
+  // suppress (`suppressActive`), that host panel's flat row loses its active
+  // highlight — the drill-through owns the highlight, one row at a time.
+  const suppressed = new Set(
+    extras
+      .flatMap(section => section.rows)
+      .filter(row => row.active && row.suppressActive !== undefined)
+      .map(row => row.suppressActive as string),
+  )
+  /** @param id - the route id. @returns whether the flat row shows active. */
+  const isRouteActive = (id: PanelId): boolean => active === id && !suppressed.has(id)
   /** @param key - the section key. @returns whether the section is open. */
   const isSectionOpen = (key: string): boolean => !collapsedSections.has(key)
   /** @param key - the section key. Toggle its open state. */
@@ -284,7 +304,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
           the void because the nav's `overflow-hidden` swallowed both axes. */}
       <div
         className={cn(
-          'aek-plugin-rail-body flex min-h-0 flex-1 flex-col gap-3 overflow-auto',
+          'aek-plugin-rail-body flex min-h-0 flex-1 flex-col gap-3 overflow-auto pt-2',
           railHScroll && 'aek-plugin-rail-hscroll',
           railVScroll && 'aek-plugin-rail-vscroll',
         )}
@@ -293,29 +313,45 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
         <ul
           className="flex flex-col gap-1"
         >
-          {visibleRoutes.map(route => (
-            <li key={route.id} data-panel={route.id}>
-              <button
-                type="button"
-                tabIndex={hidden ? -1 : undefined}
-                className={cn(
-                  'relative flex h-8.5 w-full items-center gap-2 rounded-sm px-2 text-aek-13 font-medium text-text-secondary bg-transparent border-0 text-left whitespace-nowrap cursor-pointer transition-colors duration-140 ease-aek hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2',
-                  active === route.id
-                    && 'text-accent-ink bg-accent-soft hover:bg-accent-soft hover:text-accent-ink before:absolute before:content-[""] before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.75 before:rounded-r-aek-bar before:bg-primary',
-                  labelsHidden && 'justify-center px-0',
-                )}
-                aria-current={active === route.id ? 'page' : undefined}
-                title={route.label}
-                onClick={() => {
-                  onSelect(route.id)
-                  record(family, route.id)
-                }}
-              >
-                <span className={cn('inline-flex flex-none items-center justify-center text-text-muted', active === route.id && 'text-accent-ink')}><Icon name={route.icon} size={14} /></span>
-                <span className={cn('min-w-0 overflow-hidden text-ellipsis', labelsHidden && 'hidden')}>{route.label}</span>
-              </button>
-            </li>
-          ))}
+          {visibleRoutes.map((route) => {
+            const routeActive = isRouteActive(route.id)
+            return (
+              <li key={route.id} data-panel={route.id} className="group relative">
+                <button
+                  type="button"
+                  tabIndex={hidden ? -1 : undefined}
+                  className={cn(
+                    'relative flex h-8.5 w-full items-center gap-2 rounded-sm px-2 text-aek-13 font-medium text-text-secondary bg-transparent border-0 text-left whitespace-nowrap cursor-pointer transition-colors duration-140 ease-aek hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2',
+                    routeActive
+                      && 'text-accent-ink bg-accent-soft hover:bg-accent-soft hover:text-accent-ink before:absolute before:content-[""] before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.75 before:rounded-r-aek-bar before:bg-primary',
+                    labelsHidden && 'justify-center px-0',
+                  )}
+                  aria-current={routeActive ? 'page' : undefined}
+                  title={route.label}
+                  onClick={() => {
+                    onSelect(route.id)
+                    record(family, route.id)
+                  }}
+                >
+                  <span className={cn('inline-flex flex-none items-center justify-center text-text-muted', routeActive && 'text-accent-ink')}><Icon name={route.icon} size={14} /></span>
+                  <span className={cn('min-w-0 overflow-hidden text-ellipsis', labelsHidden && 'hidden')}>{route.label}</span>
+                </button>
+                {onRefresh !== undefined ? (
+                  <div className={RAIL_ROW_ACTIONS}>
+                    <button
+                      type="button"
+                      className={RAIL_ROW_ICON_BUTTON}
+                      title={t('nav.refresh')}
+                      aria-label={t('nav.refresh')}
+                      onClick={() => { onRefresh(route.id) }}
+                    >
+                      <Icon name="refresh" size={13} />
+                    </button>
+                  </div>
+                ) : null}
+              </li>
+            )
+          })}
         </ul>
 
         {/* BH round Plan C: plugin-filled extras sections (the agent sub-list
@@ -342,7 +378,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                   {open ? (
                     <ul className="mt-0.5 flex flex-col gap-0.5 pl-1">
                       {section.rows.map((row: RailExtraRow) => (
-                        <li key={row.id}>
+                        <li key={row.id} className="group relative">
                           <button
                             type="button"
                             tabIndex={hidden ? -1 : undefined}
@@ -361,6 +397,19 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                             <span className={cn('min-w-0 flex-1 overflow-hidden text-ellipsis text-left', labelsHidden && 'hidden')}>{row.label}</span>
                             {row.badge !== undefined && row.badge !== null && row.badge > 0 ? <span className={cn('min-w-4.5 flex-none rounded-full bg-surface-hover px-1.5 text-aek-11 tabular-nums text-text-muted', labelsHidden && 'hidden')}>{String(row.badge)}</span> : null}
                           </button>
+                          {onRefresh !== undefined ? (
+                            <div className={RAIL_ROW_ACTIONS}>
+                              <button
+                                type="button"
+                                className={RAIL_ROW_ICON_BUTTON}
+                                title={t('nav.refresh')}
+                                aria-label={t('nav.refresh')}
+                                onClick={() => { onRefresh(family) }}
+                              >
+                                <Icon name="refresh" size={13} />
+                              </button>
+                            </div>
+                          ) : null}
                         </li>
                       ))}
                     </ul>

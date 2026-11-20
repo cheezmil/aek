@@ -36,7 +36,7 @@ import { BrandMark, Icon } from './Icons.tsx'
 import type { BrandVariant } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import type { Locale } from './i18n.tsx'
-import { NAV, NAV_TOP, RAIL_HIDDEN_KEY, RAIL_LABELS_HIDDEN_KEY, panelFamilyOf, parseCommaList, subEntriesOf, toggleInCommaList, useLastSubMemory } from './nav-model.ts'
+import { NAV, NAV_TOP, RAIL_HIDDEN_KEY, RAIL_LABELS_HIDDEN_KEY, parseCommaList, subEntriesOf, toggleInCommaList, useLastSubMemory } from './nav-model.ts'
 import type { NavEntry, PanelId } from './nav-model.ts'
 import { parseBoolean, PREF_KEYS, usePrefLanded, usePref, useSettings } from './preferences.tsx'
 import { cn } from '@/lib/utils'
@@ -56,7 +56,7 @@ const RAIL_ITEM_ACTIVE = 'text-accent-ink bg-accent-soft hover:text-accent-ink h
 const NAV_ROW = 'group relative flex items-center gap-0.5 cursor-grab active:cursor-grabbing'
 const NAV_ROW_DROP_BEFORE = 'before:content-[""] before:absolute before:left-1 before:right-1 before:-top-0.75 before:h-0.5 before:rounded-3xs before:bg-primary before:shadow-aek-ring'
 const NAV_ROW_DROP_AFTER = 'after:content-[""] after:absolute after:left-1 after:right-1 after:-bottom-0.75 after:h-0.5 after:rounded-3xs after:bg-primary after:shadow-aek-ring'
-const ROW_ACTIONS = 'aek-row-actions absolute top-1/2 right-0.5 z-3 flex items-center gap-0.5 p-0.5 border border-border rounded-sm bg-card shadow-md opacity-0 pointer-events-none translate-x-1.5 -translate-y-1/2 transition-[opacity,transform] duration-150 ease-aek group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-x-0'
+const ROW_ACTIONS = 'aek-row-actions absolute bottom-full right-0.5 z-3 mb-1 flex items-center gap-0.5 p-0.5 border border-border rounded-sm bg-card shadow-md opacity-0 pointer-events-none translate-x-1.5 transition-[opacity,transform] duration-150 ease-aek group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-x-0'
 const ROW_ICON_BUTTON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted cursor-pointer transition-[color,background-color,transform] duration-140 ease-aek hover:text-primary hover:bg-accent-soft'
 const LABEL_FADE = 'aek-label-fade'
 const LABEL_FADE_HIDDEN = 'aek-label-fade-hidden'
@@ -319,20 +319,21 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   const prefLanded = usePrefLanded()
   /**
    * A round: the per-family plugin route rail states (comma lists, shared
-   * keys in `nav-model.ts`). D round: a single click on the family row
-   * TOGGLES the rail show/hide — but ONLY while the active panel is this
-   * family's (switching into the page from another panel never touches the
-   * rail). BI round: the old double-click "collapse labels" action is retired
+   * keys in `nav-model.ts`). BJ round: a single click on the family row
+   * TOGGLES the rail show/hide from ANY page (the D-round on-family gate is
+   * retired — "click a row to collapse the rail" is the user's expectation).
+   * BI round: the old double-click "collapse labels" shortcut is retired
    * (it now lives in the row's hover action box as a dedicated icon).
    */
   const [, setRailHidden] = usePref<string>(RAIL_HIDDEN_KEY, '', parseCommaList)
   const [railLabelsHidden, setRailLabelsHidden] = usePref<string>(RAIL_LABELS_HIDDEN_KEY, '', parseCommaList)
 
   /**
-   * One click on a row. Family rows (owning plugin routes) toggle the
-   * plugin rail on a single click while on this family's page; plain rows
-   * select immediately. The label collapse no longer rides on a double
-   * click — it is the dedicated icon in the hover action box.
+   * One click on a row. Family rows (owning plugin routes) select and, on a
+   * SINGLE click, TOGGLE their plugin rail — from ANY page (BJ round; the
+   * old on-family-only gate made "click a different row" never collapse the
+   * rail). Plain rows select immediately. Double clicks are inert; the label
+   * collapse is the dedicated icon in the hover box.
    * @param entry - the row clicked.
    * @param subIds - the row's plugin routes (empty = plain row).
    * @param detail - the browser click count (only 1 is acted on).
@@ -342,15 +343,9 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
       onSelect(entry.id)
       return
     }
-    // D round: "on this page" = the active panel IS the family root or one of
-    // its sub-routes. Only there do the rail side effects apply at all.
-    const onFamily = active === entry.id || panelFamilyOf(active) === entry.id
     const remembered = lastSub.get(entry.id)
     onSelect(remembered ?? entry.id)
-    if (detail === 1 && onFamily) {
-      // Single click ON THE PAGE: toggle the rail show/hide immediately.
-      // (A cross-page single click is a pure switch — no rail side effect,
-      // so arriving on the page never re-shapes the layout under the user.)
+    if (detail === 1) {
       setRailHidden(current => toggleInCommaList(current, entry.id))
     }
   }

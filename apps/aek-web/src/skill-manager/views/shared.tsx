@@ -37,15 +37,16 @@ export const SKILL_VIEW_ICONS: Record<SkillViewId, IconName> = {
   workspace: 'globe',
 }
 
-/** The four TOP-LEVEL views the console rail's flat skills-family routes
- *  own (Plan C: the rail row's panel id drives the panel's base view). */
-export type TopLevelSkillView = 'dashboard' | 'library' | 'add' | 'backup'
+/** The three TOP-LEVEL views the console rail's flat skills-family routes
+ *  own (Plan C: the rail row's panel id drives the panel's base view).
+ *  BJ round: the add face lost its rail row — it is a panel-local drill the
+ *  views' own buttons open (the reference's standalone "install" page is gone). */
+export type TopLevelSkillView = 'dashboard' | 'library' | 'backup'
 
 /** The host panel id that renders each top-level skill view. */
 export const SKILL_VIEW_PANELS: Record<TopLevelSkillView, PanelId> = {
   dashboard: 'skills',
   library: 'skillsLibrary',
-  add: 'skillsAdd',
   backup: 'skillsBackup',
 }
 

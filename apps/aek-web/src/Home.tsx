@@ -365,7 +365,15 @@ function Console() {
 
       <div className={cn('flex flex-1 flex-col min-w-0', family !== undefined && 'flex-row')}>
         {family !== undefined
-          ? <PluginSubNav active={panel} onSelect={setPanel} labelsHidden={labelsCollapsed} hidden={railHidden} />
+          ? (
+            <PluginSubNav
+              active={panel}
+              onSelect={setPanel}
+              labelsHidden={labelsCollapsed}
+              hidden={railHidden}
+              onRefresh={requestRefresh}
+            />
+          )
           : null}
         <div className="flex flex-1 flex-col min-w-0">
           {/* FF-NOTE: .content had max-width: 1320px → max-w-330 (v4 dynamic spacing: 330 × 4px);
