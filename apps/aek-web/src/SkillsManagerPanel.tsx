@@ -22,7 +22,7 @@
  *
  * @module @cheezmil/aek-web/src/SkillsManagerPanel
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from './Icons.tsx'
 import { useI18n } from './i18n.tsx'
 import { PanelCard, Spinner } from './ui-kit.tsx'
@@ -99,6 +99,12 @@ function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
   const { t } = useI18n()
   const [panel, setPanel] = usePref<PanelId>(PREF_KEYS.panel, 'runtime', oneOf([...NAV_IDS, 'plugins'] as readonly PanelId[]))
   const [drill, setDrill] = useState<SkillNav | null>(null)
+  // BL-12 round: a drill click that brings the DASHBOARD face forward (the
+  // extras rows stay rendered on the library / backup / settings faces too,
+  // but the drill-throughs live in the hidden dashboard face) must survive
+  // the [panel] effect below — the flag says "this panel change was driven
+  // by my own goNav, keep the just-set drill".
+  const keepDrillOnPanelChange = useRef(false)
   const [noticeSlot, setNoticeSlot] = useState<NoticeSlot>(idleNotice)
 
   const notify = useCallback((kind: 'ok' | 'error', text: string): void => {
@@ -123,15 +129,33 @@ function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
     // workspace / project drill-throughs.
     if (next.view === 'workspace' || next.view === 'project' || next.view === 'add') {
       setDrill(next)
+      // BL-12 round: the extras rows stay published on EVERY skills-family
+      // face (the rail is shared), but the drill-throughs render inside the
+      // dashboard face — the library / backup faces share that instance,
+      // while the settings face is a SEPARATE render. From the settings face
+      // the click used to write the drill into the hidden face: no visible
+      // change ("the agent rows are dead"). Bring the dashboard face to
+      // the front; the [panel] effect below keeps the just-set drill via
+      // the keepDrillOnPanelChange flag.
+      if (panel !== SKILL_VIEW_PANELS.dashboard) {
+        keepDrillOnPanelChange.current = true
+        setPanel(SKILL_VIEW_PANELS.dashboard)
+      }
       return
     }
     setDrill(null)
     setPanel(SKILL_VIEW_PANELS[next.view])
-  }, [setPanel])
+  }, [setPanel, panel])
 
-  // A host rail click (or a deep link) into the family's flat routes
-  // resets the panel-local drill-through: the base view is rail-owned.
-  useEffect(() => { setDrill(null) }, [panel])
+  // A host rail click (or a deep link) into a NON-dashboard face resets the
+  // panel-local drill-through: the base view is rail-owned. BL-12 round: the
+  // drill click that just brought the dashboard face forward (the
+  // keepDrillOnPanelChange flag, set in goNav) keeps its just-set drill.
+  useEffect(() => {
+    const keep = keepDrillOnPanelChange.current
+    keepDrillOnPanelChange.current = false
+    if (!keep) { setDrill(null) }
+  }, [panel])
 
   const nav: SkillNav = drill !== null ? drill : { view: skillViewOfPanel(panel) }
 
