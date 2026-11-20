@@ -6,12 +6,13 @@
  * Plan C (2026-11-20 user ruling m02462, supersedes Plan B's in-panel
  * sidebar): the reference's LEFT COLUMN lives in the HOST's secondary rail
  * (`PluginSubNav`) — the flat skills-family routes (技能库 / 安装 Skills /
- * 备份 / Skill 设置) plus the plugin-filled extras sections (the Preset /
- * 全局工作区 agent sub-list, each agent row with its brand icon, the
- * optional Projects group), published through the `rail-extras` store. The
- * panel renders the single view column: the base view is derived from the
- * host's active panel (`skillViewOfPanel`); the preset / workspace /
- * project drill-throughs are panel-local state the extras rows drive.
+ * 备份 / Skill 设置) plus the plugin-filled extras sections (the 各个agent
+ * sub-list, each agent row with its brand icon, the optional Projects
+ * group), published through the `rail-extras` store. BI round: the
+ * reference's Preset face is dropped (ADR-0019 stays engine-side only).
+ * The panel renders the single view column: the base view is derived from
+ * the host's active panel (`skillViewOfPanel`); the workspace / project
+ * drill-throughs are panel-local state the extras rows drive.
  *
  * Data: one `useSkills` for the whole panel (the host's `/api/aek/skills/*`,
  * the SAME in-process engine the `aeksm` CLI drives); the shared notice slot
@@ -90,9 +91,9 @@ export function SkillsManagerPanel({ refreshSignal }: { refreshSignal: number })
  * The loaded body — Plan C: the reference's left column lives in the HOST
  * rail (the flat skills-family routes + the plugin-filled extras sections
  * below them); the panel renders the single view column. The base view is
- * derived from the host's active panel (`skillViewOfPanel`); the preset /
- * workspace / project drill-throughs are panel-local state the extras rows
- * (and the views' own buttons) drive.
+ * derived from the host's active panel (`skillViewOfPanel`); the workspace /
+ * project drill-throughs are panel-local state the extras rows (and the
+ * views' own buttons) drive.
  */
 function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
   const { t } = useI18n()
@@ -117,7 +118,7 @@ function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
   }, [noticeSlot])
 
   const goNav = useCallback((next: SkillNav): void => {
-    if (next.view === 'workspace' || next.view === 'preset' || next.view === 'project') {
+    if (next.view === 'workspace' || next.view === 'project') {
       setDrill(next)
       return
     }
@@ -131,25 +132,15 @@ function SkillsPanelBody({ skills }: { skills: ReturnType<typeof useSkills> }) {
 
   const nav: SkillNav = drill !== null ? drill : { view: skillViewOfPanel(panel) }
 
-  // Plan C: fill the host rail's extras sections — the reference's Preset /
-  // 全局工作区 (the agent sub-list with brand icons) + optional Projects
-  // groups (the agentSkillCounts badges, the active-row highlight).
+  // Plan C: fill the host rail's extras sections — 全局工作区 (the agent
+  // sub-list with brand icons) + optional Projects groups (the
+  // agentSkillCounts badges, the active-row highlight). BI round: the
+  // reference's Preset section is dropped (ADR-0019 stays engine-side only).
   const overview = skills.overview
   useEffect(() => {
     if (overview === undefined) return
     const counts = agentSkillCounts(overview.agents, overview.skills, overview.distributionBySkill)
     const sections: RailExtraSection[] = [
-      {
-        key: 'preset',
-        title: t('skills.nav.presets'),
-        rows: [{
-          id: 'newPreset',
-          label: t('skills.nav.newPreset'),
-          icon: <Icon name="plus" size={14} />,
-          active: nav.view === 'preset',
-          onClick: () => { goNav({ view: 'preset' }) },
-        }],
-      },
       {
         key: 'workspace',
         title: t('skills.nav.globalWorkspace'),

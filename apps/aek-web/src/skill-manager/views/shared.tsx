@@ -17,21 +17,21 @@ import type { DistributionTarget } from '../domain/distribution.ts'
 import type { RowStatus } from '../domain/rowStatus.ts'
 import type { PickerAgent } from '../domain/picker.ts'
 
-/** The panel's seven views (the reference's IA, 0-conclusion + m01832
- *  sidebar ruling): dashboard / library / add are live faces; preset /
- *  project / backup are the engine-supported empty states; workspace is
- *  the 全局工作区 (per-agent skill set). */
-export type SkillViewId = 'dashboard' | 'library' | 'add' | 'preset' | 'project' | 'backup' | 'workspace'
+/** The panel's six views (the reference's IA, 0-conclusion + m01832
+ *  sidebar ruling): dashboard / library / add are live faces; project /
+ *  backup are the engine-supported empty states; workspace is the 各个
+ *  agent (per-agent skill set). BI round: the reference's Preset face is
+ *  dropped (the engine keeps it CLI-side, ADR-0019). */
+export type SkillViewId = 'dashboard' | 'library' | 'add' | 'project' | 'backup' | 'workspace'
 
 /** The view ids in the reference's sidebar order. */
-export const SKILL_VIEW_IDS: readonly SkillViewId[] = ['dashboard', 'library', 'add', 'backup', 'preset', 'project', 'workspace']
+export const SKILL_VIEW_IDS: readonly SkillViewId[] = ['dashboard', 'library', 'add', 'backup', 'project', 'workspace']
 
 /** The sidebar glyph per view (the app's own icon set, P16). */
 export const SKILL_VIEW_ICONS: Record<SkillViewId, IconName> = {
   dashboard: 'layout',
   library: 'layers',
   add: 'save',
-  preset: 'layers',
   project: 'puzzle',
   backup: 'restore',
   workspace: 'globe',

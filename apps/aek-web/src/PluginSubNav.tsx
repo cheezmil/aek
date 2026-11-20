@@ -35,7 +35,7 @@
  *
  * @module @cheezmil/aek-web/src/PluginSubNav
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { Icon } from './Icons.tsx'
 import type { IconName } from './Icons.tsx'
@@ -190,6 +190,28 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
   // hint shows on first use.
   const [railHint, setRailHint] = usePref<boolean>(RAIL_HINT_KEY, true, parseBoolean)
   const hintVisible = railHint
+  // BI round: the rail's per-axis scrollbar toggles (both default OFF — the
+  // bars stay invisible while the content still scrolls; the CSS classes in
+  // index.css bring each bar back, the twin of the main rail's h-scroll row).
+  const [railHScroll] = usePref<boolean>('aek-home.pluginRailHScroll', false, parseBoolean)
+  const [railVScroll] = usePref<boolean>('aek-home.pluginRailVScroll', false, parseBoolean)
+  // BI round: the rail's own search box (a hard requirement — the sub-sections
+  // are the quick locator). Resets on every family switch; Enter jumps to
+  // the first hit (a route, else an extras row).
+  const [query, setQuery] = useState('')
+  useEffect(() => { setQuery('') }, [family])
+  const needle = query.trim().toLowerCase()
+  const visibleRoutes = needle === ''
+    ? routes
+    : routes.filter(route => route.label.toLowerCase().includes(needle) || route.id.toLowerCase().includes(needle))
+  const visibleExtras = needle === ''
+    ? extras
+    : extras
+      .map(section => ({
+        ...section,
+        rows: section.rows.filter(row => row.label.toLowerCase().includes(needle) || row.id.toLowerCase().includes(needle)),
+      }))
+      .filter(section => section.rows.length > 0)
 
   return (
     <nav
@@ -221,83 +243,134 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
         ...(hidden ? { padding: '0px', borderRightWidth: '0px' } : null),
       } as CSSProperties}
     >
+      {/* BI round: the rail's own search box (a hard requirement) — fixed
+          ABOVE the scrolling body so it never scrolls away, and rendered
+          in every mode, icon-only included. */}
+      <div className={cn('flex flex-none items-center gap-1.5 rounded-sm border border-border bg-surface-hover px-2 py-1.5', labelsHidden && 'justify-center')}>
+        <Icon name="search" size={13} className="flex-none text-text-muted" />
+        <input
+          type="text"
+          className="w-full min-w-0 flex-1 border-0 bg-transparent p-0 text-aek-12 text-text placeholder:text-text-muted focus:outline-none"
+          value={query}
+          placeholder={t('nav.pluginSearch')}
+          aria-label={t('nav.pluginSearch')}
+          onChange={(event) => { setQuery(event.target.value) }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') { setQuery('') }
+            if (event.key === 'Enter' && needle !== '') {
+              const hit = visibleRoutes.length > 0
+                ? { kind: 'route' as const, route: visibleRoutes[0] }
+                : visibleExtras.length > 0
+                  ? { kind: 'extra' as const, row: visibleExtras[0].rows[0] }
+                  : undefined
+              if (hit !== undefined) {
+                if (hit.kind === 'route') {
+                  onSelect(hit.route.id)
+                  record(family, hit.route.id)
+                } else {
+                  hit.row.onClick?.()
+                }
+                setQuery('')
+              }
+            }
+          }}
+        />
+      </div>
       {/* The rows fade with the fold (`.aek-rail-fold ul` in index.css);
-          the clipping of the zero-width column does the rest. */}
-      <ul
-        className="flex flex-col gap-1"
+          the clipping of the zero-width column does the rest. BI round: the
+          body scrolls (per-axis bars hidden by default, the
+          `.aek-plugin-rail-*scroll` classes in index.css bring each back)
+          inside the clipped column — 79 agent rows used to overflow into
+          the void because the nav's `overflow-hidden` swallowed both axes. */}
+      <div
+        className={cn(
+          'aek-plugin-rail-body flex min-h-0 flex-1 flex-col gap-3 overflow-auto',
+          railHScroll && 'aek-plugin-rail-hscroll',
+          railVScroll && 'aek-plugin-rail-vscroll',
+        )}
         style={{ opacity: hidden ? 0 : 1 }}
       >
-        {routes.map(route => (
-          <li key={route.id} data-panel={route.id}>
-            <button
-              type="button"
-              tabIndex={hidden ? -1 : undefined}
-              className={cn(
-                'relative flex h-8.5 w-full items-center gap-2 rounded-sm px-2 text-aek-13 font-medium text-text-secondary bg-transparent border-0 text-left whitespace-nowrap cursor-pointer transition-colors duration-140 ease-aek hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2',
-                active === route.id
-                  && 'text-accent-ink bg-accent-soft hover:bg-accent-soft hover:text-accent-ink before:absolute before:content-[""] before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.75 before:rounded-r-aek-bar before:bg-primary',
-                labelsHidden && 'justify-center px-0',
-              )}
-              aria-current={active === route.id ? 'page' : undefined}
-              title={route.label}
-              onClick={() => {
-                onSelect(route.id)
-                record(family, route.id)
-              }}
-            >
-              <span className={cn('inline-flex flex-none items-center justify-center text-text-muted', active === route.id && 'text-accent-ink')}><Icon name={route.icon} size={14} /></span>
-              <span className={cn('min-w-0 overflow-hidden text-ellipsis', labelsHidden && 'hidden')}>{route.label}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      {/* BH round Plan C: plugin-filled extras sections (Preset / agent
-          sub-list). Hidden when the rail is icon-only or folded — the
-          zero-width column clips the rest. */}
-      {extras.length > 0 && !labelsHidden ? (
-        <div className="mt-3 flex flex-col gap-2" style={{ opacity: hidden ? 0 : 1 }}>
-          {extras.map(section => (
-            <div key={section.key}>
+        <ul
+          className="flex flex-col gap-1"
+        >
+          {visibleRoutes.map(route => (
+            <li key={route.id} data-panel={route.id}>
               <button
                 type="button"
                 tabIndex={hidden ? -1 : undefined}
-                className="flex w-full items-center gap-1 rounded-sm border-0 bg-transparent p-1 text-aek-11 font-semibold text-text-muted cursor-pointer transition-colors duration-140 ease-aek hover:text-text"
-                aria-expanded={isSectionOpen(section.key)}
-                onClick={() => { toggleSection(section.key) }}
+                className={cn(
+                  'relative flex h-8.5 w-full items-center gap-2 rounded-sm px-2 text-aek-13 font-medium text-text-secondary bg-transparent border-0 text-left whitespace-nowrap cursor-pointer transition-colors duration-140 ease-aek hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2',
+                  active === route.id
+                    && 'text-accent-ink bg-accent-soft hover:bg-accent-soft hover:text-accent-ink before:absolute before:content-[""] before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.75 before:rounded-r-aek-bar before:bg-primary',
+                  labelsHidden && 'justify-center px-0',
+                )}
+                aria-current={active === route.id ? 'page' : undefined}
+                title={route.label}
+                onClick={() => {
+                  onSelect(route.id)
+                  record(family, route.id)
+                }}
               >
-                <Icon name="chevronDown" size={11} className={cn('transition-transform duration-140', !isSectionOpen(section.key) && '-rotate-90')} />
-                <span className="min-w-0 overflow-hidden text-ellipsis">{section.title}</span>
+                <span className={cn('inline-flex flex-none items-center justify-center text-text-muted', active === route.id && 'text-accent-ink')}><Icon name={route.icon} size={14} /></span>
+                <span className={cn('min-w-0 overflow-hidden text-ellipsis', labelsHidden && 'hidden')}>{route.label}</span>
               </button>
-              {isSectionOpen(section.key) ? (
-                <ul className="mt-0.5 flex flex-col gap-0.5 pl-1">
-                  {section.rows.map((row: RailExtraRow) => (
-                    <li key={row.id}>
-                      <button
-                        type="button"
-                        tabIndex={hidden ? -1 : undefined}
-                        className={cn(
-                          'relative flex h-8.5 w-full items-center gap-2 rounded-sm px-2 text-aek-13 font-medium text-text-secondary bg-transparent border-0 text-left whitespace-nowrap cursor-pointer transition-colors duration-140 ease-aek hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2',
-                          row.active
-                            && 'text-accent-ink bg-accent-soft hover:bg-accent-soft hover:text-accent-ink before:absolute before:content-[""] before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.75 before:rounded-r-aek-bar before:bg-primary',
-                          row.className,
-                        )}
-                        aria-current={row.active ? 'page' : undefined}
-                        title={row.label}
-                        onClick={() => { row.onClick?.() }}
-                      >
-                        {row.icon !== undefined ? <span className="inline-flex flex-none items-center justify-center text-text-muted">{row.icon}</span> : null}
-                        <span className="min-w-0 flex-1 overflow-hidden text-ellipsis text-left">{row.label}</span>
-                        {row.badge !== undefined && row.badge !== null && row.badge > 0 ? <span className="min-w-4.5 flex-none rounded-full bg-surface-hover px-1.5 text-aek-11 tabular-nums text-text-muted">{String(row.badge)}</span> : null}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
+            </li>
           ))}
-        </div>
-      ) : null}
+        </ul>
+
+        {/* BH round Plan C: plugin-filled extras sections (the agent sub-list
+            with brand icons, optional Projects group). BI round: icon-only
+            mode keeps them (the user's 3rd ruling: hiding the labels must not
+            delete the icons) — the rows render centered icon-only, the section
+            heads keep their chevron. A live search force-expands the sections. */}
+        {extras.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {(needle === '' ? extras : visibleExtras).map((section) => {
+              const open = needle !== '' || isSectionOpen(section.key)
+              return (
+                <div key={section.key}>
+                  <button
+                    type="button"
+                    tabIndex={hidden ? -1 : undefined}
+                    className={cn('flex w-full items-center gap-1 rounded-sm border-0 bg-transparent p-1 text-aek-11 font-semibold text-text-muted cursor-pointer transition-colors duration-140 ease-aek hover:text-text', labelsHidden && 'justify-center')}
+                    aria-expanded={open}
+                    onClick={() => { toggleSection(section.key) }}
+                  >
+                    <Icon name="chevronDown" size={11} className={cn('flex-none transition-transform duration-140', !open && '-rotate-90')} />
+                    <span className={cn('min-w-0 overflow-hidden text-ellipsis', labelsHidden && 'hidden')}>{section.title}</span>
+                  </button>
+                  {open ? (
+                    <ul className="mt-0.5 flex flex-col gap-0.5 pl-1">
+                      {section.rows.map((row: RailExtraRow) => (
+                        <li key={row.id}>
+                          <button
+                            type="button"
+                            tabIndex={hidden ? -1 : undefined}
+                            className={cn(
+                              'relative flex h-8.5 w-full items-center gap-2 rounded-sm px-2 text-aek-13 font-medium text-text-secondary bg-transparent border-0 text-left whitespace-nowrap cursor-pointer transition-colors duration-140 ease-aek hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2',
+                              row.active
+                                && 'text-accent-ink bg-accent-soft hover:bg-accent-soft hover:text-accent-ink before:absolute before:content-[""] before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.75 before:rounded-r-aek-bar before:bg-primary',
+                              labelsHidden && 'justify-center px-0',
+                              row.className,
+                            )}
+                            aria-current={row.active ? 'page' : undefined}
+                            title={row.label}
+                            onClick={() => { row.onClick?.() }}
+                          >
+                            {row.icon !== undefined ? <span className="inline-flex flex-none items-center justify-center text-text-muted">{row.icon}</span> : null}
+                            <span className={cn('min-w-0 flex-1 overflow-hidden text-ellipsis text-left', labelsHidden && 'hidden')}>{row.label}</span>
+                            {row.badge !== undefined && row.badge !== null && row.badge > 0 ? <span className={cn('min-w-4.5 flex-none rounded-full bg-surface-hover px-1.5 text-aek-11 tabular-nums text-text-muted', labelsHidden && 'hidden')}>{String(row.badge)}</span> : null}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
 
       {hintVisible
         ? (

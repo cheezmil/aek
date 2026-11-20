@@ -225,12 +225,32 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     default: 64, min: 48, max: 96, step: 2, unit: 'px',
   },
   {
+    // BI round: the plugin rail's per-axis scrollbars are HIDDEN by default
+    // (the content still scrolls) — these two toggles bring each bar back,
+    // the plugin-rail twin of the main rail's `aek-home.sidebarHScroll`.
+    key: 'aek-home.pluginRailHScroll', kind: 'toggle', group: 'sidebar',
+    labelKey: 'settings.pluginRailHScroll', hintKey: 'settings.pluginRailHScrollHint', default: false,
+  },
+  {
+    key: 'aek-home.pluginRailVScroll', kind: 'toggle', group: 'sidebar',
+    labelKey: 'settings.pluginRailVScroll', hintKey: 'settings.pluginRailVScrollHint', default: false,
+  },
+  {
     // A round: base switch for the plugin route rail's bottom operation hint
     // ("single-click the main rail row = show/hide this rail; double-click =
     // hide the labels"). The hint can also be dismissed inline with its ×;
     // flipping this ON re-arms it.
     key: 'aek-home.railHint', kind: 'toggle', group: 'navigation',
     labelKey: 'settings.railHint', hintKey: 'settings.railHintHint', default: true,
+  },
+  {
+    // BI round: the content column's padding (was a hard-coded px-20 / py-12
+    // the user found too wide). The CSS variable lands on the layout root
+    // through `sidebarCssVars`; index.css drives the main column off it, and
+    // small screens keep their fixed padding (see `.aek-content-main`).
+    key: 'aek-home.contentPad', kind: 'range', group: 'general',
+    labelKey: 'settings.contentPad', hintKey: 'settings.contentPadHint',
+    default: 24, min: 0, max: 64, step: 2, unit: 'px', cssVar: '--aek-content-pad',
   },
 ]
 

@@ -400,6 +400,35 @@
     height: 6px;
   }
 
+  /* BI round: the plugin rail's per-axis scrollbars — BOTH hidden by
+     default (the content still scrolls in both directions); the two
+     settings toggles bring each bar back, the plugin-rail twin of the
+     main rail's `.aek-sidebar-body` rule. */
+  .aek-plugin-rail-body::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+  .aek-plugin-rail-body::-webkit-scrollbar-thumb {
+    background: var(--aek-border-strong);
+    border-radius: 999px;
+  }
+  .aek-plugin-rail-body.aek-plugin-rail-vscroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .aek-plugin-rail-body.aek-plugin-rail-hscroll::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  /* BI round: the content column's padding, owned by the base setting
+     `aek-home.contentPad` (default 24px, was a hard-coded px-20 / py-12
+     the user found too wide). Vertical = the value, horizontal = 2× the
+     value (the old 48 / 80 ratio). Small screens keep a FIXED padding —
+     the `max-[860px]:px-8 max-[860px]:py-10` utilities on the same
+     element beat this components-layer rule. */
+  .aek-content-main {
+    padding: var(--aek-content-pad, 24px) calc(var(--aek-content-pad, 24px) * 2);
+  }
+
   /* The brand mark's glow (hover lives on the BUTTON, so a descendant rule). */
   .aek-brand-mark {
     filter: drop-shadow(0 2px 6px rgba(234, 88, 12, 0.24));

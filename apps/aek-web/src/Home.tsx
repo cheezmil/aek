@@ -370,9 +370,14 @@ function Console() {
         <div className="flex flex-1 flex-col min-w-0">
           {/* FF-NOTE: .content had max-width: 1320px → max-w-330 (v4 dynamic spacing: 330 × 4px);
               @media (max-width: 860px) padding: 20px 16px → max-[860px]:px-4 max-[860px]:py-5. */}
-          {/* III round +: 左右外边距 32 (p-8) → 24 (px-6, Vercel/Linear content-24 口径),
-              上下保持 32 — 用户点破「左右padding呢」：宽窗口下两侧 32px 留白太大。 */}
-          <main className="mx-auto flex-1 w-full max-w-330 py-12 px-20 max-[860px]:px-8 max-[860px]:py-10">
+          {/* III round +: 左右外边距 32 (p-8) → 24 (px-6) → px-20 / py-12，
+              用户点破「左右padding呢」；BI round 起留白改走基础设置。 */}
+          {/* BI round: the padding used to be hard-coded (py-12 px-20) and the
+              user found it too wide — it now comes from the base setting
+              `aek-home.contentPad` (index.css `.aek-content-main`, default 24px).
+              Small screens keep a FIXED padding: the max-[860px] utilities on
+              the same element beat the components-layer rule. */}
+          <main className="aek-content-main mx-auto flex-1 w-full max-w-330 max-[860px]:px-8 max-[860px]:py-10">
             {/* EE round: keep-alive — every visited panel renders; only the
                 active one is visible. Hidden trees keep their state, so a
                 switch back never rebuilds the elements from nothing.

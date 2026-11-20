@@ -671,7 +671,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   // family pages. The second-rail rows are the plugin-rail width pair plus
   // the one-time usage hint — they are filed under a dedicated section
   // instead of the plain "sidebar" / "navigation" groups they came from.
-  const SECOND_RAIL_KEYS = new Set(['aek-home.pluginRailWidth', 'aek-home.pluginRailCompactWidth', 'aek-home.railHint'])
+  const SECOND_RAIL_KEYS = new Set(['aek-home.pluginRailWidth', 'aek-home.pluginRailCompactWidth', 'aek-home.railHint', 'aek-home.pluginRailHScroll', 'aek-home.pluginRailVScroll'])
   const secondRailFields = visible.filter(field => SECOND_RAIL_KEYS.has(field.key))
   const matches = (keys: readonly string[]): boolean => needle.length === 0 || keys.join(' ').toLowerCase().includes(needle)
 

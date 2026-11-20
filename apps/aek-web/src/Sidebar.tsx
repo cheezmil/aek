@@ -63,7 +63,6 @@ const LABEL_FADE_HIDDEN = 'aek-label-fade-hidden'
 const NAV_SEARCH_WRAP = 'relative flex items-center gap-2 h-9 mb-4 border border-border rounded-sm bg-surface-subtle transition-[border-color,background-color] duration-150 ease-aek focus-within:border-accent-border focus-within:bg-card'
 const NAV_SEARCH_ICON = 'inline-flex shrink-0 text-text-muted'
 const NAV_SEARCH_INPUT = 'min-w-0 h-full p-0 text-text bg-transparent border-0 outline-none text-xs-plus placeholder:text-text-muted transition-opacity duration-150 ease-aek'
-const NAV_SEARCH_CLEAR = 'absolute top-0.5 left-0.5 size-5 p-0 text-text-muted bg-transparent border-0 rounded-2xs cursor-pointer hover:text-text hover:bg-surface-hover'
 const NAV_NO_MATCH = 'p-3 text-text-muted text-xs text-center transition-opacity duration-150 ease-aek'
 const LOCALE_MENU_ITEM = 'flex items-center justify-between gap-2 w-full p-2 px-2.5 text-text-secondary bg-transparent border-0 rounded-sm text-xs-plus text-left cursor-pointer hover:text-text hover:bg-surface-hover'
 const LOCALE_MENU_ACTIVE = 'text-accent-ink bg-accent-soft font-semibold'
@@ -323,24 +322,20 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
    * keys in `nav-model.ts`). D round: a single click on the family row
    * TOGGLES the rail show/hide — but ONLY while the active panel is this
    * family's (switching into the page from another panel never touches the
-   * rail); a double click collapses the rail's labels.
+   * rail). BI round: the old double-click "collapse labels" action is retired
+   * (it now lives in the row's hover action box as a dedicated icon).
    */
   const [, setRailHidden] = usePref<string>(RAIL_HIDDEN_KEY, '', parseCommaList)
-  const [, setRailLabelsHidden] = usePref<string>(RAIL_LABELS_HIDDEN_KEY, '', parseCommaList)
-  /**
-   * D round: records that the FIRST click of a double-click already toggled
-   * the rail (on-family only), so the second click can undo that toggle
-   * (net zero) while performing the label collapse. One flag per family.
-   */
-  const railToggledByFirstClick = useRef<Partial<Record<string, boolean>>>({})
+  const [railLabelsHidden, setRailLabelsHidden] = usePref<string>(RAIL_LABELS_HIDDEN_KEY, '', parseCommaList)
 
   /**
-   * One click on a row. Family rows (owning plugin routes) are
-   * single / double-click sensitive via the NATIVE `detail` count (zero
-   * timers — see the D-round note above); plain rows select immediately.
+   * One click on a row. Family rows (owning plugin routes) toggle the
+   * plugin rail on a single click while on this family's page; plain rows
+   * select immediately. The label collapse no longer rides on a double
+   * click — it is the dedicated icon in the hover action box.
    * @param entry - the row clicked.
    * @param subIds - the row's plugin routes (empty = plain row).
-   * @param detail - the browser click count (1 single, 2 double).
+   * @param detail - the browser click count (only 1 is acted on).
    */
   const handleRowClick = (entry: NavEntry, subIds: readonly string[], detail: number): void => {
     if (subIds.length === 0) {
@@ -352,30 +347,11 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
     const onFamily = active === entry.id || panelFamilyOf(active) === entry.id
     const remembered = lastSub.get(entry.id)
     onSelect(remembered ?? entry.id)
-    if (detail === 2 && onFamily && railToggledByFirstClick.current[entry.id] === true) {
-      // True double click on the page: undo the first click's rail toggle
-      // (net zero) and collapse the labels instead — the original double
-      // action, now immediate.
-      railToggledByFirstClick.current[entry.id] = undefined
-      setRailHidden(current => toggleInCommaList(current, entry.id))
-      setRailLabelsHidden(current => toggleInCommaList(current, entry.id))
-      return
-    }
     if (detail === 1 && onFamily) {
       // Single click ON THE PAGE: toggle the rail show/hide immediately.
       // (A cross-page single click is a pure switch — no rail side effect,
       // so arriving on the page never re-shapes the layout under the user.)
-      railToggledByFirstClick.current[entry.id] = true
       setRailHidden(current => toggleInCommaList(current, entry.id))
-      return
-    }
-    if (detail === 1) {
-      // E round: a cross-page FIRST click must also clear a STALE flag left
-      // by an earlier on-page single click — otherwise a later cross-page
-      // double click (whose first click was NOT on the page) would fire the
-      // label-collapse branch. The label logic applies only to a gesture
-      // that STARTED on the family's page.
-      railToggledByFirstClick.current[entry.id] = undefined
     }
   }
   /** X round: the base setting that restores the bottom horizontal scrollbar (default off). */
@@ -625,6 +601,20 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
           >
             <Icon name="pin" size={13} />
           </button>
+          {/* BI round: a dedicated icon replaces the retired double-click —
+              collapse / restore this family's plugin-rail labels. Family
+              rows only (plain rows own no plugin routes). */}
+          {subIds.length > 0 && (
+            <button
+              type="button"
+              className={cn(ROW_ICON_BUTTON, railLabelsHidden.split(',').includes(entry.id) && 'text-primary')}
+              onClick={() =>{  setRailLabelsHidden(current => toggleInCommaList(current, entry.id)) }}
+              title={t('nav.labelsToggle')}
+              aria-label={t('nav.labelsToggle')}
+            >
+              <Icon name="type" size={13} />
+            </button>
+          )}
         </div>
       </li>
     )
@@ -739,19 +729,6 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
               }
             }}
           />
-          {query.length > 0
-            ? (
-              <button
-                type="button"
-                className={cn(NAV_SEARCH_CLEAR, compact && 'basis-0 w-0 max-w-0 p-0 overflow-hidden opacity-0 pointer-events-none')}
-                onClick={() =>{  setQuery('') }}
-                title={t('nav.clear')}
-                aria-label={t('nav.clear')}
-              >
-                <Icon name="close" size={14} />
-              </button>
-            )
-            : null}
         </div>
 
         {/* H round: rows are invisible until the persisted order lands —

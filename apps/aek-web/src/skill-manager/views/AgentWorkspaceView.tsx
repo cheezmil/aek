@@ -98,7 +98,9 @@ const SKILL_SOURCE_ICON: Record<string, string> = { local: 'pin', git: 'globe', 
 
 export function AgentWorkspaceView() {
   const { t, tf } = useI18n()
-  const { skills, nav, goNav, notify } = useSkillView()
+  // BI round: the bare "全部 Agents" back-button is gone — navigation back to
+  // the card grid now runs through the host rail's "全部 Agents" extras row.
+  const { skills, nav, notify } = useSkillView()
   const [addOpen, setAddOpen] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
 
@@ -142,13 +144,6 @@ export function AgentWorkspaceView() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          className="text-xs text-text-muted hover:text-text"
-          onClick={() => { goNav({ view: 'workspace', agentId: null }) }}
-        >
-          {t('skills.nav.allAgents')}
-        </button>
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           <AgentIcon agentId={agentId} label={agent?.label} size={24} />
           <div className="min-w-0 flex-1">
