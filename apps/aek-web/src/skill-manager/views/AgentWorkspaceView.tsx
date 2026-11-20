@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { agentSkillCounts, skillsForAgent, skillsNotForAgent } from '../domain/workspace.ts'
-import { AgentMark } from './SkillSidebar.tsx'
+import { AgentIcon } from './AgentIcon.tsx'
 import { useRunWrite, useSkillView } from './shared.tsx'
 
 /** The all-agents card grid (the reference's agent card shape). */
@@ -39,7 +39,7 @@ function AgentCards() {
             'transition-colors hover:border-accent/50 hover:bg-card/60',
           )}
         >
-          <AgentMark label={agent.label} detected={agent.detected} size={40} />
+          <AgentIcon agentId={agent.id} label={agent.label} size={40} />
           <div className="text-center">
             <div className="text-sm font-semibold text-text">{agent.label}</div>
             {agent.detected
@@ -150,7 +150,7 @@ export function AgentWorkspaceView() {
           {t('skills.nav.allAgents')}
         </button>
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <AgentMark label={agent?.label ?? agentId} detected={agent?.detected ?? false} size={24} />
+          <AgentIcon agentId={agentId} label={agent?.label} size={24} />
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-lg font-bold text-text">{agent?.label ?? agentId}</h2>
             <p className="text-xs text-text-muted">{t('skills.ws.subtitle')}</p>

@@ -62,6 +62,14 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
    * sliders glyph, the house style for "settings" (one glyph, one meaning).
    */
   skillsSettings: 'settings',
+  /**
+   * BH round Plan C: the Skill Manager's flat rail rows — the reference's
+   * sidebar glyphs (library = stacked layers; install = a downward save;
+   * backup = the restore mark).
+   */
+  skillsLibrary: 'layers',
+  skillsAdd: 'save',
+  skillsBackup: 'restore',
   promptsSettings: 'settings',
   iconsSettings: 'settings',
   /**

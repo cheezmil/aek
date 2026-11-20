@@ -11,6 +11,7 @@ import { createContext, useCallback, useContext } from 'react'
 import type { ReactNode } from 'react'
 import type { AgentInfo, DistributionBySkill, SkillsState, SkillRow } from '../../useSkills.ts'
 import { Icon, type IconName } from '../../Icons.tsx'
+import type { PanelId } from '../../nav-model.ts'
 import { cn } from '@/lib/utils'
 import type { DistributionTarget } from '../domain/distribution.ts'
 import type { RowStatus } from '../domain/rowStatus.ts'
@@ -34,6 +35,29 @@ export const SKILL_VIEW_ICONS: Record<SkillViewId, IconName> = {
   project: 'puzzle',
   backup: 'restore',
   workspace: 'globe',
+}
+
+/** The four TOP-LEVEL views the console rail's flat skills-family routes
+ *  own (Plan C: the rail row's panel id drives the panel's base view). */
+export type TopLevelSkillView = 'dashboard' | 'library' | 'add' | 'backup'
+
+/** The host panel id that renders each top-level skill view. */
+export const SKILL_VIEW_PANELS: Record<TopLevelSkillView, PanelId> = {
+  dashboard: 'skills',
+  library: 'skillsLibrary',
+  add: 'skillsAdd',
+  backup: 'skillsBackup',
+}
+
+/**
+ * The top-level view a host panel renders (the rail owns these four; every
+ * other panel id — the family's settings page, a deep link, ... — falls back
+ * to the family home so the keep-alive tree never shows a dead view).
+ */
+export function skillViewOfPanel(panel: PanelId): SkillViewId {
+  const match = (Object.keys(SKILL_VIEW_PANELS) as TopLevelSkillView[])
+    .find(view => SKILL_VIEW_PANELS[view] === panel)
+  return match ?? 'dashboard'
 }
 
 /** A sidebar navigation target (the view + the drill-down payload). */

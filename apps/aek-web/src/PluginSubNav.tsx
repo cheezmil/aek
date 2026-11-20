@@ -41,6 +41,8 @@ import { Icon } from './Icons.tsx'
 import type { IconName } from './Icons.tsx'
 import { FAMILY_HOME_ICON } from './icon-registry.ts'
 import { useI18n } from './i18n.tsx'
+import { useRailExtras } from './rail-extras.ts'
+import type { RailExtraRow } from './rail-extras.ts'
 import {
   NAV,
   RAIL_COMPACT_WIDTH_KEY,
@@ -141,6 +143,20 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
   // not a constant — the user gets a granular row for the mini rail column.
   const [railCompactWidth] = usePref<number>(RAIL_COMPACT_WIDTH_KEY, RAIL_COMPACT_DEFAULT, parseRailCompactWidth)
   const [resized, setResized] = useState<number | undefined>(undefined)
+  // BH round Plan C: the plugin-filled extras sections (Preset / 全局工作区
+  // agent sub-list) collapse independently; the set holds the CLOSED keys.
+  const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set())
+  const extras = useRailExtras(family)
+  /** @param key - the section key. @returns whether the section is open. */
+  const isSectionOpen = (key: string): boolean => !collapsedSections.has(key)
+  /** @param key - the section key. Toggle its open state. */
+  const toggleSection = (key: string): void => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) { next.delete(key) } else { next.add(key) }
+      return next
+    })
+  }
   // A round: hidden labels → the rail compacts to the icon column; the
   // dragged width pref is untouched and comes back when the labels return.
   // 2026-11-18 flicker fix: the HIDDEN state (family rail tucked away) is
@@ -235,6 +251,53 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
           </li>
         ))}
       </ul>
+
+      {/* BH round Plan C: plugin-filled extras sections (Preset / agent
+          sub-list). Hidden when the rail is icon-only or folded — the
+          zero-width column clips the rest. */}
+      {extras.length > 0 && !labelsHidden ? (
+        <div className="mt-3 flex flex-col gap-2" style={{ opacity: hidden ? 0 : 1 }}>
+          {extras.map(section => (
+            <div key={section.key}>
+              <button
+                type="button"
+                tabIndex={hidden ? -1 : undefined}
+                className="flex w-full items-center gap-1 rounded-sm border-0 bg-transparent p-1 text-aek-11 font-semibold text-text-muted cursor-pointer transition-colors duration-140 ease-aek hover:text-text"
+                aria-expanded={isSectionOpen(section.key)}
+                onClick={() => { toggleSection(section.key) }}
+              >
+                <Icon name="chevronDown" size={11} className={cn('transition-transform duration-140', !isSectionOpen(section.key) && '-rotate-90')} />
+                <span className="min-w-0 overflow-hidden text-ellipsis">{section.title}</span>
+              </button>
+              {isSectionOpen(section.key) ? (
+                <ul className="mt-0.5 flex flex-col gap-0.5 pl-1">
+                  {section.rows.map((row: RailExtraRow) => (
+                    <li key={row.id}>
+                      <button
+                        type="button"
+                        tabIndex={hidden ? -1 : undefined}
+                        className={cn(
+                          'relative flex h-8.5 w-full items-center gap-2 rounded-sm px-2 text-aek-13 font-medium text-text-secondary bg-transparent border-0 text-left whitespace-nowrap cursor-pointer transition-colors duration-140 ease-aek hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2',
+                          row.active
+                            && 'text-accent-ink bg-accent-soft hover:bg-accent-soft hover:text-accent-ink before:absolute before:content-[""] before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.75 before:rounded-r-aek-bar before:bg-primary',
+                          row.className,
+                        )}
+                        aria-current={row.active ? 'page' : undefined}
+                        title={row.label}
+                        onClick={() => { row.onClick?.() }}
+                      >
+                        {row.icon !== undefined ? <span className="inline-flex flex-none items-center justify-center text-text-muted">{row.icon}</span> : null}
+                        <span className="min-w-0 flex-1 overflow-hidden text-ellipsis text-left">{row.label}</span>
+                        {row.badge !== undefined && row.badge !== null && row.badge > 0 ? <span className="min-w-4.5 flex-none rounded-full bg-surface-hover px-1.5 text-aek-11 tabular-nums text-text-muted">{String(row.badge)}</span> : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {hintVisible
         ? (

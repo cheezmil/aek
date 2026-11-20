@@ -36,6 +36,11 @@ export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts'
   | 'iconsLucide' | 'iconsTabler' | 'iconsPhosphor' | 'iconsHeroicons' | 'iconsBootstrap'
   | 'iconsSettings'
   | 'skillsSettings' | 'promptsSettings'
+  // BH round Plan C: the Skill Manager family's flat rail rows — the
+  // reference's sidebar nav (library / install / backup); the dashboard is
+  // the family home row. The preset + 全局工作区 sections are rail extras
+  // filled by the panel (rail-extras.ts), not flat rows.
+  | 'skillsLibrary' | 'skillsAdd' | 'skillsBackup'
   // R2 round: the second-level rail of the 插件与程序管理 page — one tab
   // per section of the composed page (an in-page POSITION, not a new page).
   | 'runtimeRuntimes' | 'runtimePlugins' | 'runtimeInfo'
@@ -113,6 +118,13 @@ export const NAV: readonly NavEntry[] = [
   // webui face owns a settings page on its family rail (the rail's synthetic
   // "{name}首页" row is the home page; this row is the settings page).
   { id: 'skillsSettings', labelKey: 'panel.skillsSettings', icon: NAV_ICONS.skillsSettings, group: 'plugins', subOf: 'skills', keywords: ['skill', 'settings', '设置'] },
+  // BH round Plan C: the Skill Manager's flat rail rows — the reference's
+  // sidebar nav (技能库 / 安装 Skills / 备份). The dashboard is the family
+  // home row; the Preset + 全局工作区 sections are rail extras (the panel
+  // fills rail-extras.ts; the preset/workspace views have no flat row).
+  { id: 'skillsLibrary', labelKey: 'panel.skillsLibrary', icon: NAV_ICONS.skillsLibrary, group: 'plugins', subOf: 'skills', anchor: 'library', keywords: ['skill', 'library', '技能库'] },
+  { id: 'skillsAdd', labelKey: 'panel.skillsAdd', icon: NAV_ICONS.skillsAdd, group: 'plugins', subOf: 'skills', anchor: 'add', keywords: ['skill', 'install', '安装', 'git'] },
+  { id: 'skillsBackup', labelKey: 'panel.skillsBackup', icon: NAV_ICONS.skillsBackup, group: 'plugins', subOf: 'skills', anchor: 'backup', keywords: ['skill', 'backup', '备份', 'git'] },
   { id: 'promptsSettings', labelKey: 'panel.promptsSettings', icon: NAV_ICONS.promptsSettings, group: 'plugins', subOf: 'prompts', keywords: ['prompt', 'settings', '设置'] },
   { id: 'iconsSettings', labelKey: 'panel.iconsSettings', icon: NAV_ICONS.iconsSettings, group: 'plugins', subOf: 'icons', keywords: ['icon', 'settings', '设置'] },
   // R2 round: the built-in pages get the second-level rail too.

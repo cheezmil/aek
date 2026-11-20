@@ -88,6 +88,12 @@ const ZH: Record<string, string | undefined> = {
   // R2 round: the settings page of the three remaining webui plugins
   // (the rail's contract: every webui plugin owns 首页 + 设置页).
   'panel.skillsSettings': 'Skill 设置',
+  /* BH round Plan C: the Skill Manager's flat rail rows (the reference's
+     sidebar nav: 技能库 / 安装 Skills / 备份; the dashboard is the family
+     home row, the preset + 全局工作区 sections are rail extras). */
+  'panel.skillsLibrary': '技能库',
+  'panel.skillsAdd': '安装 Skills',
+  'panel.skillsBackup': '备份',
   'panel.promptsSettings': 'Prompt 设置',
   'panel.iconsSettings': '图标设置',
   'panel.about': '关于',
@@ -303,6 +309,7 @@ const ZH: Record<string, string | undefined> = {
   'skills.add.onlySkills': '只安装指定技能',
   'skills.add.allSkills': '安装来源包含的全部内容',
   'skills.add.onlyPlaceholder': 'skill-a, skill-b',
+  'skills.add.alreadyInstalled': '"{name}" 已安装，重新安装将会更新。',
   'skills.empty.tag': '未启用',
   'skills.preset.title': '预设（preset）',
   'skills.preset.hint': '引擎已支持预设：把一组领域分类打包成可重放的 agent 装载档位（ADR-0019，aeksm preset）。面板操作面将在后续轮次落地。',
@@ -659,6 +666,12 @@ const EN: Record<string, string> = {
   // R2 round: the settings page of the three remaining webui plugins
   // (the rail's contract: every webui plugin owns 首页 + 设置页).
   'panel.skillsSettings': 'Skill Settings',
+  /* BH round Plan C: the Skill Manager's flat rail rows (the reference's
+     sidebar nav: Library / Install Skills / Backup; the dashboard is the
+     family home row, the preset + global-workspace sections are rail extras). */
+  'panel.skillsLibrary': 'Library',
+  'panel.skillsAdd': 'Install Skills',
+  'panel.skillsBackup': 'Backup',
   'panel.promptsSettings': 'Prompt Settings',
   'panel.iconsSettings': 'Icon Settings',
   'panel.about': 'About',
@@ -874,6 +887,7 @@ const EN: Record<string, string> = {
   'skills.add.onlySkills': 'Install only the listed skills',
   'skills.add.allSkills': 'Install everything the source contains',
   'skills.add.onlyPlaceholder': 'skill-a, skill-b',
+  'skills.add.alreadyInstalled': '"{name}" is already installed; reinstalling will update it.',
   'skills.empty.tag': 'Not enabled yet',
   'skills.preset.title': 'Presets',
   'skills.preset.hint': 'The engine already ships presets: a named bundle of domain categories, re-appliable as an agent loading set (ADR-0019, `aeksm preset`). The panel face lands in a later round.',
