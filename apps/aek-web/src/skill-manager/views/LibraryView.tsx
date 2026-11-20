@@ -78,7 +78,7 @@ type CardAction = 'detail' | 'update' | 'distribute' | 'undistribute' | 'archive
 
 export function LibraryView() {
   const { t, tf } = useI18n()
-  const { skills, goView } = useSkillView()
+  const { skills, goNav } = useSkillView()
   const runWrite = useRunWrite()
   const overview = skills.overview as SkillsOverview
 
@@ -240,7 +240,7 @@ export function LibraryView() {
         <div className="flex-1">
           <PanelSearch value={query} onChange={setQuery} placeholder={t('skills.search')} badge={String(filtered.length)} />
         </div>
-        <Button size="sm" onClick={() => { goView('add') }}><Icon name="plus" size={14} /><span className="ml-1">{t('skills.add')}</span></Button>
+        <Button size="sm" onClick={() => { goNav({ view: 'add' }) }}><Icon name="plus" size={14} /><span className="ml-1">{t('skills.add')}</span></Button>
         <div className="flex rounded-md border border-border">
           <button
             type="button"

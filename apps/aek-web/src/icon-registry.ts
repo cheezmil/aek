@@ -65,15 +65,6 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
   promptsSettings: 'settings',
   iconsSettings: 'settings',
   /**
-   * BH round: the skill-manager's ANCHOR sub-rows — each re-uses the mark
-   * of the VIEW it positions to (the panel's view tier uses the same
-   * glyphs); the rail labels carry the distinction.
-   */
-  skillsAdd: 'plus',
-  skillsPreset: 'layers',
-  skillsProject: 'puzzle',
-  skillsBackup: 'restore',
-  /**
    * R2 round: the three ANCHOR tabs of 插件与程序管理 — each tab re-uses the
    * mark of the SECTION it positions to (heartbeat / stack / info), so the
    * rail row and the section header agree on the glyph.

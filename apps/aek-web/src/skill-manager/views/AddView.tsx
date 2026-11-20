@@ -25,7 +25,7 @@ const DETECT_KEY: Record<Exclude<SourceKind, 'empty'>, string> = {
 }
 
 export function AddView() {
-  const { skills, goView } = useSkillView()
+  const { skills, goNav } = useSkillView()
   const { t } = useI18n()
   const runWrite = useRunWrite()
   const [source, setSource] = useState('')
@@ -43,7 +43,7 @@ export function AddView() {
       const ok = onlyMode && onlyNames.length > 0
         ? await skills.add(trimmed, { skills: onlyNames, overwrite, allowInsecureHttp: insecure })
         : await skills.add(trimmed, { overwrite, allowInsecureHttp: insecure })
-      if (ok) goView('library')
+      if (ok) goNav({ view: 'library' })
       return ok
     })
   }
@@ -98,7 +98,7 @@ export function AddView() {
         </div>
 
         <div className="flex items-center justify-end gap-2">
-          <Button size="sm" variant="ghost" onClick={() => { goView('library') }}>{t('skills.cancel')}</Button>
+          <Button size="sm" variant="ghost" onClick={() => { goNav({ view: 'library' }) }}>{t('skills.cancel')}</Button>
           {skills.busy
             ? <Spinner />
             : <Button size="sm" disabled={trimmed === ''} onClick={submit}>{t('skills.addInstall')}</Button>}

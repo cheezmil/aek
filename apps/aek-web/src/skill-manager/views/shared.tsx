@@ -11,58 +11,48 @@ import { createContext, useCallback, useContext } from 'react'
 import type { ReactNode } from 'react'
 import type { AgentInfo, DistributionBySkill, SkillsState, SkillRow } from '../../useSkills.ts'
 import { Icon, type IconName } from '../../Icons.tsx'
-import type { PanelId } from '../../nav-model.ts'
 import { cn } from '@/lib/utils'
 import type { DistributionTarget } from '../domain/distribution.ts'
 import type { RowStatus } from '../domain/rowStatus.ts'
 import type { PickerAgent } from '../domain/picker.ts'
 
-/** The panel's five views (the reference's 7-page IA folded; 0 conclusion). */
-export type SkillViewId = 'library' | 'add' | 'preset' | 'project' | 'backup'
+/** The panel's seven views (the reference's IA, 0-conclusion + m01832
+ *  sidebar ruling): dashboard / library / add are live faces; preset /
+ *  project / backup are the engine-supported empty states; workspace is
+ *  the 全局工作区 (per-agent skill set). */
+export type SkillViewId = 'dashboard' | 'library' | 'add' | 'preset' | 'project' | 'backup' | 'workspace'
 
-/** The five view ids in rail order. */
-export const SKILL_VIEW_IDS: readonly SkillViewId[] = ['library', 'add', 'preset', 'project', 'backup']
+/** The view ids in the reference's sidebar order. */
+export const SKILL_VIEW_IDS: readonly SkillViewId[] = ['dashboard', 'library', 'add', 'backup', 'preset', 'project', 'workspace']
 
-/** The rail glyph per view (the app's own icon set, P16). */
+/** The sidebar glyph per view (the app's own icon set, P16). */
 export const SKILL_VIEW_ICONS: Record<SkillViewId, IconName> = {
-  library: 'book',
-  add: 'plus',
+  dashboard: 'layout',
+  library: 'layers',
+  add: 'save',
   preset: 'layers',
   project: 'puzzle',
   backup: 'restore',
+  workspace: 'globe',
 }
 
-/**
- * The rail row (PanelId) that carries each view: `library` is the family
- * root row itself; the other four are its ANCHOR sub-rows (the R2 rail
- * mechanism — same content tree, in-page position).
- */
-export const SKILL_VIEW_PANELS: Record<SkillViewId, PanelId> = {
-  library: 'skills',
-  add: 'skillsAdd',
-  preset: 'skillsPreset',
-  project: 'skillsProject',
-  backup: 'skillsBackup',
-}
-
-/** The view a rail row carries (the family root is the library). */
-export function skillViewOfPanel(panel: PanelId): SkillViewId {
-  switch (panel) {
-    case 'skills': return 'library'
-    case 'skillsAdd': return 'add'
-    case 'skillsPreset': return 'preset'
-    case 'skillsProject': return 'project'
-    case 'skillsBackup': return 'backup'
-    default: return 'library'
-  }
+/** A sidebar navigation target (the view + the drill-down payload). */
+export interface SkillNav {
+  view: SkillViewId
+  /** `workspace` view: the agent to drill into; null/absent = all agents. */
+  agentId?: string | null
+  /** `project` view: the project root the empty state displays. */
+  projectRoot?: string | null
 }
 
 export interface SkillViewEnv {
   /** The root-owned skill-hub state (one `useSkills` for every view). */
   skills: SkillsState
-  /** Cross-view navigation (the family rail row, owned by the console root). */
-  goView: (view: SkillViewId) => void
-  /** The shared notice slot (single line, 4s TTL, below the active view). */
+  /** The panel-local navigation target (the reference's sidebar owns it). */
+  nav: SkillNav
+  /** Cross-view navigation (panel-local state, NOT the console rail). */
+  goNav: (next: SkillNav) => void
+  /** The shared notice slot (single line, 4s TTL, above the active view). */
   notify: (kind: 'ok' | 'error', text: string) => void
 }
 

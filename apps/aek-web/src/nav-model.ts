@@ -36,10 +36,6 @@ export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts'
   | 'iconsLucide' | 'iconsTabler' | 'iconsPhosphor' | 'iconsHeroicons' | 'iconsBootstrap'
   | 'iconsSettings'
   | 'skillsSettings' | 'promptsSettings'
-  // BH round: the skill-manager's five views as family rail rows — the root
-  // row (`skills`) IS the library view; the four ANCHOR sub-rows position
-  // the same tree to its other views.
-  | 'skillsAdd' | 'skillsPreset' | 'skillsProject' | 'skillsBackup'
   // R2 round: the second-level rail of the 插件与程序管理 page — one tab
   // per section of the composed page (an in-page POSITION, not a new page).
   | 'runtimeRuntimes' | 'runtimePlugins' | 'runtimeInfo'
@@ -116,16 +112,6 @@ export const NAV: readonly NavEntry[] = [
   // R2 round: the webui plugin rail contract — EVERY AEK plugin that has a
   // webui face owns a settings page on its family rail (the rail's synthetic
   // "{name}首页" row is the home page; this row is the settings page).
-  // BH round: the skill-manager's five views are family rail rows — the
-  // family root (`skills`) IS the library view; these four ANCHOR sub-rows
-  // position the same tree to its other views (add / preset / project /
-  // backup — the two empty states' panel faces land in later rounds, the
-  // engine already ships them). Settings stays LAST, mirroring the
-  // reference app's rail order.
-  { id: 'skillsAdd', labelKey: 'panel.skillsAdd', icon: NAV_ICONS.skillsAdd, group: 'plugins', subOf: 'skills', anchor: 'add', keywords: ['add', 'install', 'source', '安装', '添加'] },
-  { id: 'skillsPreset', labelKey: 'panel.skillsPreset', icon: NAV_ICONS.skillsPreset, group: 'plugins', subOf: 'skills', anchor: 'preset', keywords: ['preset', '预设'] },
-  { id: 'skillsProject', labelKey: 'panel.skillsProject', icon: NAV_ICONS.skillsProject, group: 'plugins', subOf: 'skills', anchor: 'project', keywords: ['project', 'workspace', '项目', '工作区'] },
-  { id: 'skillsBackup', labelKey: 'panel.skillsBackup', icon: NAV_ICONS.skillsBackup, group: 'plugins', subOf: 'skills', anchor: 'backup', keywords: ['backup', 'git', '备份'] },
   { id: 'skillsSettings', labelKey: 'panel.skillsSettings', icon: NAV_ICONS.skillsSettings, group: 'plugins', subOf: 'skills', keywords: ['skill', 'settings', '设置'] },
   { id: 'promptsSettings', labelKey: 'panel.promptsSettings', icon: NAV_ICONS.promptsSettings, group: 'plugins', subOf: 'prompts', keywords: ['prompt', 'settings', '设置'] },
   { id: 'iconsSettings', labelKey: 'panel.iconsSettings', icon: NAV_ICONS.iconsSettings, group: 'plugins', subOf: 'icons', keywords: ['icon', 'settings', '设置'] },

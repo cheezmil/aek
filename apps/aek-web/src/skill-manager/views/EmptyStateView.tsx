@@ -2,19 +2,19 @@
  * The three "not enabled yet" faces (presets / project workspaces / git
  * backup). The engine already ships them — ADR-0019 presets, project
  * workspaces, ADR-0020 git-based multi-machine sync — but the panel face
- * lands in a later round, so the tab shows an honest empty state: what
+ * lands in a later round, so the view shows an honest empty state: what
  * exists, what is pending, and where the operator can go today (the CLI).
  */
 import { useI18n } from '../../i18n.tsx'
 import { Icon } from '../../Icons.tsx'
 import { PanelCard } from '../../ui-kit.tsx'
 import { Badge } from '@/components/ui/badge'
-import { SKILL_VIEW_ICONS, type SkillViewId } from './shared.tsx'
+import { SKILL_VIEW_ICONS } from './shared.tsx'
 
-/** The three deferred views (everything except library + add). */
-export type EmptyViewId = Exclude<SkillViewId, 'library' | 'add'>
+/** The three deferred views (everything except the live faces). */
+export type EmptyViewId = 'preset' | 'project' | 'backup'
 
-export function EmptyStateView({ view }: { view: EmptyViewId }) {
+export function EmptyStateView({ view, projectRoot }: { view: EmptyViewId; projectRoot?: string | null }) {
   const { t } = useI18n()
   const titleKey = view === 'preset' ? 'skills.preset.title' : view === 'project' ? 'skills.project.title' : 'skills.backup.title'
   const hintKey = view === 'preset' ? 'skills.preset.hint' : view === 'project' ? 'skills.project.hint' : 'skills.backup.hint'
@@ -26,6 +26,9 @@ export function EmptyStateView({ view }: { view: EmptyViewId }) {
           <div className="text-sm font-bold text-text">{t(titleKey)}</div>
           <Badge variant="secondary">{t('skills.empty.tag')}</Badge>
         </div>
+        {view === 'project' && projectRoot !== null && projectRoot !== undefined && (
+          <div className="max-w-lg truncate rounded-md bg-secondary px-3 py-1 text-xs text-muted-foreground">{projectRoot}</div>
+        )}
         <div className="max-w-lg text-xs leading-5 text-muted-foreground">{t(hintKey)}</div>
       </div>
     </PanelCard>
