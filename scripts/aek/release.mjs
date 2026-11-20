@@ -37,7 +37,7 @@
  *      combos + app assets) until all 200 (90s cap); kill immediately.
  *      Fail = current untouched.
  *   5  swap: service.mjs uninstall all --yes → slots.mjs --stop-all --yes
- *      → slots.mjs --only aek --yes → service.mjs install aek --yes
+ *      → slots.mjs --only aek --yes --health-timeout 90000 → service.mjs install aek --yes
  *      (the agent is installed FROM the stable tree, so its plist points at
  *       the stable tree's serve-slot.mjs) → wait for 1685, and the listener
  *      must belong to the agent's child chain (`serve-slot.mjs` in the
@@ -450,7 +450,7 @@ function plan() {
     lines.push(`  2  stable: checkout ${TARGET}（detached）+ 冷树引导 + build:artifacts`)
   }
   lines.push(`  3  冒烟门禁：候选 web ${SMOKE_PORT} 探针${SKIP_SMOKE ? '（已 --skip-smoke，注意门禁被削弱）' : smokeBusy ? `（${SMOKE_PORT} 当前被占用，执行时会先要求腾空或 --skip-smoke）` : ''}`)
-  lines.push('  4  换 current：service.mjs uninstall all → slots.mjs --stop-all → slots.mjs --only aek → service.mjs install aek → 等 1685')
+  lines.push('  4  换 current：service.mjs uninstall all → slots.mjs --stop-all → slots.mjs --only aek --health-timeout 90000 → service.mjs install aek → 等 1685')
   lines.push(`  5  记录 state（previousTag = 旧 ${state.currentTag ?? '（无）'}）；回滚：node scripts/aek/release.mjs --rollback --yes`)
   // Y round: read-only shell-staleness probe in the plan too (B-round
   // near-miss: release ships the web plane; the packaged shell asar is a
@@ -521,7 +521,11 @@ console.log('[release] 冒烟通过：候选代码可启动')
 // The ONLY swap point: candidate built + smoked. Now (dev-cycle order):
 if (!runStep(STABLE_DIR, 'service.mjs', ['uninstall', 'all', '--yes'])) fail('卸 LaunchAgent 失败；current 已停但 agent 未卸——手动：node scripts/aek/service.mjs uninstall all --yes（stable 树）')
 if (!runStep(STABLE_DIR, 'slots.mjs', ['--stop-all', '--yes'])) fail('stop-all 失败；current 已停——手动：node scripts/aek/slots.mjs --stop-all --yes（stable 树）')
-if (!runStep(STABLE_DIR, 'slots.mjs', ['--only', 'aek', '--yes'])) fail('起 current 失败——回滚：node scripts/aek/release.mjs --rollback --yes')
+// R1: after a cold stable-tree rebuild a loaded host takes ~35s for the web
+// server to bind; slots.mjs defaults to a 25s health wait, which aborted the
+// swap. Pass --health-timeout 90000 (same 90s gate as the 1685 wait below);
+// waitHealthy semantics (1s poll, listener + AEK marker) are unchanged.
+if (!runStep(STABLE_DIR, 'slots.mjs', ['--only', 'aek', '--yes', '--health-timeout', '90000'])) fail('起 current 失败（90s 内未健康）——回滚：node scripts/aek/release.mjs --rollback --yes')
 // Non-fatal by design (same posture as stable-migrate): the web is already
 // up; losing the agent only means no login autostart until re-registered.
 // Y round: the old code trusted the exit code alone, but service.mjs used to

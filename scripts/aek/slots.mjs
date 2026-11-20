@@ -22,6 +22,11 @@
  *   node scripts/aek/slots.mjs --both --yes              # run both
  *   node scripts/aek/slots.mjs --stop-all --yes          # stop everything
  *   node scripts/aek/slots.mjs --warm next --yes         # warm a slot headlessly
+ *
+ * `--health-timeout <ms>` (start/switch paths only): how long a freshly
+ * started slot has to answer before the switch aborts. Default 25000 ms —
+ * keep it, unless your host is slow to bind (loaded machine, cold tree just
+ * rebuilt) and needs more.
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
@@ -40,6 +45,8 @@ const USAGE = `AEK slot switching
   slots.mjs --both --yes             run both slots
   slots.mjs --stop-all --yes         stop both slots
   slots.mjs --warm <aek|next> --yes  keep a slot warm without a window
+  --health-timeout <ms>              start/switch only: how long a freshly started
+                                     slot has to answer (default 25000)
 
 Slots: ${Object.keys(SLOTS).join(' | ')}`
 
@@ -172,9 +179,10 @@ async function waitHealthy(slot, timeoutMs = 25000) {
 /**
  * Bring a slot up and wait for it to answer.
  * @param {'aek' | 'next'} slot - the slot to start.
+ * @param {number} timeoutMs - how long to wait for health.
  * @returns {Promise<boolean>} true when the slot is up.
  */
-async function startAndVerify(slot) {
+async function startAndVerify(slot, timeoutMs) {
   const outcome = arbiter(['start', slot])
   // A refused start (port held by a foreign program, leftover that would not
   // exit) must abort the switch BEFORE anything is stopped — otherwise the
@@ -184,7 +192,7 @@ async function startAndVerify(slot) {
     console.error('[slots] the running instance was NOT stopped')
     return false
   }
-  const ok = await waitHealthy(slot)
+  const ok = await waitHealthy(slot, timeoutMs)
   if (!ok) {
     console.error(`[slots] slot "${slot}" did not become healthy — the old instance was NOT stopped`)
   }
@@ -222,6 +230,18 @@ try {
     process.exit(2)
   }
 
+  // Optional --health-timeout <ms> (start/switch paths only): how long a
+  // freshly started slot has to answer before the switch aborts. Default
+  // 25000; a loaded host whose web server takes ~35s to bind after a cold
+  // stable-tree rebuild needs more (release.mjs passes 90000).
+  let healthTimeoutMs = 25000
+  if (options['health-timeout'] !== undefined) {
+    healthTimeoutMs = Number.parseInt(String(options['health-timeout']), 10)
+    if (!Number.isFinite(healthTimeoutMs) || healthTimeoutMs <= 0) {
+      throw new Error(`--health-timeout must be a positive integer number of milliseconds, got ${String(options['health-timeout'])}`)
+    }
+  }
+
   if (options['stop-all'] === true) {
     printState()
     console.log('')
@@ -255,7 +275,7 @@ try {
       const s = slotState(/** @type {'aek' | 'next'} */ (slot))
       if (!s.webUp) {
         console.log(`[slots] starting ${s.productName}…`)
-        if (!await startAndVerify(/** @type {'aek' | 'next'} */ (slot))) process.exit(3)
+        if (!await startAndVerify(/** @type {'aek' | 'next'} */ (slot), healthTimeoutMs)) process.exit(3)
       }
     }
     console.log('[slots] both slots are up')
@@ -271,7 +291,7 @@ try {
   const targetState = slotState(target)
   if (!targetState.webUp) {
     console.log(`[slots] starting ${targetState.productName}…`)
-    if (!await startAndVerify(target)) process.exit(3)
+    if (!await startAndVerify(target, healthTimeoutMs)) process.exit(3)
   }
 
   const otherState = slotState(other)
