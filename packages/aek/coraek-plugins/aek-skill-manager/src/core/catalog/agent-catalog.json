@@ -9,7 +9,7 @@
     "commit": "dd3ca3c85581e593434546a4016fb3a7e7b7f937",
     "date": "2026-08-18T20:06:26Z",
     "license": "MIT",
-    "notice": "Agent table extracted from vercel-labs/skills (src/agents.ts, src/detect-agent.ts, mirroring @vercel/detect-agent runtime detection). All MIT. Copyright (c) 2026 Vercel, Inc."
+    "notice": "Agent table extracted from vercel-labs/skills (src/agents.ts, src/detect-agent.ts, mirroring @vercel/detect-agent runtime detection). All MIT. Copyright (c) 2026 Vercel, Inc. workbuddy/workbuddy-ai entries are aek local additions (per xingkongliang/skills-manager issue #587: domestic ~/.workbuddy, international ~/.workbuddy-ai) and are not part of the upstream table."
   },
   "pathVariables": [
     {
@@ -1022,6 +1022,28 @@
       "installProbe": {
         "kind": "path-exists",
         "path": "~/.codeium/windsurf"
+      },
+      "envProbe": null
+    },
+    {
+      "id": "workbuddy",
+      "label": "WorkBuddy",
+      "skillsDir": ".workbuddy/skills",
+      "globalSkillsDir": "~/.workbuddy/skills",
+      "installProbe": {
+        "kind": "path-exists",
+        "path": "~/.workbuddy"
+      },
+      "envProbe": null
+    },
+    {
+      "id": "workbuddy-ai",
+      "label": "WorkBuddy AI",
+      "skillsDir": ".workbuddy-ai/skills",
+      "globalSkillsDir": "~/.workbuddy-ai/skills",
+      "installProbe": {
+        "kind": "path-exists",
+        "path": "~/.workbuddy-ai"
       },
       "envProbe": null
     },

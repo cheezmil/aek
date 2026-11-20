@@ -548,6 +548,19 @@
     transition-delay: 0s !important;
   }
 
+  /* BL round: the row-actions hover card fades in instantly on row hover /
+     focus, and fades out only 2.5s AFTER the pointer leaves (so it can be
+     reached); hovering the card itself keeps it alive. The base state
+     carries the 2.5s delay; the live states zero it out. */
+  .aek-row-actions {
+    transition: opacity 150ms ease 2.5s, translate 150ms ease 2.5s;
+  }
+  .group:hover .aek-row-actions,
+  .group:focus-within .aek-row-actions,
+  .aek-row-actions:hover {
+    transition-delay: 0s;
+  }
+
   /* No-fade rail setting: the row-actions card shows/hides instantly. */
   .aek-nav-no-fade .aek-row-actions {
     transition: none;

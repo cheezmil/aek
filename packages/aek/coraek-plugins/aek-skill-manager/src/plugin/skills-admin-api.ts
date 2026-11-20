@@ -258,7 +258,7 @@ export function registerSkillsManagerApi(ctx: Context, svc: SkillsManagerService
               skills,
               projectRoot: typeof body.projectRoot === 'string' ? body.projectRoot : undefined,
               agents: asStringArray(body.agents),
-              mode: body.mode === 'symlink' || body.mode === 'copy' ? body.mode : undefined,
+              mode: body.mode === 'symlink' || body.mode === 'copy' || body.mode === 'auto' ? body.mode : undefined,
               force: asBoolean(body.force),
             }),
           )

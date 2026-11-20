@@ -191,7 +191,7 @@ export type UpdatePlan = {
   groups: SourceUpdateGroup[]
 }
 
-export type DistributeMode = 'symlink' | 'copy'
+export type DistributeMode = 'symlink' | 'copy' | 'auto'
 export type DistributionTargetKind = 'user' | 'project'
 
 export type DistributionHealth = {

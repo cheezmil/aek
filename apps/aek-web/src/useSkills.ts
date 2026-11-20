@@ -17,7 +17,11 @@
  * @module @cheezmil/aek-web/src/useSkills
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { usePref } from './preferences.tsx'
 import type { CostLedger as DomainCostLedger } from './skill-manager/domain/costLedger.ts'
+
+/** The one validator for the `aek-home.aeksm.distributeMode` setting value. */
+const parseDistributeMode = (raw: unknown): 'symlink' | 'copy' | 'auto' | undefined => (raw === 'symlink' || raw === 'copy' || raw === 'auto' ? raw : undefined)
 
 /** The host route publishing the skill-hub overview. */
 export const SKILLS_API = '/api/aek/skills'
@@ -146,7 +150,7 @@ export interface SkillsState {
   lastWrite: { ok: boolean; message: string } | undefined
   refresh: () => void
   refreshDetail: (skill: string) => Promise<SkillDetail | undefined>
-  distribute: (request: { to: 'user' | 'project'; skills: string[]; agents?: string[]; projectRoot?: string; mode?: 'symlink' | 'copy'; force?: boolean }) => Promise<boolean>
+  distribute: (request: { to: 'user' | 'project'; skills: string[]; agents?: string[]; projectRoot?: string; mode?: 'symlink' | 'copy' | 'auto'; force?: boolean }) => Promise<boolean>
   undistribute: (request: { to: 'user' | 'project'; skills: string[]; agents?: string[]; projectRoot?: string }) => Promise<boolean>
   add: (source: string, options?: AddOptions) => Promise<boolean>
   update: (options: { skills?: string[]; source?: string }) => Promise<boolean>
@@ -171,6 +175,9 @@ export function useSkills(refreshSignal = 0): SkillsState {
   const [busy, setBusy] = useState(false)
   const [lastWrite, setLastWrite] = useState<{ ok: boolean; message: string } | undefined>(undefined)
   const seq = useRef(0)
+  // BL round: the Skill Manager settings' distribution mode rides every panel
+  // distribute call (a caller-specified mode still wins).
+  const [distributeMode] = usePref('aek-home.aeksm.distributeMode', 'auto', parseDistributeMode)
 
   const refresh = useCallback((): void => {
     const mySeq = ++seq.current
@@ -253,7 +260,7 @@ export function useSkills(refreshSignal = 0): SkillsState {
     lastWrite,
     refresh,
     refreshDetail,
-    distribute: request => write('distribute', request),
+    distribute: request => write('distribute', { mode: distributeMode, ...request }),
     undistribute: request => write('undistribute', request),
     add: (source, options = {}) => write('add', { source, ...options }),
     update: options => write('update', options),

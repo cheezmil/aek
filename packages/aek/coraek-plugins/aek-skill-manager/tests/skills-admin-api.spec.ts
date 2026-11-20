@@ -289,6 +289,27 @@ describe('POST /api/aek/skills/archive', () => {
   })
 })
 
+describe('POST /api/aek/skills/distribute', () => {
+  it('forwards the client mode (symlink / copy / auto) to the engine', async () => {
+    const seen: Array<{ mode?: string }> = []
+    const { server, routes } = fakeServer()
+    const { ctx, effectFn } = fakeCtx(server)
+    registerSkillsManagerApi(ctx, stubService({
+      distribute: (request: { mode?: string }) => {
+        seen.push(request)
+        return { ok: true }
+      },
+    }))
+    effectFn()()
+    const route = routes.find(item => item.path === `${SKILLS_API}/distribute`)
+    expect(route).toBeDefined()
+    const res = fakeRes()
+    await handlerOf(route ?? ({} as Registered))(fakeReq('POST', JSON.stringify({ to: 'user', skills: ['alpha'], mode: 'auto', confirm: true })), asRes(res))
+    expect(res.statusCode).toBe(200)
+    expect(seen[0]?.mode, 'auto mode rides to the engine').toBe('auto')
+  })
+})
+
 describe('admin-face route bookkeeping', () => {
   it('registers all 10 routes under /api/aek/skills and unregisters them all on dispose', () => {
     const { server, routes } = fakeServer()

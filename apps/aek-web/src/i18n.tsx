@@ -20,7 +20,6 @@ export type Locale = typeof LOCALES[number]
 
 /** Simplified Chinese copy. Also the fallback for missing keys. */
 const ZH: Record<string, string | undefined> = {
-  'nav.search': '搜索板块…',
   'nav.searchAria': '搜索侧边栏板块',
   'nav.noMatch': '没有匹配的板块',
   'nav.clear': '清除搜索',
@@ -252,7 +251,7 @@ const ZH: Record<string, string | undefined> = {
   'skills.nav.projects': '项目工作区',
   'skills.nav.addProject': '关联项目',
   'skills.nav.globalWorkspace': '各个agent',
-  'skills.nav.allAgents': '全部 Agents',
+  'skills.nav.allAgents': '支持的Agent概览',
   'skills.nav.noAgents': '未安装任何 Agent',
   'skills.nav.agentUnknown': '未检测到',
   'skills.nav.settings': '设置',
@@ -270,9 +269,9 @@ const ZH: Record<string, string | undefined> = {
   'skills.ws.addSkills': '添加 Skills',
   'skills.ws.addTitle': '为 {agent} 添加 Skills',
   'skills.ws.remove': '移除',
-  'skills.ws.removeConfirm': '确认移除？',
   'skills.ws.empty': '该 Agent 尚未安装任何 Skills',
   'skills.ws.removeOk': '已从 {agent} 移除 {skill}',
+  'skills.ws.restoreOk': '已恢复 {agent} 的 {skill}',
   'skills.ws.addOk': '已为 {agent} 安装 {n} 个 Skills',
   'skills.ws.detectedLine': '已检测到 {detected}/{total} 个 Agent',
   /* BH round: the five views (xingkongliang IA re-voiced for aeksm). */
@@ -389,7 +388,12 @@ const ZH: Record<string, string | undefined> = {
   'settings.pluginSettingsEmpty': '该插件暂无用户可调整的设置项——主要操作面是它的 CLI；设置项会在后续版本加入。',
   // R2 round: the Skill Manager settings page — its one Config field.
   'settings.skillHubHome': 'Skill 中心目录',
-  'settings.skillHubHomeHint': '留空 = 默认目录（~/.aek/skill-manager，或被 AEK_SKILL_MANAGER_HOME 覆盖）；填写后保存在宿主偏好，宿主服务启用时生效，不影响 aeksm CLI。',
+  'settings.skillHubHomeHint': '留空 = 按序自动探测：SKILL_HOME 环境变量 → 当前目录已是 skill home → 默认目录（~/.aek/current/skill-manager，可被 AEK_SKILL_MANAGER_HOME 环境变量覆盖）；填写后保存在宿主偏好，宿主服务启用时生效，不影响 aeksm CLI。',
+  'settings.skillsDistributeMode': '分发模式',
+  'settings.skillsDistributeModeHint': '作用于 Skill Manager 页面的分发操作（安装 / 启用 / 恢复技能到各 Agent）：优先符号链接时，不可符号链接的场景（跨磁盘、平台受限）自动改为复制。',
+  'settings.skillsDistributeMode.auto': '优先符号链接（自动识别复制）',
+  'settings.skillsDistributeMode.symlink': '仅符号链接',
+  'settings.skillsDistributeMode.copy': '仅复制',
   /* Q round: 恢复默认 = 先备份、再恢复、可撤销。 */
   'settings.restoreDefaults': '恢复默认设置',
   'settings.restoreDefaultsHint': '点击会先把当前设置备份到本机，再写回所有默认值；之后可以用「撤销」一键恢复备份。',
@@ -601,7 +605,6 @@ const ZH: Record<string, string | undefined> = {
 
 /** English copy. */
 const EN: Record<string, string> = {
-  'nav.search': 'Search sections…',
   'nav.searchAria': 'Search sidebar sections',
   'nav.noMatch': 'No matching sections',
   'nav.clear': 'Clear search',
@@ -833,7 +836,7 @@ const EN: Record<string, string> = {
   'skills.nav.projects': 'Projects',
   'skills.nav.addProject': 'Link a project',
   'skills.nav.globalWorkspace': 'Per Agent',
-  'skills.nav.allAgents': 'All Agents',
+  'skills.nav.allAgents': 'Supported Agents Overview',
   'skills.nav.noAgents': 'No agents detected',
   'skills.nav.agentUnknown': 'Not detected',
   'skills.nav.settings': 'Settings',
@@ -851,9 +854,9 @@ const EN: Record<string, string> = {
   'skills.ws.addSkills': 'Add Skills',
   'skills.ws.addTitle': 'Add Skills to {agent}',
   'skills.ws.remove': 'Remove',
-  'skills.ws.removeConfirm': 'Remove confirmed?',
   'skills.ws.empty': 'No skills installed for this agent yet',
   'skills.ws.removeOk': 'Removed {skill} from {agent}',
+  'skills.ws.restoreOk': 'Re-enabled {skill} for {agent}',
   'skills.ws.addOk': 'Installed {n} Skills to {agent}',
   'skills.ws.detectedLine': '{detected}/{total} Agents detected',
   /* BH round: the five views (xingkongliang IA re-voiced for aeksm). */
@@ -970,7 +973,12 @@ const EN: Record<string, string> = {
   'settings.pluginSettingsEmpty': 'This plugin has no user-adjustable settings yet — its primary surface is the CLI; setting rows will be added in a later version.',
   // R2 round: the Skill Manager settings page — its one Config field.
   'settings.skillHubHome': 'Skill hub root',
-  'settings.skillHubHomeHint': 'Empty = the default hub (~/.aek/skill-manager, or AEK_SKILL_MANAGER_HOME when set); a value persists on the host (effective once the host-service face is enabled) and never affects the aeksm CLI.',
+  'settings.skillHubHomeHint': 'Empty = auto-detect in order: SKILL_HOME env var -> current dir when it is a skill home -> default hub (~/.aek/current/skill-manager, overridable via AEK_SKILL_MANAGER_HOME); a value persists on the host (effective once the host-service face is enabled) and never affects the aeksm CLI.',
+  'settings.skillsDistributeMode': 'Distribution mode',
+  'settings.skillsDistributeModeHint': 'Applies to Skill Manager distribution actions (install / enable / restore skills onto agents): the symlink-preferred mode automatically falls back to a copy where a symlink is impossible (cross-device, platform restriction).',
+  'settings.skillsDistributeMode.auto': 'Prefer symlink (auto-detect copy)',
+  'settings.skillsDistributeMode.symlink': 'Symlink only',
+  'settings.skillsDistributeMode.copy': 'Copy only',
   /* Q round: restore defaults = back up first, then reset, undoable. */
   'settings.restoreDefaults': 'Restore default settings',
   'settings.restoreDefaultsHint': 'Backs up your current settings first, then writes back every default. You can undo with the "Undo" button.',

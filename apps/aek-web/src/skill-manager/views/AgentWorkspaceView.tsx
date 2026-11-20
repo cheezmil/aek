@@ -5,12 +5,13 @@
  * overview + `domain/workspace`; the writes go through the existing
  * distribute/undistribute host faces.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PanelCard } from '../../ui-kit.tsx'
 import { useI18n } from '../../i18n.tsx'
 import { Icon } from '../../Icons.tsx'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { agentSkillCounts, skillsForAgent, skillsNotForAgent } from '../domain/workspace.ts'
 import { AgentIcon } from './AgentIcon.tsx'
@@ -52,15 +53,33 @@ function AgentCards() {
   )
 }
 
-/** One installed-skill row with the reference's two-step remove. */
-function InstalledRow({ skillName, agentId, agentLabel }: { skillName: string; agentId: string; agentLabel: string }) {
+/**
+ * One skill row of an agent's workspace. The reference app's two-step
+ * remove is replaced by a plain switch (m05101 ⑥): off = undistribute
+ * (recoverable, the archive keeps the skill), on = (re)distribute, so
+ * enabling and restoring both run from the same control.
+ */
+function WorkspaceSkillRow({ skillName, agentId, agentLabel, installed, onToggle }: {
+  skillName: string
+  agentId: string
+  agentLabel: string
+  installed: boolean
+  onToggle: (name: string, checked: boolean) => void
+}) {
   const { t, tf } = useI18n()
   const { skills } = useSkillView()
   const runWrite = useRunWrite()
-  const [confirming, setConfirming] = useState(false)
 
   const row = skills.overview?.skills.find(item => item.name === skillName)
-  const undo = () => {
+  const apply = (checked: boolean) => {
+    onToggle(skillName, checked)
+    if (checked) {
+      void runWrite(
+        tf('skills.ws.restoreOk', { agent: agentLabel, skill: skillName }),
+        () => skills.distribute({ to: 'user', skills: [skillName], agents: [agentId] }),
+      )
+      return
+    }
     void runWrite(
       tf('skills.ws.removeOk', { agent: agentLabel, skill: skillName }),
       () => skills.undistribute({ to: 'user', skills: [skillName], agents: [agentId] }),
@@ -73,22 +92,7 @@ function InstalledRow({ skillName, agentId, agentLabel }: { skillName: string; a
         <div className="truncate text-sm font-medium text-text">{skillName}</div>
         {row?.description ? <div className="truncate text-xs text-text-muted">{row.description}</div> : null}
       </div>
-      {confirming ? (
-        <div className="flex flex-none items-center gap-2 text-xs text-danger">
-          {t('skills.ws.removeConfirm')}
-          <Button variant="secondary" size="sm" onClick={undo}>
-            {t('skills.ws.remove')}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => { setConfirming(false) }}>
-            {t('skills.cancel')}
-          </Button>
-        </div>
-      ) : (
-        <Button variant="ghost" size="sm" onClick={() => { setConfirming(true) }}>
-          <Icon name="trash" size={13} />
-          {t('skills.ws.remove')}
-        </Button>
-      )}
+      <Switch size="sm" checked={installed} onCheckedChange={apply} aria-label={t('skills.ws.remove')} />
     </div>
   )
 }
@@ -101,13 +105,19 @@ export function AgentWorkspaceView() {
   // BI round: the bare "全部 Agents" back-button is gone — navigation back to
   // the card grid now runs through the host rail's "全部 Agents" extras row.
   const { skills, nav, notify } = useSkillView()
+  const agentId = nav.agentId ?? undefined
   const [addOpen, setAddOpen] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
+  // BL round: rows toggled off via the switch stay visible so the same
+  // control can restore them (re-distribute) without going through the
+  // add-from-library sheet again.
+  const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set())
+  useEffect(() => {
+    setRemoved(new Set())
+  }, [agentId])
 
   const overview = skills.overview
   if (overview === undefined) return null // unreachable: the root guards
-
-  const agentId = nav.agentId ?? undefined
 
   // All-agents: the card grid.
   if (agentId === undefined) {
@@ -124,6 +134,19 @@ export function AgentWorkspaceView() {
   const agent = overview.agents.find(item => item.id === agentId)
   const installed = skillsForAgent(overview.skills, overview.distributionBySkill, agentId)
   const available = skillsNotForAgent(overview.skills, overview.distributionBySkill, agentId)
+  const installedNames = new Set(installed.map(item => item.name))
+  const rows = [
+    ...installed,
+    ...overview.skills.filter(item => removed.has(item.name) && !installedNames.has(item.name)),
+  ]
+  const onToggle = (name: string, checked: boolean) => {
+    setRemoved((current) => {
+      const next = new Set(current)
+      if (checked) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
 
   const toggle = (name: string) => {
     setPicked(current => (current.includes(name) ? current.filter(item => item !== name) : [...current, name]))
@@ -162,12 +185,19 @@ export function AgentWorkspaceView() {
         </PanelCard>
       )}
 
-      {installed.length === 0 ? (
+      {rows.length === 0 ? (
         <PanelCard className="p-6 text-center text-sm text-text-muted">{t('skills.ws.empty')}</PanelCard>
       ) : (
         <div className="flex flex-col gap-2">
-          {installed.map(row => (
-            <InstalledRow key={row.name} skillName={row.name} agentId={agentId} agentLabel={agent?.label ?? agentId} />
+          {rows.map(row => (
+            <WorkspaceSkillRow
+              key={row.name}
+              skillName={row.name}
+              agentId={agentId}
+              agentLabel={agent?.label ?? agentId}
+              installed={installedNames.has(row.name)}
+              onToggle={onToggle}
+            />
           ))}
         </div>
       )}

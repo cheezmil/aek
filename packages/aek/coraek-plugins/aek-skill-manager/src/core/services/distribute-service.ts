@@ -742,10 +742,27 @@ export class DistributeService {
     }
     this.replacePath(runtimePath)
     const hubSkill = this.registry.skillDir(skill)
-    if (mode === 'symlink') this.fs.symlink(hubSkill, runtimePath)
-    else this.fs.copyDirectoryContents(hubSkill, runtimePath)
+    // 'auto' prefers a symlink and falls back to a copy where a symlink is
+    // not possible (cross-device, restricted platform); the concrete mode is
+    // what lands in the entry, so entryOutdated/refreshStaleEntry stay exact.
+    let concreteMode: DistributeMode
+    if (mode === 'auto') {
+      try {
+        this.fs.symlink(hubSkill, runtimePath)
+        concreteMode = 'symlink'
+      } catch {
+        this.fs.copyDirectoryContents(hubSkill, runtimePath)
+        concreteMode = 'copy'
+      }
+    } else if (mode === 'symlink') {
+      this.fs.symlink(hubSkill, runtimePath)
+      concreteMode = 'symlink'
+    } else {
+      this.fs.copyDirectoryContents(hubSkill, runtimePath)
+      concreteMode = 'copy'
+    }
     const agents = [...new Set([...(prior?.agents || []), ...group.agents])].sort()
-    return { skill, runtimePath, mode, fingerprint, managed: true, agents, appliedAt }
+    return { skill, runtimePath, mode: concreteMode, fingerprint, managed: true, agents, appliedAt }
   }
 
   private resolveAgents(requested: readonly string[] | undefined): string[] {
@@ -809,7 +826,7 @@ export class DistributeService {
   }
 
   private assertMode(mode: DistributeMode) {
-    if (mode !== 'symlink' && mode !== 'copy') throw new SkillsManagerError('invalid_distribute_mode', `Unknown mode: ${mode}`)
+    if (mode !== 'symlink' && mode !== 'copy' && mode !== 'auto') throw new SkillsManagerError('invalid_distribute_mode', `Unknown mode: ${mode}`)
   }
 
   /** Family representative for a legacy consumer tag: one catalog id whose global dir matches the old hardcoded path. */

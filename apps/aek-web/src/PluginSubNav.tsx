@@ -107,7 +107,13 @@ const RAIL_COMPACT_MIN = 48
 const RAIL_COMPACT_MAX = 96
 /** BJ round: the row hover action box (a refresh button above the row, the
  *  twin of the main rail's `.aek-row-actions`). */
-const RAIL_ROW_ACTIONS = 'aek-row-actions absolute bottom-full right-0.5 z-3 mb-1 flex items-center gap-0.5 p-0.5 border border-border rounded-sm bg-card shadow-md opacity-0 pointer-events-none translate-x-1.5 transition-[opacity,transform] duration-150 ease-aek group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-x-0'
+/* BL round: the card sits on the RIGHT edge of its own row (the old
+   `bottom-full` box floated over the row ABOVE and, hover-on with
+   pointer-events-auto, intercepted the neighbour's clicks — the
+   intermittent "rows don't respond" bug). Opacity / pointer-events are
+   driven by the `.aek-row-actions` rules in index.css (instant fade-in,
+   2.5s delayed fade-out, hover keep-alive). */
+const RAIL_ROW_ACTIONS = 'aek-row-actions absolute top-1/2 right-1 z-3 -translate-y-1/2 flex items-center gap-0.5 p-0.5 border border-border rounded-sm bg-card shadow-md opacity-0 pointer-events-none translate-x-1.5 group-hover:translate-x-0 group-focus-within:translate-x-0'
 const RAIL_ROW_ICON_BUTTON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted cursor-pointer transition-[color,background-color,transform] duration-140 ease-aek hover:text-primary hover:bg-accent-soft'
 
 /** @param raw - the parsed compact width. @returns a clamped number, or undefined. */
@@ -272,7 +278,6 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
           type="text"
           className="w-full min-w-0 flex-1 border-0 bg-transparent p-0 text-aek-12 text-text placeholder:text-text-muted focus:outline-none"
           value={query}
-          placeholder={t('nav.pluginSearch')}
           aria-label={t('nav.pluginSearch')}
           onChange={(event) => { setQuery(event.target.value) }}
           onKeyDown={(event) => {

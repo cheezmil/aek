@@ -306,6 +306,16 @@ export const SKILLS_SETTINGS_SCHEMA: readonly SettingField[] = [
     labelKey: 'settings.skillHubHome', hintKey: 'settings.skillHubHomeHint',
     default: '',
   },
+  {
+    key: 'aek-home.aeksm.distributeMode', kind: 'select', group: 'skills',
+    labelKey: 'settings.skillsDistributeMode', hintKey: 'settings.skillsDistributeModeHint',
+    default: 'auto',
+    options: [
+      { value: 'auto', labelKey: 'settings.skillsDistributeMode.auto' },
+      { value: 'symlink', labelKey: 'settings.skillsDistributeMode.symlink' },
+      { value: 'copy', labelKey: 'settings.skillsDistributeMode.copy' },
+    ],
+  },
 ]
 
 export const PROMPTS_SETTINGS_SCHEMA: readonly SettingField[] = []
