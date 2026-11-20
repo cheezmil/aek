@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../i18n.tsx'
 import { Icon } from '../../Icons.tsx'
-import { PanelSearch } from '../../ui-kit.tsx'
+import { PanelCard, PanelSearch } from '../../ui-kit.tsx'
 import { VirtualList } from '../../VirtualList.tsx'
 import { VirtualGrid } from '../../VirtualGrid.tsx'
 import { type SkillsOverview } from '../../useSkills.ts'
@@ -19,7 +19,7 @@ import { buildCategoryPills, buildSourcePills, filterByPills } from '../domain/c
 import { deriveRowStatus, type RowStatus } from '../domain/rowStatus.ts'
 import { distCountsText } from '../domain/distribution.ts'
 import { showUpdateStrip, updatableNames } from '../domain/updateStrip.ts'
-import { showCostLine, formatApproxTokens } from '../domain/costLedger.ts'
+import { showCostLine, costCaliber, formatApproxTokens } from '../domain/costLedger.ts'
 import {
   exitSelection,
   idleSelection,
@@ -35,6 +35,7 @@ import {
   toPickerAgents,
   useRunWrite,
   useSkillView,
+  ViewHeader,
   wiringOf,
 } from './shared.tsx'
 import { AgentPickerSheet, ArchiveSheet, AgentDotRow, CategorizeSheet, DetailSheet, UndistributeSheet } from './sheets.tsx'
@@ -172,15 +173,27 @@ export function LibraryView() {
 
   const cost = skills.cost
   const doctor = overview.doctor
+  const caliber = cost !== undefined ? costCaliber(cost) : null
+  const skillsPath = overview.home.replace(/[/\\]+$/, '') + '/skills/'
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Hub state line */}
-      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Badge variant="secondary">{t('skills.home')}: {overview.home}</Badge>
-        {!overview.bootstrapped && <Badge variant="destructive">{t('skills.notBootstrapped')}</Badge>}
-        {overview.distribution.status.outdated > 0 && <Badge variant="secondary">{tf('skills.outdated', { n: overview.distribution.status.outdated })}</Badge>}
-      </div>
+      {/* The house header (BM round): the view title + the hub path as the
+          subtitle — "本地技能中心: <hub>/skills/", per the slot the engine
+          actually resolved. */}
+      <ViewHeader
+        icon="bookOpenText"
+        title={t('panel.skillsLibrary')}
+        subtitle={`${t('skills.home')}: ${skillsPath}`}
+      />
+
+      {/* Hub state badges (only the exceptional states earn a badge) */}
+      {(!overview.bootstrapped || overview.distribution.status.outdated > 0) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {!overview.bootstrapped && <Badge variant="destructive">{t('skills.notBootstrapped')}</Badge>}
+          {overview.distribution.status.outdated > 0 && <Badge variant="secondary">{tf('skills.outdated', { n: overview.distribution.status.outdated })}</Badge>}
+        </div>
+      )}
 
       {/* Not bootstrapped: the doctor hint, never a silent empty page */}
       {!overview.bootstrapped && (
@@ -195,23 +208,20 @@ export function LibraryView() {
         </div>
       )}
 
-      {/* The hub stats line (the reference's MySkills header counts) */}
-      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span>{tf('skills.stat.skills', { n: rows.length })}</span>
-        <span>·</span>
+      {/* The hub overview band: counts + health on one quiet card */}
+      <PanelCard className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3 text-xs text-muted-foreground">
+        <span className="font-semibold text-text">{tf('skills.stat.skills', { n: rows.length })}</span>
         <span>{tf('status.agents', { n: overview.agents.length })}</span>
-        <span>·</span>
         <span>{tf('skills.stat.updatable', { n: updatableCount })}</span>
-        <span>·</span>
         {doctor.warnings.length === 0
-          ? <Badge variant="secondary">{t('skills.stat.healthy')}</Badge>
-          : <Badge variant="destructive">{tf('skills.stat.degraded', { n: doctor.warnings.length })}</Badge>}
-      </div>
+          ? <Badge variant="secondary" className="ml-auto">{t('skills.stat.healthy')}</Badge>
+          : <Badge variant="destructive" className="ml-auto">{tf('skills.stat.degraded', { n: doctor.warnings.length })}</Badge>}
+      </PanelCard>
 
-      {/* The update strip (visible iff anything is updatable) */}
+      {/* The update banner (accent, visible iff anything is updatable) */}
       {showUpdateStrip(updatableCount) && (
-        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 px-3 py-2">
-          <div className="text-sm text-text">{String(updatableCount)} {t('skills.updatable')}</div>
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-accent/30 bg-accent-soft/60 px-3.5 py-2.5">
+          <div className="text-sm font-medium text-accent-ink">{tf('skills.stat.updatable', { n: updatableCount })} · {t('skills.updateAll')}</div>
           <Button
             size="sm"
             variant="secondary"
@@ -223,13 +233,25 @@ export function LibraryView() {
         </div>
       )}
 
-      {/* The resident-cost strip */}
-      {showCostLine(cost ?? null) && cost !== undefined && (
-        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
-          <div className="text-text">{t('skills.cost')}: {formatApproxTokens(cost.totalTokens)} {t('skills.costUnit')}</div>
-          {cost.paths.length > 0 && (
-            <div className="text-xs text-muted-foreground">
-              {cost.paths.slice(0, 3).map(group => `${group.runtimeDir} ${formatApproxTokens(group.tokens)}`).join(' · ')}
+      {/* The resident-cost band: the total with its display caliber (BM
+          round: the total is a portfolio sum across the agent runtime
+          directories — the caliber line says so, and the top-3 per-dir
+          breakdown stays next to the number it explains). */}
+      {showCostLine(cost ?? null) && cost !== undefined && caliber !== null && (
+        <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm text-text">
+              {t('skills.cost')}: <span className="text-base font-bold">{formatApproxTokens(cost.totalTokens)}</span> {t('skills.costUnit')}
+            </div>
+            {cost.paths.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                {cost.paths.slice(0, 3).map(group => `${group.runtimeDir} ${formatApproxTokens(group.tokens)}`).join(' · ')}
+              </div>
+            )}
+          </div>
+          {caliber.dirs > 0 && (
+            <div className="text-2xxs text-muted-foreground">
+              {tf('skills.costCaliber', { n: caliber.dirs, avg: formatApproxTokens(caliber.avg), max: formatApproxTokens(caliber.max) })}
             </div>
           )}
         </div>

@@ -11,6 +11,7 @@ import { createContext, useCallback, useContext } from 'react'
 import type { ReactNode } from 'react'
 import type { AgentInfo, DistributionBySkill, SkillsState, SkillRow } from '../../useSkills.ts'
 import { Icon, type IconName } from '../../Icons.tsx'
+import { useI18n } from '../../i18n.tsx'
 import type { PanelId } from '../../nav-model.ts'
 import { cn } from '@/lib/utils'
 import type { DistributionTarget } from '../domain/distribution.ts'
@@ -167,6 +168,54 @@ export function SheetFrame({ title, onClose, children, wide }: {
         </div>
         <div className="flex-1 overflow-auto px-5 py-4">{children}</div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * The BM-round house view header: an optional back button (drill-through
+ * pages), an optional icon tile, the title + one muted subtitle line, and
+ * right-aligned actions. Every skill-manager view starts with this — the
+ * panel-local pages carry no other heading furniture.
+ */
+export function ViewHeader({ icon, iconNode, title, subtitle, onBack, children }: {
+  icon?: IconName
+  /** A custom tile node (e.g. an agent brand icon) in place of `icon`. */
+  iconNode?: ReactNode
+  title: string
+  subtitle?: ReactNode
+  /** Present = a drill-through page: the back button is the exit. */
+  onBack?: () => void
+  /** Right-aligned actions. */
+  children?: ReactNode
+}) {
+  const { t } = useI18n()
+  return (
+    <div className="flex items-center gap-3">
+      {onBack !== undefined && (
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label={t('skills.back')}
+          className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:bg-secondary hover:text-text"
+        >
+          <Icon name="arrowLeft" size={14} />
+        </button>
+      )}
+      {iconNode !== undefined
+        ? <span className="flex h-8 w-8 flex-none items-center justify-center rounded-md border border-border bg-secondary/60">{iconNode}</span>
+        : icon !== undefined && (
+          <span className="flex h-8 w-8 flex-none items-center justify-center rounded-md bg-accent-soft text-accent-ink">
+            <Icon name={icon} size={15} />
+          </span>
+        )}
+      <div className="min-w-0 flex-1">
+        <h2 className="truncate text-base font-bold tracking-tight text-text">{title}</h2>
+        {subtitle !== undefined && (
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</div>
+        )}
+      </div>
+      {children !== undefined && <div className="flex flex-none items-center gap-2">{children}</div>}
     </div>
   )
 }

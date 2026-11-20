@@ -46,10 +46,10 @@ import {
   ICONS_SETTINGS_SCHEMA,
   PROMPTS_SETTINGS_SCHEMA,
   SETTINGS_SCHEMA,
-  SKILLS_SETTINGS_SCHEMA,
   WEBSEARCH_SETTINGS_SCHEMA,
 } from './settings-schema.ts'
 import type { SettingField } from './settings-schema.ts'
+import { SkillsSettingsView } from './skill-manager/views/SkillsSettingsView.tsx'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -1006,9 +1006,10 @@ function WebSearchSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   return <PluginSchemaSettingsPanel schema={WEBSEARCH_SETTINGS_SCHEMA} titleKey="settings.group.websearch" refreshSignal={refreshSignal} />
 }
 
-/** R2 round: the Skill Manager settings page (its one Config field, `home`). */
+/** R2 round: the Skill Manager settings page (the BM-round house-style
+ *  rewrite now lives in the skill-manager tier, P16). */
 function SkillsSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
-  return <PluginSchemaSettingsPanel schema={SKILLS_SETTINGS_SCHEMA} titleKey="panel.skillsSettings" refreshSignal={refreshSignal} />
+  return <SkillsSettingsView refreshSignal={refreshSignal} />
 }
 
 /** R2 round: the Prompt Manager settings page (EMPTY schema = empty state). */

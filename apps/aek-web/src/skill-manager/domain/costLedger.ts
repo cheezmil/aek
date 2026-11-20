@@ -46,6 +46,22 @@ export function showCostLine(ledger: CostLedger | null): boolean {
   return ledger !== null && ledger.paths.length > 0
 }
 
+/**
+ * The display caliber of the total (BM round: the user read the portfolio
+ * total as "this hub costs 42.4k" — the strip must say it is summed across
+ * N agent runtime directories): the total, the directory count, the mean
+ * and the per-directory maximum, all for the `≈`-style display form.
+ */
+export function costCaliber(ledger: CostLedger): { total: number; dirs: number; avg: number; max: number } {
+  let max = 0
+  for (const group of ledger.paths) {
+    if (group.tokens > max) max = group.tokens
+  }
+  const dirs = ledger.paths.length
+  const avg = dirs > 0 ? Math.round(ledger.totalTokens / dirs) : 0
+  return { total: ledger.totalTokens, dirs, avg, max }
+}
+
 /** `≈`-prefixed magnitude with `1.2k`-style abbreviation (US13) — the same
  *  display contract as src/core/services/cost-ledger-service.ts's
  *  formatApproxTokens (mirrored, not imported: the web tier bundles no node

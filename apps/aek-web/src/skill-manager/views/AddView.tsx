@@ -1,17 +1,17 @@
 /**
- * The add tab — the reference's InstallSkills git-tab card shape, 1:1
- * re-voiced for the aeksm engine's source rules (P16: our own widgets):
- * the icon block, the title + direct-install note, the source input
- * (Enter installs), the accent "already installed, reinstalling updates"
- * hint bar (matched against the host's update plan), the install options,
- * the install button. The display-side source-kind badge mirrors the
- * engine's parser; the engine stays the authority.
+ * The add view (BM round rewrite): a full-width house page, not a floating
+ * center card. The header carries the back button — the page is a
+ * drill-through, and the user must always see how to get out (the
+ * "莫名奇妙的页面，回不去" report). The body keeps the aeksm engine's
+ * source rules: the display-side source-kind badge mirrors the engine's
+ * parser, the "already installed" hint matches the host's update plan,
+ * and the engine stays the authority.
  */
 import { useState } from 'react'
 import { useI18n } from '../../i18n.tsx'
 import { PanelCard, Spinner } from '../../ui-kit.tsx'
 import { Icon } from '../../Icons.tsx'
-import { useRunWrite, useSkillView } from './shared.tsx'
+import { useRunWrite, useSkillView, ViewHeader } from './shared.tsx'
 import { detectSourceKind, type SourceKind } from '../domain/sourceDetect.ts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,6 +33,21 @@ function normalizeUrl(raw: string): string {
   return raw.trim().replace(/\.git$/i, '').replace(/\/+$/, '')
 }
 
+/** One install option row: a native checkbox styled to the house tokens. */
+function OptionRow({ checked, onChange, label }: { checked: boolean; onChange: (next: boolean) => void; label: string }) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-xs text-text hover:bg-secondary/60">
+      <input
+        type="checkbox"
+        className="h-4 w-4 rounded accent-primary"
+        checked={checked}
+        onChange={(e) => { onChange(e.target.checked) }}
+      />
+      {label}
+    </label>
+  )
+}
+
 export function AddView() {
   const { skills, goNav } = useSkillView()
   const { t, tf } = useI18n()
@@ -47,8 +62,8 @@ export function AddView() {
   const kind = detectSourceKind(source)
   const onlyNames = names.split(',').map(part => part.trim()).filter(Boolean)
 
-  // The reference's "already installed" hint: the typed source matches an
-  // update-plan group (git-like sources only) → reinstalling updates it.
+  // The "already installed" hint: the typed source matches an update-plan
+  // group (git-like sources only) → reinstalling updates it.
   const installedSkills = trimmed !== ''
     ? (skills.updatePlan ?? [])
       .find(group => normalizeUrl(group.url) === normalizeUrl(trimmed))
@@ -65,26 +80,24 @@ export function AddView() {
     })
   }
 
+  const goBack = (): void => { goNav({ view: 'dashboard' }) }
+
   return (
-    <PanelCard className="mx-auto max-w-lg p-5">
-      <div className="flex flex-col">
-        {/* ① The reference's icon block (the install glyph, our set). */}
-        <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-secondary">
-          <Icon name="save" size={20} />
-        </div>
+    <div className="flex flex-col gap-3">
+      {/* The house header with the back button: this is a drill-through
+          page — the exit is always visible (BM round, the "回不去" fix). */}
+      <ViewHeader
+        icon="save"
+        title={t('skills.add.title')}
+        subtitle={t('skills.add.directHint')}
+        onBack={goBack}
+      />
 
-        {/* ② The title + the direct-install note (the engine has no
-            preview / staging step — the install reports straight back). */}
+      <PanelCard className="flex flex-col gap-4 p-4">
+        {/* The source input: label + display-side kind badge, Enter installs. */}
         <div>
-          <h2 className="text-sm font-semibold text-text">{t('skills.add.title')}</h2>
-          <p className="mt-1 text-xs text-text-muted">{t('skills.add.directHint')}</p>
-        </div>
-
-        {/* ③ The source input: the label + the display-side kind badge,
-            Enter installs (the reference's keyboard shortcut). */}
-        <div className="mt-4">
           <div className="flex items-center justify-between gap-2">
-            <Label className="text-xs text-text-secondary">{t('skills.addSource')}</Label>
+            <Label className="text-xs font-semibold text-text-secondary">{t('skills.addSource')}</Label>
             {kind !== 'empty' && (
               <Badge variant="ghost" className="text-2xxs">
                 {t('skills.add.detection')}: {t(DETECT_KEY[kind])}
@@ -98,51 +111,46 @@ export function AddView() {
             placeholder={t('skills.addSourcePlaceholder')}
             className="mt-1"
           />
-          <div className="mt-1 text-2xxs text-text-muted">{t('skills.addSourceHint')}</div>
+          <div className="mt-1 text-2xxs text-muted-foreground">{t('skills.addSourceHint')}</div>
         </div>
 
-        {/* ④ The installed hint bar (the reference's amber strip, our
-            accent tokens): the source is already in the library, a
+        {/* The installed hint bar: the source is already in the library, a
             reinstall updates it. */}
         {installedSkills.length > 0 && (
-          <div className="mt-3 flex items-center gap-2 rounded-md border border-accent-border bg-accent-soft px-3 py-2 text-xs text-accent-ink">
+          <div className="flex items-center gap-2 rounded-md border border-accent-border bg-accent-soft px-3 py-2 text-xs text-accent-ink">
             <Icon name="check" size={13} />
             {tf('skills.add.alreadyInstalled', { name: installedSkills.join('、') })}
           </div>
         )}
 
-        {/* ⑤ The install options (the engine's add-write faces). */}
-        <div className="mt-3 flex flex-col gap-2 text-xs">
-          <label className="flex items-center gap-2 text-text">
-            <input type="checkbox" className="h-4 w-4" checked={overwrite} onChange={(e) => { setOverwrite(e.target.checked) }} />
-            {t('skills.addOverwrite')}
-          </label>
-          <label className="flex items-center gap-2 text-text">
-            <input type="checkbox" className="h-4 w-4" checked={insecure} onChange={(e) => { setInsecure(e.target.checked) }} />
-            {t('skills.add.insecure')}
-          </label>
-          <label className="flex items-center gap-2 text-text">
-            <input type="checkbox" className="h-4 w-4" checked={onlyMode} onChange={(e) => { setOnlyMode(e.target.checked) }} />
-            {onlyMode ? t('skills.add.onlySkills') : t('skills.add.allSkills')}
-          </label>
+        {/* The install options (the engine's add-write faces). */}
+        <div className="flex flex-col gap-1">
+          <OptionRow checked={overwrite} onChange={(next) => { setOverwrite(next) }} label={t('skills.addOverwrite')} />
+          <OptionRow checked={insecure} onChange={(next) => { setInsecure(next) }} label={t('skills.add.insecure')} />
+          <OptionRow checked={onlyMode} onChange={(next) => { setOnlyMode(next) }} label={onlyMode ? t('skills.add.onlySkills') : t('skills.add.allSkills')} />
           {onlyMode && (
             <Input
               value={names}
               onChange={(e) => { setNames(e.target.value) }}
               placeholder={t('skills.add.onlyPlaceholder')}
-              className="text-xs"
+              className="mt-1 text-xs"
             />
           )}
         </div>
 
-        {/* ⑥ The button row (left-aligned, the reference's install
-            affordance; the busy state spins in place). */}
-        <div className="mt-4 flex items-center gap-2">
+        {/* The footer: back on the left, install on the right (the busy
+            state spins in place of the primary). */}
+        <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
+          <Button variant="ghost" size="sm" onClick={goBack}>{t('skills.back')}</Button>
           {skills.busy
             ? <Spinner />
-            : <Button size="sm" disabled={trimmed === ''} onClick={submit}>{t('skills.addInstall')}</Button>}
+            : (
+              <Button size="sm" disabled={trimmed === ''} onClick={submit}>
+                {t('skills.addInstall')}
+              </Button>
+            )}
         </div>
-      </div>
-    </PanelCard>
+      </PanelCard>
+    </div>
   )
 }

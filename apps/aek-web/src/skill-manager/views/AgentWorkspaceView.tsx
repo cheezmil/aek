@@ -15,7 +15,7 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { agentSkillCounts, skillsForAgent, skillsNotForAgent } from '../domain/workspace.ts'
 import { AgentIcon } from './AgentIcon.tsx'
-import { useRunWrite, useSkillView } from './shared.tsx'
+import { useRunWrite, useSkillView, ViewHeader } from './shared.tsx'
 
 /** The all-agents card grid (the reference's agent card shape). */
 function AgentCards() {
@@ -104,7 +104,7 @@ export function AgentWorkspaceView() {
   const { t, tf } = useI18n()
   // BI round: the bare "全部 Agents" back-button is gone — navigation back to
   // the card grid now runs through the host rail's "全部 Agents" extras row.
-  const { skills, nav, notify } = useSkillView()
+  const { skills, nav, notify, goNav } = useSkillView()
   const agentId = nav.agentId ?? undefined
   const [addOpen, setAddOpen] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
@@ -123,9 +123,10 @@ export function AgentWorkspaceView() {
   if (agentId === undefined) {
     return (
       <div className="flex flex-col gap-4">
-        <div>
-          <h2 className="text-lg font-bold text-text">{t('skills.nav.globalWorkspace')}</h2>
-        </div>
+        <ViewHeader
+          icon="globe"
+          title={t('skills.nav.globalWorkspace')}
+        />
         <AgentCards />
       </div>
     )
@@ -165,18 +166,17 @@ export function AgentWorkspaceView() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <AgentIcon agentId={agentId} label={agent?.label} size={24} />
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-lg font-bold text-text">{agent?.label ?? agentId}</h2>
-          </div>
-        </div>
+      <ViewHeader
+        iconNode={<AgentIcon agentId={agentId} label={agent?.label} size={24} />}
+        title={agent?.label ?? agentId}
+        subtitle={agent?.detected === false ? t('skills.nav.agentUnknown') : undefined}
+        onBack={() => { goNav({ view: 'workspace', agentId: null }) }}
+      >
         <Button variant="secondary" size="sm" onClick={() => { setPicked([]); setAddOpen(true) }}>
           <Icon name="plus" size={13} />
           {t('skills.ws.addSkills')}
         </Button>
-      </div>
+      </ViewHeader>
 
       {agent === undefined && (
         <PanelCard className="flex items-center gap-2 p-3 text-sm text-danger">

@@ -29,6 +29,7 @@ export type IconName =
   | 'puzzle' | 'type'
   | 'globe'
   | 'bookOpenText'
+  | 'arrowLeft'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 export const ICONS: Record<IconName, ReactNode> = {
@@ -250,6 +251,13 @@ export const ICONS: Record<IconName, ReactNode> = {
       <path d="M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z" />
       <path d="M6 13h2" />
       <path d="M6 9h2" />
+    </>
+  ),
+  /** BM round: drill-through pages' back affordance. Lucide `arrow-left`. */
+  arrowLeft: (
+    <>
+      <path d="M19 12H5" />
+      <path d="m12 19-7-7 7-7" />
     </>
   ),
   /** Lucide `play`: start one half of an instance. */
