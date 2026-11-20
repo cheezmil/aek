@@ -163,14 +163,34 @@ export interface WebSearchPanelProps {
   facts: ConsoleFactsState
 }
 
-/** One pending confirmation (soft delete or permanent purge). */
-interface Confirmation {
-  /** Which write the dialog would perform. */
-  kind: 'delete' | 'purge'
-  /** Row id (live key id or recycle id). */
-  id: number
-  /** Masked tag shown in the dialog. */
-  masked: string
+/** One pending confirmation (single soft delete, bulk delete, or permanent purge). */
+type Confirmation =
+  | {
+    /** Which write the dialog would perform. */
+    kind: 'delete' | 'purge'
+    /** Row id (live key id or recycle id). */
+    id: number
+    /** Masked tag shown in the dialog. */
+    masked: string
+  }
+  | {
+    kind: 'deleteMany'
+    /** Literals to compare against the pool; sent to the host, never rendered. */
+    keys: string[]
+    /** Client-masked display previews for the dialog. */
+    maskedPreview: string[]
+  }
+
+/**
+ * Client-side display mask (first 4 … last 4) used ONLY for the bulk-delete
+ * confirmation preview. The host masks every row in its responses; this
+ * helper is for showing the user's own input back to them and never touches
+ * the network.
+ * @param key - the literal from the batch box.
+ * @returns the display tag.
+ */
+function maskLocal(key: string): string {
+  return key.length <= 8 ? '****' : `${key.slice(0, 4)}…${key.slice(-4)}`
 }
 
 /**
@@ -241,18 +261,29 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
       || t('common.enabled').toLowerCase().includes(needle)
       || t('common.disabled').toLowerCase().includes(needle)
   })
-  const batchCount = newKeys.split(/\r?\n/u).map(line => line.trim()).filter(line => line.length > 0).length
+  /**
+   * The draft's UNIQUE keys (first-occurrence order): duplicate lines in the
+   * box collapse to one here, and the host collapses the rest against the
+   * live pool, so an already-stored literal is never inserted twice.
+   */
+  const batchLines = newKeys.split(/\r?\n/u).map(line => line.trim()).filter(line => line.length > 0)
+  const uniqueKeys = Array.from(new Set(batchLines))
+  const batchCount = uniqueKeys.length
 
   /** Open/close one provider's accordion; switching drops any in-flight edit. */
   const toggleExpanded = (kind: string): void => {
     setExpanded(current => (current === kind ? undefined : kind))
   }
 
-  /** R2: commit every non-empty line in one host request. */
+  /**
+   * R2: commit every UNIQUE non-empty line in one host request; the host
+   * dedupes the batch against the live pool, and the status read re-runs so
+   * the provider rows' key counts move immediately after the add.
+   */
   const submitBatch = (): void => {
-    const keys = newKeys.split(/\r?\n/u).map(line => line.trim()).filter(line => line.length > 0)
-    if (keys.length === 0) return
-    pool.addMany(keys)
+    if (uniqueKeys.length === 0) return
+    pool.addMany(uniqueKeys)
+    refresh()
     setNewKeys('')
   }
 
@@ -260,8 +291,15 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
   const submitEdit = (id: number): void => {
     if (editValue.trim().length === 0) return
     pool.update(id, editValue)
+    refresh()
     setEditingId(undefined)
     setEditValue('')
+  }
+
+  /** Open the bulk-delete confirmation for the current draft; the host does the comparison. */
+  const askDeleteMany = (): void => {
+    if (uniqueKeys.length === 0) return
+    setConfirmation({ kind: 'deleteMany', keys: uniqueKeys, maskedPreview: uniqueKeys.map(maskLocal) })
   }
 
   /** C4: the ONLY path that fetches one literal — an explicit per-row click. */
@@ -322,8 +360,14 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
   /** R5/R6: perform the confirmed write, or nothing at all on cancel. */
   const confirmWrite = (): void => {
     if (confirmation === undefined) return
-    if (confirmation.kind === 'delete') pool.remove(confirmation.id)
-    else pool.purge(confirmation.id)
+    if (confirmation.kind === 'deleteMany') {
+      pool.removeMany(confirmation.keys)
+    } else if (confirmation.kind === 'delete') {
+      pool.remove(confirmation.id)
+    } else {
+      pool.purge(confirmation.id)
+    }
+    refresh()
     setConfirmation(undefined)
   }
 
@@ -442,8 +486,9 @@ export function WebSearchPanel({ state, refreshSignal, facts }: WebSearchPanelPr
               resolveKey={resolveKey}
               onAskDelete={(entry) =>{  setConfirmation({ kind: 'delete', id: entry.id, masked: entry.masked }) }}
               onAskPurge={(entry) =>{  setConfirmation({ kind: 'purge', id: entry.id, masked: entry.masked }) }}
-              onSetDisabled={(id, disabled) =>{  pool.setDisabled(id, disabled) }}
-              onRestore={pool.restore}
+              onAskDeleteMany={askDeleteMany}
+              onSetDisabled={(id, disabled) =>{  pool.setDisabled(id, disabled); refresh() }}
+              onRestore={(recycleId) =>{  pool.restore(recycleId); refresh() }}
               revealError={revealError}
               confirmation={confirmation}
               onCancel={() =>{  setConfirmation(undefined) }}
@@ -744,6 +789,8 @@ interface KeyPoolBodyProps {
   onAskDelete: (entry: KeyPoolEntry) => void
   /** Open the permanent-purge confirmation. */
   onAskPurge: (entry: RecycleEntry) => void
+  /** Open the bulk-delete confirmation for the current draft. */
+  onAskDeleteMany: () => void
   /** Enable / disable one row. */
   onSetDisabled: (id: number, disabled: boolean) => void
   /** Restore one recycled row. */
@@ -762,7 +809,7 @@ interface KeyPoolBodyProps {
 function KeyPoolBody({
   pool, providerKind, needle, newKeys, onNewKeys, onAdd, batchCount, editingId, onEditStart,
   onEditCancel, editValue, onEditValue, onEditSave, revealed, allRevealed, onToggleReveal,
-  onToggleRevealAll, resolveKey, onAskDelete, onAskPurge, onSetDisabled, onRestore,
+  onToggleRevealAll, resolveKey, onAskDelete, onAskPurge, onAskDeleteMany, onSetDisabled, onRestore,
   revealError, confirmation, onCancel, onConfirm,
 }: KeyPoolBodyProps) {
   const { t, tf } = useI18n()
@@ -822,6 +869,17 @@ function KeyPoolBody({
           <button type="submit" className={PRIMARY_BUTTON} disabled={pool.pending || batchCount === 0}>
             <Icon name="plus" size={16} />
             {batchCount > 1 ? t('keys.addMany') : t('keys.add')}
+          </button>
+          <button
+            type="button"
+            className={cn(PRIMARY_BUTTON, DANGER_BUTTON)}
+            onClick={onAskDeleteMany}
+            title={t('keys.deleteManyTitle')}
+            aria-label={t('keys.deleteManyTitle')}
+            disabled={pool.pending || batchCount === 0}
+          >
+            <Icon name="trash" size={16} />
+            {t('keys.delete')}
           </button>
         </div>
       </form>
@@ -973,16 +1031,31 @@ function KeyPoolBody({
               className={MODAL_CARD}
               role="dialog"
               aria-modal="true"
-              aria-label={t('keys.deleteConfirmTitle')}
+              aria-label={confirmation.kind === 'deleteMany' ? t('keys.deleteManyTitle') : t('keys.deleteConfirmTitle')}
               onClick={(event) =>{  event.stopPropagation() }}
             >
-              <h4 className={MODAL_TITLE}>{t('keys.deleteConfirmTitle')}</h4>
+              <h4 className={MODAL_TITLE}>
+                {confirmation.kind === 'deleteMany' ? t('keys.deleteManyTitle') : t('keys.deleteConfirmTitle')}
+              </h4>
               <p className={MODAL_TEXT}>
                 {confirmation.kind === 'delete'
                   ? tf('keys.deleteConfirmText', { days: pool.retentionDays })
-                  : t('keys.purgeConfirm')}
+                  : confirmation.kind === 'deleteMany'
+                    ? tf('keys.deleteManyText', { days: pool.retentionDays })
+                    : t('keys.purgeConfirm')}
               </p>
-              <p className={MODAL_TARGET}>{tf('keys.deleteTarget', { masked: confirmation.masked })}</p>
+              {confirmation.kind === 'deleteMany'
+                ? (
+                  <>
+                    {confirmation.maskedPreview.slice(0, 5).map((masked, index) => (
+                      <p key={index} className={MODAL_TARGET}>{masked}</p>
+                    ))}
+                    {confirmation.keys.length > 5
+                      ? <p className={MODAL_TARGET}>{tf('keys.deleteManyMore', { n: confirmation.keys.length - 5 })}</p>
+                      : null}
+                  </>
+                )
+                : <p className={MODAL_TARGET}>{tf('keys.deleteTarget', { masked: confirmation.masked })}</p>}
               <div className={MODAL_ACTIONS}>
                 <button type="button" className={SECONDARY_BUTTON} onClick={onCancel}>{t('keys.deleteConfirmCancel')}</button>
                 <button type="button" className={cn(PRIMARY_BUTTON, DANGER_BUTTON)} onClick={onConfirm}>{t('keys.deleteConfirmOk')}</button>

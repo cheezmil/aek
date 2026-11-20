@@ -238,18 +238,34 @@ export class KeyPool {
 
   /**
    * R2: import several newline-separated keys in one request.
+   *
+   * Dedupe, both ways (2026-11-21): the batch collapses duplicate lines
+   * against itself (order preserved) AND against the live pool — a literal
+   * already stored is never inserted twice.
    * @param keys - non-empty literals.
-   * @returns how many rows were inserted.
+   * @returns how many NEW rows were inserted (0 when every literal is a duplicate).
    */
   addMany(keys: readonly string[]): number {
     return this.transact((_store, db) => {
+      const existing = new Set(
+        (db.prepare('SELECT key_enc FROM keys').all() as Array<{ key_enc: string }>)
+          .map(row => row.key_enc),
+      )
+      const fresh: string[] = []
+      const seen = new Set<string>()
+      for (const key of keys) {
+        if (existing.has(key) || seen.has(key)) continue
+        seen.add(key)
+        fresh.push(key)
+      }
+      if (fresh.length === 0) return 0
       const insert = db.prepare(
         'INSERT INTO keys (key_enc, disabled, failures, cooldown_end) VALUES (?, 0, 0, 0)',
       )
       let count = 0
       db.exec('BEGIN')
       try {
-        for (const key of keys) {
+        for (const key of fresh) {
           insert.run(key)
           count += 1
         }
@@ -285,6 +301,42 @@ export class KeyPool {
       db.prepare('DELETE FROM keys WHERE id=?').run(id)
       db.prepare('DELETE FROM key_flags WHERE key_id=?').run(id)
       return true
+    })
+  }
+
+  /**
+   * Bulk counterpart of {@link remove}: the host compares the given literals
+   * against the live pool and soft-deletes every MATCHING row into the
+   * encrypted recycle bin. Literals that are not in the pool are ignored, and
+   * duplicate literals in the batch are processed once.
+   * @param keys - literals from the console's batch box (1..200).
+   * @returns how many live rows were deleted (0 when nothing matched).
+   */
+  removeMany(keys: readonly string[]): number {
+    const wanted = new Set(keys)
+    return this.transact((store, db) => {
+      const matches = store.load().filter(entry => wanted.has(entry.key))
+      if (matches.length === 0) return 0
+      const flags = this.flags(db)
+      const recycled = db.prepare(
+        'INSERT INTO keys_recycle (origin_id, key_enc, disabled, failures, cooldown_end, reason, deleted_at) VALUES (?, ?, ?, ?, 0, ?, ?)',
+      )
+      const delKey = db.prepare('DELETE FROM keys WHERE id=?')
+      const delFlag = db.prepare('DELETE FROM key_flags WHERE key_id=?')
+      const now = Date.now()
+      db.exec('BEGIN')
+      try {
+        for (const row of matches) {
+          recycled.run(row.id, row.key, row.disabled ? 1 : 0, row.failures, flags.get(row.id) ?? 'auto', now)
+          delKey.run(row.id)
+          delFlag.run(row.id)
+        }
+        db.exec('COMMIT')
+      } catch (cause) {
+        db.exec('ROLLBACK')
+        throw cause
+      }
+      return matches.length
     })
   }
 

@@ -850,12 +850,20 @@ export function apply(ctx: Context): void {
       const keys: string[] = rawKeys === undefined
         ? (key === undefined ? [] : [key])
         : rawKeys.map(validKey).filter((item): item is string => item !== undefined)
-      if (method !== 'POST' && id === undefined) {
+      if (method !== 'POST' && method !== 'DELETE' && id === undefined) {
         sendJson(res, 400, { code: 'bad-request', message: 'a positive numeric id is required' })
         return
       }
       if (method === 'POST' && (keys.length === 0 || keys.length > 200)) {
         sendJson(res, 400, { code: 'bad-request', message: '1..200 valid keys are required' })
+        return
+      }
+      if (method === 'DELETE' && keys.length > 200) {
+        sendJson(res, 400, { code: 'bad-request', message: 'at most 200 keys per bulk delete' })
+        return
+      }
+      if (method === 'DELETE' && keys.length === 0 && id === undefined) {
+        sendJson(res, 400, { code: 'bad-request', message: 'an id or a non-empty keys[] is required' })
         return
       }
       if (method === 'PUT' && key === undefined) {
@@ -870,15 +878,25 @@ export function apply(ctx: Context): void {
       try {
         const pool = new KeyPool(kind)
         let changed = true
+        let removed = 0
         switch (method) {
           case 'POST':
             // addMany handles a single line too (one transaction, one request).
+            // It dedupes the batch against itself and against the live pool.
             pool.addMany(keys)
             break
           case 'PUT':
             changed = pool.update(id as number, key as string)
             break
           case 'DELETE':
+            if (keys.length > 0) {
+              // Bulk soft delete: the host compares the literals against the
+              // live pool and moves every match into the encrypted recycle
+              // bin; literals that are not in the pool are ignored.
+              removed = pool.removeMany(keys)
+              changed = removed > 0
+              break
+            }
             // R6: soft delete — the row moves to the encrypted recycle bin.
             changed = pool.remove(id as number)
             break
@@ -889,7 +907,14 @@ export function apply(ctx: Context): void {
             break
         }
         if (!changed) {
-          sendJson(res, 404, { code: 'key-not-found', message: 'no key with that id' })
+          sendJson(res, 404, {
+            code: 'key-not-found',
+            message: keys.length > 0 && method === 'DELETE' ? 'no matching key' : 'no key with that id',
+          })
+          return
+        }
+        if (method === 'DELETE' && keys.length > 0) {
+          sendJson(res, 200, { ...readKeyPool(kind), removed })
           return
         }
         sendJson(res, 200, readKeyPool(kind))

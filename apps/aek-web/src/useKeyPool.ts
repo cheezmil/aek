@@ -91,6 +91,12 @@ export interface KeyPoolState {
   update: (id: number, key: string) => void
   /** Soft-delete one key into the recycle bin. */
   remove: (id: number) => void
+  /**
+   * Bulk soft-delete: the host compares the literals against the pool and
+   * moves every matching row into the recycle bin; unmatched literals are
+   * ignored (one request, one transaction).
+   */
+  removeMany: (keys: string[]) => void
   /** Enable or disable one key (records the manual reason). */
   setDisabled: (id: number, disabled: boolean) => void
   /** Restore one recycled key. */
@@ -191,6 +197,7 @@ export function useKeyPool(kind: string | undefined): KeyPoolState {
   const addMany = useCallback((keys: string[]) => { write('POST', { keys }) }, [write])
   const update = useCallback((id: number, key: string) => { write('PUT', { id, key }) }, [write])
   const remove = useCallback((id: number) => { write('DELETE', { id }) }, [write])
+  const removeMany = useCallback((keys: string[]) => { write('DELETE', { keys }) }, [write])
   const setDisabled = useCallback((id: number, disabled: boolean) => {
     write('PATCH', { id, disabled })
   }, [write])
@@ -235,6 +242,6 @@ export function useKeyPool(kind: string | undefined): KeyPoolState {
 
   return {
     entries, recycle, retentionDays, error, pending, refresh,
-    add, addMany, update, remove, setDisabled, restore, purge, reveal, revealAll,
+    add, addMany, update, remove, removeMany, setDisabled, restore, purge, reveal, revealAll,
   }
 }
