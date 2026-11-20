@@ -3,6 +3,7 @@ import type { Context } from '@cheezmil/coraek/types'
 import { resolveConfig, snapshotsOf, type AeksmPluginConfig } from '../config.js'
 import { createRuntimeServices, projectRootFromImportMeta, type RuntimeServices } from '../infra/runtime.js'
 import { MANAGER_SKILL_NAME } from '../core/services/manager-skill-service.js'
+import { SkillsManagerError } from '../shared/errors.js'
 import type { DistributeRequest } from '../core/services/distribute-service.js'
 
 export type { AeksmPluginConfig }
@@ -198,5 +199,31 @@ export class SkillsManagerService extends Service {
   update(options: { skills?: string[]; source?: string }) {
     const s = this.services()
     return options.source ? s.update.updateSource(options.source) : s.update.updateSkills(options.skills ?? [])
+  }
+
+  /** `aeksm categories list` — the hub's category vocabulary with per-category skill counts (the console pill row's authority). */
+  categoryCounts() {
+    return this.services().registry.listCategoryCounts()
+  }
+
+  /**
+   * `aeksm categories set|add|remove` — one category-axis change (ADR-0015).
+   * The host face rejects unknown skills up front (machine code
+   * `skill_missing`): the CLI's blind write would silently fabricate a
+   * registry entry for a name that no skill dir backs.
+   */
+  setCategories(action: 'set' | 'add' | 'remove', skill: string, values: readonly string[]) {
+    const s = this.services()
+    if (!s.registry.skillExists(skill)) {
+      throw new SkillsManagerError('skill_missing', `Skill not found: ${skill}`)
+    }
+    if (action === 'add') return s.registry.addCategories(skill, values)
+    if (action === 'remove') return s.registry.removeCategories(skill, values)
+    return s.registry.setCategories(skill, values)
+  }
+
+  /** `aeksm archive` — non-destructive removal (the `aeksm adopt` face restores; no permanent delete exists). */
+  archiveSkills(skills: readonly string[]) {
+    return this.services().archive.archiveSkills(skills)
   }
 }

@@ -33,4 +33,22 @@ describe('filterSkills', () => {
   it('returns nothing when nothing matches, so the empty state can blame the filter', () => {
     expect(filterSkills(skills, 'nope')).toEqual([])
   })
+
+  it('also searches the optional title, tags, and source fields', () => {
+    const extended = [
+      {
+        name: 'web',
+        category: 'devops',
+        description: 'plain',
+        title: 'Web tooling',
+        tags: ['frontend', 'spa'],
+        source: { type: 'git', url: 'https://github.com/owner/repo' },
+      },
+    ]
+    expect(filterSkills(extended, 'web tooling').map(skill => skill.name)).toEqual(['web'])
+    expect(filterSkills(extended, 'SPA').map(skill => skill.name)).toEqual(['web'])
+    expect(filterSkills(extended, 'github.com').map(skill => skill.name)).toEqual(['web'])
+    expect(filterSkills(extended, 'frontend git').map(skill => skill.name)).toEqual(['web'])
+    expect(filterSkills(extended, 'kubernetes')).toEqual([])
+  })
 })

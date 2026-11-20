@@ -17,6 +17,9 @@
  *   - `POST /api/aek/skills/undistribute`→ remove managed runtime entries (428 without `confirm`)
  *   - `POST /api/aek/skills/add`         → discover + install from a source (428 without `confirm`)
  *   - `POST /api/aek/skills/update`      → update one source group or selected skills (428 without `confirm`)
+  *   - `GET  /api/aek/skills/categories`  → the hub's category vocabulary with per-category counts
+  *   - `POST /api/aek/skills/categories`  → one category-axis change `{ action: set|add|remove, skill, values[] }` (428 without `confirm`)
+  *   - `POST /api/aek/skills/archive`     → non-destructive removal of hub skills (428 without `confirm`; `aeksm adopt` restores)
  *
  * The write surface follows the console's write-confirm rule: a mutating call
  * without `confirm: true` is a `428 confirm-required`, mirroring
@@ -344,6 +347,63 @@ export function registerSkillsManagerApi(ctx: Context, svc: SkillsManagerService
             return
           }
           const result = engineCall(() => svc.update({ source, skills }))
+          sendWriteResult(res, result)
+        },
+      }),
+      server.register({
+        kind: 'exact',
+        path: `${SKILLS_API}/categories`,
+        handler: async (req, res) => {
+          if (req.method === 'POST') {
+            const body = await readJsonBody(req)
+            if (body?.confirm !== true) {
+              sendJson(res, 428, { code: 'confirm-required', message: 'category writes are a write operation: resend with confirm: true' })
+              return
+            }
+            const action = body.action === 'set' || body.action === 'add' || body.action === 'remove' ? body.action : undefined
+            const skill = typeof body.skill === 'string' && body.skill.trim() !== '' ? body.skill : undefined
+            const values = asStringArray(body.values)
+            if (action === undefined || skill === undefined || values === undefined) {
+              sendJson(res, 400, { code: 'bad-request', message: 'body { action: "set" | "add" | "remove", skill, values: string[], confirm: true } is required' })
+              return
+            }
+            if ((action === 'add' || action === 'remove') && values.length === 0) {
+              sendJson(res, 400, { code: 'bad-request', message: 'values must be non-empty for add/remove (use set with [] to clear)' })
+              return
+            }
+            const result = engineCall(() => ({ skill, categories: svc.setCategories(action, skill, values).categories ?? [] }))
+            sendWriteResult(res, result)
+            return
+          }
+          if (req.method === 'GET') {
+            const result = engineCall(() => svc.categoryCounts())
+            sendReadResult(res, result, data => ({ categories: data }))
+            return
+          }
+          res.setHeader('allow', 'GET, POST')
+          sendJson(res, 405, { code: 'method-not-allowed', message: 'GET or POST only' })
+        },
+      }),
+      server.register({
+        kind: 'exact',
+        path: `${SKILLS_API}/archive`,
+        handler: async (req, res) => {
+          if (req.method !== 'POST') {
+            res.setHeader('allow', 'POST')
+            sendJson(res, 405, { code: 'method-not-allowed', message: 'POST only' })
+            return
+          }
+          const body = await readJsonBody(req)
+          if (body?.confirm !== true) {
+            sendJson(res, 428, { code: 'confirm-required', message: 'archiving is a write operation: resend with confirm: true' })
+            return
+          }
+          const skills = asStringArray(body.skills)
+          if (skills === undefined || skills.length === 0) {
+            sendJson(res, 400, { code: 'bad-request', message: 'body { skills: string[], confirm: true } requires a non-empty skills list' })
+            return
+          }
+          const result = engineCall(() => svc.archiveSkills(skills))
           sendWriteResult(res, result)
         },
       }),

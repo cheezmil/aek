@@ -36,6 +36,8 @@ export interface SkillRow {
     url?: string | null
     subpath?: string | null
     ref?: string | null
+    /** The ADR-0016 update anchor (git-like sources: the last applied tree id). */
+    upstream_tree?: string | null
   } | null
   archived: boolean
 }
@@ -103,6 +105,12 @@ export interface UpdatePlanGroup {
   skills: Array<{ skill: string; title: string; description: string }>
 }
 
+/** One category vocabulary entry (`GET /api/aek/skills/categories`). */
+export interface CategoryCount {
+  category: string
+  count: number
+}
+
 /** The resident-cost ledger (the ADR-0018 wire shape; the domain tier's
  *  canonical form, re-exported so the panel and the hook agree). */
 export type CostLedger = DomainCostLedger
@@ -115,11 +123,21 @@ export interface SkillDetail {
   body: string
 }
 
+/** The add-write options (`POST /api/aek/skills/add`). */
+export interface AddOptions {
+  all?: boolean
+  skills?: string[]
+  overwrite?: boolean
+  allowInsecureHttp?: boolean
+}
+
 /** The live skill-hub state. */
 export interface SkillsState {
   overview: SkillsOverview | undefined
   cost: CostLedger | undefined
   updatePlan: UpdatePlanGroup[] | undefined
+  /** The hub's category vocabulary with per-category counts (`GET /api/aek/skills/categories`). */
+  categories: CategoryCount[]
   error: string | undefined
   /** True when the host has no route (an older build): fall back to the CLI bridge. */
   unsupported: boolean
@@ -130,8 +148,12 @@ export interface SkillsState {
   refreshDetail: (skill: string) => Promise<SkillDetail | undefined>
   distribute: (request: { to: 'user' | 'project'; skills: string[]; agents?: string[]; projectRoot?: string; mode?: 'symlink' | 'copy'; force?: boolean }) => Promise<boolean>
   undistribute: (request: { to: 'user' | 'project'; skills: string[]; agents?: string[]; projectRoot?: string }) => Promise<boolean>
-  add: (source: string, options?: { all?: boolean; skills?: string[]; overwrite?: boolean }) => Promise<boolean>
+  add: (source: string, options?: AddOptions) => Promise<boolean>
   update: (options: { skills?: string[]; source?: string }) => Promise<boolean>
+  /** One category-axis change: `set` replaces the whole list, `add`/`remove` adjust it. */
+  applyCategories: (action: 'set' | 'add' | 'remove', skill: string, values: string[]) => Promise<boolean>
+  /** Non-destructive removal of hub skills (the `aeksm adopt` face restores them). */
+  archive: (skills: string[]) => Promise<boolean>
 }
 
 /**
@@ -143,6 +165,7 @@ export function useSkills(refreshSignal = 0): SkillsState {
   const [overview, setOverview] = useState<SkillsOverview | undefined>(undefined)
   const [cost, setCost] = useState<CostLedger | undefined>(undefined)
   const [updatePlan, setUpdatePlan] = useState<UpdatePlanGroup[] | undefined>(undefined)
+  const [categories, setCategories] = useState<CategoryCount[]>([])
   const [error, setError] = useState<string | undefined>(undefined)
   const [unsupported, setUnsupported] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -176,6 +199,10 @@ export function useSkills(refreshSignal = 0): SkillsState {
       void fetch(`${SKILLS_API}/update-plan`).then(async (response) => {
         if (mySeq !== seq.current) return
         if (response.ok) setUpdatePlan(((await response.json()) as { plan?: { groups: UpdatePlanGroup[] } }).plan?.groups)
+      }).catch(() => undefined)
+      void fetch(`${SKILLS_API}/categories`).then(async (response) => {
+        if (mySeq !== seq.current) return
+        if (response.ok) setCategories(((await response.json()) as { categories?: CategoryCount[] }).categories ?? [])
       }).catch(() => undefined)
     }).catch(() => {
       if (mySeq !== seq.current) return
@@ -219,6 +246,7 @@ export function useSkills(refreshSignal = 0): SkillsState {
     overview,
     cost,
     updatePlan,
+    categories,
     error,
     unsupported,
     busy,
@@ -229,5 +257,7 @@ export function useSkills(refreshSignal = 0): SkillsState {
     undistribute: request => write('undistribute', request),
     add: (source, options = {}) => write('add', { source, ...options }),
     update: options => write('update', options),
+    applyCategories: (action, skill, values) => write('categories', { action, skill, values }),
+    archive: skills => write('archive', { skills }),
   }
 }
