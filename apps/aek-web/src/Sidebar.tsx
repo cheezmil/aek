@@ -79,13 +79,13 @@ const DRAWER_LABEL = 'grow shrink text-left'
  * D round: the family-row click disambiguation no longer waits on a timer.
  * Chromium's INTENSIVE TIMER THROTTLING clamps every `setTimeout` to ≥1 s
  * (up to 1 min) in long-lived / occluded sessions, so a 250 ms wait made
- * both the panel switch and the rail toggle feel a second late. The browser
- * delivers `MouseEvent.detail` (1 = single, 2 = double) with the click
- * itself — zero timers:
- * - cross-page click: SELECT immediately (no rail side effects at all);
- * - on-family single click: select + TOGGLE the rail show/hide immediately;
- * - on-family double click: undo that toggle (net zero) + collapse the
- *   rail's labels — the A-round label shortcut, timer-free.
+ * both the panel switch and the rail toggle feel a second late. The toggle
+ * is therefore driven directly from the click, with a per-row rolling 400 ms
+ * window (BK round m04772) collapsing fast bursts into one toggle:
+ * - cross-page click: SELECT immediately + toggle the rail show/hide;
+ * - fast burst on the same row: only the first click toggles (no cancel);
+ * - collapsing the rail's labels is the dedicated icon in the hover box
+ *   (BI round), timer-free.
  */
 
 /** W round: the rail width the user can drag between (the CSS default is 248). */
@@ -329,26 +329,43 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   const [railLabelsHidden, setRailLabelsHidden] = usePref<string>(RAIL_LABELS_HIDDEN_KEY, '', parseCommaList)
 
   /**
-   * One click on a row. Family rows (owning plugin routes) select and, on a
-   * SINGLE click, TOGGLE their plugin rail — from ANY page (BJ round; the
-   * old on-family-only gate made "click a different row" never collapse the
-   * rail). Plain rows select immediately. Double clicks are inert; the label
-   * collapse is the dedicated icon in the hover box.
+   * One click on a row. Family rows (owning plugin routes) select and TOGGLE
+   * their plugin rail — from ANY page (BJ round; the old on-family-only gate
+   * made "click a different row" never collapse the rail). Fast successive
+   * clicks on the SAME row collapse into a single toggle (BK round m04772):
+   * the browser resets `detail` back to 1 between click bursts, so a
+   * `detail`-based guard let rapid clicks toggle the rail back and forth and
+   * cancel out. Instead a per-row rolling 400 ms window: the first click of
+   * a burst toggles; later clicks inside the window are suppressed (the
+   * window rolls forward so the whole burst stays collapsed). Every click
+   * still navigates. Plain rows select immediately. The label collapse is
+   * the dedicated icon in the hover box (BI round).
    * @param entry - the row clicked.
    * @param subIds - the row's plugin routes (empty = plain row).
-   * @param detail - the browser click count (only 1 is acted on).
    */
-  const handleRowClick = (entry: NavEntry, subIds: readonly string[], detail: number): void => {
+  const handleRowClick = (entry: NavEntry, subIds: readonly string[]): void => {
     if (subIds.length === 0) {
       onSelect(entry.id)
       return
     }
     const remembered = lastSub.get(entry.id)
     onSelect(remembered ?? entry.id)
-    if (detail === 1) {
+    const now = Date.now()
+    const last = railToggleAt.current[entry.id] ?? 0
+    if (now - last >= 400) {
       setRailHidden(current => toggleInCommaList(current, entry.id))
     }
+    railToggleAt.current[entry.id] = now
   }
+  /**
+   * BK round (m04772): "clicking fast" cancels the rail collapse because the
+   * browser resets `detail` back to 1 between bursts, so rapid clicks re-
+   * toggle the rail back and forth. Per-row rolling 400 ms window: the first
+   * click of a burst toggles, later clicks inside the window are suppressed
+   * (the window rolls forward on every click so the whole burst stays
+   * collapsed). A deliberate re-toggle is just a slower click (>400 ms apart).
+   */
+  const railToggleAt = useRef<Record<string, number>>({})
   /** X round: the base setting that restores the bottom horizontal scrollbar (default off). */
   const hScroll = prefs[H_SCROLL_KEY] === true
   /** Y round: fade the floating refresh/pin box in and out (default on; off = instant). */
@@ -565,7 +582,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
             'grow shrink min-w-0',
           )}
           aria-current={rowActive ? 'page' : undefined}
-          onClick={(event) =>{  handleRowClick(entry, subIds, event.detail) }}
+          onClick={() => { handleRowClick(entry, subIds) }}
           title={`${t(entry.labelKey)} · ${t('nav.dragHint')}`}
         >
           <span className='inline-flex shrink-0 items-center justify-center opacity-90'><Icon name={entry.icon} size={18} /></span>
