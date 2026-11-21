@@ -28,7 +28,7 @@ import {
   specStyle,
   writeFavorites,
   galleryItems,
-  STYLE_KINDS,
+  ALL_STYLE_KINDS,
   type GalleryItem,
 } from './spec.ts'
 import { TopBar, type GalleryTab } from './TopBar.tsx'
@@ -61,7 +61,7 @@ export function ArtGalleryPanel(): JSX.Element {
     return [...groups.values()]
   }, [skills])
   const kindGroups = useMemo<RepoGroup[]>(
-    () => STYLE_KINDS.map(k => ({ id: k.id, name: k.name, color: k.color, count: k.count })),
+    () => ALL_STYLE_KINDS.map(k => ({ id: k.id, name: k.name, color: k.color, count: k.count })),
     [],
   )
 
@@ -73,7 +73,9 @@ export function ArtGalleryPanel(): JSX.Element {
   const [favOnly, setFavOnly] = useState(false)
   const [favs, setFavs] = useState<ReadonlySet<string>>(() => readFavorites())
   const [curId, setCurId] = useState<string>(DEFAULT_SKILL)
-  const [immersive, setImmersive] = useState(false)
+  // BR round (m11298 ①): gallery opens immersive by default (full-bleed stage; the
+  // floating switcher bottom-right or Esc exits back to TopBar + Sidebar chrome).
+  const [immersive, setImmersive] = useState(true)
   const [toast, setToast] = useState<{ msg: string; key: number } | null>(null)
   const [globalId, setGlobalId] = useState<string | null>(() => globalThemeId())
   const pendingId = useRef<string | null>(null)
@@ -85,7 +87,7 @@ export function ArtGalleryPanel(): JSX.Element {
     styles: styles.length,
     skills: skills.length,
     repos: Object.keys(REPO_FALLBACK).length,
-    kinds: STYLE_KINDS.length,
+    kinds: ALL_STYLE_KINDS.length,
     modes: MODE_COUNT,
   }
 

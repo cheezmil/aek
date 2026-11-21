@@ -39,6 +39,7 @@ import type { Locale } from './i18n.tsx'
 import { NAV, NAV_TOP, RAIL_HIDDEN_KEY, RAIL_LABELS_HIDDEN_KEY, parseCommaList, subEntriesOf, toggleInCommaList, useLastSubMemory } from './nav-model.ts'
 import type { NavEntry, PanelId } from './nav-model.ts'
 import { parseBoolean, PREF_KEYS, usePrefLanded, usePref, useSettings } from './preferences.tsx'
+import { RowActionsFloat } from './RowActionsFloat.tsx'
 import { cn } from '@/lib/utils'
 
 export type { PanelId } from './nav-model.ts'
@@ -56,13 +57,11 @@ const RAIL_ITEM_ACTIVE = 'text-accent-ink bg-accent-soft hover:text-accent-ink h
 const NAV_ROW = 'group relative flex items-center gap-0.5 cursor-grab active:cursor-grabbing'
 const NAV_ROW_DROP_BEFORE = 'before:content-[""] before:absolute before:left-1 before:right-1 before:-top-0.75 before:h-0.5 before:rounded-3xs before:bg-primary before:shadow-aek-ring'
 const NAV_ROW_DROP_AFTER = 'after:content-[""] after:absolute after:left-1 after:right-1 after:-bottom-0.75 after:h-0.5 after:rounded-3xs after:bg-primary after:shadow-aek-ring'
-/* BL round: the card sits on the RIGHT edge of its own row (the old
-   `bottom-full` box floated over the row ABOVE and, hover-on with
-   pointer-events-auto, intercepted the neighbour's clicks — the
-   intermittent "rows don't respond" bug). Opacity / pointer-events are
-   driven by the `.aek-row-actions` rules in index.css (instant fade-in,
-   2.5s delayed fade-out, hover keep-alive). */
-const ROW_ACTIONS = 'aek-row-actions absolute top-1/2 right-0.5 z-3 -translate-y-1/2 flex items-center gap-0.5 p-0.5 border border-border rounded-sm bg-card shadow-md opacity-0 pointer-events-none translate-x-1.5 group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-x-0'
+/* BR round: the hover action card is a viewport-fixed float anchored to the
+   row's RIGHT edge (+ 8px) by <RowActionsFloat> (it must never cover the
+   option — the old in-row `right-0.5` card sat on top of the row, and
+   anything past the rail edge was clipped by `overflow-hidden`). Opacity /
+   pointer-events keep the `.aek-row-actions` timing in index.css. */
 const ROW_ICON_BUTTON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted cursor-pointer transition-[color,background-color,transform] duration-140 ease-aek hover:text-primary hover:bg-accent-soft'
 const LABEL_FADE = 'aek-label-fade'
 const LABEL_FADE_HIDDEN = 'aek-label-fade-hidden'
@@ -605,7 +604,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
             tail (the user: "别放到外面") — they live in ONE floating card
             that fades in on row hover (the base setting `navActionsFade`
             switches the fade on / off). Keyboard focus reveals it too. */}
-        <div className={cn(ROW_ACTIONS, compact && 'hidden')}>
+        <RowActionsFloat className={compact && 'hidden'}>
           {/* Q round: the refresh icon refreshes the page THIS row opens —
               even when that page is not active yet. */}
           <button
@@ -640,7 +639,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
               <Icon name="type" size={13} />
             </button>
           )}
-        </div>
+        </RowActionsFloat>
       </li>
     )
   }

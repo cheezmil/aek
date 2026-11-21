@@ -12,8 +12,7 @@ import { useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import { Icon } from '../Icons.tsx'
 import { useI18n } from '../i18n.tsx'
-import { cssSnippet, normRadius, type GalleryItem, type StageSpec } from './spec.ts'
-import { ART_STYLES, ART_STYLE_KINDS } from './data/all-styles.ts'
+import { cssSnippet, normRadius, type GalleryItem, type StageSpec, galleryItems, ALL_STYLE_KINDS } from './spec.ts'
 import { copyToClipboard } from '../clipboard.ts'
 import { ComponentsPanel, MotionPanel } from './StagePanels.tsx'
 import { cn } from '@/lib/utils'
@@ -54,10 +53,11 @@ const NAVS: { key: string; icon: 'layout' | 'plugins' | 'zap' | 'terminal' }[] =
 
 const CHART = [38, 62, 47, 88, 56, 73, 34, 91]
 
-/** Composition-table rows: one per style kind + the colored-entry count. */
-const KIND_ROWS = ART_STYLE_KINDS.map(({ id, name, src, color, count }) => ({
+/** Composition-table rows: one per style kind (incl. AEK base) + the colored-entry count. */
+const KIND_STYLE_ITEMS = galleryItems().styles
+const KIND_ROWS = ALL_STYLE_KINDS.map(({ id, name, src, color, count }) => ({
   id, name, src, color, count,
-  colored: ART_STYLES.filter(s => s.kindId === id && s.colors.length > 0).length,
+  colored: KIND_STYLE_ITEMS.filter(s => s.kindId === id && (s.colors?.length ?? 0) > 0).length,
 }))
 
 const Bar = ({ value, tone = 'default' }: { value: number; tone?: 'default' | 'ok' | 'bad' }): JSX.Element => (
@@ -74,7 +74,7 @@ const Bar = ({ value, tone = 'default' }: { value: number; tone?: 'default' | 'o
 
 const SpecItem = ({ k, children }: { k: string; children: ReactNode }): JSX.Element => (
   <div className="flex min-w-0 flex-col gap-1">
-    <span className="text-muted-foreground text-2xxs leading-none font-bold tracking-wider uppercase">{k}</span>
+    <span className="text-muted-foreground text-2xxs leading-none font-bold uppercase">{k}</span>
     <span className="truncate font-mono text-xs leading-none font-bold">{children}</span>
   </div>
 )
@@ -184,7 +184,7 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
         <SpecItem k={t('art.radius')}>{normRadius(spec.radius)}</SpecItem>
         <SpecItem k={t('art.font')}>{spec.font}</SpecItem>
         <div className="flex flex-col gap-1.5">
-          <span className="text-muted-foreground text-2xxs leading-none font-bold tracking-wider uppercase">
+          <span className="text-muted-foreground text-2xxs leading-none font-bold uppercase">
             {t('art.palette')}
           </span>
           <div className="flex gap-1.5">

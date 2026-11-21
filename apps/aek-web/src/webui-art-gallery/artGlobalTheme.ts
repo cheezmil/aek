@@ -1,12 +1,13 @@
 /**
- * Whole-webui skinning (BP round, m10318 item 6; BQ round m10857 item 4):
- * apply a gallery spec's ACCENT + radius + font to the entire aek webui.
- * The spec's neutral colors (bg/surface/text/muted) are deliberately NOT
- * written — the original AEK base neutrals must survive every skin, so a
- * switch only tints the accent family (--aek-accent drives --ring/--chart-1
- * via the shadcn mapping layer), never repaints the base. The active spec
- * id persists in localStorage and boot() restores it on app start
- * (main.tsx calls it before render).
+ * Whole-webui skinning (BP round, m10318 item 6; BQ round m10857 item 4;
+ * BR round m11298 item ④ fully restored the 5-color override): apply a
+ * gallery spec's palette (bg/surface/text/muted/accent) + radius + font to
+ * the ENTIRE aek webui — the shadcn mapping layer and every panel follow the
+ * aek source variables. The AEK base entries (style-aec-base[-dark], BR
+ * round m11298 ③) are the escape hatch back to the default look; the brand
+ * logo stays locked to fixed --color-logo-* tokens (BQ-1) so it never
+ * follows a skin. The active spec id persists in localStorage and boot()
+ * restores it on app start (main.tsx calls it before render).
  *
  * @module @cheezmil/aek-web/src/webui-art-gallery/artGlobalTheme
  */
@@ -14,8 +15,12 @@ import { allSpecs, normRadius, type StageSpec } from './spec.ts'
 
 const GLOBAL_KEY = 'aek-art-global-theme'
 
-/** Accent-only override — base neutrals stay the original AEK set. */
+/** Full palette override — spec p[] slots are [bg, surface, text, muted, accent, accent2]. */
 const TOKENS: ReadonlyArray<{ key: string; slot: number }> = [
+  { key: '--aek-bg', slot: 0 },
+  { key: '--aek-surface', slot: 1 },
+  { key: '--aek-text', slot: 2 },
+  { key: '--aek-text-muted', slot: 3 },
   { key: '--aek-accent', slot: 4 },
 ]
 

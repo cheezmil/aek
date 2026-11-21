@@ -125,7 +125,7 @@ export function GallerySidebar(p: GallerySidebarProps): JSX.Element {
       rows.push(
         <div
           key={`g${groupKey}`}
-          className="bg-background sticky top-0 z-10 flex items-center gap-1.5 px-2 pt-2.5 pb-1 text-2xxs font-extrabold tracking-wider text-muted-foreground uppercase"
+          className="bg-background sticky top-0 z-10 flex items-center gap-1.5 px-2 pt-2.5 pb-1 text-2xxs font-extrabold text-muted-foreground uppercase"
         >
           <span className="size-2 flex-none rounded-full" style={{ background: groupColor(x, p.tab, p.kindGroups) }} />
           <b className="text-foreground">{groupName(x, p.tab)}</b>
@@ -147,7 +147,7 @@ export function GallerySidebar(p: GallerySidebarProps): JSX.Element {
         data-state={on ? 'on' : 'off'}
         onClick={() => { p.onSelect(x.id) }}
         className={cn(
-          'hover:bg-muted/60 flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 text-left transition-colors',
+          'hover:bg-muted/60 flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-1.75 text-left transition-colors',
           on && 'border-primary/35 bg-primary/10',
         )}
       >

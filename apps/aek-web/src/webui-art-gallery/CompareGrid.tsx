@@ -80,7 +80,7 @@ export function CompareGrid({
 
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-muted/60 flex flex-col gap-1 rounded-md px-2 py-1.5">
-                <span className="text-muted-foreground text-2xxs font-bold tracking-wider uppercase">
+                <span className="text-muted-foreground text-2xxs font-bold uppercase">
                   {isSkill ? t('art.card.skills') : t('art.card.styles')}
                 </span>
                 <span className="text-sm-plus font-extrabold tracking-tight">
@@ -88,7 +88,7 @@ export function CompareGrid({
                 </span>
               </div>
               <div className="bg-muted/60 flex flex-col gap-1 rounded-md px-2 py-1.5">
-                <span className="text-muted-foreground text-2xxs font-bold tracking-wider uppercase">
+                <span className="text-muted-foreground text-2xxs font-bold uppercase">
                   {t('art.card.modes')}
                 </span>
                 <span className="text-sm-plus font-extrabold tracking-tight">{counts.modes}</span>

@@ -54,6 +54,7 @@ import {
 } from './nav-model.ts'
 import type { PanelId } from './nav-model.ts'
 import { parseBoolean, usePref } from './preferences.tsx'
+import { RowActionsFloat } from './RowActionsFloat.tsx'
 import { cn } from '@/lib/utils'
 
 /** One route row of the plugin rail. */
@@ -105,15 +106,10 @@ const RAIL_MAX_WIDTH = 360
 const RAIL_COMPACT_DEFAULT = 64
 const RAIL_COMPACT_MIN = 48
 const RAIL_COMPACT_MAX = 96
-/** BJ round: the row hover action box (a refresh button above the row, the
- *  twin of the main rail's `.aek-row-actions`). */
-/* BL round: the card sits on the RIGHT edge of its own row (the old
-   `bottom-full` box floated over the row ABOVE and, hover-on with
-   pointer-events-auto, intercepted the neighbour's clicks — the
-   intermittent "rows don't respond" bug). Opacity / pointer-events are
-   driven by the `.aek-row-actions` rules in index.css (instant fade-in,
-   2.5s delayed fade-out, hover keep-alive). */
-const RAIL_ROW_ACTIONS = 'aek-row-actions absolute top-1/2 right-1 z-3 -translate-y-1/2 flex items-center gap-0.5 p-0.5 border border-border rounded-sm bg-card shadow-md opacity-0 pointer-events-none translate-x-1.5 group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-x-0'
+/** BR round: the row hover action card is a viewport-fixed float anchored to
+ *  the row's right edge (+ 8px) by <RowActionsFloat> (never covers the option,
+ *  never clipped by the rail's `overflow-hidden`). The fade timing lives in
+ *  the `.aek-row-actions` rules in index.css. */
 const RAIL_ROW_ICON_BUTTON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted cursor-pointer transition-[color,background-color,transform] duration-140 ease-aek hover:text-primary hover:bg-accent-soft'
 
 /** @param raw - the parsed compact width. @returns a clamped number, or undefined. */
@@ -342,7 +338,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                   <span className={cn('min-w-0 overflow-hidden text-ellipsis', labelsHidden && 'hidden')}>{route.label}</span>
                 </button>
                 {onRefresh !== undefined ? (
-                  <div className={RAIL_ROW_ACTIONS}>
+                  <RowActionsFloat>
                     <button
                       type="button"
                       className={RAIL_ROW_ICON_BUTTON}
@@ -352,7 +348,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                     >
                       <Icon name="refresh" size={13} />
                     </button>
-                  </div>
+                  </RowActionsFloat>
                 ) : null}
               </li>
             )
@@ -403,7 +399,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                             {row.badge !== undefined && row.badge !== null && row.badge > 0 ? <span className={cn('min-w-4.5 flex-none rounded-full bg-surface-hover px-1.5 text-aek-11 tabular-nums text-text-muted', labelsHidden && 'hidden')}>{String(row.badge)}</span> : null}
                           </button>
                           {onRefresh !== undefined ? (
-                            <div className={RAIL_ROW_ACTIONS}>
+                            <RowActionsFloat>
                               <button
                                 type="button"
                                 className={RAIL_ROW_ICON_BUTTON}
@@ -413,7 +409,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                               >
                                 <Icon name="refresh" size={13} />
                               </button>
-                            </div>
+                            </RowActionsFloat>
                           ) : null}
                         </li>
                       ))}

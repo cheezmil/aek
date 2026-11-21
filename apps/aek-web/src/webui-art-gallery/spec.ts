@@ -57,6 +57,39 @@ export const MODE_COUNT = 43
 /** The 12 scanned style families (generated data; the reference's kind chips). */
 export const STYLE_KINDS: ArtStyleKind[] = ART_STYLE_KINDS
 
+/** BR round (m11298 ③): the original AEK webui base look (light + dark,
+ *  straight from index.css :root / .dark) is ALSO an exposable entry — the
+ *  escape hatch that restores the default appearance from the gallery. */
+export const AEC_BASE_KIND: ArtStyleKind = { id: 'base', name: 'AEK 基础', src: 'aek-web index.css', color: '#ea580c', count: 2 }
+export const ALL_STYLE_KINDS: ArtStyleKind[] = [...ART_STYLE_KINDS, AEC_BASE_KIND]
+
+export const AEC_BASE_SPECS: StageSpec[] = [
+  {
+    id: 'style-aec-base',
+    kind: 'theme',
+    name: 'AEK 基础样式',
+    sub: 'aek-web index.css :root · 浅色默认',
+    mode: 'layer',
+    font: 'sans',
+    radius: '12px',
+    blur: 0,
+    dark: false,
+    p: ['#f6f7f9', '#ffffff', '#18181b', '#a1a1aa', '#ea580c', '#c2410c'],
+  },
+  {
+    id: 'style-aec-base-dark',
+    kind: 'theme',
+    name: 'AEK 基础样式 · 深色',
+    sub: 'aek-web index.css .dark',
+    mode: 'layer',
+    font: 'sans',
+    radius: '12px',
+    blur: 0,
+    dark: true,
+    p: ['#0f1013', '#17181d', '#e7e8ec', '#6f7180', '#f97316', '#fb923c'],
+  },
+]
+
 // ---------------------------------------------------------------------------
 // paletteOf + helpers — aek's own port of the reference's 6-slot palette
 // derivation (lib.ts paletteOf/MODE_BASE/lum/sat/mix, P16: logic ported,
@@ -150,17 +183,31 @@ export const styleSpecOf = (e: ArtStyleEntry): StageSpec => {
  *  The style family is the scanned 346-entry library (12 kinds), not the 88
  *  builtin fallback — the reference uses the scanner whenever it can. */
 export function galleryItems(): { styles: GalleryItem[]; skills: GalleryItem[] } {
-  const styles: GalleryItem[] = ART_STYLES.map(e => ({
-    id: e.id,
+  const base: GalleryItem[] = AEC_BASE_SPECS.map((spec): GalleryItem => ({
+    id: spec.id,
     kind: 'style',
-    spec: styleSpecOf(e),
-    desc: e.desc || `${e.kind} · ${e.src}`,
-    kindId: e.kindId,
-    kindName: e.kind,
-    src: e.src,
-    srcColor: e.srcColor,
-    colors: e.colors,
+    spec,
+    desc: spec.sub,
+    kindId: AEC_BASE_KIND.id,
+    kindName: AEC_BASE_KIND.name,
+    src: AEC_BASE_KIND.src,
+    srcColor: AEC_BASE_KIND.color,
+    colors: spec.p,
   }))
+  const styles: GalleryItem[] = [
+    ...base,
+    ...ART_STYLES.map((e): GalleryItem => ({
+      id: e.id,
+      kind: 'style',
+      spec: styleSpecOf(e),
+      desc: e.desc || `${e.kind} · ${e.src}`,
+      kindId: e.kindId,
+      kindName: e.kind,
+      src: e.src,
+      srcColor: e.srcColor,
+      colors: e.colors,
+    })),
+  ]
   const skills: GalleryItem[] = skillSpecs().map((spec) => {
     const key = spec.id.slice('skill-'.length)
     const repoId = key.split('::')[0]
@@ -183,8 +230,9 @@ export const FAV_KEY = 'aek-art-favorites'
 /** A radius token like `8` or `0.5rem` → the px-normalized form. */
 export const normRadius = (raw: string): string => (/px|rem|%$/.test(raw) ? raw : `${raw}px`)
 
-/** The scanned style entries → comparable specs (346 across 12 kinds). */
-export const styleSpecs = (): StageSpec[] => ART_STYLES.map(styleSpecOf)
+/** The scanned style entries → comparable specs (346 across 12 kinds),
+ *  with the two AEK base entries (light / dark) first. */
+export const styleSpecs = (): StageSpec[] => [...AEC_BASE_SPECS, ...ART_STYLES.map(styleSpecOf)]
 
 /** The skill mappings → comparable specs (repo fallback fills the gaps). */
 export const skillSpecs = (): StageSpec[] =>
