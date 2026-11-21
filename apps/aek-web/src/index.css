@@ -7,9 +7,10 @@
  * repo's oxlint). All component styling is Tailwind utilities in the tsx
  * sources; this file holds only:
  *   1. the token single-source-of-truth (`:root` `--aek-*` custom
- *      properties — JS may override the rail-metric ones at runtime),
- *   2. the shadcn theme variables (mapped onto the AEK tokens, light
- *      theme only — the app has no dark mode, `.dark` is not applied),
+ *      properties — JS may override the rail-metric ones at runtime) + the
+ *      `.dark` base palette (BQ round: the `aek-home.baseTheme` setting
+ *      toggles the class on <html>; default is light),
+ *   2. the shadcn theme variables (mapped onto the AEK tokens),
  *   3. the `@theme` blocks that expose the tokens as Tailwind utilities,
  *   4. the element reset, global keyframes, and reduced-motion rules.
  *
@@ -105,6 +106,46 @@
   --aek-text-2xs: 11px;
   --aek-text-xs-plus: 13px;
   --aek-output-line-height: 21px;
+}
+
+/* ── 1b. AEK dark base palette (BQ round, m10857 item 5) ────────────
+   The `aek-home.baseTheme` setting (light default / dark / auto) toggles
+   the `.dark` class on <html> (base-theme.ts); Tailwind's dark variant
+   targets the same class. Overriding the aek source tokens here is
+   enough — the shadcn mapping layer below only ever resolves
+   `var(--aek-*)`, so the whole console repaints from this one table.
+   Placed AFTER the light :root block so the class wins when present. */
+.dark {
+  color-scheme: dark;
+
+  /* surfaces */
+  --aek-bg: #0f1013;
+  --aek-surface: #17181d;
+  --aek-surface-subtle: #131419;
+  --aek-surface-hover: #1f2027;
+  --aek-border: #26272e;
+  --aek-border-strong: #383a44;
+
+  /* text */
+  --aek-text: #e7e8ec;
+  --aek-text-secondary: #9fa1ac;
+  --aek-text-muted: #6f7180;
+  --aek-text-inverse: #101116;
+
+  /* brand — the orange one shade lighter on dark surfaces */
+  --aek-accent: #f97316;
+  --aek-accent-hover: #fb923c;
+  --aek-accent-soft: rgba(249, 115, 22, 0.16);
+  --aek-accent-border: rgba(249, 115, 22, 0.4);
+  --aek-accent-ink: #fdba74;
+
+  /* status — translucent soft backgrounds survive on dark surfaces */
+  --aek-success: #22c55e;
+  --aek-success-soft: rgba(34, 197, 94, 0.14);
+  --aek-success-border: rgba(34, 197, 94, 0.35);
+  --aek-danger: #f87171;
+  --aek-danger-soft: rgba(248, 113, 113, 0.14);
+  --aek-danger-border: rgba(248, 113, 113, 0.35);
 }
 
 /* ── 2. shadcn theme variables (light, mapped onto AEK tokens) ──────── */

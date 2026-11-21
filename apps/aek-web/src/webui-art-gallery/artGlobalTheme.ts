@@ -1,12 +1,12 @@
 /**
- * Whole-webui skinning (BP round, m10318 item 6): apply a gallery spec to
- * the entire aek webui, not just the stage. The webui's cascade is two
- * layers — the aek source tokens (`--aek-*`, index.css :root) drive the
- * shadcn mapping layer (`--background: var(--aek-bg)` …) and Tailwind's
- * `--font-sans` — so writing inline overrides on
- * `document.documentElement` flips every mapping from one spot. The
- * active spec id persists in localStorage and boot() restores it on app
- * start (main.tsx calls it before render).
+ * Whole-webui skinning (BP round, m10318 item 6; BQ round m10857 item 4):
+ * apply a gallery spec's ACCENT + radius + font to the entire aek webui.
+ * The spec's neutral colors (bg/surface/text/muted) are deliberately NOT
+ * written — the original AEK base neutrals must survive every skin, so a
+ * switch only tints the accent family (--aek-accent drives --ring/--chart-1
+ * via the shadcn mapping layer), never repaints the base. The active spec
+ * id persists in localStorage and boot() restores it on app start
+ * (main.tsx calls it before render).
  *
  * @module @cheezmil/aek-web/src/webui-art-gallery/artGlobalTheme
  */
@@ -14,12 +14,8 @@ import { allSpecs, normRadius, type StageSpec } from './spec.ts'
 
 const GLOBAL_KEY = 'aek-art-global-theme'
 
-/** [bg, surface, text, muted, accent] → the aek source tokens to override. */
+/** Accent-only override — base neutrals stay the original AEK set. */
 const TOKENS: ReadonlyArray<{ key: string; slot: number }> = [
-  { key: '--aek-bg', slot: 0 },
-  { key: '--aek-surface', slot: 1 },
-  { key: '--aek-text', slot: 2 },
-  { key: '--aek-text-muted', slot: 3 },
   { key: '--aek-accent', slot: 4 },
 ]
 

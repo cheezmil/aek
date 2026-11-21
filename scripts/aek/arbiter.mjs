@@ -44,6 +44,7 @@ import {
   clearSlotLock,
   isPidAlive,
 } from '../../packages/aek/base/coraek/slot-lock.mjs'
+import { resolveSlot } from '../../packages/aek/base/coraek/slots.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -83,8 +84,12 @@ const probe = slotWebUp
 
 /** @returns the slot identity of the process that launched this arbiter. */
 function currentSlot() {
-  const home = process.env.AEK_HOME || DSH_HOME
-  return home.endsWith('-next') ? 'next' : 'aek'
+  // Delegate to the shared slot resolver (explicit `AEK_SLOT` wins, then the
+  // data root, then the default). The old `home.endsWith('-next')` sniff
+  // mislabelled every process `aek` because the Next data root is
+  // `<container>/next`, not a `-next` suffix — so the dev shell reported
+  // `current.slot = "aek"` and the web UI never showed the Next brand tag.
+  return resolveSlot()
 }
 
 /**

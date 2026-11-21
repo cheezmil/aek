@@ -164,6 +164,22 @@ export function ArtGalleryPanel(): JSX.Element {
     }
   }
 
+  const curItem = items.find(i => i.id === curId) ?? null
+
+  /**
+   * BQ round (m10857 item 3): switching to any style applies it to the
+   * WHOLE webui by default — the stage is just a preview. Runs on every
+   * spec change after mount; the mount itself is skipped so a deliberate
+   * reset (localStorage cleared) is not immediately re-applied.
+   */
+  const mountRef = useRef(true)
+  useEffect(() => {
+    if (mountRef.current) { mountRef.current = false; return }
+    if (!curItem) return
+    saveGlobalTheme(curItem.spec)
+    setGlobalId(curItem.id)
+  }, [curItem])
+
   const toggleFav = (id: string): void => {
     const has = favs.has(id)
     setFavs((cur) => {
@@ -176,8 +192,6 @@ export function ArtGalleryPanel(): JSX.Element {
     const item = allItems().find(i => i.id === id)
     notify(`${item ? `${item.spec.name} — ` : ''}${has ? t('art.favRemove') : t('art.favAdd')}`)
   }
-
-  const curItem = items.find(i => i.id === curId) ?? null
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {

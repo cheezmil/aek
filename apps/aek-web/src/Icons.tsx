@@ -459,10 +459,14 @@ export function BrandMark({ size = 34, className, variant = 'mark' }: BrandMarkP
       aria-hidden="true"
       focusable="false"
     >
+      {/* BQ round (m10857 item 1): the logo is a brand asset — every stop and
+          stroke resolves to the FIXED --color-logo-* hex set (index.css),
+          never to --color-primary/--aek-accent, so whole-webui skinning can
+          not recolor the logo. */}
       <defs>
         <linearGradient id={rind} x1="0" y1="0" x2="1" y2="1">
           <stop stopColor="var(--color-logo-amber)" />
-          <stop offset="1" stopColor="var(--color-primary)" />
+          <stop offset="1" stopColor="var(--color-logo-tangerine)" />
         </linearGradient>
         <linearGradient id={flesh} x1="0" y1="0" x2="1" y2="1">
           <stop stopColor="var(--color-logo-sand)" />
@@ -470,7 +474,7 @@ export function BrandMark({ size = 34, className, variant = 'mark' }: BrandMarkP
         </linearGradient>
       </defs>
       {variant === 'text'
-        ? <text x="60" y="78" textAnchor="middle" fontSize="58" fontWeight="700" fill="var(--color-primary)">A</text>
+        ? <text x="60" y="78" textAnchor="middle" fontSize="58" fontWeight="700" fill="var(--color-logo-amber)">A</text>
         : (
           <g transform="translate(60 60) scale(1.2) translate(-60 -60)">
             {variant === 'square'
@@ -478,7 +482,7 @@ export function BrandMark({ size = 34, className, variant = 'mark' }: BrandMarkP
               : <circle cx="60" cy="60" r={variant === 'round' ? 46 : 42} fill={`url(#${rind})`} />}
             <circle cx="60" cy="60" r="34" fill="var(--color-logo-cream)" />
             <circle cx="60" cy="60" r="30" fill={`url(#${flesh})`} />
-            <path d="M60 30 L60 90 M30 60 L90 60 M40 40 L80 80 M80 40 L40 80" stroke="var(--color-primary)" strokeWidth="2" opacity="0.5" />
+            <path d="M60 30 L60 90 M30 60 L90 60 M40 40 L80 80 M80 40 L40 80" stroke="var(--color-logo-amber)" strokeWidth="2" opacity="0.5" />
             <circle cx="60" cy="60" r="8" fill="var(--color-logo-glow)" />
           </g>
         )}

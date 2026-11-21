@@ -697,16 +697,22 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
           tabIndex={logoToggle ? 0 : -1}
         >
           {logoVisible
-            ? <BrandMark size={34} className='aek-brand-mark shrink-0 basis-8.5 w-8.5 h-8.5 block' variant={logoVariant} />
+            ? (
+              /* BQ round (m10857 item 2): the next slot carries the original
+                 logo with a small "next" label at its BOTTOM-RIGHT corner. */
+              <span className='relative shrink-0 basis-8.5 w-8.5 h-8.5'>
+                <BrandMark size={34} className='aek-brand-mark w-8.5 h-8.5 block' variant={logoVariant} />
+                {currentSlot === 'next'
+                  ? <span className='absolute -bottom-0.5 -right-1 py-0.5 px-1.5 border border-accent-border rounded-full bg-accent-soft text-accent-ink text-3xs font-bold tracking-aek-label uppercase shadow-xs'>next</span>
+                  : null}
+              </span>
+            )
             : null}
           {brandText.length > 0
             ? (
               <span className={cn(LABEL_FADE, 'flex flex-col min-w-0 max-w-45 whitespace-nowrap', compact && cn(LABEL_FADE_HIDDEN, 'max-w-0 p-0'), 'max-[640px]:hidden')}>
                 <span className='text-2xs tracking-aek-tagline text-text-muted'>
                   {brandText}
-                  {currentSlot === 'next'
-                    ? <span className='inline-block ml-1.5 py-0.5 px-1.5 border border-accent-border rounded-full bg-accent-soft text-accent-ink text-3xs font-bold tracking-aek-label uppercase align-text-top'>Next</span>
-                    : null}
                 </span>
               </span>
             )

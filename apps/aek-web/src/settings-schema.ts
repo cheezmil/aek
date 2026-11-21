@@ -252,6 +252,20 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     labelKey: 'settings.contentPad', hintKey: 'settings.contentPadHint',
     default: 24, min: 0, max: 64, step: 2, unit: 'px', cssVar: '--aek-content-pad',
   },
+  {
+    // BQ round (m10857 item 5): the base appearance of the whole webui —
+    // light (default) / dark / auto (follows the OS color scheme). The
+    // value is persisted like every other setting; base-theme.ts applies
+    // the `.dark` class on <html> (index.css carries the dark palette).
+    key: 'aek-home.baseTheme', kind: 'select', group: 'general',
+    labelKey: 'settings.baseTheme', hintKey: 'settings.baseThemeHint',
+    default: 'light',
+    options: [
+      { value: 'light', labelKey: 'settings.baseTheme.light' },
+      { value: 'dark', labelKey: 'settings.baseTheme.dark' },
+      { value: 'auto', labelKey: 'settings.baseTheme.auto' },
+    ],
+  },
 ]
 
 /**

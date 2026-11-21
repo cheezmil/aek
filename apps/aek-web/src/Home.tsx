@@ -17,6 +17,7 @@ import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CanonicalHostRedirect, isLegacyLoopback } from './CanonicalHost.tsx'
 import { I18nProvider, useI18n } from './i18n.tsx'
+import { useBaseTheme } from './base-theme.ts'
 import { InfoPanels } from './InfoPanels.tsx'
 import { PromptsPanel } from './ConsolePanels.tsx'
 import { SkillsManagerPanel } from './SkillsManagerPanel.tsx'
@@ -263,6 +264,11 @@ function Console() {
   // motion" setting. The persisted value applies after the settings commit
   // (save-all / auto-save) re-fetches the map, exactly like every schema row.
   const noMotion = prefs['aek-home.disableMotion'] === true
+
+  // BQ round (m10857 item 5): the base light/dark appearance — persisted
+  // setting `aek-home.baseTheme` (settings page, default light) applied as
+  // the `.dark` class on <html>; `auto` tracks the OS color scheme live.
+  useBaseTheme()
 
   const signalFor = (id: PanelId): number => refreshTicks[id] ?? 0
 
