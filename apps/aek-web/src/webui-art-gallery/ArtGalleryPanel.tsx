@@ -34,6 +34,12 @@ import {
 import { TopBar, type GalleryTab } from './TopBar.tsx'
 import { GallerySidebar, type RepoGroup } from './GallerySidebar.tsx'
 import { CompareGrid } from './CompareGrid.tsx'
+import {
+  globalThemeId,
+  resetGlobalTheme,
+  saveGlobalTheme,
+} from './artGlobalTheme.ts'
+import { GallerySwitcher } from './GallerySwitcher.tsx'
 import { Stage, type StageCounts } from './Stage.tsx'
 
 type Family = 'skill' | 'style'
@@ -69,6 +75,7 @@ export function ArtGalleryPanel(): JSX.Element {
   const [curId, setCurId] = useState<string>(DEFAULT_SKILL)
   const [immersive, setImmersive] = useState(false)
   const [toast, setToast] = useState<{ msg: string; key: number } | null>(null)
+  const [globalId, setGlobalId] = useState<string | null>(() => globalThemeId())
   const pendingId = useRef<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const toastTimer = useRef<number>(0)
@@ -130,6 +137,33 @@ export function ArtGalleryPanel(): JSX.Element {
     switchTab(src)
   }
 
+  /** Reference App keyboard step — shared by the ←/→ handler and the corner switcher. */
+  const stepCur = (delta: number): void => {
+    const idx = items.findIndex(i => i.id === curId)
+    const next = items.length ? items[(idx + delta + items.length) % items.length] : items[0]
+    setCurId(next.id)
+  }
+
+  /** Reference Switcher's 随机 button. */
+  const pickRandom = (): void => {
+    if (!items.length) return
+    setCurId(items[Math.floor(Math.random() * items.length)].id)
+  }
+
+  /** BP round: apply this spec to the whole webui, or reset when active. */
+  const onGlobal = (): void => {
+    if (!curItem) return
+    if (globalId === curItem.id) {
+      resetGlobalTheme()
+      setGlobalId(null)
+      notify(t('art.globalReset'))
+    } else {
+      saveGlobalTheme(curItem.spec)
+      setGlobalId(curItem.id)
+      notify(t('art.globalApplied'))
+    }
+  }
+
   const toggleFav = (id: string): void => {
     const has = favs.has(id)
     setFavs((cur) => {
@@ -157,12 +191,7 @@ export function ArtGalleryPanel(): JSX.Element {
         case 'ArrowLeft':
         case 'ArrowRight': {
           e.preventDefault()
-          const idx = items.findIndex(i => i.id === curId)
-          const step = e.key === 'ArrowLeft' ? -1 : 1
-          const next = items.length
-            ? items[(idx + step + items.length) % items.length]
-            : items[0]
-          setCurId(next.id)
+          stepCur(e.key === 'ArrowLeft' ? -1 : 1)
           break
         }
         case '/':
@@ -195,7 +224,7 @@ export function ArtGalleryPanel(): JSX.Element {
   }
 
   return (
-    <div className="relative flex h-full min-h-130 flex-col">
+    <div className="relative flex h-full min-h-0 flex-col">
       {toast ? (
         <div
           key={toast.key}
@@ -265,6 +294,8 @@ export function ArtGalleryPanel(): JSX.Element {
                 faved={favs.has(curItem.id)}
                 onToggleFav={() => { toggleFav(curItem.id) }}
                 onNotify={notify}
+                globalActive={globalId === curItem.id}
+                onGlobal={onGlobal}
               />
             </div>
           ) : (
@@ -272,6 +303,18 @@ export function ArtGalleryPanel(): JSX.Element {
           )}
         </main>
       </div>
+
+      <GallerySwitcher
+        items={items}
+        curId={curId}
+        curIdx={items.findIndex(i => i.id === curId)}
+        immersive={immersive}
+        onPrev={() => { stepCur(-1) }}
+        onNext={() => { stepCur(1) }}
+        onRandom={pickRandom}
+        onSelect={(id) => { if (tab === 'compare') { pickFromCompare(id) } else { setCurId(id) } }}
+        onExitImmersive={() => { setImmersive(false) }}
+      />
     </div>
   )
 }

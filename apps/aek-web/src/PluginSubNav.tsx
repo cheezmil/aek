@@ -113,7 +113,7 @@ const RAIL_COMPACT_MAX = 96
    intermittent "rows don't respond" bug). Opacity / pointer-events are
    driven by the `.aek-row-actions` rules in index.css (instant fade-in,
    2.5s delayed fade-out, hover keep-alive). */
-const RAIL_ROW_ACTIONS = 'aek-row-actions absolute top-1/2 right-1 z-3 -translate-y-1/2 flex items-center gap-0.5 p-0.5 border border-border rounded-sm bg-card shadow-md opacity-0 pointer-events-none translate-x-1.5 group-hover:translate-x-0 group-focus-within:translate-x-0'
+const RAIL_ROW_ACTIONS = 'aek-row-actions absolute top-1/2 right-1 z-3 -translate-y-1/2 flex items-center gap-0.5 p-0.5 border border-border rounded-sm bg-card shadow-md opacity-0 pointer-events-none translate-x-1.5 group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-x-0'
 const RAIL_ROW_ICON_BUTTON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted cursor-pointer transition-[color,background-color,transform] duration-140 ease-aek hover:text-primary hover:bg-accent-soft'
 
 /** @param raw - the parsed compact width. @returns a clamped number, or undefined. */

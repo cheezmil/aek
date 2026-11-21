@@ -39,6 +39,7 @@ export type IconName =
   | 'chevronRight'
   | 'list'
   | 'checkCircle'
+  | 'shuffle'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 export const ICONS: Record<IconName, ReactNode> = {
@@ -349,6 +350,15 @@ export const ICONS: Record<IconName, ReactNode> = {
       <path d="m9 12 2 2 4-4" />
     </>
   ),
+  /** Lucide `shuffle`: the gallery switcher's random-jump button. */
+  shuffle: (
+    <>
+      <path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.2 2-1.8 3.3-1.8H22" />
+      <path d="m18 21 3-3-3-3" />
+      <path d="M2 6h1.9c1.5 0 2.9.7 3.8 1.8l7.5 8.6c.9 1 2.2 1.6 3.6 1.6H22" />
+      <path d="m18 3 3 3-3 3" />
+    </>
+  ),
 }
 
 /** Props for {@link Icon}. */
@@ -377,6 +387,7 @@ export const ICON_NAMES: readonly IconName[] = [
   'chevronRight',
   'list',
   'checkCircle',
+  'shuffle',
 ]
 
 export interface IconProps {

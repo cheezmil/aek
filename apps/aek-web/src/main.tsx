@@ -9,10 +9,13 @@
 import { createRoot } from 'react-dom/client'
 import { AekHome } from './Home.tsx'
 import { TooltipProvider } from './components/ui/tooltip'
+import { bootGlobalTheme } from './webui-art-gallery/artGlobalTheme.ts'
 import './index.css'
 
 const el = document.getElementById('root')
 if (el === null) throw new Error('aek-web: missing #root')
+// BP round: re-apply the persisted whole-webui skin before first paint.
+bootGlobalTheme()
 createRoot(el).render(
   <TooltipProvider>
     <AekHome />

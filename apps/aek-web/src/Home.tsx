@@ -58,6 +58,15 @@ import type { FreeFilter } from './useWebsearchRanking.ts'
  */
 const PANEL_IDS: readonly PanelId[] = [...NAV_IDS, 'plugins'] as PanelId[]
 
+/** BP round (m10318 item 3): the `.aek-content-main` padding (the base
+    setting `aek-home.contentPad`, default 24px) is the DEFAULT for every
+    panel — a panel that owns its own edge-to-edge layout declares
+    `none` here and the padding is lifted for that panel only. The style
+    gallery is full-bleed: its inner column scrolls on its own, so the
+    outer padding would double the gutters and force the window to
+    scroll alongside the panel (the user's 「父容器滚动」report). */
+const PANEL_PAD_OVERRIDES: Partial<Record<PanelId, 'none'>> = { art: 'none' }
+
 /**
  * B round: parse the pre-warmed Web Search settings at the console root
  * (the panel's own parsers are module-local; these mirror them).
@@ -381,7 +390,12 @@ function Console() {
 
   return (
     // .app: font 14px/1.6 + antialiased is now the global body rule, so only layout + color remain.
-    <div className={cn('flex min-h-screen bg-background text-text', noMotion && 'aek-no-motion')} style={style}>
+    // BP round: full-bleed panels (PANEL_PAD_OVERRIDES) pin the app shell to a
+    // definite 100dvh height — `min-h-screen` alone is a MINIMUM, so the
+    // flex-1 chain below it has no definite height and the panel's `h-full`
+    // collapses into content height (the document itself scrolls behind the
+    // gallery, the user's 「父容器滚动」report).
+    <div className={cn('flex min-h-screen bg-background text-text', noMotion && 'aek-no-motion', PANEL_PAD_OVERRIDES[panel] === 'none' && 'aek-app-art')} style={style}>
       <Sidebar
         active={panel}
         onSelect={handleRailSelect}
@@ -415,7 +429,7 @@ function Console() {
               `aek-home.contentPad` (index.css `.aek-content-main`, default 24px).
               Small screens keep a FIXED padding: the max-[860px] utilities on
               the same element beat the components-layer rule. */}
-          <main className="aek-content-main mx-auto flex-1 w-full max-[860px]:px-8 max-[860px]:py-10">
+          <main className="aek-content-main mx-auto min-h-0 flex-1 w-full max-[860px]:px-8 max-[860px]:py-10" data-pad={PANEL_PAD_OVERRIDES[panel] ?? 'default'}>
             {/* EE round: keep-alive — every visited panel renders; only the
                 active one is visible. Hidden trees keep their state, so a
                 switch back never rebuilds the elements from nothing.
@@ -424,7 +438,7 @@ function Console() {
                 (the tabs only differ in scroll position, the anchor scroll
                 effect above). */}
             {[...new Set(visitedPanels.map(panelRenderIdOf))].map(renderId => (
-              <div key={renderId} style={{ display: renderId === panelRenderIdOf(panel) ? 'block' : 'none' }}>
+              <div key={renderId} className={renderId === 'art' ? 'h-full' : undefined} style={{ display: renderId === panelRenderIdOf(panel) ? 'block' : 'none' }}>
                 {renderPanelContent(renderId as PanelId)}
               </div>
             ))}

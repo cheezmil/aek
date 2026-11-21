@@ -62,7 +62,7 @@ const NAV_ROW_DROP_AFTER = 'after:content-[""] after:absolute after:left-1 after
    intermittent "rows don't respond" bug). Opacity / pointer-events are
    driven by the `.aek-row-actions` rules in index.css (instant fade-in,
    2.5s delayed fade-out, hover keep-alive). */
-const ROW_ACTIONS = 'aek-row-actions absolute top-1/2 right-0.5 z-3 -translate-y-1/2 flex items-center gap-0.5 p-0.5 border border-border rounded-sm bg-card shadow-md opacity-0 pointer-events-none translate-x-1.5 group-hover:translate-x-0 group-focus-within:translate-x-0'
+const ROW_ACTIONS = 'aek-row-actions absolute top-1/2 right-0.5 z-3 -translate-y-1/2 flex items-center gap-0.5 p-0.5 border border-border rounded-sm bg-card shadow-md opacity-0 pointer-events-none translate-x-1.5 group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-x-0'
 const ROW_ICON_BUTTON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted cursor-pointer transition-[color,background-color,transform] duration-140 ease-aek hover:text-primary hover:bg-accent-soft'
 const LABEL_FADE = 'aek-label-fade'
 const LABEL_FADE_HIDDEN = 'aek-label-fade-hidden'

@@ -429,6 +429,25 @@
     padding: var(--aek-content-pad, 24px) calc(var(--aek-content-pad, 24px) * 2);
   }
 
+  /* BP round (m10318 item 3): a panel that owns its full-bleed layout
+     (Home.tsx `PANEL_PAD_OVERRIDES`, e.g. the style gallery) flips the
+     attribute and the gutter is lifted for that panel only; every other
+     panel keeps the base-setting default. */
+  .aek-content-main[data-pad='none'] {
+    padding: 0;
+  }
+
+  /* BP round (m10318 item 4): definite viewport height for full-bleed
+     panels. With `min-h-screen` only, the flex-1 chain has no definite
+     height to resolve `h-full` against, so the panel grew with its
+     content and the DOCUMENT scrolled (double scrollbars). Pinning the
+     app shell to 100dvh + clipping makes every % in the chain resolve:
+     the panel owns the whole viewport and only its inner scroller moves. */
+  .aek-app-art {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
   /* The brand mark's glow (hover lives on the BUTTON, so a descendant rule). */
   .aek-brand-mark {
     filter: drop-shadow(0 2px 6px rgba(234, 88, 12, 0.24));

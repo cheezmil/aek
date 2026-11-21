@@ -39,6 +39,10 @@ export interface StageProps {
   faved: boolean
   onToggleFav: () => void
   onNotify: (msg: string) => void
+  /** BP round: is this spec the one currently applied to the whole webui. */
+  globalActive: boolean
+  /** Apply this spec to the whole webui, or reset when already active. */
+  onGlobal: () => void
 }
 
 const NAVS: { key: string; icon: 'layout' | 'plugins' | 'zap' | 'terminal' }[] = [
@@ -75,7 +79,7 @@ const SpecItem = ({ k, children }: { k: string; children: ReactNode }): JSX.Elem
   </div>
 )
 
-export function Stage({ item, counts, faved, onToggleFav, onNotify }: StageProps): JSX.Element {
+export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive, onGlobal }: StageProps): JSX.Element {
   const { t, tf } = useI18n()
   const spec = item.spec
   const [nav, setNav] = useState('overview')
@@ -154,6 +158,23 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify }: StageProps
             {t('art.missing')}
           </span>
           <span className="rounded-full border border-border px-2.5 py-0.5 text-xs font-semibold">{spec.sub}</span>
+          <TooltipProvider delayDuration={250}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={globalActive ? 'outline' : 'secondary'}
+                  size="sm"
+                  onClick={onGlobal}
+                  aria-label={globalActive ? t('art.globalReset') : t('art.globalApply')}
+                  className="h-6 gap-1.5 px-2.5 text-xs"
+                >
+                  <Icon name={globalActive ? 'restore' : 'maximize'} size={13} />
+                  {globalActive ? t('art.globalReset') : t('art.globalApply')}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{globalActive ? t('art.globalReset') : t('art.globalApply')}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </header>
 
