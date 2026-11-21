@@ -347,6 +347,18 @@
 
 /* ── 4. reset + global motion ───────────────────────────────────────── */
 
+/* BZ round: the custom desktop title bar's reservation. One variable owns
+   the bar's height and is shared by the bar's own `height` AND by every
+   content root that must shrink to make room for it. A plain browser has
+   no bar → 0; inside the shell `ShellTitleBar` adds `.aek-in-shell` on
+   <html> → 36px. */
+:root {
+  --aek-titlebar-h: 0px;
+}
+html.aek-in-shell {
+  --aek-titlebar-h: 36px;
+}
+
 *,
 *::before,
 *::after {
@@ -368,6 +380,51 @@
 /* Named component helpers for one-off layouts that arbitrary grid-template
    values cannot express on the theme (@shadcn/lint no-arbitrary-values). */
 @layer components {
+  /* BZ round: the custom desktop title bar (ShellTitleBar.tsx). The bar is a
+     window-MOVE grip: `-webkit-app-region: drag` on the bar itself, `no-drag`
+     on the control buttons (Chromium honors `app-region` inside the Electron
+     shell; a plain browser ignores it, so the rule is inert there). The bar
+     is always full-width: on darwin the native traffic lights stay top-left
+     and the bar is a pure empty grip (BC round, m13881: no text, no icon);
+     on win/linux the bar owns the whole caption and draws its own
+     minimize / maximize-restore / close buttons. */
+  .aek-titlebar {
+    height: var(--aek-titlebar-h, 36px);
+    -webkit-app-region: drag;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .aek-titlebar-ctrl,
+  .aek-titlebar-btn {
+    -webkit-app-region: no-drag;
+  }
+  /* win/linux control buttons: the classic caption row. */
+  .aek-titlebar-btn {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    color: var(--aek-text-secondary);
+    transition: background 120ms var(--aek-ease), color 120ms var(--aek-ease);
+    cursor: default;
+  }
+  .aek-titlebar-btn:hover {
+    background: color-mix(in srgb, var(--aek-text) 8%, transparent);
+    color: var(--aek-text);
+  }
+  .aek-titlebar-close:hover {
+    background: var(--aek-danger);
+    color: #ffffff;
+  }
+  /* Content roots that shrink to make room for the bar. `.aek-app-shell`
+     replaces the old `min-h-screen` on the console + setup roots: in a
+     plain browser the bar height is 0, so the rule is a no-op there. */
+  .aek-app-shell {
+    min-height: calc(100vh - var(--aek-titlebar-h, 0px));
+  }
+  /* Full-bleed panels: the pinned 100dvh height must also lose the bar. */
+  html.aek-in-shell .aek-app-art {
+    height: calc(100dvh - var(--aek-titlebar-h, 0px));
+  }
   .aek-grid-rt-row {
     grid-template-columns: 22px minmax(0, 1fr) 64px minmax(120px, 240px) 52px;
   }

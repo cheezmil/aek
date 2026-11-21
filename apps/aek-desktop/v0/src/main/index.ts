@@ -890,6 +890,14 @@ function createWindow() {
     height: bounds.height,
     minWidth: 800,
     minHeight: 600,
+    // BZ round: the caption strip is HIDDEN on every platform — the webui
+    // renders the custom title bar (`apps/aek-web/src/ShellTitleBar.tsx`).
+    // macOS keeps its three native traffic lights in the top-left corner
+    // (the bar's CSS insets past them); Windows/Linux get no OS control
+    // strip at all, so the bar's own HTML buttons drive the window
+    // (`aek-shell:window-control`, state pushed back via
+    // `aek-shell:window-state`).
+    titleBarStyle: 'hidden',
     // Native frame kept; the caption text itself is intentionally empty.
     title: '',
     icon: join(APP_ROOT, 'resources', 'icon.icns'),
@@ -922,6 +930,23 @@ function createWindow() {
   win.on('unmaximize', scheduleBoundsSave)
   win.on('enter-full-screen', scheduleBoundsSave)
   win.on('leave-full-screen', scheduleBoundsSave)
+  // BZ round: the custom title bar's maximize/restore glyph must mirror the
+  // window state without polling — push on every transition.
+  const pushWindowState = (): void => {
+    if (win.isDestroyed()) return
+    win.webContents.send('aek-shell:window-state', {
+      maximized: win.isMaximized(),
+      fullScreen: win.isFullScreen(),
+    })
+  }
+  win.on('maximize', pushWindowState)
+  win.on('unmaximize', pushWindowState)
+  // macOS: the green traffic light zooms the window — that IS the maximize
+  // behavior (isMaximized()===true while zoomed) and emits `maximize`/
+  // `unmaximize` above, so the glyph already follows it. No separate
+  // zoom events exist on BrowserWindow/WebContents.
+  win.on('enter-full-screen', pushWindowState)
+  win.on('leave-full-screen', pushWindowState)
   // C round: write the file at boot too (not only after the first
   // resize/move), so the user can immediately verify the memory file
   // exists and which position/size the shell restored.
@@ -1068,7 +1093,46 @@ function registerShellInstallIpc(): void {
   })
 }
 
+/**
+ * BZ round: the custom title bar's bridge (the window-control half of
+ * `aek-shell:*`; the install-checklist half lives above). The renderer is a
+ * remote document (`aek.localhost`) and cannot drive its own OS window —
+ * only the main process can. Static facts (platform / slot / version) ride
+ * on one invoke; every button press is an explicit invoke that returns the
+ * NEW state; maximize/unmaximize/full-screen transitions additionally push
+ * `aek-shell:window-state` so the glyph stays in sync without polling.
+ */
+function registerShellWindowIpc(): void {
+  ipcMain.handle('aek-shell:shell-meta', () => ({
+    platform: process.platform,
+    slot: SLOT,
+    version: app.getVersion(),
+  }))
+
+  ipcMain.handle('aek-shell:window-control', (event, action: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    // Unknown action / no window: a no-op reply, never a throw (the bar
+    // treats rejection as "state unchanged").
+    if (win === null || (action !== 'minimize' && action !== 'maximize' && action !== 'close')) {
+      return { maximized: false, fullScreen: false }
+    }
+    if (action === 'minimize') {
+      win.minimize()
+    } else if (action === 'maximize') {
+      if (win.isMaximized()) win.unmaximize()
+      else win.maximize()
+    } else {
+      // After `close` the object is mid-destroy — state queries on it
+      // throw; the renderer dies with it, so report the closed state.
+      win.close()
+      return { maximized: false, fullScreen: false }
+    }
+    return { maximized: win.isMaximized(), fullScreen: win.isFullScreen() }
+  })
+}
+
 registerShellInstallIpc()
+registerShellWindowIpc()
 
 app.whenReady().then(() => {
   // X5: inject the `window.aekShell` bridge into the (remote) web console

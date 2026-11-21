@@ -147,7 +147,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
   // Not inside the desktop shell: the bridge (and its probes) do not exist.
   if (!available) {
     return (
-      <div className="grid min-h-screen place-items-center bg-background">
+      <div className="grid aek-app-shell place-items-center bg-background">
         <div className="max-w-105 rounded-aek-card border border-border bg-surface px-8 py-7 text-center">
           <p className="text-aek-13 text-text-secondary">{t('setup.noShell')}</p>
         </div>
@@ -173,7 +173,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
     : 0
 
   return (
-    <div className="flex min-h-screen justify-center bg-background p-12 px-6 pb-16">
+    <div className="flex aek-app-shell justify-center bg-background p-12 px-6 pb-16">
       <div className="w-full max-w-140">
         <header className="mb-5 flex items-start justify-between gap-3">
           <p className="text-aek-135 leading-aek-155 text-text-secondary">{t('setup.subtitle')}</p>

@@ -45,18 +45,24 @@ if (!page) {
 }
 const ws = new WebSocket(page.webSocketDebuggerUrl)
 let seq = 0
-const send = (method, params) => ws.send(JSON.stringify({ id: ++seq, method, params }))
-
+const send = (method, params) => {
+  const id = ++seq
+  ws.send(JSON.stringify({ id, method, params }))
+  return id
+}
+let evalId = 0
 ws.onopen = async () => {
   if (route) {
     send('Page.navigate', { url: `http://${host}:1687${route}` })
     await new Promise(resolve => setTimeout(resolve, 4000))
   }
-  send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })
+  // The evaluate id depends on whether a navigation was sent first
+  // (navigate=1, evaluate=2 vs evaluate=1) — track it, don't hardcode.
+  evalId = send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })
 }
 ws.onmessage = (event) => {
   const msg = JSON.parse(event.data)
-  if (msg.id !== 2) return
+  if (msg.id !== evalId) return
   if (msg.result?.exceptionDetails) {
     console.log(`EXC: ${JSON.stringify(msg.result.exceptionDetails).slice(0, 300)}`)
     process.exit(1)

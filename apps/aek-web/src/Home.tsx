@@ -5,11 +5,16 @@
  * management, skill manager, prompt manager, settings, permissions, about).
  * All user-adjustable rail metrics are injected here as CSS custom properties
  * derived from the schema-driven settings — no dimension is hardcoded in a
- * component. The desktop shell is back to its NATIVE title bar (R10), so the
- * old `trafficInset` workaround is gone.
+ * component.
  *
  * UI preferences live on the HOST (`<AEK_HOME>/preferences/`), never in
  * localStorage, so every window and machine sees the same settings.
+ *
+ * BZ round: the desktop shell now draws a CUSTOM title bar (main process:
+ * `titleBarStyle: 'hidden'`). `AekHome` mounts `<ShellTitleBar/>` above the
+ * console / setup branches; the bar reserves `--aek-titlebar-h` of the
+ * viewport and the content roots (`.aek-app-shell`) shrink to match. In a
+ * plain browser the bridge is absent and the bar renders nothing.
  *
  * @module @cheezmil/aek-web/src/Home
  */
@@ -37,6 +42,7 @@ import { PluginSubNav } from './PluginSubNav.tsx'
 import { RuntimeModePanel } from './RuntimeModePanel.tsx'
 import { AboutPanel, PluginsPanel } from './InfoPanels.tsx'
 import { SetupWizard } from './Setup.tsx'
+import { ShellTitleBar } from './ShellTitleBar.tsx'
 import { sidebarCssVars } from './settings-schema.ts'
 import { cn } from '@/lib/utils'
 import { useCurrentSlot } from './useRuntimeMode.ts'
@@ -405,7 +411,7 @@ function Console() {
     // flex-1 chain below it has no definite height and the panel's `h-full`
     // collapses into content height (the document itself scrolls behind the
     // gallery, the user's 「父容器滚动」report).
-    <div className={cn('aek-root flex min-h-screen bg-background text-text', noMotion && 'aek-no-motion', PANEL_PAD_OVERRIDES[panel] === 'none' && 'aek-app-art')} style={style}>
+    <div className={cn('aek-root aek-app-shell flex bg-background text-text', noMotion && 'aek-no-motion', PANEL_PAD_OVERRIDES[panel] === 'none' && 'aek-app-art')} style={style}>
       <Sidebar
         active={panel}
         onSelect={handleRailSelect}
@@ -502,6 +508,10 @@ export function AekHome(_props: AekHomeProps) {
             other local web UI. Only mounted on the legacy origin, so the
             canonical path pays no extra request. */}
         {isLegacyLoopback(window.location.hostname) ? <CanonicalHostRedirect /> : null}
+        {/* BZ: the custom desktop title bar — mounted ABOVE both branches so the
+            first-run wizard and the console share one caption. Renders nothing
+            outside the shell (the bridge is absent). */}
+        <ShellTitleBar />
         {isSetup
           ? (
             <SetupWizard

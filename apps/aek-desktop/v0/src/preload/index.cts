@@ -39,9 +39,45 @@ export interface ShellInstallResult {
   output: string
 }
 
+/** BZ round: static shell facts the custom title bar reads once at mount. */
+export interface ShellMeta {
+  /** `process.platform` of the shell's main process. */
+  platform: 'darwin' | 'win32' | 'linux'
+  /** The slot this bundle runs (`aek` / `next`). */
+  slot: string
+  /** The shell app's version (`app.getVersion()`). */
+  version: string
+}
+
+/** BZ round: the window state the title bar's glyph mirrors. */
+export interface ShellWindowState {
+  maximized: boolean
+  fullScreen: boolean
+}
+
+/** BZ round: the three control actions the bar's buttons drive. */
+export type ShellWindowControl = 'minimize' | 'maximize' | 'close'
+
 contextBridge.exposeInMainWorld('aekShell', {
   getInstallStatus: (): Promise<ShellInstallStatus> => ipcRenderer.invoke('aek-shell:install-status'),
   /** Installs only packages the MAIN process keeps in its allow-list. */
   installSelected: (packages: string[]): Promise<ShellInstallResult> =>
     ipcRenderer.invoke('aek-shell:install-selected', packages),
+  // BZ round: the custom title bar. The renderer is a remote document and
+  // cannot drive its own OS window — these three are the only window
+  // surface: static facts, a control action (returns the NEW state), and a
+  // push channel so the maximize/restore glyph stays in sync.
+  getShellMeta: (): Promise<ShellMeta> => ipcRenderer.invoke('aek-shell:shell-meta'),
+  windowControl: (action: ShellWindowControl): Promise<ShellWindowState> =>
+    ipcRenderer.invoke('aek-shell:window-control', action),
+  /** Subscribes to maximize/unmaximize/full-screen transitions. Returns the unsubscribe. */
+  onWindowState: (callback: (state: ShellWindowState) => void): (() => void) => {
+    const listener = (_event: unknown, state: ShellWindowState): void => {
+      callback(state)
+    }
+    ipcRenderer.on('aek-shell:window-state', listener)
+    return () => {
+      ipcRenderer.removeListener('aek-shell:window-state', listener)
+    }
+  },
 })
