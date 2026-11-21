@@ -28,6 +28,7 @@ import { basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   SLOTS,
+  slotConfig,
   slotHome,
   spawnWebServerForSlot,
   launchShellForSlot,
@@ -44,7 +45,7 @@ import {
   clearSlotLock,
   isPidAlive,
 } from '../../packages/aek/base/coraek/slot-lock.mjs'
-import { resolveSlot } from '../../packages/aek/base/coraek/slots.mjs'
+import { isSlot, resolveSlot } from '../../packages/aek/base/coraek/slots.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -52,15 +53,17 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const USAGE = `AEK runtime arbiter — per-slot instance lifecycle.
 
   node scripts/aek/arbiter.mjs status
-  node scripts/aek/arbiter.mjs start <aek|next>
-  node scripts/aek/arbiter.mjs stop  <aek|next>
+  node scripts/aek/arbiter.mjs start <aek|next|<lane>>
+  node scripts/aek/arbiter.mjs stop  <aek|next|<lane>>
   node scripts/aek/arbiter.mjs mode  <only-aek|only-next|both>
-  node scripts/aek/arbiter.mjs start-half   <aek|next> <web|shell>
-  node scripts/aek/arbiter.mjs stop-half    <aek|next> <web|shell>
-  node scripts/aek/arbiter.mjs restart-half <aek|next> <web|shell>`
+  node scripts/aek/arbiter.mjs start-half   <aek|next|<lane>> <web|shell>
+  node scripts/aek/arbiter.mjs stop-half    <aek|next|<lane>> <web|shell>
+  node scripts/aek/arbiter.mjs restart-half <aek|next|<lane>> <web|shell>`
 
 /** @param slot - candidate slot name. @returns true when it is a known slot. */
-function isSlot(slot) { return slot === 'aek' || slot === 'next' }
+// BF-4 lane round: delegate to coraek isSlot (built-in 'aek'/'next' OR a
+// registered lane); the previous local aek|next check rejected lane names in
+// the stop path (observed: `lanes.mjs stop l1` → arbiter "unknown slot").
 
 /** @param slot - candidate mode name. @returns true when it is a known mode. */
 function isMode(mode) { return mode === 'only-aek' || mode === 'only-next' || mode === 'both' }
@@ -122,7 +125,7 @@ function buildStatus() {
     const web = probe(slot, { allowHttp: !inHost })
     const shell = slotShellUp(slot)
     slots[slot] = {
-      webPort: SLOTS[slot].webPort,
+      webPort: slotConfig(slot).webPort,
       web,
       shell,
       // Which build the window belongs to. Without it the console cannot say
@@ -220,7 +223,7 @@ async function cmdStartHalf(slot, half) {
   if (half !== 'web' && half !== 'shell') return { ok: false, error: `unknown half "${half}"` }
   if (half === 'web') {
     if (probe(slot)) return { ok: false, slot, half, error: `web server for slot "${slot}" already running` }
-    const foreign = slotProcesses(slot).foreign.filter(p => p.port === SLOTS[slot].webPort)
+    const foreign = slotProcesses(slot).foreign.filter(p => p.port === slotConfig(slot).webPort)
     if (foreign.length > 0) {
       return { ok: false, slot, half, error: `port conflict: ${foreign.map(f => `:${f.port} held by pid ${f.pid}`).join(', ')}`, foreign }
     }
