@@ -304,9 +304,13 @@ function Console() {
    * scroll effect below. The keep-alive mount set dedupes the same way, so
    * every anchor tab of one page shares ONE live tree.
    * @param id - the panel to render.
+   * @param active - keep-alive visibility: true only while this render target
+   *   is the shown panel. Panels binding window-level side effects (the style
+   *   gallery's keyboard handler, m12567 ②) gate them on this — every visited
+   *   panel stays mounted, so a hidden one must not bind.
    * @returns that panel's content component (or nothing).
    */
-  const renderPanelContent = (id: PanelId) => {
+  const renderPanelContent = (id: PanelId, active: boolean) => {
     const renderId = panelRenderIdOf(id)
     // M round: 运行实例管理 was renamed 插件与程序管理 and now hosts the
     // former 插件管理 page AND the former 关于 content — one combined page.
@@ -372,7 +376,7 @@ function Console() {
     // BO round (m07690 item 7): the style gallery — its settings sub-route
     // (`artSettings`) stays in the InfoPanels chain below.
     if (renderId === 'art') {
-      return <ArtGalleryPanel />
+      return <ArtGalleryPanel active={active} />
     }
     // R2 round: the three plugin SETTINGS pages (skills / prompts / icons)
     // and 基础设置 / Web Search 设置 / 关于 all live in InfoPanels.
@@ -443,11 +447,18 @@ function Console() {
                 ANCHOR tab of one page dedupes into that page's single tree
                 (the tabs only differ in scroll position, the anchor scroll
                 effect above). */}
-            {[...new Set(visitedPanels.map(panelRenderIdOf))].map(renderId => (
-              <div key={renderId} className={renderId === 'art' ? 'h-full' : undefined} style={{ display: renderId === panelRenderIdOf(panel) ? 'block' : 'none' }}>
-                {renderPanelContent(renderId as PanelId)}
-              </div>
-            ))}
+            {[...new Set(visitedPanels.map(panelRenderIdOf))].map((renderId) => {
+              // BT round (m12567 ②): keep-alive visibility — true only while
+              // this render target is the shown panel; passed to the content
+              // so window-level effects (the gallery keyboard handler) bind
+              // only on the active one.
+              const active = renderId === panelRenderIdOf(panel)
+              return (
+                <div key={renderId} className={renderId === 'art' ? 'h-full' : undefined} style={{ display: active ? 'block' : 'none' }}>
+                  {renderPanelContent(renderId as PanelId, active)}
+                </div>
+              )
+            })}
           </main>
         </div>
       </div>

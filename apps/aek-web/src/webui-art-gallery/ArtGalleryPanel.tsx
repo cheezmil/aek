@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import './stage.css'
 import { useI18n } from '../i18n.tsx'
+import { parseBoolean, usePref } from '../preferences.tsx'
 import { copyToClipboard } from '../clipboard.ts'
 import { REPO_FALLBACK } from './data/skill-styles.ts'
 import {
@@ -38,6 +39,7 @@ import {
   globalThemeId,
   resetGlobalTheme,
   saveGlobalTheme,
+  setSkinAnimEnabled,
 } from './artGlobalTheme.ts'
 import { GallerySwitcher } from './GallerySwitcher.tsx'
 import { Stage, type StageCounts } from './Stage.tsx'
@@ -47,8 +49,15 @@ type Family = 'skill' | 'style'
 /** The reference's "detail" stage id for skills when no favorite is set. */
 const DEFAULT_SKILL = 'skill-impeccable::impeccable'
 
-export function ArtGalleryPanel(): JSX.Element {
+export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   const { t } = useI18n()
+  // BT round (m12567 ①): the skin-switch glide (BS-4) is OFF by default —
+  // the user felt it janky. The persisted `aek-home.skinAnim` setting gates
+  // the one-shot `.aek-skin-anim` class; sync it into the artGlobalTheme
+  // module flag so every palette write (auto-apply on spec change, manual
+  // global toggle, reset) honors it.
+  const [skinAnim] = usePref('aek-home.skinAnim', false, parseBoolean)
+  useEffect(() => { setSkinAnimEnabled(skinAnim) }, [skinAnim])
   const { styles, skills } = useMemo(() => galleryItems(), [])
   const repos = useMemo<RepoGroup[]>(() => {
     const groups = new Map<string, RepoGroup>()
@@ -207,6 +216,16 @@ export function ArtGalleryPanel(): JSX.Element {
   }
 
   useEffect(() => {
+    // BT round (m12567 ②): the panel is keep-alive mounted (Home renders every
+    // visited panel, the inactive ones with display:none but their effects
+    // STILL run). The window-level keyboard handler below must only be bound
+    // while THIS panel is the visible one — otherwise ←/→ (and /, c, f) step
+    // the gallery skin from every other page, which is the leak the user
+    // reported. `active` is the keep-alive visibility flag from Home. The
+    // effect still re-runs every render (no dep array), so the inner
+    // closures (stepCur/toggleFav/…) stay fresh; the guard just skips the
+    // bind when this panel is hidden.
+    if (!active) return
     const onKey = (e: KeyboardEvent): void => {
       const el = e.target as HTMLElement | null
       const inField = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')

@@ -209,6 +209,17 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     default: false,
   },
   {
+    // BT round (m12567 ①): the style-gallery skin-switch transition (the
+    // BS-4 whole-window glide) is OFF by default — the user felt it janky
+    // ("太卡了"). When on, artGlobalTheme.applyGlobalTheme adds the one-shot
+    // `.aek-skin-anim` class on <html> around each palette write; when off
+    // the swap is instant. The gallery panel reads this pref live and syncs
+    // it into the artGlobalTheme module flag.
+    key: 'aek-home.skinAnim', kind: 'toggle', group: 'motion',
+    labelKey: 'settings.skinAnim', hintKey: 'settings.skinAnimHint',
+    default: false,
+  },
+  {
     // A round: the per-plugin route rail (PluginSubNav) width. Dragging the
     // rail's right edge writes this pref; the CSS variable below carries the
     // number into the layout, same as every other sidebar metric.

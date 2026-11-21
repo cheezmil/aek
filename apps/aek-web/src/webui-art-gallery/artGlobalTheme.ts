@@ -112,16 +112,29 @@ const FONT_STACKS: Record<string, string> = {
 /**
  * Write (or, with `null`, clear) the live overrides on <html>. All keys in
  * ALL_KEYS are removed first so a reset / narrower-spec switch never leaks a
- * stale derived token. A one-shot `.aek-skin-anim` class on <html> (see
- * index.css) glides every surface through the swap — the BS round (m11967 ④)
- * "needs an animation" requirement — without permanently retiming the
- * app's hover transitions. The no-motion setting still crushes it.
+ * stale derived token. When the `aek-home.skinAnim` setting is on, a one-shot
+ * `.aek-skin-anim` class (see index.css) glides every surface through the
+ * swap — the BS round (m11967 ④) "needs an animation" requirement — without
+ * permanently retiming the app's hover transitions. The no-motion setting
+ * still crushes it.
+ *
+ * BT round (m12567 ①): the glide is OFF by default (the user felt it janky).
+ * The flag below is synced from the persisted setting by the gallery panel
+ * (`setSkinAnimEnabled`); boot (pre-React) keeps it off.
  */
+let skinAnimEnabled = false
+
+/** The art panel syncs the persisted `aek-home.skinAnim` setting here. */
+export const setSkinAnimEnabled = (on: boolean): void => {
+  skinAnimEnabled = on
+  if (!on) document.documentElement.classList.remove('aek-skin-anim')
+}
+
 let skinAnimTimer: ReturnType<typeof setTimeout> | undefined
 
 export const applyGlobalTheme = (spec: StageSpec | null): void => {
   const el = document.documentElement
-  el.classList.add('aek-skin-anim')
+  if (skinAnimEnabled) el.classList.add('aek-skin-anim')
   for (const k of ALL_KEYS) el.style.removeProperty(k)
   el.style.removeProperty('--aek-radius')
   el.style.removeProperty('--font-sans')
@@ -136,9 +149,11 @@ export const applyGlobalTheme = (spec: StageSpec | null): void => {
     else el.style.removeProperty('--font-sans')
   }
   if (skinAnimTimer) clearTimeout(skinAnimTimer)
-  skinAnimTimer = setTimeout(() => {
-    el.classList.remove('aek-skin-anim')
-  }, 320)
+  if (skinAnimEnabled) {
+    skinAnimTimer = setTimeout(() => {
+      el.classList.remove('aek-skin-anim')
+    }, 320)
+  }
 }
 
 /** Remember the spec in localStorage (degrades silently on quota errors). */

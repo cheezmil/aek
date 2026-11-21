@@ -502,19 +502,13 @@
     overflow: hidden;
   }
 
-  /* BS round (m11967 ④): whole-webui skin cross-fade. When the gallery applies
-     a spec's palette to <html>, the app root / content area / stage repaint. A
-     short color+border transition makes the swap glide instead of snap. The
-     no-motion setting (.aek-no-motion * → transition-duration 0.01ms !important)
-     crushes these automatically, so motion-off users keep the instant swap. */
-  .aek-root,
-  .aek-content-main,
-  .aek-stage {
-    transition:
-      background-color 280ms ease,
-      color 280ms ease,
-      border-color 280ms ease;
-  }
+  /* BT round (m12567 ①): the BS-4 whole-webui skin cross-fade was OFF by
+     default — the user felt the always-on 280ms transition janky ("太卡了").
+     The static `.aek-root / .aek-content-main / .aek-stage` transition block
+     is therefore gone: skin swaps are instant unless the persisted
+     `aek-home.skinAnim` setting is on, in which case
+     artGlobalTheme.applyGlobalTheme adds the one-shot `.aek-skin-anim` class
+     on <html> (the block below) for 320ms around the palette write. */
 
   /* One-shot whole-window variant: artGlobalTheme.applyGlobalTheme adds
      `.aek-skin-anim` on <html> for 320ms around each palette write, so EVERY
