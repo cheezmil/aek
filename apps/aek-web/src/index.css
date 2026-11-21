@@ -354,6 +354,12 @@
    <html> → 36px. */
 :root {
   --aek-titlebar-h: 0px;
+  /* BD round: usable viewport height BELOW the pinned title bar. Full-height
+     columns (the sticky sidebar rails) use `h-(--aek-viewport-h)` instead of
+     `h-screen` so that, in the shell, they are exactly the bar-height shorter
+     and do not run off the bottom of the window. In a plain browser
+     `--aek-titlebar-h` is 0px, so this equals `100vh` and is a no-op. */
+  --aek-viewport-h: calc(100vh - var(--aek-titlebar-h));
 }
 html.aek-in-shell {
   --aek-titlebar-h: 36px;
@@ -389,6 +395,16 @@ html.aek-in-shell {
      on win/linux the bar owns the whole caption and draws its own
      minimize / maximize-restore / close buttons. */
   .aek-titlebar {
+    /* BD round: the bar must STAY pinned while the DOCUMENT scrolls (the
+       sidebar is sticky top-(--aek-titlebar-h), so a plain in-flow bar
+       scrolls away and panel content shows through the top 36px band).
+       sticky top-0 keeps it in flow at scrollTop=0 and pins it on scroll;
+       z-40 sits above panel content (z-3 sticky search, z-20 popovers) but
+       below shadcn overlays (z-50), and the bg-background keeps scrolled
+       content from showing through the strip. */
+    position: sticky;
+    top: 0;
+    z-index: 40;
     height: var(--aek-titlebar-h, 36px);
     -webkit-app-region: drag;
     user-select: none;
@@ -771,7 +787,9 @@ html.aek-in-shell {
      blur so the rows scrolling underneath stay visible). */
   .aek-sticky-panel-search {
     position: sticky;
-    top: var(--aek-space-3);
+    /* BD round: document-scoped, so it must pin BELOW the pinned title bar
+       (shell only; in a browser `--aek-titlebar-h` is 0px → no change). */
+    top: calc(var(--aek-titlebar-h, 0px) + var(--aek-space-3));
     z-index: 3;
     background: color-mix(in srgb, var(--aek-surface) 82%, transparent);
     backdrop-filter: blur(10px) saturate(1.2);

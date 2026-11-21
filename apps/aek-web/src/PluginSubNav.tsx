@@ -239,7 +239,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
   return (
     <nav
       className={cn(
-        'aek-rail-fold sticky top-0 flex h-screen flex-col grow-0 shrink-0 basis-(--aek-plugin-rail-width) w-(--aek-plugin-rail-width) bg-surface border-r border-border pt-6 px-3 pb-3 overflow-hidden',
+        'aek-rail-fold sticky top-(--aek-titlebar-h) flex h-(--aek-viewport-h) flex-col grow-0 shrink-0 basis-(--aek-plugin-rail-width) w-(--aek-plugin-rail-width) bg-surface border-r border-border pt-6 px-3 pb-3 overflow-hidden',
         resized !== undefined && 'aek-no-transition',
       )}
       aria-label={t('nav.pluginRoutes')}

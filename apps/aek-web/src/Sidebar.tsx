@@ -665,7 +665,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
            global crush below it in index.css would otherwise snap the first-
            level rail closed under the system "reduce motion" setting while
            the second-level rail still glides). */
-        'aek-rail-fold sticky top-0 flex flex-col h-screen basis-(--aek-sidebar-width) w-(--aek-sidebar-width) bg-card border-r border-border overflow-hidden z-2 text-(length:--aek-sidebar-font-size) tracking-(--aek-sidebar-letter-spacing)',
+        'aek-rail-fold sticky top-(--aek-titlebar-h) flex flex-col h-(--aek-viewport-h) basis-(--aek-sidebar-width) w-(--aek-sidebar-width) bg-card border-r border-border overflow-hidden z-2 text-(length:--aek-sidebar-font-size) tracking-(--aek-sidebar-letter-spacing)',
         compact
           ? 'basis-(--aek-sidebar-compact) w-(--aek-sidebar-compact) px-0'
           : cn('px-(--aek-sidebar-pad-x)', 'max-[640px]:basis-(--aek-sidebar-compact) max-[640px]:w-(--aek-sidebar-compact)'),
