@@ -254,12 +254,11 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
                 </div>
               </CardHeader>
               <CardDescription className="leading-relaxed">{t('art.demoCardDesc')}</CardDescription>
-              {/* BU round (m12968 ③): the demo card's rows read as a jumbled
-                  pile of buttons / switches / "更新" / "状态：关" — rebuilt the
-                  vertical rhythm: roomier CardContent, each switch row gets a
-                  clear 3-layer hierarchy (name + version chip / description /
-                  update action) with a stable gap between the switch and the
-                  text block. */}
+              {/* BV round (m13340, 3rd reject of the demo card layout): kill the
+                  dead elements — 更新 buttons (no onClick), version chips, the
+                  "状态：关" state-echo line and the nested bordered row boxes.
+                  Standard settings rows: title + natural-wrap description left,
+                  switch right, hairline dividers. */}
               <CardContent className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button variant="destructive" size="sm">{t('art.stop')}</Button>
@@ -269,34 +268,26 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
                   </Button>
                 </div>
                 <Separator />
-                {[
-                  { on: tg1, set: setTg1, name: t('art.injectOn'), meta: 'v1.0', desc: t('art.injectDesc') },
-                  {
-                    on: tg2, set: setTg2, name: t('art.disabledEx'), meta: '',
-                    desc: tf('art.switchState', { state: tg2 ? t('art.on') : t('art.off') }),
-                  },
-                ].map(r => (
-                  <div
-                    key={r.name}
-                    className="bg-background flex items-center gap-4 rounded-lg border px-4 py-3.5"
-                  >
-                    <div className="flex-none">
-                      <Switch checked={r.on} onCheckedChange={r.set} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 text-aek-13 font-semibold">
-                        <span className="truncate">{r.name}</span>
-                        {r.meta && (
-                          <span className="text-muted-foreground/70 flex-none text-2xxs font-normal">{r.meta}</span>
-                        )}
+                <div className="flex flex-col divide-y divide-border">
+                  <div className="flex items-center justify-between gap-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-aek-13 font-medium leading-tight">{t('art.injectOn')}</div>
+                      <div className="mt-0.5 text-aek-12 leading-relaxed text-muted-foreground">
+                        {t('art.injectDesc')}
                       </div>
-                      <div className="text-muted-foreground mt-0.5 truncate text-aek-12">{r.desc}</div>
                     </div>
-                    <div className="flex-none">
-                      <Button variant="secondary" size="sm">{t('art.update')}</Button>
-                    </div>
+                    <Switch checked={tg1} onCheckedChange={setTg1} className="flex-none" />
                   </div>
-                ))}
+                  <div className="flex items-center justify-between gap-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-aek-13 font-medium leading-tight">{t('art.disabledEx')}</div>
+                      <div className="mt-0.5 text-aek-12 leading-relaxed text-muted-foreground">
+                        {t('art.disabledExDesc')}
+                      </div>
+                    </div>
+                    <Switch checked={tg2} onCheckedChange={setTg2} className="flex-none" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
