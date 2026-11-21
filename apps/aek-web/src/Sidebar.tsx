@@ -698,11 +698,13 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
           {logoVisible
             ? (
               /* BQ round (m10857 item 2): the next slot carries the original
-                 logo with a small "next" label at its BOTTOM-RIGHT corner. */
+                 logo with a small "next" label at its BOTTOM-RIGHT corner.
+                 BW round (m13557②): label → "Next" (capitalized) wrapped in
+                 a rounded-rect chip so it reads as a badge, not stray text. */
               <span className='relative shrink-0 basis-8.5 w-8.5 h-8.5'>
                 <BrandMark size={34} className='aek-brand-mark w-8.5 h-8.5 block' variant={logoVariant} />
                 {currentSlot === 'next'
-                  ? <span className='absolute -bottom-px -right-px text-5xs font-semibold text-text-muted leading-none select-none'>next</span>
+                  ? <span className='absolute -bottom-1 -right-1.5 rounded-sm border border-border bg-card px-1 py-px text-5xs font-semibold text-text-muted leading-none select-none'>Next</span>
                   : null}
               </span>
             )
