@@ -34,11 +34,20 @@ import {
   resolveDefaultSlotHome,
 } from './home.mjs'
 import { DEFAULT_SLOT_DIRS, containerOf, findManifestFor, readAekManifest } from './paths.mjs'
+import { isLane, laneConfig, laneHome } from './lanes.mjs'
 
 /** Environment variable that names the slot a process belongs to. */
 export const AEK_SLOT_ENV = 'AEK_SLOT'
 
-/** The two slot names, in canonical order. */
+/**
+ * The two BUILT-IN slot names, in canonical order.
+ *
+ * These are the fixed user-facing apps (`AEK` / `AEK Next`). Parallel agent
+ * development runs on LANES instead — dynamic slots allocated from the lane
+ * registry (`./lanes.mjs`), which `isSlot` / `slotConfig` / `slotHome`
+ * accept transparently. Lanes are never built into this table: they are
+ * machine-local data, one registry entry per agent.
+ */
 export const SLOT_NAMES = /** @type {const} */ (['aek', 'next'])
 
 /**
@@ -107,22 +116,26 @@ export const SLOTS = {
 
 /**
  * @param {unknown} value - candidate slot name.
- * @returns {value is 'aek' | 'next'} true when the value names a known slot.
+ * @returns {boolean} true when the value names a known slot (built-in or a
+ * registered lane).
  */
 export function isSlot(value) {
-  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(SLOTS, value)
+  if (typeof value !== 'string') return false
+  if (Object.prototype.hasOwnProperty.call(SLOTS, value)) return true
+  return isLane(value)
 }
 /**
  * Work out which slot this process belongs to.
  *
  * Resolution order (first hit wins):
- *   1. `AEK_SLOT` — set explicitly by the launcher / build scripts.
+ *   1. `AEK_SLOT` — set explicitly by the launcher / build scripts (a built-in
+ *      name OR a registered lane name).
  *   2. The data root: `<container>/next` is the Next slot, `<container>/current`
  *      the default one.
  *   3. `aek` — the default single install.
  *
  * @param {Record<string, string | undefined>} [env] - environment override.
- * @returns {'aek' | 'next'} the slot name.
+ * @returns {string} the slot name.
  */
 export function resolveSlot(env = process.env) {
   const explicit = (env[AEK_SLOT_ENV] ?? '').trim()
@@ -134,14 +147,15 @@ export function resolveSlot(env = process.env) {
 }
 
 /**
- * Get the descriptor of a slot.
+ * Get the descriptor of a slot (built-in or lane).
  * @param {unknown} slot - slot name.
  * @returns {typeof SLOTS['aek']} the slot descriptor.
  * @throws {Error} when the slot name is unknown.
  */
 export function slotConfig(slot) {
-  if (!isSlot(slot)) throw new Error(`unknown AEK slot: ${String(slot)}`)
-  return SLOTS[slot]
+  if (Object.prototype.hasOwnProperty.call(SLOTS, slot)) return SLOTS[slot]
+  if (isLane(slot)) return laneConfig(slot)
+  throw new Error(`unknown AEK slot: ${String(slot)}`)
 }
 
 /**
@@ -224,9 +238,12 @@ export function containerForHome(home) {
  * @throws {Error} when the slot name is unknown.
  */
 export function slotHome(slot, env = process.env) {
-  if (!isSlot(slot)) throw new Error(`unknown AEK slot: ${String(slot)}`)
-  const container = aekContainer(env)
-  return readAekManifest(container)?.slots[slot] ?? join(container, SLOT_DIRS[slot])
+  if (Object.prototype.hasOwnProperty.call(SLOTS, slot)) {
+    const container = aekContainer(env)
+    return readAekManifest(container)?.slots[slot] ?? join(container, SLOT_DIRS[slot])
+  }
+  if (isLane(slot)) return laneHome(slot, env)
+  throw new Error(`unknown AEK slot: ${String(slot)}`)
 }
 
 /**

@@ -36,6 +36,10 @@
       "types": "./slots.d.mts",
       "default": "./slots.mjs"
     },
+    "./lanes": {
+      "types": "./lanes.d.mts",
+      "default": "./lanes.mjs"
+    },
     "./src/*": "./src/*",
     "./package.json": "./package.json",
     "./slot-lock": {
@@ -129,6 +133,8 @@
     "home.d.mts",
     "slots.mjs",
     "slots.d.mts",
+    "lanes.mjs",
+    "lanes.d.mts",
     "paths.d.mts",
     "paths.mjs",
     "lib/index.js",

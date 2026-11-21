@@ -213,9 +213,13 @@ if (command === 'prune') {
   // first; only `--yes` actually deletes (default stays read-only).
   const target = args[0] ?? 'all'
   const names = target === 'all' ? Object.keys(SLOTS) : [target]
-  if (target !== 'all' && !SLOTS[target]) {
-    console.error(`unknown slot: ${target} — expected one of ${Object.keys(SLOTS).join(', ')}, or "all"`)
-    process.exit(2)
+  if (target !== 'all') {
+    try {
+      slotConfig(target) // built-in slot or a registered lane (coraek/lanes)
+    } catch {
+      console.error(`unknown slot: ${target} — expected one of ${Object.keys(SLOTS).join(', ')} (or a registered lane), or "all"`)
+      process.exit(2)
+    }
   }
   const leftover = names.map(name => ({ name, path: distAppPath(name) })).filter(e => existsSync(e.path))
   if (leftover.length === 0) {
@@ -239,8 +243,10 @@ if (!['build', 'install', 'dev', 'rollback'].includes(command)) {
 }
 
 const slot = args[0]
-if (!SLOTS[slot]) {
-  console.error(`unknown slot: ${slot ?? '(none)'} — expected one of ${Object.keys(SLOTS).join(', ')}`)
+try {
+  slotConfig(slot) // built-in slot or a registered lane (coraek/lanes)
+} catch {
+  console.error(`unknown slot: ${slot ?? '(none)'} — expected one of ${Object.keys(SLOTS).join(', ')} (or a registered lane)`)
   process.exit(2)
 }
 if (!confirmed) {

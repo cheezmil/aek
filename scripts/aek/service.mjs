@@ -152,7 +152,14 @@ const confirmed = rest.includes('--yes')
  */
 function expandSlots(target) {
   if (target === 'all') return Object.keys(SLOTS)
-  if (target && SLOTS[target]) return [target]
+  if (target) {
+    try {
+      slotConfig(target) // builtins + registered lanes (BF round)
+      return [target]
+    } catch {
+      return []
+    }
+  }
   return []
 }
 
