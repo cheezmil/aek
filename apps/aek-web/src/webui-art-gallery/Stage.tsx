@@ -253,13 +253,13 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
                   </div>
                 </div>
               </CardHeader>
-              <CardDescription className="leading-relaxed">{t('art.demoCardDesc')}</CardDescription>
+              <CardDescription className="leading-relaxed px-(--card-spacing)">{t('art.demoCardDesc')}</CardDescription>
               {/* BV round (m13340, 3rd reject of the demo card layout): kill the
                   dead elements — 更新 buttons (no onClick), version chips, the
                   "状态：关" state-echo line and the nested bordered row boxes.
                   Standard settings rows: title + natural-wrap description left,
                   switch right, hairline dividers. */}
-              <CardContent className="flex flex-col gap-4">
+              <CardContent className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button variant="destructive" size="sm">{t('art.stop')}</Button>
                   <Button size="sm">{t('art.start')}</Button>
@@ -268,24 +268,22 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
                   </Button>
                 </div>
                 <Separator />
-                <div className="flex flex-col divide-y divide-border">
-                  <div className="flex items-center justify-between gap-4 py-3">
-                    <div className="min-w-0">
-                      <div className="text-aek-13 font-medium leading-tight">{t('art.injectOn')}</div>
-                      <div className="mt-0.5 text-aek-12 leading-relaxed text-muted-foreground">
-                        {t('art.injectDesc')}
-                      </div>
+                <div className="bg-background flex items-center gap-3 rounded-lg border border-border px-3.5 py-2.5">
+                  <Switch checked={tg1} onCheckedChange={setTg1} className="flex-none" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-aek-13 font-medium">{t('art.injectOn')}</div>
+                    <div className="mt-0.5 text-aek-12 leading-snug text-muted-foreground">
+                      {t('art.injectDesc')}
                     </div>
-                    <Switch checked={tg1} onCheckedChange={setTg1} className="flex-none" />
                   </div>
-                  <div className="flex items-center justify-between gap-4 py-3">
-                    <div className="min-w-0">
-                      <div className="text-aek-13 font-medium leading-tight">{t('art.disabledEx')}</div>
-                      <div className="mt-0.5 text-aek-12 leading-relaxed text-muted-foreground">
-                        {t('art.disabledExDesc')}
-                      </div>
+                </div>
+                <div className="bg-background flex items-center gap-3 rounded-lg border border-border px-3.5 py-2.5">
+                  <Switch checked={tg2} onCheckedChange={setTg2} className="flex-none" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-aek-13 font-medium">{t('art.disabledEx')}</div>
+                    <div className="mt-0.5 text-aek-12 leading-snug text-muted-foreground">
+                      {t('art.disabledExDesc')}
                     </div>
-                    <Switch checked={tg2} onCheckedChange={setTg2} className="flex-none" />
                   </div>
                 </div>
               </CardContent>
