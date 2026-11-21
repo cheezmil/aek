@@ -42,7 +42,7 @@ import { existsSync, readFileSync, readdirSync, readlinkSync, statSync } from 'n
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { SLOTS, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
+import { SLOTS, slotConfig, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
 import { aiReleasePath, readAiRelease } from '../../packages/aek/base/coraek/ai-release.mjs'
 
 // ── args ──────────────────────────────────────────────────────────────────────
@@ -50,9 +50,19 @@ const argv = process.argv.slice(2)
 const JSON_OUT = argv.includes('--json')
 const slotArg = argv.indexOf('--slot')
 const ONLY_SLOT = slotArg !== -1 ? argv[slotArg + 1] : null
-if (ONLY_SLOT !== null && !Object.keys(SLOTS).includes(ONLY_SLOT)) {
-  console.error(`unknown slot: ${ONLY_SLOT} (expected ${Object.keys(SLOTS).join(' | ')})`)
-  process.exit(2)
+if (ONLY_SLOT !== null) {
+  // BF-4 lane round: built-in slots AND registered lanes.
+  let ok = false
+  try {
+    slotConfig(ONLY_SLOT)
+    ok = true
+  } catch {
+    ok = false
+  }
+  if (!ok) {
+    console.error(`unknown slot: ${ONLY_SLOT} (expected ${Object.keys(SLOTS).join(' | ')} or a registered lane)`)
+    process.exit(2)
+  }
 }
 const SLOTS_TO_CHECK = ONLY_SLOT ? [ONLY_SLOT] : Object.keys(SLOTS)
 const LOG_TAIL = 500

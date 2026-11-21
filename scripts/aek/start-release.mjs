@@ -28,14 +28,21 @@ import {
   attachCleanup,
   APP_ROOT,
   SLOTS,
+  slotConfig,
 } from './shared-logic.mjs'
 
 const slot = process.argv[2] ?? 'aek'
-if (!SLOTS[slot]) {
-  console.error(`[start] unknown slot: ${slot} (expected one of ${Object.keys(SLOTS).join(', ')})`)
+// BF-4 lane round: accept built-in slots AND registered lanes (coraek/slots).
+let cfg
+try {
+  cfg = slotConfig(slot)
+} catch {
+  cfg = undefined
+}
+if (!cfg) {
+  console.error(`[start] unknown slot: ${slot} (expected one of ${Object.keys(SLOTS).join(', ')} or a registered lane)`)
   process.exit(2)
 }
-const cfg = SLOTS[slot]
 
 console.log(`[start] AEK Desktop v0  mode=prod  slot=${slot}`)
 

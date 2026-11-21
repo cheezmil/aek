@@ -313,8 +313,22 @@ export function spawnWebServer() {
  * @param options - forwarded to {@link spawnWebServerWith} (e.g. `{ detached: true }`).
  * @returns the spawned child process.
  */
+/**
+ * slotConfig that tolerates unknown names (BF-4 lane round): returns undefined
+ * instead of throwing, so the soft-sentinel call sites below keep their
+ * legacy "not a slot" behaviour for garbage input while still accepting
+ * registered lanes (coraek/slots isSlot = builtin OR registered lane).
+ */
+function resolveSlotCfg(slot) {
+  try {
+    return slotConfig(slot)
+  } catch {
+    return undefined
+  }
+}
+
 export function spawnWebServerForSlot(slot, options = {}) {
-  const s = SLOTS[slot]
+  const s = resolveSlotCfg(slot)
   if (!s) throw new Error(`Unknown slot: ${slot}`)
   return spawnWebServerWith(slotHome(slot), s.webPort, options)
 }
@@ -338,7 +352,7 @@ export function spawnWebServerForSlot(slot, options = {}) {
  *             foreign: Array<{pid:number, port:number, kind:string, cmd:string}> }}
  */
 export function slotProcesses(slot) {
-  const s = SLOTS[slot]
+  const s = resolveSlotCfg(slot)
   const ours = []
   const foreign = []
   if (!s) return { ours, foreign }
@@ -378,7 +392,7 @@ export function slotProcesses(slot) {
  * @returns {number[]} unique pids belonging to the slot.
  */
 export function slotOwnedPids(slot) {
-  const s = SLOTS[slot]
+  const s = resolveSlotCfg(slot)
   if (!s) return []
   const home = slotHome(slot)
   const pids = new Set()
@@ -415,7 +429,7 @@ export function slotOwnedPids(slot) {
  *                    foreign:Array<{pid:number, port:number, kind:string}>}>}
  */
 export async function killSlot(slot, options = {}) {
-  const s = SLOTS[slot]
+  const s = resolveSlotCfg(slot)
   const empty = { ok: true, slot, killed: [], stuck: [], foreign: [] }
   if (!s) return empty
   const timeoutMs = options.timeoutMs ?? 3000
@@ -459,7 +473,7 @@ export async function killSlot(slot, options = {}) {
  * @returns {boolean} true when the slot's own web server answers.
  */
 export function slotWebUp(slot, options = {}) {
-  const s = SLOTS[slot]
+  const s = resolveSlotCfg(slot)
   if (!s) return false
   const home = slotHome(slot)
   let ours = false
@@ -572,7 +586,7 @@ function psTable() {
  * @returns {number[]} shell pids, `[]` when none is alive.
  */
 export function slotShellPids(slot) {
-  const s = SLOTS[slot]
+  const s = resolveSlotCfg(slot)
   if (!s) return []
   const names = [...new Set([s.productName, s.devAppName])]
   // Both layouts must match, because BOTH are legal shells:
@@ -1397,7 +1411,7 @@ export function attachCleanup(web) {
  * @returns the spawned shell child, or `null` on branding failure.
  */
 export function launchShellForSlot(slot, options = {}) {
-  const s = SLOTS[slot]
+  const s = resolveSlotCfg(slot)
   if (!s) return null
   const home = slotHome(slot)
   const bundle = devAppDirForSlot(slot)

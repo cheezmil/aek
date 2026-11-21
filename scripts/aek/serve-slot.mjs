@@ -40,12 +40,17 @@ const slotIndex = rest.indexOf('--slot')
 const slot = slotIndex === -1 ? 'aek' : (rest[slotIndex + 1] ?? 'aek')
 const serve = rest.includes('--serve')
 
-if (!SLOTS[slot]) {
-  console.error(`unknown slot: ${slot} — expected one of ${Object.keys(SLOTS).join(', ')}`)
+// BF-4 lane round: accept built-in slots AND registered lanes (coraek/slots).
+let cfg
+try {
+  cfg = slotConfig(slot)
+} catch {
+  cfg = undefined
+}
+if (!cfg) {
+  console.error(`unknown slot: ${slot} — expected one of ${Object.keys(SLOTS).join(', ')} or a registered lane`)
   process.exit(2)
 }
-
-const cfg = slotConfig(slot)
 
 if (!serve) {
   console.log(`[serve] slot ${slot} (${cfg.productName})  home ${slotHome(slot)}  port ${cfg.webPort}`)
