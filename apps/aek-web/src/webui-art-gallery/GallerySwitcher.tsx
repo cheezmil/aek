@@ -16,6 +16,7 @@ import { Icon } from '../Icons.tsx'
 import { useI18n } from '../i18n.tsx'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { GalleryItem } from './spec.ts'
 
@@ -79,29 +80,55 @@ export function GallerySwitcher(p: GallerySwitcherProps): JSX.Element {
           </div>
         </div>
       ) : null}
-      <div className="border-border bg-background flex items-center gap-1 rounded-full border px-2 py-1.5 shadow-xl">
-        <Button variant="ghost" size="icon-sm" onClick={p.onPrev} aria-label={t('art.switcherPrev')}>
-          <Icon name="chevronLeft" />
-        </Button>
-        <Button variant="ghost" size="sm" onClick={p.onRandom}>
-          <Icon name="shuffle" />{t('art.switcherRandom')}
-        </Button>
-        <Button variant="ghost" size="icon-sm" onClick={p.onNext} aria-label={t('art.switcherNext')}>
-          <Icon name="chevronRight" />
-        </Button>
-        <span className="max-w-48 truncate text-xs font-bold">{cur ? cur.spec.name : '—'}</span>
-        <span className="text-muted-foreground text-2xxs tabular-nums">
-          {p.curIdx + 1}/{p.items.length}{cur && cur.spec.mode ? ` · ${cur.spec.mode}` : ''}
-        </span>
-        <Button variant="ghost" size="icon-sm" onClick={() => { setOpen(v => !v) }} aria-label={t('art.switcherList')}>
-          <Icon name="list" />
-        </Button>
-        {p.immersive ? (
-          <Button variant="destructive" size="sm" onClick={p.onExitImmersive}>
-            <Icon name="close" />{t('art.switcherExit')}
+      {/* BU round (m12968 ⑤): the bare icon buttons read as "dead
+          elements" — every one now carries a hover tooltip naming its
+          action. */}
+      <TooltipProvider delayDuration={250}>
+        <div className="border-border bg-background flex items-center gap-1 rounded-full border px-2 py-1.5 shadow-xl">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={p.onPrev} aria-label={t('art.switcherPrev')}>
+                <Icon name="chevronLeft" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('art.switcherPrev')}</TooltipContent>
+          </Tooltip>
+          <Button variant="ghost" size="sm" onClick={p.onRandom}>
+            <Icon name="shuffle" />{t('art.switcherRandom')}
           </Button>
-        ) : null}
-      </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={p.onNext} aria-label={t('art.switcherNext')}>
+                <Icon name="chevronRight" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('art.switcherNext')}</TooltipContent>
+          </Tooltip>
+          <span className="max-w-48 truncate text-xs font-bold">{cur ? cur.spec.name : '—'}</span>
+          <span className="text-muted-foreground text-2xxs tabular-nums">
+            {p.curIdx + 1}/{p.items.length}{cur && cur.spec.mode ? ` · ${cur.spec.mode}` : ''}
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => { setOpen(v => !v) }}
+                aria-label={t('art.switcherList')}
+                className={cn(open && 'bg-muted')}
+              >
+                <Icon name="list" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{open ? t('art.switcherListClose') : t('art.switcherList')}</TooltipContent>
+          </Tooltip>
+          {p.immersive ? (
+            <Button variant="destructive" size="sm" onClick={p.onExitImmersive}>
+              <Icon name="close" />{t('art.switcherExit')}
+            </Button>
+          ) : null}
+        </div>
+      </TooltipProvider>
     </div>
   )
 }

@@ -121,20 +121,40 @@ const FONT_STACKS: Record<string, string> = {
  * BT round (m12567 ①): the glide is OFF by default (the user felt it janky).
  * The flag below is synced from the persisted setting by the gallery panel
  * (`setSkinAnimEnabled`); boot (pre-React) keeps it off.
+ *
+ * BU round (m12968 ①): with the glide off the swap is instant, but the app
+ * carries 1600+ `transition-all` / `transition-colors` components (a CDP
+ * census of the running webui), so the 21-token flip used to ripple as a
+ * per-element animation wave = the jank the user kept reporting. When the
+ * glide is off, the write is bracketed by the one-shot `.aek-skin-swap`
+ * class (see index.css) which pins `transition: none` on everything for ~120ms
+ * so the whole window swaps colors in a single frame; with the glide on the
+ * `.aek-skin-anim` universal 280ms transition is the deliberate animation.
  */
 let skinAnimEnabled = false
 
 /** The art panel syncs the persisted `aek-home.skinAnim` setting here. */
 export const setSkinAnimEnabled = (on: boolean): void => {
   skinAnimEnabled = on
-  if (!on) document.documentElement.classList.remove('aek-skin-anim')
+  if (!on) {
+    document.documentElement.classList.remove('aek-skin-anim')
+    document.documentElement.classList.remove('aek-skin-swap')
+  }
 }
 
 let skinAnimTimer: ReturnType<typeof setTimeout> | undefined
 
 export const applyGlobalTheme = (spec: StageSpec | null): void => {
   const el = document.documentElement
-  if (skinAnimEnabled) el.classList.add('aek-skin-anim')
+  if (skinAnimEnabled) {
+    el.classList.add('aek-skin-anim')
+  } else {
+    // BU round (m12968 ①): the instant swap must not let the app's ~1600
+    // transition-all / transition-colors components animate the 21-token
+    // flip as a 280ms wave (the "太卡了" jank the user kept reporting) —
+    // pin every transition off for ~120ms around the write.
+    el.classList.add('aek-skin-swap')
+  }
   for (const k of ALL_KEYS) el.style.removeProperty(k)
   el.style.removeProperty('--aek-radius')
   el.style.removeProperty('--font-sans')
@@ -153,6 +173,10 @@ export const applyGlobalTheme = (spec: StageSpec | null): void => {
     skinAnimTimer = setTimeout(() => {
       el.classList.remove('aek-skin-anim')
     }, 320)
+  } else {
+    skinAnimTimer = setTimeout(() => {
+      el.classList.remove('aek-skin-swap')
+    }, 120)
   }
 }
 

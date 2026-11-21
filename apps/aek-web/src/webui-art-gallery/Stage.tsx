@@ -254,7 +254,13 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
                 </div>
               </CardHeader>
               <CardDescription className="leading-relaxed">{t('art.demoCardDesc')}</CardDescription>
-              <CardContent className="flex flex-col gap-3">
+              {/* BU round (m12968 ③): the demo card's rows read as a jumbled
+                  pile of buttons / switches / "更新" / "状态：关" — rebuilt the
+                  vertical rhythm: roomier CardContent, each switch row gets a
+                  clear 3-layer hierarchy (name + version chip / description /
+                  update action) with a stable gap between the switch and the
+                  text block. */}
+              <CardContent className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button variant="destructive" size="sm">{t('art.stop')}</Button>
                   <Button size="sm">{t('art.start')}</Button>
@@ -272,17 +278,23 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
                 ].map(r => (
                   <div
                     key={r.name}
-                    className="bg-background flex items-center gap-3 rounded-lg border px-3.5 py-2.5"
+                    className="bg-background flex items-center gap-4 rounded-lg border px-4 py-3.5"
                   >
-                    <Switch checked={r.on} onCheckedChange={r.set} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold">
-                        {r.name}
-                        {r.meta && <span className="text-muted-foreground text-2xxs">{r.meta}</span>}
-                      </div>
-                      <div className="text-muted-foreground truncate text-xs">{r.desc}</div>
+                    <div className="flex-none">
+                      <Switch checked={r.on} onCheckedChange={r.set} />
                     </div>
-                    <Button variant="secondary" size="sm">{t('art.update')}</Button>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 text-aek-13 font-semibold">
+                        <span className="truncate">{r.name}</span>
+                        {r.meta && (
+                          <span className="text-muted-foreground/70 flex-none text-2xxs font-normal">{r.meta}</span>
+                        )}
+                      </div>
+                      <div className="text-muted-foreground mt-0.5 truncate text-aek-12">{r.desc}</div>
+                    </div>
+                    <div className="flex-none">
+                      <Button variant="secondary" size="sm">{t('art.update')}</Button>
+                    </div>
                   </div>
                 ))}
               </CardContent>

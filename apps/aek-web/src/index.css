@@ -481,6 +481,10 @@
      element beat this components-layer rule. */
   .aek-content-main {
     padding: var(--aek-content-pad, 24px) calc(var(--aek-content-pad, 24px) * 2);
+    /* BU round (m12968 ④): the 24px → 0 gutter flip when entering the
+       full-bleed gallery was a hard snap — glide it instead (the global
+       no-motion crush still wins when reduce-motion is on). */
+    transition: padding 180ms ease;
   }
 
   /* BP round (m10318 item 3): a panel that owns its full-bleed layout
@@ -524,6 +528,19 @@
       border-color 280ms ease,
       fill 280ms ease,
       stroke 280ms ease !important;
+  }
+
+  /* BU round (m12968 ①): swap suppression. The running webui carries ~1600
+     `transition-all` / `transition-colors` components (CDP census), so a
+     21-token palette flip used to ripple as a per-element animation wave =
+     the "太卡了" jank. When the `aek-home.skinAnim` glide is OFF (default),
+     artGlobalTheme.applyGlobalTheme pins every transition off for ~120ms
+     around the write via the one-shot `.aek-skin-swap` class: the whole
+     window swaps colors in a single frame, then component hover timings
+     return to normal. Placed BEFORE the .aek-no-motion crush block. */
+  .aek-skin-swap,
+  .aek-skin-swap * {
+    transition: none !important;
   }
 
   /* The brand mark's glow (hover lives on the BUTTON, so a descendant rule). */

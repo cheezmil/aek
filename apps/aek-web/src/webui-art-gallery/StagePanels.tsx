@@ -297,7 +297,11 @@ export function ComponentsPanel() {
 export function MotionPanel() {
   const { t, tf } = useI18n()
   const [interact, setInteract] = useState(true)
-  const [count, setCount] = useState(0)
+  // BU round (m12968 ⑤): start at 1 so the staggered list-entrance demo
+  // plays once on first paint — it used to sit inert at 0 and only
+  // "reacted" after the user hit 触发 in the card above, which read as
+  // a dead element.
+  const [count, setCount] = useState(1)
 
   const tasks: string[] = [
     t('art.motionTaskA'),
@@ -370,9 +374,30 @@ export function MotionPanel() {
       </div>
 
       <div className="rounded-lg border border-border bg-background p-4">
-        <div className="mb-3">
-          <h3 className="text-sm font-semibold">{t('art.motionListIn')}</h3>
-          <p className="text-muted-foreground text-aek-125">{t('art.motionListDesc')}</p>
+        {/* BU round (m12968 ⑤): the card owns its own replay button —
+            clicking it re-runs the 45ms stagger on the task rows below,
+            so the demo no longer looks like a pile of inert text. */}
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold">{t('art.motionListIn')}</h3>
+            <p className="text-muted-foreground text-aek-125">{t('art.motionListDesc')}</p>
+          </div>
+          <TooltipProvider delayDuration={250}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => { setCount(c => c + 1) }}
+                >
+                  <Icon name="refresh" size={13} />
+                  {t('art.motionReplay')}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('art.motionReplayHint')}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         <div key={count} className="space-y-2">
           {tasks.map((label, i) => (
