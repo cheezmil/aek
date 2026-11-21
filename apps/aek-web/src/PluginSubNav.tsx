@@ -38,6 +38,7 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { Icon } from './Icons.tsx'
+import { RAIL_SEARCH_ICON, RAIL_SEARCH_INPUT, RAIL_SEARCH_WRAP } from './rail-searchbox.ts'
 import type { IconName } from './Icons.tsx'
 import { FAMILY_HOME_ICON } from './icon-registry.ts'
 import { useI18n } from './i18n.tsx'
@@ -268,11 +269,12 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
       {/* BI round: the rail's own search box (a hard requirement) — fixed
           ABOVE the scrolling body so it never scrolls away, and rendered
           in every mode, icon-only included. */}
-      <div className={cn('flex flex-none items-center gap-1.5 rounded-sm border border-border bg-surface-hover px-2 py-1.5', labelsHidden && 'justify-center')}>
-        <Icon name="search" size={13} className="flex-none text-text-muted" />
+      {/* BS round: identical box to the first-level rail (rail-searchbox.ts). */}
+      <div className={cn(RAIL_SEARCH_WRAP, labelsHidden && 'justify-center')}>
+        <span className={RAIL_SEARCH_ICON}><Icon name="search" size={16} /></span>
         <input
           type="text"
-          className="w-full min-w-0 flex-1 border-0 bg-transparent p-0 text-aek-12 text-text placeholder:text-text-muted focus:outline-none"
+          className={cn(RAIL_SEARCH_INPUT)}
           value={query}
           aria-label={t('nav.pluginSearch')}
           onChange={(event) => { setQuery(event.target.value) }}

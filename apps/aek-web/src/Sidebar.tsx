@@ -41,6 +41,7 @@ import type { NavEntry, PanelId } from './nav-model.ts'
 import { parseBoolean, PREF_KEYS, usePrefLanded, usePref, useSettings } from './preferences.tsx'
 import { RowActionsFloat } from './RowActionsFloat.tsx'
 import { cn } from '@/lib/utils'
+import { RAIL_SEARCH_INPUT as NAV_SEARCH_INPUT, RAIL_SEARCH_ICON as NAV_SEARCH_ICON, RAIL_SEARCH_WRAP as NAV_SEARCH_WRAP } from './rail-searchbox.ts'
 
 export type { PanelId } from './nav-model.ts'
 
@@ -65,9 +66,8 @@ const NAV_ROW_DROP_AFTER = 'after:content-[""] after:absolute after:left-1 after
 const ROW_ICON_BUTTON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted cursor-pointer transition-[color,background-color,transform] duration-140 ease-aek hover:text-primary hover:bg-accent-soft'
 const LABEL_FADE = 'aek-label-fade'
 const LABEL_FADE_HIDDEN = 'aek-label-fade-hidden'
-const NAV_SEARCH_WRAP = 'relative flex items-center gap-2 h-9 mb-4 border border-border rounded-sm bg-surface-subtle transition-[border-color,background-color] duration-150 ease-aek focus-within:border-accent-border focus-within:bg-card'
-const NAV_SEARCH_ICON = 'inline-flex shrink-0 text-text-muted'
-const NAV_SEARCH_INPUT = 'min-w-0 h-full p-0 text-text bg-transparent border-0 outline-none text-xs-plus placeholder:text-text-muted transition-opacity duration-150 ease-aek'
+/* BS round: the rail search box is one shared spec (rail-searchbox.ts) — the
+   first and second level rails render identical boxes. */
 const NAV_NO_MATCH = 'p-3 text-text-muted text-xs text-center transition-opacity duration-150 ease-aek'
 const LOCALE_MENU_ITEM = 'flex items-center justify-between gap-2 w-full p-2 px-2.5 text-text-secondary bg-transparent border-0 rounded-sm text-xs-plus text-left cursor-pointer hover:text-text hover:bg-surface-hover'
 const LOCALE_MENU_ACTIVE = 'text-accent-ink bg-accent-soft font-semibold'
@@ -702,7 +702,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
               <span className='relative shrink-0 basis-8.5 w-8.5 h-8.5'>
                 <BrandMark size={34} className='aek-brand-mark w-8.5 h-8.5 block' variant={logoVariant} />
                 {currentSlot === 'next'
-                  ? <span className='absolute -bottom-0.5 -right-1 py-0.5 px-1.5 border border-accent-border rounded-full bg-accent-soft text-accent-ink text-3xs font-bold tracking-aek-label uppercase shadow-xs'>next</span>
+                  ? <span className='absolute -bottom-px -right-px text-5xs font-semibold text-text-muted leading-none select-none'>next</span>
                   : null}
               </span>
             )
@@ -733,7 +733,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
       >
         <div className={cn(
           NAV_SEARCH_WRAP,
-          compact ? 'justify-center gap-0 p-0' : 'px-2',
+          compact && 'justify-center gap-0 p-0',
           compact && 'focus-within:justify-start focus-within:px-2',
         )}>
           <span className={NAV_SEARCH_ICON}><Icon name="search" size={16} /></span>
@@ -746,7 +746,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
                 'focus-within:grow focus-within:shrink focus-within:w-auto focus-within:opacity-100',
               ),
             )}
-            type="search"
+            type="text"
             value={query}
             aria-label={t('nav.searchAria')}
             onChange={(event) =>{  setQuery(event.target.value) }}

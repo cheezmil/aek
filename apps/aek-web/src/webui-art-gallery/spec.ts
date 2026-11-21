@@ -86,7 +86,7 @@ export const AEC_BASE_SPECS: StageSpec[] = [
     radius: '12px',
     blur: 0,
     dark: true,
-    p: ['#0f1013', '#17181d', '#e7e8ec', '#6f7180', '#f97316', '#fb923c'],
+    p: ['#131519', '#1b1e24', '#e8eaef', '#6e717c', '#f8843c', '#e06a26'],
   },
 ]
 

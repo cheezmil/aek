@@ -108,44 +108,52 @@
   --aek-output-line-height: 21px;
 }
 
-/* ── 1b. AEK dark base palette (BQ round, m10857 item 5) ────────────
+/* ── 1b. AEK dark base palette (BQ round m10857 item 5 → BS round m11967 ②) ──
    The `aek-home.baseTheme` setting (light default / dark / auto) toggles
    the `.dark` class on <html> (base-theme.ts); Tailwind's dark variant
    targets the same class. Overriding the aek source tokens here is
    enough — the shadcn mapping layer below only ever resolves
    `var(--aek-*)`, so the whole console repaints from this one table.
-   Placed AFTER the light :root block so the class wins when present. */
+   Placed AFTER the light :root block so the class wins when present.
+   BS round: reworked from the near-pure-black BQ palette to a layered
+   "轻奢" (refined) dark — websearch 2026 consensus (layered grays, not
+   pure black #000; near-not-pure-white text; a low-saturation lighter
+   accent than the light mode; soft depth shadows). */
 .dark {
   color-scheme: dark;
 
-  /* surfaces */
-  --aek-bg: #0f1013;
-  --aek-surface: #17181d;
-  --aek-surface-subtle: #131419;
-  --aek-surface-hover: #1f2027;
-  --aek-border: #26272e;
-  --aek-border-strong: #383a44;
+  /* surfaces — layered grays: each tier a step lighter than the one under */
+  --aek-bg: #131519;
+  --aek-surface: #1b1e24;
+  --aek-surface-subtle: #17191f;
+  --aek-surface-hover: #23262e;
+  --aek-border: #2b2e38;
+  --aek-border-strong: #3c3f4b;
 
-  /* text */
-  --aek-text: #e7e8ec;
-  --aek-text-secondary: #9fa1ac;
-  --aek-text-muted: #6f7180;
-  --aek-text-inverse: #101116;
+  /* text — near-white, never pure #fff */
+  --aek-text: #e8eaef;
+  --aek-text-secondary: #a2a5b0;
+  --aek-text-muted: #6e717c;
+  --aek-text-inverse: #0e1013;
 
-  /* brand — the orange one shade lighter on dark surfaces */
-  --aek-accent: #f97316;
-  --aek-accent-hover: #fb923c;
-  --aek-accent-soft: rgba(249, 115, 22, 0.16);
-  --aek-accent-border: rgba(249, 115, 22, 0.4);
-  --aek-accent-ink: #fdba74;
+  /* brand — refined orange, one step lighter + slightly desaturated for
+     dark surfaces (reads as 轻奢 rather than neon) */
+  --aek-accent: #f8843c;
+  --aek-accent-hover: #fa9d5f;
+  --aek-accent-soft: rgba(248, 132, 60, 0.18);
+  --aek-accent-border: rgba(248, 132, 60, 0.42);
+  --aek-accent-ink: #ffc59a;
 
-  /* status — translucent soft backgrounds survive on dark surfaces */
-  --aek-success: #22c55e;
-  --aek-success-soft: rgba(34, 197, 94, 0.14);
-  --aek-success-border: rgba(34, 197, 94, 0.35);
+  /* status — desaturated tones that sit on the dark layers */
+  --aek-success: #34d399;
+  --aek-success-soft: rgba(52, 211, 153, 0.15);
+  --aek-success-border: rgba(52, 211, 153, 0.35);
   --aek-danger: #f87171;
-  --aek-danger-soft: rgba(248, 113, 113, 0.14);
+  --aek-danger-soft: rgba(248, 113, 113, 0.15);
   --aek-danger-border: rgba(248, 113, 113, 0.35);
+
+  /* 轻奢 depth — soft shadows on the layered surfaces */
+  --aek-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
 }
 
 /* ── 2. shadcn theme variables (light, mapped onto AEK tokens) ──────── */
@@ -303,9 +311,14 @@
   --radius-3xs: 2px;
   /* Uppercase rail captions (.08em) — off the standard tracking scale. */
   --tracking-aek-label: 0.08em;
-  /* Brand tagline letter-spacing (0.04em) + the slot badge's 9px caps. */
+  /* Brand tagline letter-spacing (0.04em). */
   --tracking-aek-tagline: 0.04em;
   --text-3xs: 9px;
+  /* BS round (m11967 item 5): the slot badge shrank to 8px caps ("very very small"). */
+  --text-4xs: 8px;
+  /* BS round follow-up (m12414): the "next" slot mark shrank again to a 6px
+     corner tag — plain tiny text, no pill chrome. */
+  --text-5xs: 6px;
   /* The drag drop-line's accent halo (box-shadow with a theme color). */
   --shadow-aek-ring: 0 0 0 3px var(--aek-accent-soft);
   /* Sub-scale type the panels carry but the standard steps do not. */
@@ -487,6 +500,36 @@
   .aek-app-art {
     height: 100dvh;
     overflow: hidden;
+  }
+
+  /* BS round (m11967 ④): whole-webui skin cross-fade. When the gallery applies
+     a spec's palette to <html>, the app root / content area / stage repaint. A
+     short color+border transition makes the swap glide instead of snap. The
+     no-motion setting (.aek-no-motion * → transition-duration 0.01ms !important)
+     crushes these automatically, so motion-off users keep the instant swap. */
+  .aek-root,
+  .aek-content-main,
+  .aek-stage {
+    transition:
+      background-color 280ms ease,
+      color 280ms ease,
+      border-color 280ms ease;
+  }
+
+  /* One-shot whole-window variant: artGlobalTheme.applyGlobalTheme adds
+     `.aek-skin-anim` on <html> for 320ms around each palette write, so EVERY
+     surface (cards, rows, pills) glides through the swap, then the universal
+     rule disappears and component hover timings are back to normal. Placed
+     BEFORE the .aek-no-motion crush block so the crush (equal specificity,
+     later source order, individual longhands) still wins for motion-off. */
+  .aek-skin-anim,
+  .aek-skin-anim * {
+    transition:
+      background-color 280ms ease,
+      color 280ms ease,
+      border-color 280ms ease,
+      fill 280ms ease,
+      stroke 280ms ease !important;
   }
 
   /* The brand mark's glow (hover lives on the BUTTON, so a descendant rule). */

@@ -72,7 +72,18 @@ export function ArtGalleryPanel(): JSX.Element {
   const [search, setSearch] = useState('')
   const [favOnly, setFavOnly] = useState(false)
   const [favs, setFavs] = useState<ReadonlySet<string>>(() => readFavorites())
-  const [curId, setCurId] = useState<string>(DEFAULT_SKILL)
+  // BS round (m11967 ③④): open on the persisted whole-webui skin, not the
+  // hard default — otherwise the stage preview shows a different (light) spec
+  // than the chrome's dark skin on load, reading as "some elements not
+  // themed". Falls back to DEFAULT_SKILL when nothing valid is persisted.
+  const [curId, setCurId] = useState<string>(() => {
+    const persisted = globalThemeId()
+    if (persisted) {
+      const { styles, skills } = galleryItems()
+      if (styles.some(i => i.id === persisted) || skills.some(i => i.id === persisted)) return persisted
+    }
+    return DEFAULT_SKILL
+  })
   // BR round (m11298 ①): gallery opens immersive by default (full-bleed stage; the
   // floating switcher bottom-right or Esc exits back to TopBar + Sidebar chrome).
   const [immersive, setImmersive] = useState(true)
@@ -298,7 +309,6 @@ export function ArtGalleryPanel(): JSX.Element {
             />
           ) : curItem ? (
             <div
-              key={curItem.id}
               className="aek-stage min-h-full"
               style={specStyle(curItem.spec)}
               data-mode={curItem.spec.mode}

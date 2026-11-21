@@ -401,7 +401,7 @@ function Console() {
     // flex-1 chain below it has no definite height and the panel's `h-full`
     // collapses into content height (the document itself scrolls behind the
     // gallery, the user's 「父容器滚动」report).
-    <div className={cn('flex min-h-screen bg-background text-text', noMotion && 'aek-no-motion', PANEL_PAD_OVERRIDES[panel] === 'none' && 'aek-app-art')} style={style}>
+    <div className={cn('aek-root flex min-h-screen bg-background text-text', noMotion && 'aek-no-motion', PANEL_PAD_OVERRIDES[panel] === 'none' && 'aek-app-art')} style={style}>
       <Sidebar
         active={panel}
         onSelect={handleRailSelect}
