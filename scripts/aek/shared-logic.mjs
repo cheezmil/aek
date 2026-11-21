@@ -7,7 +7,7 @@
 import { execSync, execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { join, dirname, basename } from 'node:path'
-import { existsSync, renameSync, copyFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, renameSync, copyFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync, openSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { resolveAekHome, resolveAekRoot } from '../../packages/aek/base/coraek/home.mjs'
@@ -278,12 +278,26 @@ export function spawnWebServerWith(home, port, options = {}) {
   const advertised = webUrlForPort(port)
   const webCmd = `DSH_HOME=${home} ${tsxBin()} ${dshBin()} web --no-open --port ${port} --trusted-host ${new URL(advertised).hostname}`
   console.error(`[start] web  → ${advertised} (home ${home})`)
+  // BF round: a DETACHED web must not inherit pipes into the caller. Once the
+  // caller (the arbiter) exits, the pipe's read end closes and the web's next
+  // console write kills it with EPIPE before it ever binds — the "arbiter web
+  // never becomes healthy within 90s" release failures (复盘 §169). Detached
+  // webs log to the slot's own log file instead; interactive callers keep
+  // live pipes so the web's startup output still streams to the console.
+  let stdio = ['ignore', 'pipe', 'pipe']
+  if (options.detached) {
+    const logPath = join(home, 'logs', 'web-arbiter.log')
+    mkdirSync(dirname(logPath), { recursive: true })
+    stdio = ['ignore', openSync(logPath, 'a'), openSync(logPath, 'a')]
+  }
   const web = spawn('bash', ['-c', webCmd], {
-    cwd: PROJECT_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'], detached: Boolean(options.detached),
+    cwd: PROJECT_ROOT, env, stdio, detached: Boolean(options.detached),
   })
   if (options.detached) web.unref?.()
-  web.stdout.on('data', d => process.stdout.write(d))
-  web.stderr.on('data', d => process.stderr.write(d))
+  else {
+    web.stdout.on('data', d => process.stdout.write(d))
+    web.stderr.on('data', d => process.stderr.write(d))
+  }
   return web
 }
 

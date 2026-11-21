@@ -63,7 +63,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { get as httpGet } from 'node:http'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { listenPids, SLOTS, slotHome, dualTreeLayout, isBuildFresh } from './shared-logic.mjs'
+import { listenPids, SLOTS, slotHome, dualTreeLayout, isBuildFresh, slotWebUp } from './shared-logic.mjs'
 import { buildFlagsEnv } from './build-flags.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -431,6 +431,23 @@ async function waitForPortOwned(slot, port, timeoutMs) {
   return false
 }
 
+/**
+ * BF round: wait until the slot's web answers on its port (1s poll, listener +
+ * marker — shared-logic `slotWebUp`). Run AFTER the slot's supervisor agent is
+ * installed, so the expected owner is the agent's KeepAlive web. The OWNERSHIP
+ * commit gate (`waitForPortOwned`) still runs afterwards; this gate only says
+ * "something is serving the candidate".
+ * @param {string} slot @param {number} timeoutMs @returns {Promise<boolean>}
+ */
+async function waitSlotWebUp(slot, timeoutMs) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    if (slotWebUp(slot)) return true
+    await new Promise((r) => setTimeout(r, 1_000))
+  }
+  return false
+}
+
 // ── Plan (read-only) ────────────────────────────────────────────────────────
 
 function plan() {
@@ -450,7 +467,7 @@ function plan() {
     lines.push(`  2  stable: checkout ${TARGET}（detached）+ 冷树引导 + build:artifacts`)
   }
   lines.push(`  3  冒烟门禁：候选 web ${SMOKE_PORT} 探针${SKIP_SMOKE ? '（已 --skip-smoke，注意门禁被削弱）' : smokeBusy ? `（${SMOKE_PORT} 当前被占用，执行时会先要求腾空或 --skip-smoke）` : ''}`)
-  lines.push('  4  换 current：service.mjs uninstall all → slots.mjs --stop-all → slots.mjs --only aek --health-timeout 90000 → service.mjs install aek → 等 1685')
+  lines.push('  4  换 current：service.mjs uninstall all → slots.mjs --stop-all → service.mjs install aek（agent 起 web）→ 等 web 健康（darwin 再加 agent-child 属主门）')
   lines.push(`  5  记录 state（previousTag = 旧 ${state.currentTag ?? '（无）'}）；回滚：node scripts/aek/release.mjs --rollback --yes`)
   // Y round: read-only shell-staleness probe in the plan too (B-round
   // near-miss: release ships the web plane; the packaged shell asar is a
@@ -521,13 +538,15 @@ console.log('[release] 冒烟通过：候选代码可启动')
 // The ONLY swap point: candidate built + smoked. Now (dev-cycle order):
 if (!runStep(STABLE_DIR, 'service.mjs', ['uninstall', 'all', '--yes'])) fail('卸 LaunchAgent 失败；current 已停但 agent 未卸——手动：node scripts/aek/service.mjs uninstall all --yes（stable 树）')
 if (!runStep(STABLE_DIR, 'slots.mjs', ['--stop-all', '--yes'])) fail('stop-all 失败；current 已停——手动：node scripts/aek/slots.mjs --stop-all --yes（stable 树）')
-// R1: after a cold stable-tree rebuild a loaded host takes ~35s for the web
-// server to bind; slots.mjs defaults to a 25s health wait, which aborted the
-// swap. Pass --health-timeout 90000 (same 90s gate as the 1685 wait below);
-// waitHealthy semantics (1s poll, listener + AEK marker) are unchanged.
-if (!runStep(STABLE_DIR, 'slots.mjs', ['--only', 'aek', '--yes', '--health-timeout', '90000'])) fail('起 current 失败（90s 内未健康）——回滚：node scripts/aek/release.mjs --rollback --yes')
-// Non-fatal by design (same posture as stable-migrate): the web is already
-// up; losing the agent only means no login autostart until re-registered.
+// BF round: the slot supervisor (serve-slot.mjs, KeepAlive) is the ONLY
+// reliable owner of the slot port. The OLD step here started current through
+// the arbiter (`slots.mjs --only aek`), whose web child died the moment the
+// arbiter exited (piped stdio → EPIPE on the first console write; root-caused
+// 2026-11-22, 复盘 §170), so the 90s health gate could never pass and the swap
+// aborted BEFORE the agent was (re)installed — leaving the port down with no
+// supervisor (复盘 §169 定案 1). New order: install the agent FIRST and let
+// its own web claim the port; the wait below proves the candidate is
+// serving, and `waitForPortOwned` (darwin) is the ownership commit point.
 // Y round: the old code trusted the exit code alone, but service.mjs used to
 // swallow bootstrap failures (agent left UNLOADED while exit 0 said OK) —
 // now verify the real launchd state, auto-retry ONCE, then warn loudly.
@@ -552,9 +571,16 @@ if (agentLoaded === false) {
   agentLoaded = agentLoadedAek()
 }
 if (agentLoaded === false) {
-  console.warn('[release] 警告：LaunchAgent 补装后仍未加载（web 已在跑；开机自启需手动：node <stable 树>/scripts/aek/service.mjs install aek --yes 或 launchctl bootstrap gui/<uid> <plist>）')
+  console.warn('[release] 警告：LaunchAgent 补装后仍未加载（开机自启需手动：node <stable 树>/scripts/aek/service.mjs install aek --yes 或 launchctl bootstrap gui/<uid> <plist>）——下方健康门仍会拦住未起服的 current')
 }
-if (!(await waitForPortOwned('aek', CURRENT_WEB_PORT, 90_000))) fail(`current web（${CURRENT_WEB_PORT}）90s 内没有由槽 agent 的子进程持有（外部长占进程会在上方逐次告警）——先 kill 告警里的 pid（或 reload 该槽 LaunchAgent）后重跑本步骤；或回滚：node scripts/aek/release.mjs --rollback --yes`)
+if (agentLoaded === null) {
+  // non-darwin: there is no launchd supervisor — fall back to the arbiter
+  // start; since the BF round its web child logs to a file and survives the
+  // arbiter exit, so the health gate below can actually pass.
+  if (!runStep(STABLE_DIR, 'slots.mjs', ['--only', 'aek', '--yes', '--health-timeout', '90000'])) fail('起 current 失败（90s 内未健康）——回滚：node scripts/aek/release.mjs --rollback --yes')
+}
+if (!(await waitSlotWebUp('aek', 90_000))) fail('起 current 失败（web 90s 内未健康）——回滚：node scripts/aek/release.mjs --rollback --yes')
+if (agentLoaded !== null && !(await waitForPortOwned('aek', CURRENT_WEB_PORT, 90_000))) fail(`current web（${CURRENT_WEB_PORT}）90s 内没有由槽 agent 的子进程持有（外部长占进程会在上方逐次告警）——先 kill 告警里的 pid（或 reload 该槽 LaunchAgent）后重跑本步骤；或回滚：node scripts/aek/release.mjs --rollback --yes`)
 console.log(`[release] current 已起（${CURRENT_WEB_PORT}，${STABLE_DIR} @ ${TARGET}）`)
 
 // record state
