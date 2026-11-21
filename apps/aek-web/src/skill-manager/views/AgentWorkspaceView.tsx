@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import { PanelCard } from '../../ui-kit.tsx'
 import { useI18n } from '../../i18n.tsx'
-import { Icon } from '../../Icons.tsx'
+import { Icon, type IconName } from '../../Icons.tsx'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -98,7 +98,7 @@ function WorkspaceSkillRow({ skillName, agentId, agentLabel, installed, onToggle
 }
 
 /** The source-type glyph per row (the reference's row-end icon). */
-const SKILL_SOURCE_ICON: Record<string, string> = { local: 'pin', git: 'globe', github: 'globe' }
+const SKILL_SOURCE_ICON: Record<string, IconName> = { local: 'pin', git: 'globe', github: 'globe' }
 
 export function AgentWorkspaceView() {
   const { t, tf } = useI18n()

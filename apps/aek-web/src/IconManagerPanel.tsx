@@ -95,7 +95,7 @@ function prefixLoaders(modules: Record<string, () => Promise<SetCatalogChunk>>):
       // A partial or corrupt catalog must not crash the panel render:
       // the Object.keys() over its icons map would throw on undefined.
       if (data === undefined || data.icons === undefined) return undefined
-      return data
+      return data as SetData
     }
   }
   return loaders
@@ -558,7 +558,7 @@ export function IconManagerPanel({ activeSet }: { activeSet?: string }): ReactNo
                                         height={560}
                                         renderTile={(index) => {
                                           const iconName = names[index]
-                                          return tile(`${meta.prefix}:${iconName}`, meta.prefix, iconName, data.icons[iconName])
+                                          return tile(`${meta.prefix}:${iconName}`, meta.prefix, iconName, data?.icons[iconName])
                                         }}
                                       />
                                       {names.length === 0 && <p className="py-2 text-2xs text-text-muted/60">{t('icons.empty')}</p>}

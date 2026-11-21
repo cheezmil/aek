@@ -36,6 +36,10 @@ export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts'
   | 'iconsLucide' | 'iconsTabler' | 'iconsPhosphor' | 'iconsHeroicons' | 'iconsBootstrap'
   | 'iconsSettings'
   | 'skillsSettings' | 'promptsSettings'
+  // BO round (m07690 item 7): the style gallery — one screen comparing
+  // every frontend skill's visual style + live re-skin of the console's
+  // own components.
+  | 'art' | 'artSettings'
   // BH round Plan C: the Skill Manager family's flat rail rows — the
   // reference's sidebar nav (library / install / backup); the dashboard is
   // the family home row. The preset + 全局工作区 sections are rail extras
@@ -47,7 +51,7 @@ export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts'
   // R2 round: the second-level rail of the 基础设置 page — one tab per
   // settings section (in-page position).
   | 'settingsSidebarFirst' | 'settingsSidebarSecond' | 'settingsNavigation'
-  | 'settingsGeneral' | 'settingsAccess' | 'settingsPermissions' | 'settingsDefaults'
+  | 'settingsGeneral' | 'settingsAccess' | 'settingsPermissions' | 'settingsDefaults' | 'settingsMotion'
   | 'settings' | 'about'
 
 /** The two drawer groups the user asked for (plus the pinned bucket). */
@@ -126,6 +130,8 @@ export const NAV: readonly NavEntry[] = [
   { id: 'skillsBackup', labelKey: 'panel.skillsBackup', icon: NAV_ICONS.skillsBackup, group: 'plugins', subOf: 'skills', anchor: 'backup', keywords: ['skill', 'backup', '备份', 'git'] },
   { id: 'promptsSettings', labelKey: 'panel.promptsSettings', icon: NAV_ICONS.promptsSettings, group: 'plugins', subOf: 'prompts', keywords: ['prompt', 'settings', '设置'] },
   { id: 'iconsSettings', labelKey: 'panel.iconsSettings', icon: NAV_ICONS.iconsSettings, group: 'plugins', subOf: 'icons', keywords: ['icon', 'settings', '设置'] },
+  { id: 'art', labelKey: 'panel.art', icon: NAV_ICONS.art, group: 'plugins', keywords: ['style', 'theme', 'skin', 'gallery', 'art', '质感', '皮肤', '主题'] },
+  { id: 'artSettings', labelKey: 'panel.artSettings', icon: NAV_ICONS.artSettings, group: 'plugins', subOf: 'art', keywords: ['style', 'settings', '设置'] },
   // R2 round: the built-in pages get the second-level rail too.
   // (The 关于 page was later reduced to a single version row by user ruling,
   // so it owns no tabs — see below.)

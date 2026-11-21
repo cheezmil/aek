@@ -322,6 +322,9 @@ export const PROMPTS_SETTINGS_SCHEMA: readonly SettingField[] = []
 
 export const ICONS_SETTINGS_SCHEMA: readonly SettingField[] = []
 
+/** BO round (m07690 item 7): the style gallery — nothing to configure yet. */
+export const ART_SETTINGS_SCHEMA: readonly SettingField[] = []
+
 /**
  * Every schema row that participates in "restore defaults" (Q round: the
  * reset backs up the live settings file first, then writes these defaults;

@@ -240,7 +240,13 @@ function SkillsPanelBody({ skills, railNavSignal }: { skills: ReturnType<typeof 
 
   return (
     <SkillViewProvider env={{ skills, nav, goNav, notify }}>
-      <div className="min-h-130 rounded-lg border border-border bg-card/40 p-4">
+      {/* BO round (m07690 item 5): the old outer frame card
+          (min-h-130 + border + bg-card/40) wrapped every view's own
+          PanelCards — a card-in-card, color-on-color stack the user
+          called 「叠叠乐」. The faces now sit directly on the page
+          background: one page, one ground; a PanelCard inside a face
+          is the only card. */}
+      <div>
         {/* The shared notice line (every write's result, single slot, 4s TTL) */}
         {noticeSlot.notice !== null && (
           <div className={cn(

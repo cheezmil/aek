@@ -230,6 +230,9 @@ export function DetailSheet({ skill, onClose, onUndistribute, onArchive }: {
 
   const overview = skills.overview as SkillsOverview
   const row = overview.skills.find(candidate => candidate.name === skill)
+  // The update flag is derived from the update plan, not the overview row
+  // (the SkillRow DTO carries no timestamps — same source as buildRows).
+  const updatable = new Set((skills.updatePlan ?? []).flatMap(group => group.skills.map(item => item.skill)))
   const wiring = wiringOf(overview.distributionBySkill, skill)
   const source = row?.source ?? null
   const link = source !== null
@@ -266,7 +269,7 @@ export function DetailSheet({ skill, onClose, onUndistribute, onArchive }: {
         <div className="flex flex-wrap items-center gap-2">
           {row?.archived === true && <Badge variant="ghost">{t('skills.archived')}</Badge>}
           <div className="flex-1" />
-          {row?.hasUpdate === true && (
+          {updatable.has(skill) && (
             <Button size="sm" variant="secondary" disabled={skills.busy} onClick={updateNow}>{t('skills.detail.updateNow')}</Button>
           )}
           {wiring !== undefined && wiring.targets.length > 0 && (

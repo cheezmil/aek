@@ -44,6 +44,7 @@ import {
   allSettingFields,
   coerce,
   ICONS_SETTINGS_SCHEMA,
+  ART_SETTINGS_SCHEMA,
   PROMPTS_SETTINGS_SCHEMA,
   SETTINGS_SCHEMA,
   WEBSEARCH_SETTINGS_SCHEMA,
@@ -173,7 +174,7 @@ import { RuntimesBlock, fmtBytes } from './RuntimesPanel.tsx'
 
 /** Panels handled here. */
 export type InfoPanelId = 'plugins' | 'settings' | 'websearchSettings' | 'about'
-  | 'skillsSettings' | 'promptsSettings' | 'iconsSettings'
+  | 'skillsSettings' | 'promptsSettings' | 'iconsSettings' | 'artSettings'
 
 /** Host routes. */
 const PLUGIN_ACTION_API = '/api/aek/plugins/action'
@@ -1020,6 +1021,11 @@ function PromptsSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
 /** R2 round: the Icon Manager settings page (CLI-only plugin = empty state). */
 function IconsSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   return <PluginSchemaSettingsPanel schema={ICONS_SETTINGS_SCHEMA} titleKey="panel.iconsSettings" refreshSignal={refreshSignal} />
+}
+
+/** BO round (m07690 item 7): the style gallery settings page (nothing to configure yet). */
+function ArtSettingsPanel({ refreshSignal }: { refreshSignal: number }) {
+  return <PluginSchemaSettingsPanel schema={ART_SETTINGS_SCHEMA} titleKey="panel.artSettings" refreshSignal={refreshSignal} />
 }
 
 /**
@@ -2036,6 +2042,7 @@ export function InfoPanels({ panel, refreshSignal }: InfoPanelsProps) {
   if (panel === 'skillsSettings') return <SkillsSettingsPanel refreshSignal={refreshSignal} />
   if (panel === 'promptsSettings') return <PromptsSettingsPanel refreshSignal={refreshSignal} />
   if (panel === 'iconsSettings') return <IconsSettingsPanel refreshSignal={refreshSignal} />
+  if (panel === 'artSettings') return <ArtSettingsPanel refreshSignal={refreshSignal} />
   // M round: the 关于 page was a stub (its content moved to 插件与程序管理).
   // R2 round (2026-11-18): by user ruling the page now carries ONLY the
   // desktop version number.

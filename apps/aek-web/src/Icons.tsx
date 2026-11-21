@@ -30,6 +30,15 @@ export type IconName =
   | 'globe'
   | 'bookOpenText'
   | 'arrowLeft'
+  | 'columns'
+  | 'maximize'
+  | 'loader'
+  | 'zap'
+  | 'externalLink'
+  | 'chevronLeft'
+  | 'chevronRight'
+  | 'list'
+  | 'checkCircle'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 export const ICONS: Record<IconName, ReactNode> = {
@@ -290,6 +299,56 @@ export const ICONS: Record<IconName, ReactNode> = {
       <path d="M12 1v2M12 21v2M1 12h2M21 12h2" />
     </>
   ),
+  /** BO round: art-gallery TopBar's compare tab. Lucide `columns-2`. */
+  columns: (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M12 3v18" />
+    </>
+  ),
+  /** Lucide `maximize`: enter the art-gallery immersive mode. */
+  maximize: (
+    <>
+      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+      <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+      <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+    </>
+  ),
+  /** Lucide `loader-circle`: the spinner arc, spin via animate-spin. */
+  loader: <path d="M21 12a9 9 0 1 1-9-9" />,
+  /** Lucide `zap`: the motion-stage tab glyph. */
+  zap: <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />,
+  /** Lucide `external-link`: open the upstream repo of a palette entry. */
+  externalLink: (
+    <>
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </>
+  ),
+  /** Lucide `chevron-left`. */
+  chevronLeft: <path d="m15 18-6-6 6-6" />,
+  /** Lucide `chevron-right`. */
+  chevronRight: <path d="m9 18 6-6-6-6" />,
+  /** Lucide `list`: the stage's log/flow tab glyph. */
+  list: (
+    <>
+      <path d="M3 6h.01" />
+      <path d="M8 6h13" />
+      <path d="M3 12h.01" />
+      <path d="M8 12h13" />
+      <path d="M3 18h.01" />
+      <path d="M8 18h13" />
+    </>
+  ),
+  /** Lucide `circle-check`: success state marks in the stage. */
+  checkCircle: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m9 12 2 2 4-4" />
+    </>
+  ),
 }
 
 /** Props for {@link Icon}. */
@@ -308,6 +367,16 @@ export const ICON_NAMES: readonly IconName[] = [
   'puzzle', 'type',
   'globe',
   'bookOpenText',
+  'arrowLeft',
+  'columns',
+  'maximize',
+  'loader',
+  'zap',
+  'externalLink',
+  'chevronLeft',
+  'chevronRight',
+  'list',
+  'checkCircle',
 ]
 
 export interface IconProps {

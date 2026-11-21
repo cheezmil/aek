@@ -1,0 +1,500 @@
+/* =========================================================
+   主题容器 .aek-stage —— 所有受样式影响的组件都在它内部
+
+   ⚠ 变量分两层（这是 v0.6 修掉的两个致命 bug）：
+   1) `--p-*`  = preload 扫出来的**原始值**，只由 React inline style 写入。
+   2) `--sg-*` = 实际生效值，默认从 `--p-*` 派生，各 data-mode 皮肤可覆盖。
+   之前代码把原始值直接写成 `--bg/--surface/--accent`，而这里的规则读的是
+   `--sg-bg/--sg-surface` —— 名字对不上，于是 346 种样式的真实色板**一条都没生效**，
+   全部渲染成同一套默认靛蓝（就是「样式完全固定死」的真凶）。
+   同理 `--radius` 若 inline 直写，各 mode 的圆角会被 inline 压制。
+   ========================================================= */
+.aek-stage {
+  /* 原始色板兜底（无 inline 时用内置值） */
+  --p-bg: #FFFFFF; --p-surface: #F5F5F5; --p-text: #1A1A1A; --p-muted: #888888;
+  --p-accent: #6366F1; --p-accent2: #9D5CF2;
+
+  /* 生效值：先从原始值派生，data-mode 皮肤可覆盖 */
+  --sg-bg: var(--p-bg); --sg-surface: var(--p-surface); --sg-text: var(--p-text);
+  --sg-muted: var(--p-muted); --sg-accent: var(--p-accent); --sg-accent2: var(--p-accent2);
+  --ok: #22C55E; --bad: #EF4444; --warn: #F59E0B;
+  --radius: var(--sg-radius, 12px); --blur: var(--sg-blur, 0px);
+  /* aek-web 的 shadcn 映射把 rounded-* 工具类接到 --radius-md/lg/sm（index.css
+     :root 第二段 + @theme inline），皮肤表只覆写 --radius，所以这里全部
+     从 --radius 派生：任何 data-mode 皮肤改 --radius 就全组件跟角。 */
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-sm: var(--radius);
+  --radius-2xs: calc(var(--radius) * .4);
+  --radius-xs: calc(var(--radius) * .6);
+  --sh-card: 0 1px 2px rgb(0 0 0 / .05), 0 4px 14px rgb(0 0 0 / .06);
+  --sh-pop: 0 8px 32px rgb(0 0 0 / .14);
+
+  /* shadcn 语义令牌 ← 真实色板：所有 shadcn 组件因此自动跟随换肤 */
+  --background: var(--sg-bg);
+  --foreground: var(--sg-text);
+  --card: var(--sg-surface);
+  --card-foreground: var(--sg-text);
+  --popover: var(--sg-surface);
+  --popover-foreground: var(--sg-text);
+  --primary: var(--sg-accent);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--sg-surface);
+  --secondary-foreground: var(--sg-text);
+  --muted: var(--sg-surface);
+  /* 次要文字不能直接用色板里的 muted —— 某些样式（如金色底+ 灰褐 muted）
+     算出来的对比度只有 1.6:1，根本读不清。这里用前景/背景混合派生，
+     保证任何色板下都≥ 4.5:1，同时不改动 bg / primary 等主色。 */
+  --muted-foreground: color-mix(in srgb, var(--sg-text) 62%, var(--sg-bg));
+  --accent: color-mix(in srgb, var(--sg-accent) 12%, var(--sg-surface));
+  --accent-foreground: var(--sg-text);
+  --destructive: var(--bad);
+  --border: color-mix(in srgb, var(--sg-muted) 38%, transparent);
+  --input: color-mix(in srgb, var(--sg-muted) 38%, transparent);
+  --ring: var(--sg-accent);
+  --success: var(--ok);
+  --warning: var(--warn);
+
+  background: var(--sg-bg); color: var(--sg-text);
+  position: relative;
+  overflow: hidden;
+  transition: background .32s ease, color .32s ease;
+}
+/* 大屏上不让内容无限摊开：限宽居中，读起来才不散 */
+.aek-stage[data-font="mono"]  { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.aek-stage[data-font="serif"] { font-family: Georgia, "Songti SC", "Source Han Serif SC", serif; }
+.aek-stage[data-font="hand"]  { font-family: "Chalkboard SE", "Comic Sans MS", cursive; }
+.aek-stage[data-font="pixel"] { font-family: "DotGothic16", "Silkscreen", ui-monospace, monospace; letter-spacing: .02em; }
+.aek-stage ::-webkit-scrollbar { width: 7px; }
+
+/* =========================================================
+   质感皮肤表（data-mode）
+   ------------------------------------------------------------
+   之前所有模式共用 --sh-card: 0 4px 16px 和 1px 灰边，
+   于是 43 种质感渲染出来一模一样 —— 「样式完全固定死」。
+   现在每种模式有自己的：阴影配方 / 边框形态 / 圆角倾向 /
+   字距字重 / 大写习惯 / 背景纹理 / 悬浮位移。
+
+   新增模式时只需在 MODE_SKINS 里加一条，不用改组件。
+   ========================================================= */
+
+/* ---- 通用皮肤变量（所有模式共享的基线，各模式再覆盖） ---- */
+.aek-stage {
+  /* 阴影 */
+  --sh-card: 0 1px 2px rgb(0 0 0 / .05), 0 4px 14px rgb(0 0 0 / .06);
+  --sh-raise: 0 2px 4px rgb(0 0 0 / .06), 0 10px 28px rgb(0 0 0 / .10);
+  --sh-pop: 0 8px 32px rgb(0 0 0 / .14);
+  --sh-none: 0 0 0 transparent;
+
+  /* 边框 */
+  --bd-w: 1px;
+  --bd-c: color-mix(in srgb, var(--sg-muted) 26%, transparent);
+  --bd-s: solid;
+  --bd-blur: 0px;          /* 玻璃态背景模糊 */
+
+  /* 排版倾向 */
+  --track: 0em;            /* 字距 */
+  --fw-strong: 700;
+  --caps: none;            /* 大写化 */
+  --hr-w: 1px;             /* 分隔线粗细 */
+
+  /* 质感附加层 */
+  --fx: none;              /* 背景纹理 */
+  --fx-c: transparent;
+  --lift: 0px;             /* 卡片悬浮位移 */
+  --lift-y: -2px;
+  --t-fast: 140ms;
+  --spring: cubic-bezier(.2, .8, .2, 1);
+
+  /* 半透明表面（玻璃态用） */
+  --card-alpha: 1;
+  /* 粗野主义用的实心墨色：底色亮则用近黑，底色暗则用近白 */
+  --brutal-ink: color-mix(in srgb, var(--sg-text) 88%, var(--sg-accent));
+}
+
+/* ---- 让 shadcn 组件真正吃这套变量（关键：写在 @layer 外，覆盖 utilities） ---- */
+.aek-stage [data-slot="card"] {
+  border-width: var(--bd-w);
+  border-style: var(--bd-s);
+  border-color: var(--bd-c);
+  box-shadow: var(--sh-card);
+  transition: transform var(--t-fast) var(--spring), box-shadow var(--t-fast) var(--spring), background-color var(--t-fast) var(--spring);
+}
+.aek-stage [data-slot="card"]:hover {
+  transform: translateY(var(--lift-y));
+  box-shadow: var(--sh-raise);
+}
+.aek-stage [data-slot="card-title"] {
+  font-weight: var(--fw-strong);
+  letter-spacing: var(--track);
+  text-transform: var(--caps);
+}
+.aek-stage [data-slot="card-description"] { letter-spacing: var(--track); }
+.aek-stage [data-slot="button"] {
+  border-radius: var(--radius);
+  box-shadow: var(--sh-btn, var(--sh-card));
+  letter-spacing: var(--track);
+  text-transform: var(--caps);
+  transition: transform var(--t-fast) var(--spring), box-shadow var(--t-fast) var(--spring),
+              background-color var(--t-fast) var(--spring), color var(--t-fast) var(--spring);
+}
+.aek-stage [data-slot="button"]:hover { transform: translateY(var(--lift)); }
+.aek-stage [data-slot="badge"] {
+  border-radius: calc(var(--radius) * .7);
+  letter-spacing: var(--track);
+  text-transform: var(--caps);
+  font-weight: var(--fw-strong);
+}
+.aek-stage [data-slot="input"],
+.aek-stage [data-slot="select-trigger"] {
+  border-width: var(--bd-w);
+  border-style: var(--bd-s);
+  border-color: var(--bd-c);
+  box-shadow: var(--sh-none);
+  letter-spacing: var(--track);
+}
+.aek-stage [data-slot="table-head"] {
+  letter-spacing: max(var(--track), .08em);
+  text-transform: var(--caps);
+  border-color: var(--bd-c);
+}
+.aek-stage [data-slot="table-cell"] { border-color: var(--bd-c); }
+.aek-stage [data-slot="table-head"],
+.aek-stage [data-slot="table-cell"] { border-bottom-width: var(--hr-w); }
+.aek-stage [data-slot="separator"] { background: var(--bd-c); }
+.aek-stage [data-slot="separator"][data-orientation="horizontal"] { height: var(--hr-w); }
+.aek-stage [data-slot="progress"] { box-shadow: var(--sh-none); background: color-mix(in srgb, var(--sg-muted) 22%, transparent); }
+.aek-stage [data-slot="switch"][data-state="checked"] { box-shadow: var(--sh-card); }
+.aek-stage [data-slot="toggle"] { box-shadow: var(--sh-btn, var(--sh-none)); letter-spacing: var(--track); text-transform: var(--caps); }
+.aek-stage [data-slot="accordion-trigger"] { letter-spacing: var(--track); }
+.aek-stage [data-slot="skeleton"] { background: color-mix(in srgb, var(--sg-muted) 24%, transparent); }
+.aek-stage [data-slot="popover-content"] { box-shadow: var(--sh-pop); }
+.aek-stage h1 { font-weight: var(--fw-strong); letter-spacing: var(--track); }
+.aek-stage code, .aek-stage pre, .aek-stage [class*="font-mono"] { letter-spacing: var(--track); }
+
+/* ---- 背景纹理层（网格 / 扫描线 / 网点 / 纸纹） ---- */
+.aek-stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--fx);
+  background-color: var(--fx-c);
+  opacity: .9;
+}
+.aek-stage > * { position: relative; z-index: 1; }
+
+/* =========================================================
+   43 种质感模式
+   ========================================================= */
+
+/* —— 通用 SaaS / 仪表盘：干净、低阴影 —— */
+.aek-stage[data-mode="saas"],
+.aek-stage[data-mode="dash"],
+.aek-stage[data-mode="material"] {
+  --sh-card: 0 1px 2px rgb(0 0 0 / .05), 0 3px 10px rgb(0 0 0 / .05);
+  --sh-raise: 0 4px 12px rgb(0 0 0 / .09);
+  --bd-w: 1px; --bd-c: color-mix(in srgb, var(--sg-muted) 22%, transparent);
+  --track: -.01em; --fw-strong: 650; --caps: none;
+  --sh-btn: 0 1px 2px rgb(0 0 0 / .08);
+  --t-fast: 150ms;
+}
+
+/* —— 极简：无阴影无边框，靠留白 —— */
+.aek-stage[data-mode="minimal"],
+.aek-stage[data-mode="boldmin"] {
+  --sh-card: none; --sh-raise: none; --sh-btn: none; --sh-pop: 0 10px 40px rgb(0 0 0 / .10);
+  --bd-w: 0px; --hr-w: 1px;
+  --track: -.02em; --fw-strong: 600; --caps: none;
+  --card-alpha: 1;
+  --t-fast: 200ms;
+}
+.aek-stage[data-mode="minimal"] [data-slot="card"] { background: transparent; }
+.aek-stage[data-mode="boldmin"] { --fw-strong: 800; --track: -.03em; }
+
+/* —— 拟物浮雕：无边框，靠双向阴影塑形 —— */
+.aek-stage[data-mode="neu"] {
+  --sh-card: 6px 6px 14px color-mix(in srgb, var(--sg-text) 16%, transparent),
+            -6px -6px 14px color-mix(in srgb, var(--sg-bg) 92%, #fff);
+  --sh-raise: 9px 9px 20px color-mix(in srgb, var(--sg-text) 20%, transparent),
+              -9px -9px 20px color-mix(in srgb, var(--sg-bg) 96%, #fff);
+  --sh-pop: 12px 12px 28px color-mix(in srgb, var(--sg-text) 22%, transparent),
+            -12px -12px 28px color-mix(in srgb, var(--sg-bg) 96%, #fff);
+  --sh-btn: 4px 4px 9px color-mix(in srgb, var(--sg-text) 18%, transparent),
+            -4px -4px 9px color-mix(in srgb, var(--sg-bg) 92%, #fff);
+  --bd-w: 0px;
+  --card-alpha: .9;
+  --t-fast: 220ms;
+  --radius: 16px;
+}
+
+/* —— 玻璃拟态：半透明 + 背景模糊 + 内高光 —— */
+.aek-stage[data-mode="glass"],
+.aek-stage[data-mode="vapor"] {
+  --card-alpha: .42;
+  --bd-c: color-mix(in srgb, var(--sg-bg) 55%, transparent);
+  --bd-blur: 22px;
+  --sh-card: 0 8px 32px rgb(0 0 0 / .12), inset 0 1px 0 rgb(255 255 255 / .35);
+  --sh-raise: 0 16px 48px rgb(0 0 0 / .18), inset 0 1px 0 rgb(255 255 255 / .45);
+  --sh-pop: 0 24px 64px rgb(0 0 0 / .22);
+  --radius: 22px;
+  --t-fast: 320ms;
+  --fx: radial-gradient(120% 90% at 12% 0%, color-mix(in srgb, var(--sg-accent) 26%, transparent), transparent 60%),
+       radial-gradient(100% 80% at 92% 12%, color-mix(in srgb, var(--sg-accent2) 24%, transparent), transparent 62%);
+}
+.aek-stage[data-mode="vapor"] { --radius: 28px; --track: .01em; --fw-strong: 650; }
+
+/* —— 霓虹 / 赛博：外发光 + 网格 —— */
+.aek-stage[data-mode="cyber"],
+.aek-stage[data-mode="vibrant"],
+.aek-stage[data-mode="defi"] {
+  --sh-card: 0 0 0 1px color-mix(in srgb, var(--sg-accent) 42%, transparent),
+             0 0 18px color-mix(in srgb, var(--sg-accent) 34%, transparent);
+  --sh-raise: 0 0 0 1px var(--sg-accent), 0 0 30px color-mix(in srgb, var(--sg-accent) 55%, transparent);
+  --sh-pop: 0 0 0 1px var(--sg-accent), 0 0 50px color-mix(in srgb, var(--sg-accent) 60%, transparent);
+  --sh-btn: 0 0 14px color-mix(in srgb, var(--sg-accent) 45%, transparent);
+  --bd-w: 1px; --bd-c: color-mix(in srgb, var(--sg-accent) 40%, transparent);
+  --track: .04em; --fw-strong: 700; --caps: uppercase;
+  --fx: repeating-linear-gradient(0deg, color-mix(in srgb, var(--sg-accent) 9%, transparent) 0 1px, transparent 1px 26px),
+       repeating-linear-gradient(90deg, color-mix(in srgb, var(--sg-accent) 9%, transparent) 0 1px, transparent 1px 26px);
+  --t-fast: 240ms;
+}
+.aek-stage[data-mode="vibrant"] { --caps: none; --track: 0em; }
+
+/* —— 粗野主义：硬偏移阴影 + 粗黑边 + 直角 —— */
+.aek-stage[data-mode="brutal"],
+.aek-stage[data-mode="neubrutal"],
+.aek-stage[data-mode="brutaldark"],
+.aek-stage[data-mode="memphis"] {
+  --sh-card: 4px 4px 0 var(--brutal-ink);
+  --sh-raise: 7px 7px 0 var(--brutal-ink);
+  --sh-pop: 10px 10px 0 var(--brutal-ink);
+  --sh-btn: 3px 3px 0 var(--brutal-ink);
+  --bd-w: 2px; --bd-c: var(--brutal-ink); --bd-s: solid;
+  --radius: 0px;
+  --track: .01em; --fw-strong: 800; --caps: uppercase;
+  --hr-w: 2px;
+  --t-fast: 90ms;
+}
+.aek-stage[data-mode="memphis"] {
+  --radius: 4px; --caps: none;
+  --fx: radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--sg-accent) 30%, transparent) 0 14px, transparent 15px),
+       radial-gradient(circle at 88% 78%, color-mix(in srgb, var(--sg-accent2) 30%, transparent) 0 18px, transparent 19px);
+}
+.aek-stage[data-mode="brutaldark"] { --fw-strong: 900; --track: .03em; }
+
+/* —— 像素 / 终端 / 复古：等宽、大写、硬边 —— */
+.aek-stage[data-mode="pixel"],
+.aek-stage[data-mode="terminal"],
+.aek-stage[data-mode="retro"],
+.aek-stage[data-mode="y2k"] {
+  --radius: 0px;
+  --bd-w: 2px; --bd-c: var(--sg-muted); --bd-s: solid;
+  --sh-card: 3px 3px 0 rgb(0 0 0 / .55);
+  --sh-raise: 0 0 0 2px var(--sg-text);
+  --sh-btn: 2px 2px 0 rgb(0 0 0 / .55);
+  --track: .06em; --fw-strong: 700; --caps: uppercase;
+  --hr-w: 2px;
+  --t-fast: 80ms;
+}
+.aek-stage[data-mode="terminal"] {
+  --fx: repeating-linear-gradient(0deg, color-mix(in srgb, var(--sg-text) 7%, transparent) 0 1px, transparent 1px 3px);
+  --fw-strong: 700; --track: .04em;
+}
+.aek-stage[data-mode="pixel"] {
+  --fx: repeating-linear-gradient(0deg, color-mix(in srgb, var(--sg-text) 8%, transparent) 0 2px, transparent 2px 4px);
+  --bd-c: color-mix(in srgb, var(--sg-text) 70%, transparent);
+}
+.aek-stage[data-mode="retro"] { --radius: 2px; --caps: uppercase; --track: .1em; }
+.aek-stage[data-mode="y2k"] { --radius: 18px; --caps: none; --track: 0em; --sh-card: 6px 6px 0 color-mix(in srgb, var(--sg-accent2) 60%, transparent); }
+
+/* —— 编辑 / 学术 / 杂志：衬线、大字距、细线分隔 —— */
+.aek-stage[data-mode="editorial"],
+.aek-stage[data-mode="academia"] {
+  --radius: 2px;
+  --sh-card: none; --sh-btn: none; --sh-pop: 0 12px 40px rgb(0 0 0 / .12);
+  --bd-w: 0px; --hr-w: 2px;
+  --track: .015em; --fw-strong: 700; --caps: none;
+  --card-alpha: 1;
+  --t-fast: 200ms;
+}
+.aek-stage[data-mode="editorial"] [data-slot="card"] { border-top: var(--hr-w) solid var(--sg-text); }
+.aek-stage[data-mode="academia"] { --track: 0em; --fw-strong: 600; --radius: 3px; }
+.aek-stage[data-mode="hero"] { --radius: 6px; --fw-strong: 800; --track: -.025em; --sh-card: none; --bd-w: 0px; }
+
+/* —— 单色 / OLED：纯黑白无彩、纯黑底无边框 —— */
+.aek-stage[data-mode="mono"] {
+  --bd-c: color-mix(in srgb, var(--sg-text) 24%, transparent);
+  --sh-card: none; --sh-btn: none;
+  --track: .01em; --fw-strong: 600;
+}
+.aek-stage[data-mode="oled"] {
+  --sg-bg: #000;
+  --sh-card: none; --sh-btn: none; --sh-pop: 0 0 0 1px color-mix(in srgb, var(--sg-accent) 60%, transparent);
+  --bd-w: 0px; --bd-c: color-mix(in srgb, var(--sg-text) 18%, transparent);
+  --track: .02em; --fw-strong: 600;
+}
+
+/* —— 手绘 / 草图：虚线边 + 手写体 —— */
+.aek-stage[data-mode="sketch"] {
+  --bd-w: 2px; --bd-s: dashed; --bd-c: color-mix(in srgb, var(--sg-text) 72%, transparent);
+  --sh-card: 3px 3px 0 color-mix(in srgb, var(--sg-text) 22%, transparent);
+  --sh-btn: none; --sh-pop: 4px 4px 0 color-mix(in srgb, var(--sg-text) 40%, transparent);
+  --radius: 10px;
+  --track: .01em; --fw-strong: 600; --caps: none;
+  --t-fast: 260ms;
+}
+
+/* —— 电子墨水 / 纸张：纸白、灰阶、无阴影 —— */
+.aek-stage[data-mode="eink"],
+.aek-stage[data-mode="film"] {
+  --sh-card: none; --sh-raise: none; --sh-btn: none;
+  --bd-w: 1px; --bd-c: color-mix(in srgb, var(--sg-text) 30%, transparent);
+  --radius: 0px;
+  --track: 0em; --fw-strong: 600; --caps: none;
+}
+.aek-stage[data-mode="eink"] { --hr-w: 2px; --fw-strong: 700; }
+.aek-stage[data-mode="film"] {
+  --fx: radial-gradient(circle at 22% 12%, rgb(255 255 255 / .05) 0 2px, transparent 3px);
+  --radius: 2px;
+}
+
+/* —— 有机 / 自然 / 黏土 / 触感：圆润、暖、柔 —— */
+.aek-stage[data-mode="organic"],
+.aek-stage[data-mode="clay"],
+.aek-stage[data-mode="tactile"],
+.aek-stage[data-mode="organicdark"] {
+  --radius: 20px;
+  --sh-card: 0 6px 18px color-mix(in srgb, var(--sg-text) 12%, transparent);
+  --sh-raise: 0 14px 34px color-mix(in srgb, var(--sg-text) 18%, transparent);
+  --sh-pop: 0 20px 48px color-mix(in srgb, var(--sg-text) 22%, transparent);
+  --sh-btn: 0 3px 10px color-mix(in srgb, var(--sg-text) 16%, transparent);
+  --bd-w: 0px;
+  --track: .005em; --fw-strong: 650; --caps: none;
+  --t-fast: 340ms;
+}
+.aek-stage[data-mode="clay"] {
+  --radius: 26px;
+  --sh-card: 10px 10px 22px color-mix(in srgb, var(--sg-text) 18%, transparent),
+            -8px -8px 20px color-mix(in srgb, var(--sg-bg) 88%, #fff);
+  --sh-raise: 16px 16px 34px color-mix(in srgb, var(--sg-text) 22%, transparent),
+              -12px -12px 28px color-mix(in srgb, var(--sg-bg) 92%, #fff);
+  --card-alpha: .96;
+}
+.aek-stage[data-mode="tactile"] { --radius: 8px; --bd-w: 1px; --bd-c: color-mix(in srgb, var(--sg-text) 16%, transparent); }
+.aek-stage[data-mode="organicdark"] { --radius: 24px; }
+
+/* —— 渐变网格 / 极光：多彩弥散背景 —— */
+.aek-stage[data-mode="mesh"],
+.aek-stage[data-mode="aurora"] {
+  --radius: 24px;
+  --sh-card: 0 10px 40px color-mix(in srgb, var(--sg-accent) 22%, transparent);
+  --sh-raise: 0 20px 60px color-mix(in srgb, var(--sg-accent2) 30%, transparent);
+  --sh-btn: 0 6px 18px color-mix(in srgb, var(--sg-accent) 28%, transparent);
+  --card-alpha: .55;
+  --bd-c: color-mix(in srgb, var(--sg-bg) 45%, transparent);
+  --bd-blur: 16px;
+  --fx: radial-gradient(90% 70% at 8% 4%, color-mix(in srgb, var(--sg-accent) 42%, transparent), transparent 58%),
+       radial-gradient(80% 70% at 96% 22%, color-mix(in srgb, var(--sg-accent2) 40%, transparent), transparent 60%),
+       radial-gradient(90% 80% at 42% 104%, color-mix(in srgb, var(--sg-accent) 28%, transparent), transparent 62%);
+  --t-fast: 420ms;
+}
+.aek-stage[data-mode="aurora"] { --radius: 30px; --fw-strong: 650; --track: .01em; }
+
+/* —— 拟物 / 材质：金属高光渐变 —— */
+.aek-stage[data-mode="skeuo"] {
+  --radius: 6px;
+  --bd-w: 1px; --bd-c: rgb(255 255 255 / .35);
+  --sh-card: inset 0 1px 0 rgb(255 255 255 / .55), inset 0 -1px 0 rgb(0 0 0 / .22), 0 10px 24px rgb(0 0 0 / .28);
+  --sh-raise: inset 0 1px 0 rgb(255 255 255 / .65), 0 18px 40px rgb(0 0 0 / .34);
+  --sh-btn: inset 0 1px 0 rgb(255 255 255 / .5), 0 2px 4px rgb(0 0 0 / .3);
+  --card-alpha: 1;
+  --t-fast: 160ms;
+}
+
+/* —— 仪表盘 / 层级 / Bento / 超燃：硬阴影分层 —— */
+.aek-stage[data-mode="dash"] { --sh-card: 0 1px 0 var(--bd-c); --sh-btn: 0 1px 2px rgb(0 0 0 / .10); }
+.aek-stage[data-mode="layer"],
+.aek-stage[data-mode="bento"] {
+  --radius: 14px;
+  --sh-card: 0 1px 2px rgb(0 0 0 / .10), 0 5px 12px rgb(0 0 0 / .08);
+  --sh-raise: 0 2px 4px rgb(0 0 0 / .12), 0 14px 32px rgb(0 0 0 / .14);
+  --bd-w: 1px; --bd-c: color-mix(in srgb, var(--sg-muted) 20%, transparent);
+  --lift-y: -3px;
+  --t-fast: 240ms;
+}
+.aek-stage[data-mode="bento"] { --radius: 20px; --sh-card: 0 2px 0 rgb(0 0 0 / .12); }
+.aek-stage[data-mode="hyper"] {
+  --radius: 6px;
+  --sh-card: 0 0 0 2px var(--brutal-ink), 6px 6px 0 color-mix(in srgb, var(--sg-accent) 70%, transparent);
+  --sh-raise: 0 0 0 2px var(--brutal-ink), 10px 10px 0 color-mix(in srgb, var(--sg-accent) 80%, transparent);
+  --sh-btn: 3px 3px 0 var(--brutal-ink);
+  --bd-w: 2px; --bd-c: var(--brutal-ink);
+  --fw-strong: 800; --caps: uppercase; --track: .02em;
+  --t-fast: 110ms;
+}
+.aek-stage[data-mode="flat"],
+.aek-stage[data-mode="bauhaus"] {
+  --sh-card: none; --sh-raise: 2px 2px 0 var(--brutal-ink);
+  --sh-btn: none;
+  --bd-w: 2px; --bd-c: var(--brutal-ink);
+  --radius: 0px;
+  --fw-strong: 700; --caps: uppercase; --track: .04em;
+}
+.aek-stage[data-mode="bauhaus"] {
+  --radius: 0px;
+  --fx: linear-gradient(135deg, color-mix(in srgb, var(--sg-accent) 16%, transparent) 0 33%, transparent 33% 66%,
+        color-mix(in srgb, var(--sg-accent2) 16%, transparent) 66%);
+}
+
+/* —— HUD / 仪表：细网格 + 发光字 —— */
+.aek-stage[data-mode="hud"],
+.aek-stage[data-mode="cinema"] {
+  --radius: 2px;
+  --sh-card: 0 0 12px color-mix(in srgb, var(--sg-accent) 26%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--sg-accent) 24%, transparent);
+  --sh-btn: 0 0 10px color-mix(in srgb, var(--sg-accent) 40%, transparent);
+  --bd-w: 1px; --bd-c: color-mix(in srgb, var(--sg-accent) 34%, transparent);
+  --track: .08em; --fw-strong: 600; --caps: uppercase;
+  --fx: repeating-linear-gradient(0deg, color-mix(in srgb, var(--sg-accent) 8%, transparent) 0 1px, transparent 1px 4px),
+       linear-gradient(90deg, color-mix(in srgb, var(--sg-accent) 14%, transparent) 0 1px, transparent 1px 64px);
+  --t-fast: 120ms;
+}
+.aek-stage[data-mode="cinema"] { --caps: none; --track: .12em; --fw-strong: 500; }
+
+/* —— 故障 / 混乱：高对比抖动 —— */
+.aek-stage[data-mode="glitch"],
+.aek-stage[data-mode="chaos"] {
+  --radius: 2px;
+  --sh-card: -3px 0 0 var(--sg-accent), 3px 0 0 var(--sg-accent2), 0 6px 18px rgb(0 0 0 / .22);
+  --sh-raise: -5px 0 0 var(--sg-accent), 5px 0 0 var(--sg-accent2), 0 14px 34px rgb(0 0 0 / .3);
+  --sh-btn: -2px 0 0 var(--sg-accent), 2px 0 0 var(--sg-accent2);
+  --bd-w: 1px; --bd-c: var(--sg-text);
+  --track: .03em; --fw-strong: 800; --caps: uppercase;
+  --t-fast: 70ms;
+}
+.aek-stage[data-mode="chaos"] { --radius: 10px 2px 10px 2px; --sh-card: 4px 4px 0 var(--sg-accent); }
+
+/* =========================================================
+   玻璃态需要半透明卡片 + 背景模糊
+   ========================================================= */
+.aek-stage[data-mode="glass"] [data-slot="card"],
+.aek-stage[data-mode="vapor"] [data-slot="card"],
+.aek-stage[data-mode="mesh"] [data-slot="card"],
+.aek-stage[data-mode="aurora"] [data-slot="card"] {
+  background: color-mix(in srgb, var(--sg-surface) calc(var(--card-alpha) * 100%), transparent);
+  backdrop-filter: blur(max(var(--bd-blur), var(--blur))) saturate(1.4);
+  -webkit-backdrop-filter: blur(max(var(--bd-blur), var(--blur))) saturate(1.4);
+}
+
+/* 任何模式下，只要该条目自带 blur 值就真的用上（不再只是摆设变量） */
+.aek-stage[data-mode="glass"], .aek-stage[data-mode="vapor"],
+.aek-stage[data-mode="mesh"], .aek-stage[data-mode="aurora"], .aek-stage[data-mode="clay"] {
+  --bd-blur: max(var(--bd-blur, 0px), var(--blur));
+}
+
+/* 无阴影模式不该有 hover 位移残留 */
+.aek-stage[data-mode="minimal"] [data-slot="card"]:hover,
+.aek-stage[data-mode="mono"] [data-slot="card"]:hover,
+.aek-stage[data-mode="eink"] [data-slot="card"]:hover,
+.aek-stage[data-mode="flat"] [data-slot="card"]:hover { transform: none; box-shadow: var(--sh-raise); }

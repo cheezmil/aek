@@ -42,6 +42,7 @@ import { useCurrentSlot } from './useRuntimeMode.ts'
 import { useConsoleFacts } from './useConsoleFacts.ts'
 import { WebSearchPanel } from './WebSearchPanel.tsx'
 import { IconManagerPanel } from './IconManagerPanel.tsx'
+import { ArtGalleryPanel } from './webui-art-gallery/ArtGalleryPanel.tsx'
 import { useWebsearchStatus } from './useWebsearchStatus.ts'
 import { prefetchRanking } from './useWebsearchRanking.ts'
 import type { FreeFilter } from './useWebsearchRanking.ts'
@@ -206,7 +207,7 @@ function Console() {
     const request = requestAnimationFrame(() => {
       if (cancelled) return
       const targets = Array.from(document.querySelectorAll(`[data-nav-anchor="${anchor}"]`))
-      const visible = targets.find(element => element.offsetParent !== null)
+      const visible = targets.find(element => element instanceof HTMLElement && element.offsetParent !== null)
       visible?.scrollIntoView({ behavior: 'instant', block: 'start' })
     })
     return () => { cancelled = true; cancelAnimationFrame(request) }
@@ -353,6 +354,11 @@ function Console() {
       const activeSet = renderId === 'icons' ? undefined : renderId.slice('icons'.length) || undefined
       return <IconManagerPanel activeSet={activeSet} />
     }
+    // BO round (m07690 item 7): the style gallery — its settings sub-route
+    // (`artSettings`) stays in the InfoPanels chain below.
+    if (renderId === 'art') {
+      return <ArtGalleryPanel />
+    }
     // R2 round: the three plugin SETTINGS pages (skills / prompts / icons)
     // and 基础设置 / Web Search 设置 / 关于 all live in InfoPanels.
     if (renderId === 'plugins'
@@ -361,6 +367,7 @@ function Console() {
       || renderId === 'skillsSettings'
       || renderId === 'promptsSettings'
       || renderId === 'iconsSettings'
+      || renderId === 'artSettings'
       || renderId === 'about') {
       // R2: `renderId` is narrowed to the InfoPanelId union by the if-chain,
       // so no cast is needed (and an unnecessary one is a lint error).
@@ -395,7 +402,11 @@ function Console() {
           )
           : null}
         <div className="flex flex-1 flex-col min-w-0">
-          {/* FF-NOTE: .content had max-width: 1320px → max-w-330 (v4 dynamic spacing: 330 × 4px);
+          {/* BO round (m07690 item 5): the old 1320px cap (FF round,
+              max-w-330) left wide windows as a centered column — the
+              user read the capped content as 「干净显示一半」. Lifting
+              the cap: the content column now spans the full width of
+              the window and the page keeps a single ground color.
               @media (max-width: 860px) padding: 20px 16px → max-[860px]:px-4 max-[860px]:py-5. */}
           {/* III round +: 左右外边距 32 (p-8) → 24 (px-6) → px-20 / py-12，
               用户点破「左右padding呢」；BI round 起留白改走基础设置。 */}
@@ -404,7 +415,7 @@ function Console() {
               `aek-home.contentPad` (index.css `.aek-content-main`, default 24px).
               Small screens keep a FIXED padding: the max-[860px] utilities on
               the same element beat the components-layer rule. */}
-          <main className="aek-content-main mx-auto flex-1 w-full max-w-330 max-[860px]:px-8 max-[860px]:py-10">
+          <main className="aek-content-main mx-auto flex-1 w-full max-[860px]:px-8 max-[860px]:py-10">
             {/* EE round: keep-alive — every visited panel renders; only the
                 active one is visible. Hidden trees keep their state, so a
                 switch back never rebuilds the elements from nothing.

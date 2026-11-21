@@ -335,32 +335,39 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   const [railLabelsHidden, setRailLabelsHidden] = usePref<string>(RAIL_LABELS_HIDDEN_KEY, '', parseCommaList)
 
   /**
-   * One click on a row. Family rows (owning plugin routes) select and TOGGLE
-   * their plugin rail — from ANY page (BJ round; the old on-family-only gate
-   * made "click a different row" never collapse the rail). Fast successive
-   * clicks on the SAME row collapse into a single toggle (BK round m04772):
-   * the browser resets `detail` back to 1 between click bursts, so a
-   * `detail`-based guard let rapid clicks toggle the rail back and forth and
-   * cancel out. Instead a per-row rolling 400 ms window: the first click of
-   * a burst toggles; later clicks inside the window are suppressed (the
-   * window rolls forward so the whole burst stays collapsed). Every click
-   * still navigates. Plain rows select immediately. The label collapse is
-   * the dedicated icon in the hover box (BI round).
+   * One click on a row. BO round (m07690 item 1): the plugin rail toggles
+   * ONLY when the clicked family row is the row that is lit right now —
+   * "the sidebar's own selected item" hiding / showing the sub-rail.
+   * Clicking a DIFFERENT family row just navigates (its remembered route),
+   * never toggling the rail, so "A → B" clicks no longer collapse B's rail.
+   * Fast successive clicks on the same row collapse into a single toggle
+   * (BK round m04772): the browser resets `detail` back to 1 between click
+   * bursts, so a per-row rolling 400 ms window suppresses the burst (the
+   * timestamp is only recorded on a real toggle — a navigation click on an
+   * unlit row must not poison the next one). Plain rows select immediately.
+   * The label collapse is the dedicated icon in the hover box (BI round).
    * @param entry - the row clicked.
    * @param subIds - the row's plugin routes (empty = plain row).
+   * @param active - the panel currently lit (this sidebar's `active` prop).
    */
-  const handleRowClick = (entry: NavEntry, subIds: readonly string[]): void => {
+  const handleRowClick = (entry: NavEntry, subIds: readonly string[], active: PanelId): void => {
     if (subIds.length === 0) {
       onSelect(entry.id)
       return
     }
     const remembered = lastSub.get(entry.id)
     onSelect(remembered ?? entry.id)
+    const rowActive = active === entry.id || subIds.includes(active)
+    if (!rowActive) return
     const now = Date.now()
     const last = railToggleAt.current[entry.id] ?? 0
     if (now - last >= 400) {
       setRailHidden(current => toggleInCommaList(current, entry.id))
     }
+    // The window rolls forward on EVERY lit-row click (BK round m04772), so
+    // a whole burst — even one whose individual clicks fall just outside
+    // 400 ms of the last *toggle* — stays collapsed. Navigation clicks on
+    // unlit rows never reach here and never record a timestamp.
     railToggleAt.current[entry.id] = now
   }
   /**
@@ -588,7 +595,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
             'grow shrink min-w-0',
           )}
           aria-current={rowActive ? 'page' : undefined}
-          onClick={() => { handleRowClick(entry, subIds) }}
+          onClick={() => { handleRowClick(entry, subIds, active) }}
           title={`${t(entry.labelKey)} · ${t('nav.dragHint')}`}
         >
           <span className='inline-flex shrink-0 items-center justify-center opacity-90'><Icon name={entry.icon} size={18} /></span>

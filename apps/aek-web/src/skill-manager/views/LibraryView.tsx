@@ -121,9 +121,10 @@ function SourceChip({ row }: { row: RowState }) {
 
 export function LibraryView() {
   const { t, tf } = useI18n()
-  const { skills, goNav } = useSkillView()
+  const { skills, goNav, notify } = useSkillView()
   const runWrite = useRunWrite()
   const overview = skills.overview as SkillsOverview
+  const [pathCopied, setPathCopied] = useState(false)
 
   const [query, setQuery] = useState('')
   const [activeCats, setActiveCats] = useState<ReadonlySet<string>>(new Set())
@@ -219,6 +220,15 @@ export function LibraryView() {
   const skillsPath = overview.home.replace(/[/\\]+$/, '') + '/skills/'
   const filtersActive = activeCats.size > 0 || activeSrcs.size > 0
 
+  /** BO round: the path chip's copy button (m07690 item 2). */
+  const copyPath = (): void => {
+    void navigator.clipboard.writeText(skillsPath).then(() => {
+      setPathCopied(true)
+      notify('ok', t('skills.copied'))
+      window.setTimeout(() => { setPathCopied(false) }, 2000)
+    })
+  }
+
   const viewButton = (mode: 'list' | 'grid'): React.JSX.Element => (
     <button
       type="button"
@@ -252,7 +262,20 @@ export function LibraryView() {
       <ViewHeader
         icon="bookOpenText"
         title={t('panel.skillsLibrary')}
-        subtitle={`${t('skills.home')}: ${skillsPath}`}
+        subtitle={(
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="min-w-0 truncate">{t('skills.home')}: {skillsPath}</span>
+            <button
+              type="button"
+              onClick={copyPath}
+              aria-label={t('skills.copyPath')}
+              title={t('skills.copyPath')}
+              className="flex h-4.5 w-4.5 flex-none items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-text"
+            >
+              <Icon name={pathCopied ? 'check' : 'copy'} size={11} />
+            </button>
+          </span>
+        )}
       >
         <Button size="sm" variant="secondary" onClick={() => { goNav({ view: 'add' }) }}>
           <Icon name="plus" size={14} /><span className="ml-1">{t('skills.add')}</span>
@@ -288,19 +311,12 @@ export function LibraryView() {
           </div>
         )}
         {showCostLine(cost ?? null) && cost !== undefined && caliber !== null && (
-          <div className={cn('flex flex-col gap-1', showUpdateStrip(updatableCount) ? 'mt-2.5 border-t border-border pt-2.5' : '')}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">
-                {t('skills.cost')}{' '}
-                <span className="text-base font-bold tabular-nums text-text">{formatApproxTokens(cost.totalTokens)}</span>{' '}
-                {t('skills.costUnit')}
-              </span>
-              {cost.paths.length > 0 && (
-                <span className="text-2xxs text-muted-foreground">
-                  {cost.paths.slice(0, 3).map(group => `${group.runtimeDir} ${formatApproxTokens(group.tokens)}`).join(' · ')}
-                </span>
-              )}
-            </div>
+          <div className={cn('flex flex-wrap items-center justify-between gap-2', showUpdateStrip(updatableCount) ? 'mt-2.5 border-t border-border pt-2.5' : '')}>
+            <span className="text-xs text-muted-foreground">
+              {t('skills.cost')}{' '}
+              <span className="text-base font-bold tabular-nums text-text">{formatApproxTokens(cost.totalTokens)}</span>{' '}
+              {t('skills.costUnit')}
+            </span>
             {caliber.dirs > 0 && (
               <span className="text-2xxs text-muted-foreground">
                 {tf('skills.costCaliber', { n: caliber.dirs, avg: formatApproxTokens(caliber.avg), max: formatApproxTokens(caliber.max) })}
@@ -330,10 +346,10 @@ export function LibraryView() {
       )}
 
       {/* The search + filter toolbar (one quiet card, pills inside) */}
-      <PanelCard className="flex flex-col gap-2.5 p-3">
-        <PanelSearch value={query} onChange={setQuery} placeholder={t('skills.search')} badge={String(filtered.length)} />
+      <PanelCard className="flex flex-col gap-2 p-2.5">
+        <PanelSearch value={query} onChange={setQuery} placeholder={t('skills.search')} badge={String(filtered.length)} plain />
         {(catPills.length > 0 || srcPills.length > 0) && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-2xxs font-bold text-muted-foreground">{t('skills.filter.category')}</span>
             {catPills.map(pill => (
               <button
@@ -341,7 +357,7 @@ export function LibraryView() {
                 type="button"
                 onClick={() => { togglePill(activeCats, pill.key, setActiveCats) }}
                 className={cn(
-                  'rounded-full border px-2.5 py-1 text-2xxs',
+                  'rounded-full border px-2 py-0.5 text-2xxs',
                   activeCats.has(pill.key) ? 'border-primary bg-primary/10 font-bold text-text' : 'border-border text-muted-foreground hover:border-accent/40 hover:text-text',
                 )}
               >
@@ -356,7 +372,7 @@ export function LibraryView() {
                 type="button"
                 onClick={() => { togglePill(activeSrcs, pill.type, setActiveSrcs) }}
                 className={cn(
-                  'rounded-full border px-2.5 py-1 text-2xxs',
+                  'rounded-full border px-2 py-0.5 text-2xxs',
                   activeSrcs.has(pill.type) ? 'border-primary bg-primary/10 font-bold text-text' : 'border-border text-muted-foreground hover:border-accent/40 hover:text-text',
                 )}
               >

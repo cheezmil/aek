@@ -118,6 +118,12 @@ export interface PanelSearchProps {
   /** Input placeholder (already translated). */
   placeholder: string
   /**
+   * BO round: a bare search row for use INSIDE a card (no wrap margin,
+   * bottom border, or section spacing — those belong to the page-level
+   * panels where the search sits on the plain page background).
+   */
+  plain?: boolean
+  /**
    * Z round: a custom right-slot badge in place of the old numeric
    * hit-count chip — the user called the number "没有任何的意义" and asked
    * for it to go from EVERY panel's search box. The caller owns the
@@ -155,7 +161,17 @@ export interface PanelSearchProps {
  * badge (the Z-round replacement for the old numeric count chip).
  * @returns the search field.
  */
-export function PanelSearch({ value, onChange, placeholder, badge, condense, condenseHold, onBadgeClick, badgeAria }: PanelSearchProps) {
+export function PanelSearch({
+  value,
+  onChange,
+  placeholder,
+  badge,
+  condense,
+  condenseHold,
+  onBadgeClick,
+  badgeAria,
+  plain,
+}: PanelSearchProps) {
   const { t } = useI18n()
   const rootRef = useRef<HTMLDivElement | null>(null)
   // I round: read the hold flag through a ref so the scroll listener keeps
@@ -196,10 +212,10 @@ export function PanelSearch({ value, onChange, placeholder, badge, condense, con
   }, [condense, condenseHold])
 
   return (
-    <div ref={rootRef} className={cn(PANEL_SEARCH_WRAP, condense === true && SEARCH_CONDENSE)}>
+    <div ref={rootRef} className={cn(PANEL_SEARCH_WRAP, condense === true && SEARCH_CONDENSE, plain === true && 'mb-0 pb-0 border-b-0')}>
       {/* `.panelSearchWrap > .navSearchWrap` (flex 1 1 auto, no margin) and
           `.panelSearchWrap .navSearchInput` (no 200px cap) are baked in. */}
-      <div className={cn(NAV_SEARCH_WRAP, 'flex-1 m-0')}>
+      <div className={cn(NAV_SEARCH_WRAP, 'flex-1 m-0', plain === true && 'h-8 bg-background')}>
         <span className={NAV_SEARCH_ICON}><Icon name="search" size={16} /></span>
         <input
           className={cn(NAV_SEARCH_INPUT, 'flex-1 max-w-none')}

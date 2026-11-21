@@ -71,6 +71,8 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
   skillsBackup: 'restore',
   promptsSettings: 'settings',
   iconsSettings: 'settings',
+  art: 'sparkles',
+  artSettings: 'settings',
   /**
    * R2 round: the three ANCHOR tabs of 插件与程序管理 — each tab re-uses the
    * mark of the SECTION it positions to (heartbeat / stack / info), so the
@@ -90,6 +92,7 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
   settingsAccess: 'settings',
   settingsPermissions: 'settings',
   settingsDefaults: 'settings',
+  settingsMotion: 'settings',
   /** (retired bucket id, never rendered as a rail row.) */
   plugins: 'layers',
 }

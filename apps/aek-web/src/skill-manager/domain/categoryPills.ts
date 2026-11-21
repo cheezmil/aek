@@ -69,7 +69,7 @@ export function buildSourcePills(skills: readonly SkillRow[]): SourcePill[] {
  * category-less skills. No active pills = every skill passes (the row is
  * off, not an empty selection).
  */
-export function filterByPills(skills: readonly SkillRow[], active: ReadonlySet<string>): SkillRow[] {
+export function filterByPills<T extends SkillRow>(skills: readonly T[], active: ReadonlySet<string>): T[] {
   if (active.size === 0) return [...skills]
   const wantsUntagged = active.has(UNTAGGED)
   const wanted = [...active].filter(key => key !== UNTAGGED)
