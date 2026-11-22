@@ -42,7 +42,7 @@
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import {
@@ -302,6 +302,10 @@ if (process.argv.length === 2 || process.argv[2] === 'list') {
     writeFileSync(join(home, 'aek.yaml'), `# Lane data root for "${name}" (written by scripts/aek/lanes.mjs)\nversion: 1\nroot: .\nslots:\n  ${name}: .\n${dirsBlock || 'dirs: {}\n'}`)
     console.log(`[lanes] data root: ${home}`)
 
+    // Seed the web profile BEFORE the first web boot, so dsh's initProfile
+    // never seeds an empty package.json (all /api/aek/* would 404 afterwards).
+    provisionProfile(name, worktree)
+
     claimLane(name, AGENT_ID, process.pid)
     console.log(`[lanes] claimed by ${AGENT_ID} (pid ${process.pid})`)
     console.log(`[lanes] next: cpuh use ${entry.webPort} "aek lane ${name} web" && cpuh use ${entry.cdpPort} "aek lane ${name} cdp"  (then, from the lane's own tree: node scripts/aek/lanes.mjs start ${name} --yes)`)
@@ -399,6 +403,73 @@ function bootstrapTree(worktree) {
   }
 }
 
+/**
+ * Provision the lane's web profile with the coraek plugin links.
+ *
+ * dsh's profile bootstrap (apps/cli/src/plugin.ts initProfile) seeds
+ * profiles/web with an EMPTY package.json on first web boot; without the
+ * three @cheezmil link: dependencies (coraek, coraek-profile, aek-websearch)
+ * every /api/aek/* route answers 404 — the web serves the page shell but the
+ * plugins fail to import, the exact symptom documented in
+ * scripts/aek/repair-profile-links.mjs. The links must point at the LANE's
+ * own worktree, never at the stable tree: a lane agent that loaded the
+ * stable coraek would serve stale routes and break lane isolation.
+ * Idempotent: a warm, correctly-linked profile skips the pnpm install.
+ */
+function provisionProfile(name, worktree) {
+  const home = laneHome(name)
+  const profileDir = join(home, 'profiles', 'web')
+  mkdirSync(profileDir, { recursive: true })
+
+  // Same shape as the production profile (mirror of ~/.aek/current).
+  const workspaceYaml = join(profileDir, 'pnpm-workspace.yaml')
+  if (!existsSync(workspaceYaml)) {
+    writeFileSync(workspaceYaml, 'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n')
+  }
+
+  const deps = {}
+  for (const [pkg, sub] of Object.entries({
+    '@cheezmil/coraek': 'base/coraek',
+    '@cheezmil/coraek-profile': 'base/coraek-profile',
+    '@cheezmil/aek-websearch': 'coraek-plugins/aek-websearch',
+  })) {
+    const target = join(worktree, 'packages', 'aek', ...sub.split('/'))
+    if (!existsSync(join(target, 'package.json'))) fail(`lane "${name}" profile: ${target} is missing its package.json (worktree incomplete?)`)
+    deps[pkg] = `link:${relative(profileDir, target).split('\\').join('/')}`
+  }
+
+  const pkgPath = join(profileDir, 'package.json')
+  const manifest = existsSync(pkgPath) ? JSON.parse(readFileSync(pkgPath, 'utf8')) : {
+    name: 'dsh-profile-web',
+    private: true,
+    dependencies: {},
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } },
+  }
+  manifest.dependencies = manifest.dependencies && typeof manifest.dependencies === 'object' ? manifest.dependencies : {}
+  let dirty = false
+  for (const [pkg, spec] of Object.entries(deps)) {
+    if (manifest.dependencies[pkg] !== spec) {
+      manifest.dependencies[pkg] = spec
+      dirty = true
+    }
+  }
+  const dsh = (manifest.dsh ??= {})
+  const profile = (dsh.profile ??= {})
+  profile.bundles = Array.isArray(profile.bundles) ? profile.bundles : ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']
+  if (!profile.bundles.includes('@cheezmil/coraek-profile')) {
+    profile.bundles.push('@cheezmil/coraek-profile')
+    dirty = true
+  }
+
+  const marker = join(profileDir, 'node_modules', '@cheezmil', 'coraek-profile')
+  if (dirty || !existsSync(marker)) {
+    if (dirty) writeFileSync(pkgPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+    const res = spawnSync('pnpm', ['install', '--no-frozen-lockfile'], { cwd: profileDir, encoding: 'utf8', stdio: ['ignore', 'inherit', 'inherit'] })
+    if (res.status !== 0) fail(`pnpm install failed in the "${name}" profile (${profileDir})`)
+    console.log(`[lanes] ${name}: web profile linked to ${worktree}`)
+  }
+}
+
 function laneOps(name, verb) {
   const entry = readLanesRegistry().lanes[name]
   if (!entry) fail(`lane "${name}" is not registered (run: lanes.mjs new ${name} --yes)`)
@@ -409,6 +480,7 @@ function laneOps(name, verb) {
   claimLane(name, AGENT_ID, process.pid)
   if (verb === 'start') {
     bootstrapTree(worktree)
+    provisionProfile(name, worktree) // self-heal profiles created pre-provisioning
     console.log(`[lanes] ${name}: ${cfg.webPort}/${cfg.cdpPort} agent ${agentFor(name)} web ${cfg.webHost}`)
     runInTree(worktree, 'service.mjs', ['install', name, '--yes'])
     // m02603: backend only — the LaunchAgent (serve-slot, KeepAlive) owns the
@@ -463,6 +535,7 @@ function laneOps(name, verb) {
     // Idempotent cold-start guards (desktop v0 tsc, typert, …) — the shell boot
     // needs lib/main/index.js even though `start` only warms the backend.
     bootstrapTree(worktree)
+    provisionProfile(name, worktree) // cheap no-op when the profile is already linked
     runInTree(worktree, 'start-dev.mjs', [name, '--shell-only', '--detach'])
     if (!waitForPort(cfg.cdpPort, 20_000)) {
       fail(`CDP ${cfg.cdpPort} not listening 20s after launch (see ${join(laneHome(name), 'logs', 'shell.log')})`)
