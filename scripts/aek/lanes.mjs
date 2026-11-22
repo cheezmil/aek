@@ -362,6 +362,15 @@ function bootstrapTree(worktree) {
     const res = spawnSync('pnpm', ['--filter', '@cheezmil/**', 'build'], { cwd: worktree, stdio: ['ignore', 'inherit', 'inherit'] })
     if (res.status !== 0) fail(`@cheezmil filter build failed in ${worktree}`)
   }
+  // The oclif `aek` CLI loads commands from coraek's lib/commands (gitignored,
+  // built by the SEPARATE build:cli tsdown config — plain `build` never emits
+  // it). Without it every `aek web` spawn dies "command web not found".
+  const cliMarker = join(worktree, 'packages', 'aek', 'base', 'coraek', 'lib', 'commands', 'web.mjs')
+  if (!existsSync(cliMarker)) {
+    console.log('[lanes] building coraek CLI commands (lib/commands, ~1s)')
+    const res = spawnSync('pnpm', ['--filter', '@cheezmil/coraek', 'run', 'build:cli'], { cwd: worktree, stdio: ['ignore', 'inherit', 'inherit'] })
+    if (res.status !== 0) fail(`coraek build:cli failed in ${worktree}`)
+  }
   // Two-face members: root tsconfig.json with "files": [] next to a host face.
   const twoFace = spawnSync('find', ['packages', 'vendor', 'apps', '-name', 'tsconfig.host.json', '-not', '-path', '*/node_modules/*'], { cwd: worktree, encoding: 'utf8' })
   for (const rel of twoFace.stdout.trim().split('\n').filter(Boolean)) {
