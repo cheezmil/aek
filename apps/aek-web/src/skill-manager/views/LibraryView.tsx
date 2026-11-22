@@ -11,6 +11,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../i18n.tsx'
 import { Icon } from '../../Icons.tsx'
 import { PanelCard, PanelSearch } from '../../ui-kit.tsx'
+import { formatDisplayPath, parsePathStyle } from '../../paths.ts'
+import { PREF_KEYS, usePref } from '../../preferences.tsx'
+import { useConsoleFacts } from '../../useConsoleFacts.ts'
 import { VirtualList } from '../../VirtualList.tsx'
 import { VirtualGrid } from '../../VirtualGrid.tsx'
 import { type SkillsOverview } from '../../useSkills.ts'
@@ -125,6 +128,10 @@ export function LibraryView() {
   const runWrite = useRunWrite()
   const overview = skills.overview as SkillsOverview
   const [pathCopied, setPathCopied] = useState(false)
+  /** BO round (m00001 ③): the 本地技能中心 path obeys the global path display
+      style; home + platform come from the host facts, never the client. */
+  const [pathStyle] = usePref(PREF_KEYS.pathStyle, 'abbreviated', parsePathStyle)
+  const { facts } = useConsoleFacts()
 
   const [query, setQuery] = useState('')
   const [activeCats, setActiveCats] = useState<ReadonlySet<string>>(new Set())
@@ -264,7 +271,7 @@ export function LibraryView() {
         title={t('panel.skillsLibrary')}
         subtitle={(
           <span className="flex min-w-0 items-center gap-1.5">
-            <span className="min-w-0 truncate">{t('skills.home')}: {skillsPath}</span>
+            <span className="min-w-0 truncate" title={skillsPath}>{t('skills.home')}: {formatDisplayPath(skillsPath, facts?.home, facts?.platform, pathStyle)}</span>
             <button
               type="button"
               onClick={copyPath}

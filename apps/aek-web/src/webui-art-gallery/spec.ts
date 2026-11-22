@@ -238,6 +238,40 @@ export const styleSpecOf = (e: ArtStyleEntry): StageSpec => {
 /** Assemble the two item families (style rows first, the reference's order).
  *  The style family is the scanned 346-entry library (12 kinds), not the 88
  *  builtin fallback — the reference uses the scanner whenever it can. */
+
+/** BO round ⑤ (m00001): style entries carry the scanner's `src` string, not a
+ *  repo id — map it to the originating skill repo (ground truth from
+ *  SKILL_STYLES's 'repo::skill' keys) so EVERY page shows an author + a
+ *  clickable GitHub link, not just the skill family. All 346 entries resolve;
+ *  the two AEK-base specs (src 'aek-web index.css') stay repo-free on purpose. */
+const SRC_REPO_MAP: Record<string, string> = {
+  'ui-ux-pro-max': 'ui-ux-pro-max-skill',
+  'ui-ux-pro-max / design': 'ui-ux-pro-max-skill',
+  'anthropics / theme-factory': 'anthropics-skills',
+  'canvas-design': 'anthropics-skills',
+  'frontend-design': 'anthropics-skills',
+  'algorithmic-art': 'anthropics-skills',
+  'hallmark': 'hallmark',
+  'impeccable': 'impeccable',
+  'superdesign': 'superdesign-skill',
+  'apple-design': 'emilkowalski-skills',
+  'emil-design-eng': 'emilkowalski-skills',
+  'brandkit': 'taste-skill',
+  'high-end-visual-design': 'taste-skill',
+  'imagegen-frontend-web': 'taste-skill',
+  'imagegen-frontend-mobile': 'taste-skill',
+  'design-taste-frontend-v1': 'taste-skill',
+  'image-to-code': 'taste-skill',
+  'industrial-brutalist-ui': 'taste-skill',
+  'minimalist-ui': 'taste-skill',
+  'stitch-design-taste': 'taste-skill',
+}
+const repoOfSrc = (src: string | undefined): { repoId: string; repoName: string; repoColor: string } | null => {
+  const repoId = src ? SRC_REPO_MAP[src] : undefined
+  const meta = repoId ? REPO_FALLBACK[repoId] : undefined
+  return meta ? { repoId, repoName: meta.name, repoColor: meta.color } : null
+}
+
 export function galleryItems(): { styles: GalleryItem[]; skills: GalleryItem[] } {
   const base: GalleryItem[] = AEC_BASE_SPECS.map((spec): GalleryItem => ({
     id: spec.id,
@@ -262,6 +296,7 @@ export function galleryItems(): { styles: GalleryItem[]; skills: GalleryItem[] }
       src: e.src,
       srcColor: e.srcColor,
       colors: e.colors,
+      ...(repoOfSrc(e.src) ?? {}),
     })),
   ]
   const skills: GalleryItem[] = skillSpecs().map((spec) => {
@@ -411,22 +446,74 @@ export const usageDoc = (item: GalleryItem): string => {
   return lines.join('\n')
 }
 
-/** The persisted favorites (spec ids); broken storage degrades to none. */
-export const readFavorites = (): ReadonlySet<string> => {
+/**
+ * BO round (m00001 ⑪): favorites are groupable — each group is a named
+ * list of spec ids and groups get full CRUD (create / rename / delete /
+ * read). An item counts as faved when it belongs to at least one group.
+ * Storage: FAV_GROUPS_KEY holds `{ v: 1, groups }`; the legacy FAV_KEY
+ * flat array is migrated into one default group (empty id + name) on
+ * first read, then cleared.
+ */
+export interface FavGroup {
+  id: string
+  /** '' marks the default group — rendered with the localized default label. */
+  name: string
+  items: string[]
+}
+
+const FAV_GROUPS_KEY = 'aek-art-fav-groups'
+
+const isStr = (x: unknown): x is string => typeof x === 'string'
+
+const DEFAULT_GROUP = (): FavGroup => ({ id: '', name: '', items: [] })
+
+/** The persisted favorite groups; broken storage degrades to one empty default. */
+export const readFavGroups = (): FavGroup[] => {
+  let groups: FavGroup[] | null = null
   try {
-    const raw = window.localStorage.getItem(FAV_KEY)
-    const list = raw ? (JSON.parse(raw) as unknown[]) : []
-    return new Set(list.filter((x): x is string => typeof x === 'string'))
+    const raw = window.localStorage.getItem(FAV_GROUPS_KEY)
+    if (raw) {
+      const doc = JSON.parse(raw) as { groups?: unknown }
+      if (Array.isArray(doc.groups)) {
+        groups = doc.groups
+          .filter((g): g is Record<string, unknown> => !!g && typeof g === 'object')
+          .map(g => ({
+            id: isStr(g.id) ? g.id : '',
+            name: isStr(g.name) ? g.name : '',
+            items: Array.isArray(g.items) ? [...new Set(g.items.filter(isStr))] : [],
+          }))
+      }
+    }
+    if (!groups) {
+      // Legacy migration: a flat string[] of faved ids → one default group.
+      const legacy = window.localStorage.getItem(FAV_KEY)
+      const list = legacy ? (JSON.parse(legacy) as unknown[]) : []
+      const ids = [...new Set(list.filter(isStr))]
+      groups = [{ id: '', name: '', items: ids }]
+    }
   } catch {
-    return new Set()
+    groups = [DEFAULT_GROUP()]
+  }
+  if (!groups.length) groups = [DEFAULT_GROUP()]
+  return groups
+}
+
+/** Persist the groups; also retires the legacy flat key. Storage refusals degrade to in-memory. */
+export const writeFavGroups = (groups: FavGroup[]): void => {
+  try {
+    window.localStorage.setItem(FAV_GROUPS_KEY, JSON.stringify({ v: 1, groups }))
+    window.localStorage.removeItem(FAV_KEY)
+  } catch {
+    /* private-mode storage may refuse; groups stay in-memory */
   }
 }
 
-/** Persist the favorites set; storage refusals degrade to in-memory only. */
-export const writeFavorites = (next: ReadonlySet<string>): void => {
-  try {
-    window.localStorage.setItem(FAV_KEY, JSON.stringify([...next]))
-  } catch {
-    /* private-mode storage may refuse; favorites stay in-memory */
-  }
+/** The union of every group's items — the "is faved" set all views use. */
+export const favsOfGroups = (groups: FavGroup[]): ReadonlySet<string> => {
+  const s = new Set<string>()
+  for (const g of groups) for (const id of g.items) s.add(id)
+  return s
 }
+
+/** The persisted favorites (union over all groups); broken storage degrades to none. */
+export const readFavorites = (): ReadonlySet<string> => favsOfGroups(readFavGroups())

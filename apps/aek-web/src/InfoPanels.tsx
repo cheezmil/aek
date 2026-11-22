@@ -66,7 +66,11 @@ const ACCESS_ACTIONS = 'flex items-center gap-3 mt-4'
 const ACCESS_TEXTAREA = 'block box-border w-full min-h-22 p-2 px-2.5 border border-input rounded-xs bg-card text-text font-inherit text-xs leading-170 resize-y focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-1'
 const COUNT_CHIP = 'inline-flex items-center p-0.5 px-2.25 rounded-full text-xs font-semibold tabular-nums border border-border bg-surface-subtle text-text-secondary'
 const DIRTY_BACKDROP = 'fixed inset-0 z-15'
-const DIRTY_DOT = 'size-2 rounded-full bg-danger'
+/** BO round (m00001 ④): the changed-settings badge is a danger PILL CARRYING
+    ITS COUNT — a lone red dot was "孤零零" and the user asked for the number
+    itself. `bg-danger` + `text-destructive-foreground` (dark ink on the red
+    pill in both themes); tabular-nums so multi-digit counts don't jitter. */
+const DIRTY_BADGE = 'inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-danger px-1.5 text-2xs font-bold tabular-nums text-destructive-foreground'
 const DIRTY_LIST = 'list-none m-0 p-0 max-h-80 overflow-auto'
 const DIRTY_POPOVER = 'aek-popover'
 const DIRTY_POPOVER_HEAD = 'flex items-center justify-between gap-2 mb-1.5'
@@ -775,7 +779,7 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
             value={query}
             onChange={setQuery}
             placeholder={t('settings.panelSearch')}
-            badge={totalDirty > 0 ? <span className={DIRTY_DOT} aria-hidden="true" /> : undefined}
+            badge={totalDirty > 0 ? <span className={DIRTY_BADGE} aria-hidden="true">{totalDirty}</span> : undefined}
             badgeAria={t('settings.dirty.title')}
             onBadgeClick={() =>{  setPopoverOpen(open => !open) }}
             condense
@@ -965,7 +969,7 @@ function PluginSchemaSettingsPanel({ schema, titleKey, refreshSignal }: {
             value={query}
             onChange={setQuery}
             placeholder={t('settings.panelSearch')}
-            badge={dirtyKeys.length > 0 ? <span className={DIRTY_DOT} aria-hidden="true" /> : undefined}
+            badge={dirtyKeys.length > 0 ? <span className={DIRTY_BADGE} aria-hidden="true">{dirtyKeys.length}</span> : undefined}
             badgeAria={t('settings.dirty.title')}
             onBadgeClick={() =>{  setPopoverOpen(open => !open) }}
             condense

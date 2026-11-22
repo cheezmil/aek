@@ -33,6 +33,8 @@ import { Icon } from './Icons.tsx'
 import { SKILL_ICON } from './icon-registry.ts'
 import { useI18n } from './i18n.tsx'
 import { PREF_KEYS, usePref } from './preferences.tsx'
+import { formatDisplayPath, parsePathStyle } from './paths.ts'
+import { useConsoleFacts } from './useConsoleFacts.ts'
 import { useShellInstall } from './useShellInstall.ts'
 import { cn } from '@/lib/utils'
 
@@ -83,6 +85,10 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
   const { t, tf, locale, setLocale } = useI18n()
   const { available, status, result, pending, install } = useShellInstall()
   const [, setSetupSeen] = usePref(PREF_KEYS.shellSetupSeen, false, parseBool)
+  /** BO round (m00001 ③): the skill path row obeys the global path display
+      style (abbreviated `~` / `%USERPROFILE%` vs full) like every other page. */
+  const [pathStyle] = usePref(PREF_KEYS.pathStyle, 'abbreviated', parsePathStyle)
+  const { facts } = useConsoleFacts()
   const nodeMissing = status?.node === undefined
   const baseInstalling = pending && result === undefined
   const baseFailed = result !== undefined && !result.ok && !pending
@@ -368,7 +374,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
                                       <div className="mt-2 flex items-center gap-2 rounded-sm border border-border bg-surface-subtle px-2.5 py-2">
                                         <Icon name={SKILL_ICON} size={14} className="flex-none text-text-muted" />
                                         <span className="shrink-0 text-xs font-semibold text-text-secondary">{t('setup.skillPathLabel')}</span>
-                                        <span className="min-w-0 flex-1 font-mono text-aek-115 text-text-secondary whitespace-normal wrap-anywhere break-words">{status.skillPath}</span>
+                                        <span className="min-w-0 flex-1 font-mono text-aek-115 text-text-secondary whitespace-normal wrap-anywhere break-words" title={status.skillPath}>{formatDisplayPath(status.skillPath, facts?.home, facts?.platform, pathStyle)}</span>
                                         <CopyButton value={status.skillPath} size={14} label={t('runtime.copyPath')} />
                                       </div>
                                     )

@@ -15,8 +15,10 @@ import { useI18n } from '../i18n.tsx'
 import { cssSnippet, normRadius, usageDoc, type GalleryItem, type StageSpec, galleryItems, ALL_STYLE_KINDS } from './spec.ts'
 import { REPO_FALLBACK } from './data/skill-styles.ts'
 import { useConsoleFacts } from '../useConsoleFacts.ts'
+import { formatDisplayPath, parsePathStyle } from '../paths.ts'
+import { PREF_KEYS, usePref } from '../preferences.tsx'
 import { copyToClipboard } from '../clipboard.ts'
-import { ComponentsPanel, MotionPanel } from './StagePanels.tsx'
+import { ComponentsPanel, MotionPanel, ChartsPanel, FormsPanel, TablesPanel } from './StagePanels.tsx'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardAction } from '@/components/ui/card'
@@ -40,16 +42,15 @@ export interface StageProps {
   faved: boolean
   onToggleFav: () => void
   onNotify: (msg: string) => void
-  /** BP round: is this spec the one currently applied to the whole webui. */
-  globalActive: boolean
-  /** Apply this spec to the whole webui, or reset when already active. */
-  onGlobal: () => void
 }
 
-const NAVS: { key: string; icon: 'layout' | 'plugins' | 'zap' | 'terminal' }[] = [
+const NAVS: { key: string; icon: 'layout' | 'plugins' | 'zap' | 'terminal' | 'chart' | 'form' | 'table' }[] = [
   { key: 'overview', icon: 'layout' },
   { key: 'components', icon: 'plugins' },
   { key: 'motion', icon: 'zap' },
+  { key: 'charts', icon: 'chart' },
+  { key: 'forms', icon: 'form' },
+  { key: 'tables', icon: 'table' },
   { key: 'logs', icon: 'terminal' },
 ]
 
@@ -91,12 +92,10 @@ const SpecItem = ({ k, children }: { k: string; children: ReactNode }): JSX.Elem
   </div>
 )
 
-export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive, onGlobal }: StageProps): JSX.Element {
+export function Stage({ item, counts, faved, onToggleFav, onNotify }: StageProps): JSX.Element {
   const { t, tf } = useI18n()
   const spec = item.spec
   const [nav, setNav] = useState('overview')
-  const [tg1, setTg1] = useState(true)
-  const [tg2, setTg2] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const isSkill = item.kind === 'skill'
@@ -107,12 +106,19 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
   // shelf under the slot data root) so no absolute path is ever hardcoded —
   // it resolves per machine, exactly where the seeder wrote the .md.
   const { facts } = useConsoleFacts()
+  const [pathStyle] = usePref(PREF_KEYS.pathStyle, 'abbreviated', parsePathStyle)
   const repoMeta = item.repoId ? REPO_FALLBACK[item.repoId] : undefined
   const usageDocPath = useMemo((): string | undefined => {
     if (!facts?.skillPath) return undefined
     const shelfRoot = facts.skillPath.replace(/aek-usage$/, '') // keep the trailing slash
     return `${shelfRoot}${ART_SHELF}/${sanitizeItem(item.id)}.md`
   }, [facts?.skillPath, item.id])
+
+  // BO round (m00001 ③): the usage-doc path obeys the global display style
+  // (abbreviated `~` / `%USERPROFILE%` vs full); the raw path stays the copy target.
+  const usageDocDisplay = usageDocPath !== undefined
+    ? formatDisplayPath(usageDocPath, facts?.home, facts?.platform, pathStyle)
+    : undefined
 
   const doCopy = async (): Promise<void> => {
     // BL 轮 (m05632 任务 E): copy the item's "使用方法" doc — the same single
@@ -136,7 +142,7 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-            <h1 className="truncate text-xl leading-tight font-bold tracking-tight">{spec.name}</h1>
+            <h1 className="text-xl leading-tight font-bold tracking-tight break-words">{spec.name}</h1>
             <div className="flex flex-none items-center gap-0.5">
               <TooltipProvider delayDuration={250}>
                 <Tooltip>
@@ -169,39 +175,16 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
                 </Tooltip>
               </TooltipProvider>
             </div>
-            {isSkill && item.repoName && (
+            {item.repoName && (
               <span className="bg-secondary text-secondary-foreground rounded-full border px-2.5 py-0.5 text-xs font-semibold">
                 {item.repoName}
               </span>
             )}
           </div>
-          <p className="text-muted-foreground mt-1.5 line-clamp-1 text-xs leading-relaxed">{item.desc}</p>
-        </div>
-        <div className="flex flex-none flex-wrap justify-end gap-1.5">
-          <span className="border-success/30 bg-success/10 text-success rounded-full border px-2.5 py-0.5 text-xs font-semibold">
-            {t('art.ready')}
-          </span>
-          <span className="border-destructive/30 bg-destructive/10 text-destructive rounded-full border px-2.5 py-0.5 text-xs font-semibold">
-            {t('art.missing')}
-          </span>
-          <span className="rounded-full border border-border px-2.5 py-0.5 text-xs font-semibold">{spec.sub}</span>
-          <TooltipProvider delayDuration={250}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={globalActive ? 'outline' : 'secondary'}
-                  size="sm"
-                  onClick={onGlobal}
-                  aria-label={globalActive ? t('art.globalReset') : t('art.globalApply')}
-                  className="h-6 gap-1.5 px-2.5 text-xs"
-                >
-                  <Icon name={globalActive ? 'restore' : 'maximize'} size={13} />
-                  {globalActive ? t('art.globalReset') : t('art.globalApply')}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{globalActive ? t('art.globalReset') : t('art.globalApply')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          {/* BO round ⑥ (m00001): the description wraps on its natural width
+              instead of hard-clamping after one line — the earlier
+              line-clamp-1 cut off most descriptions far too early. */}
+          <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed break-words">{item.desc}</p>
         </div>
       </header>
 
@@ -227,8 +210,11 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
 
       {/* ---- provenance (BN round, m06297 ⑤): absolute usage-record file
           path + the author's skill + a clickable repo link. The path is
-          derived from the host's console facts, never hardcoded. ---- */}
-      {(usageDocPath || (isSkill && item.repoName) || repoMeta?.url) ? (
+          derived from the host's console facts, never hardcoded. BO round
+          ⑤ (m00001): the author row is no longer skill-family only — style
+          entries resolve their origin repo via the src mapping, so every
+          page shows author + a clickable GitHub link. ---- */}
+      {(usageDocPath || item.repoName || repoMeta?.url) ? (
         <div className="bg-card rounded-lg border px-5 py-4">
           <div className="flex flex-col gap-2.5">
             <span className="text-muted-foreground text-2xxs leading-none font-bold uppercase">
@@ -239,10 +225,10 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
                 <span className="text-muted-foreground text-2xxs leading-none font-bold uppercase">
                   {t('art.usageDoc')}
                 </span>
-                <code className="text-xs leading-relaxed font-mono break-all">{usageDocPath}</code>
+                <code className="text-xs leading-relaxed font-mono break-all" title={usageDocPath}>{usageDocDisplay}</code>
               </div>
             ) : null}
-            {isSkill && item.repoName ? (
+            {item.repoName ? (
               <div className="flex flex-col gap-0.5">
                 <span className="text-muted-foreground text-2xxs leading-none font-bold uppercase">
                   {t('art.author')}
@@ -290,6 +276,12 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
         <div data-panel="components"><ComponentsPanel /></div>
       ) : nav === 'motion' ? (
         <div data-panel="motion"><MotionPanel /></div>
+      ) : nav === 'charts' ? (
+        <div data-panel="charts"><ChartsPanel /></div>
+      ) : nav === 'forms' ? (
+        <div data-panel="forms"><FormsPanel /></div>
+      ) : nav === 'tables' ? (
+        <div data-panel="tables"><TablesPanel /></div>
       ) : nav === 'logs' ? (
         <div data-panel="logs" className="flex flex-col gap-4"><LogPanel item={item} spec={spec} counts={counts} /></div>
       ) : (
@@ -338,8 +330,13 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
                   </Button>
                 </div>
                 <Separator />
+                {/* BO round ⑨ (m00001): display-only demo card — the user's
+                    intent is "UI 只展示、别做成能交互的功能". The buttons carry
+                    no handlers and the switches are frozen (checked + no
+                    onCheckedChange) so the card shows the look without any
+                    live behavior. */}
                 <div className="bg-background flex items-center gap-3 rounded-lg border border-border px-3.5 py-2.5">
-                  <Switch checked={tg1} onCheckedChange={setTg1} className="flex-none" />
+                  <Switch checked className="flex-none" />
                   <div className="min-w-0 flex-1">
                     <div className="text-aek-13 font-medium">{t('art.injectOn')}</div>
                     <div className="mt-0.5 text-aek-12 leading-snug text-muted-foreground">
@@ -348,7 +345,7 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
                   </div>
                 </div>
                 <div className="bg-background flex items-center gap-3 rounded-lg border border-border px-3.5 py-2.5">
-                  <Switch checked={tg2} onCheckedChange={setTg2} className="flex-none" />
+                  <Switch className="flex-none" />
                   <div className="min-w-0 flex-1">
                     <div className="text-aek-13 font-medium">{t('art.disabledEx')}</div>
                     <div className="mt-0.5 text-aek-12 leading-snug text-muted-foreground">
@@ -371,7 +368,7 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
                 </div>
                 {[
                   { ok: true, name: 'Node.js', meta: t('art.nodeMeta') },
-                  { ok: false, name: 'dsh CLI', meta: t('art.notInstalled') },
+                  { ok: false, name: 'aeknext CLI', meta: t('art.notInstalled') },
                 ].map(c => (
                   <div
                     key={c.name}

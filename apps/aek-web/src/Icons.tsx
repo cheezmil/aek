@@ -43,6 +43,9 @@ export type IconName =
   | 'sun'
   | 'moon'
   | 'contrast'
+  | 'chart'
+  | 'form'
+  | 'table'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 export const ICONS: Record<IconName, ReactNode> = {
@@ -378,6 +381,38 @@ export const ICONS: Record<IconName, ReactNode> = {
       <path d="M12 18a6 6 0 0 0 0-12v12Z" />
     </>
   ),
+  /** BO round ⑫: the stage's "chart" tab. Lucide `chart-column` (bars on a
+      baseline) — reads unambiguously as "data chart". */
+  chart: (
+    <>
+      <path d="M3 3v18h18" />
+      <path d="M18 17V9" />
+      <path d="M13 17V5" />
+      <path d="M8 17v-3" />
+    </>
+  ),
+  /** BO round ⑫: the stage's "form" tab. Lucide `clipboard-list` (fields on
+      a sheet) — reads as "a form to fill". */
+  form: (
+    <>
+      <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <path d="M12 11h4" />
+      <path d="M12 16h4" />
+      <path d="M8 11h.01" />
+      <path d="M8 16h.01" />
+    </>
+  ),
+  /** BO round ⑫: the stage's "table" tab. Lucide `table` (a 3×3 grid of
+      cells) — reads as "rows and columns of data". */
+  table: (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M3 9h18" />
+      <path d="M3 15h18" />
+      <path d="M12 3v18" />
+    </>
+  ),
 }
 
 /** Props for {@link Icon}. */
@@ -410,6 +445,9 @@ export const ICON_NAMES: readonly IconName[] = [
   'sun',
   'moon',
   'contrast',
+  'chart',
+  'form',
+  'table',
 ]
 
 export interface IconProps {

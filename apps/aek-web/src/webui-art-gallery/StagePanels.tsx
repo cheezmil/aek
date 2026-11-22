@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 function Group({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
@@ -413,6 +414,402 @@ export function MotionPanel() {
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * BO round ⑫: the stage's "图表" tab. aek-web ships no chart widget, so
+ * every glyph here is self-drawn on plain theme tokens (P16) and re-skins
+ * with the selected spec: an interactive bar row (click a bar to spot it),
+ * an SVG trend line, and an SVG share donut. The summary chips are derived
+ * from the same series so the numbers stay honest.
+ */
+export function ChartsPanel() {
+  const { t } = useI18n()
+  const [picked, setPicked] = useState(3)
+
+  const bars = [38, 62, 47, 88, 56, 73, 34, 91]
+  const total = bars.reduce((a, b) => a + b, 0)
+  const peak = Math.max(...bars)
+  const low = Math.min(...bars)
+
+  // 7-point weekly series for the line chart, 0–100 scale.
+  const line = [22, 41, 35, 64, 58, 80, 72]
+  const linePts = line
+    .map((v, i) => `${((i / (line.length - 1)) * 100).toFixed(2)},${(40 - (v / 100) * 36).toFixed(2)}`)
+    .join(' ')
+  const areaPts = `0,40 ${linePts} 100,40`
+
+  // Donut: three shares of the whole (sum to 100), drawn via stroke-dasharray.
+  const donut: { label: string; share: number; color: string }[] = [
+    { label: t('art.chartSeriesA'), share: 52, color: 'text-primary' },
+    { label: t('art.chartSeriesB'), share: 31, color: 'text-success' },
+    { label: t('art.chartShare'), share: 17, color: 'text-accent' },
+  ]
+  let acc = 0
+  const donutSegs = donut.map((d) => {
+    const from = acc
+    acc += d.share
+    return { ...d, from }
+  })
+
+  const week = [t('art.chartWeekA'), t('art.chartWeekB'), t('art.chartWeekC'), t('art.chartWeekD')]
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Group title={t('art.chartGroup')} note={t('art.chartGroupNote')}>
+        <div className="flex flex-col gap-4">
+          {/* ---- bar row (interactive) + summary chips ---- */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-aek-13 font-semibold">{t('art.chartBars')}</h4>
+              <span className="text-muted-foreground tabular-nums text-aek-115">{bars[picked]}</span>
+            </div>
+            <div className="flex h-28 items-end gap-2">
+              {bars.map((v, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  aria-label={`${t('art.chartBars')} ${i + 1}`}
+                  onClick={() => { setPicked(i) }}
+                  className={cn(
+                    'flex-1 rounded-t transition-colors',
+                    i === picked ? 'bg-primary' : 'bg-primary/35 hover:bg-primary/60',
+                  )}
+                  style={{ height: `${v}%` }}
+                />
+              ))}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { lb: t('art.chartTotal'), vl: total },
+                { lb: t('art.chartPeak'), vl: peak },
+                { lb: t('art.chartLow'), vl: low },
+              ].map(({ lb, vl }) => (
+                <div key={lb} className="bg-card flex flex-col gap-0.5 rounded-lg border border-border px-3 py-2">
+                  <span className="text-muted-foreground text-2xs font-semibold uppercase">{lb}</span>
+                  <span className="text-lg leading-none font-extrabold tabular-nums">{vl}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {/* ---- trend line ---- */}
+            <div className="space-y-2">
+              <h4 className="text-aek-13 font-semibold">{t('art.chartLine')}</h4>
+              <svg viewBox="0 0 100 40" className="h-28 w-full" preserveAspectRatio="none" aria-hidden="true">
+                <polygon points={areaPts} className="fill-primary/15" />
+                <polyline
+                  points={linePts}
+                  fill="none"
+                  className="stroke-primary"
+                  strokeWidth="2"
+                  vectorEffect="non-scaling-stroke"
+                />
+                {line.map((v, i) => (
+                  <circle
+                    key={i}
+                    cx={(i / (line.length - 1)) * 100}
+                    cy={40 - (v / 100) * 36}
+                    r="1.6"
+                    className="fill-background stroke-primary"
+                    strokeWidth="1.2"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </svg>
+              <div className="text-muted-foreground flex justify-between text-2xs">
+                {week.map(w => <span key={w}>{w}</span>)}
+              </div>
+            </div>
+
+            {/* ---- share donut ---- */}
+            <div className="space-y-2">
+              <h4 className="text-aek-13 font-semibold">{t('art.chartDonut')}</h4>
+              <div className="flex items-center gap-4">
+                <svg viewBox="0 0 48 48" className="size-24" aria-hidden="true">
+                  {donutSegs.map((s, i) => (
+                    <circle
+                      key={i}
+                      cx="24"
+                      cy="24"
+                      r="18"
+                      fill="none"
+                      strokeWidth="7"
+                      pathLength={100}
+                      strokeDasharray={`${s.share} ${100 - s.share}`}
+                      strokeDashoffset={-s.from}
+                      stroke="currentColor"
+                      transform="rotate(-90 24 24)"
+                      className={donut[i].color}
+                    />
+                  ))}
+                  <text x="24" y="27" textAnchor="middle" className="fill-foreground text-2xxs font-bold">{total}</text>
+                </svg>
+                <ul className="space-y-1.5">
+                  {donut.map(d => (
+                    <li key={d.label} className="text-aek-125 flex items-center gap-2">
+                      <span className={cn('size-2.5 rounded-full bg-current', d.color)} />
+                      <span className="flex-1">{d.label}</span>
+                      <span className="text-muted-foreground tabular-nums">{d.share}%</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Group>
+    </div>
+  )
+}
+
+/**
+ * BO round ⑫: the stage's "表单" tab — a realistic form composition (the
+ * components tab already demos the individual controls in isolation). The
+ * email field is a live validation demo: it starts invalid, the border and
+ * message flip to success as it becomes a well-formed address, and Save
+ * stays disabled until both name and email are valid.
+ */
+export function FormsPanel() {
+  const { t } = useI18n()
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('bad@example')
+  const [region, setRegion] = useState('apac')
+  const [lang, setLang] = useState('zh')
+  const [notify, setNotify] = useState(true)
+
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  const canSave = emailOk && name.trim().length > 0
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Group title={t('art.formCardTitle')} note={t('art.formCardNote')}>
+        <div className="space-y-5">
+          <section className="space-y-3">
+            <h4 className="text-aek-13 font-semibold">{t('art.formProfile')}</h4>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="art-forms-name">{t('art.formName')}</Label>
+                <Input
+                  id="art-forms-name"
+                  value={name}
+                  onChange={(e) => { setName(e.target.value) }}
+                  placeholder={t('art.formNamePh')}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="art-forms-email">{t('art.formEmail')}</Label>
+                <Input
+                  id="art-forms-email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value) }}
+                  placeholder={t('art.formEmailPh')}
+                  className={cn(!emailOk && 'border-destructive focus:border-destructive')}
+                />
+                <p className={cn('text-aek-115', emailOk ? 'text-success' : 'text-destructive')}>
+                  {emailOk ? t('art.formEmailOk') : t('art.formEmailErr')}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <Separator />
+
+          <section className="space-y-3">
+            <h4 className="text-aek-13 font-semibold">{t('art.formPrefs')}</h4>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>{t('art.formRegion')}</Label>
+                <select
+                  value={region}
+                  onChange={(e) => { setRegion(e.target.value) }}
+                  className="border-border bg-background text-aek-125 h-8.5 w-full rounded-md border px-2.5 focus:outline-none"
+                >
+                  <option value="apac">{t('art.formRegionA')}</option>
+                  <option value="na">{t('art.formRegionB')}</option>
+                  <option value="eu">{t('art.formRegionC')}</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>{t('art.formLang')}</Label>
+                <div className="pt-1.5">
+                  <FancyRadio
+                    value={lang}
+                    options={[['zh', t('art.formLangA')], ['en', t('art.formLangB')]]}
+                    onChange={setLang}
+                  />
+                </div>
+              </div>
+              <Row label={t('art.formNotify')}>
+                <Switch checked={notify} onCheckedChange={setNotify} />
+              </Row>
+            </div>
+          </section>
+
+          <p className="text-muted-foreground text-aek-115">{t('art.formHint')}</p>
+
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm">{t('art.formCancel')}</Button>
+            <Button size="sm" disabled={!canSave}>{t('art.formSubmit')}</Button>
+          </div>
+        </div>
+      </Group>
+    </div>
+  )
+}
+
+/**
+ * BO round ⑫: the stage's "数据表" tab — a data-table pattern (the shadcn
+ * Data Table family): a filter box, a sortable Name column, status badges,
+ * row + select-all via the self-drawn checkbox, and a paginated footer.
+ * Everything is driven by the theme tokens so the skin table re-skins it.
+ */
+export function TablesPanel() {
+  const { t, tf } = useI18n()
+  const [query, setQuery] = useState('')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [page, setPage] = useState(0)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const rows = [
+    { id: 'r1', name: 'auth-service', status: 'active', owner: 'ada', size: '128 MB', updated: '2h' },
+    { id: 'r2', name: 'billing', status: 'idle', owner: 'lin', size: '64 MB', updated: '1d' },
+    { id: 'r3', name: 'cdn-edge', status: 'active', owner: 'mei', size: '256 MB', updated: '12m' },
+    { id: 'r4', name: 'data-pipeline', status: 'err', owner: 'ada', size: '512 MB', updated: '3h' },
+    { id: 'r5', name: 'edge-proxy', status: 'idle', owner: 'lin', size: '32 MB', updated: '5d' },
+    { id: 'r6', name: 'feature-flags', status: 'active', owner: 'mei', size: '8 MB', updated: '30m' },
+    { id: 'r7', name: 'ingest', status: 'err', owner: 'sam', size: '204 MB', updated: '6h' },
+    { id: 'r8', name: 'metrics', status: 'active', owner: 'sam', size: '96 MB', updated: '1h' },
+    { id: 'r9', name: 'scheduler', status: 'idle', owner: 'ada', size: '16 MB', updated: '2d' },
+  ]
+
+  const statusLabel: Record<string, string> = {
+    active: t('art.tblStActive'),
+    idle: t('art.tblStIdle'),
+    err: t('art.tblStErr'),
+  }
+  const statusEl = (s: string) =>
+    s === 'active'
+      ? <span className="border-success/30 bg-success/10 text-success rounded-full border px-2 py-0.5 text-2xs font-semibold">{statusLabel[s]}</span>
+      : s === 'err'
+        ? <Badge variant="destructive">{statusLabel[s]}</Badge>
+        : <Badge variant="secondary">{statusLabel[s]}</Badge>
+
+  const filtered = rows.filter(r =>
+    (r.name + r.owner).toLowerCase().includes(query.toLowerCase()),
+  )
+  const sorted = [...filtered].sort((a, b) =>
+    sortDir === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name),
+  )
+
+  const pageSize = 5
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
+  const safePage = Math.min(page, pageCount - 1)
+  const visible = sorted.slice(safePage * pageSize, safePage * pageSize + pageSize)
+  const allVisibleSelected = visible.length > 0 && visible.every(r => selected.has(r.id))
+
+  const toggleAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (allVisibleSelected) visible.forEach((r) => { next.delete(r.id) })
+      else visible.forEach((r) => { next.add(r.id) })
+      return next
+    })
+  }
+  const toggleRow = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Group title={t('art.tblGroup')} note={t('art.tblGroupNote')}>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <div className="relative max-w-xs flex-1">
+              <Icon name="search" size={14} className="text-muted-foreground absolute top-1/2 left-2.5 -translate-y-1/2" />
+              <Input
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); setPage(0) }}
+                placeholder={t('art.tblSearch')}
+                className="pl-8"
+              />
+            </div>
+            <Badge variant="secondary">{tf('art.tblRows', { n: sorted.length })}</Badge>
+            {selected.size > 0
+              ? <Badge>{selected.size}</Badge>
+              : null}
+          </div>
+
+          <div className="overflow-hidden rounded-lg border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8" aria-label={t('art.tblSelectAll')}>
+                    <FancyCheckbox checked={allVisibleSelected} onToggle={toggleAll} />
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-foreground"
+                      onClick={() => { setSortDir(d => (d === 'asc' ? 'desc' : 'asc')) }}
+                    >
+                      {t('art.tblColName')}
+                      <Icon
+                        name="chevronDown"
+                        size={13}
+                        className={cn('text-muted-foreground transition-transform', sortDir === 'asc' && 'rotate-180')}
+                      />
+                    </button>
+                  </TableHead>
+                  <TableHead>{t('art.tblColStatus')}</TableHead>
+                  <TableHead>{t('art.tblColOwner')}</TableHead>
+                  <TableHead>{t('art.tblColSize')}</TableHead>
+                  <TableHead className="text-right">{t('art.tblColUpdated')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visible.map(r => (
+                  <TableRow key={r.id} data-state={selected.has(r.id) ? 'selected' : undefined}>
+                    <TableCell>
+                      <FancyCheckbox checked={selected.has(r.id)} onToggle={() => { toggleRow(r.id) }} />
+                    </TableCell>
+                    <TableCell className="font-medium">{r.name}</TableCell>
+                    <TableCell>{statusEl(r.status)}</TableCell>
+                    <TableCell>{r.owner}</TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums">{r.size}</TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums text-right">{r.updated}</TableCell>
+                  </TableRow>
+                ))}
+                {visible.length === 0
+                  ? <TableRow><TableCell colSpan={6} className="text-muted-foreground text-center">{tf('art.tblRows', { n: 0 })}</TableCell></TableRow>
+                  : null}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-aek-115">
+              {t('art.tblPerPage')} {pageSize} · {safePage + 1}/{pageCount}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={safePage === 0} onClick={() => { setPage(safePage - 1) }}>
+                {t('art.tblPrev')}
+              </Button>
+              <Button variant="outline" size="sm" disabled={safePage >= pageCount - 1} onClick={() => { setPage(safePage + 1) }}>
+                {t('art.tblNext')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Group>
     </div>
   )
 }

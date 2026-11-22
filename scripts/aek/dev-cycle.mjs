@@ -287,6 +287,23 @@ function verify(devMode, json) {
     })
   }
   {
+    // BO round (m00001 ③): the advisory machine-path warning surface. The
+    // HARD blocker (user-machine paths) already gates the build chain via
+    // verify-aek-home.mjs; this check REMINDS on generic machine-specific
+    // paths (/opt /usr /var /etc /tmp /private /mnt) and on the display rule
+    // (UI path display must go through formatDisplayPath + pathStyle). It
+    // never blocks the loop — its exit 1 is reserved for the empty-corpus
+    // defect guard, so `ok` still means "the gate itself ran".
+    const absPaths = spawnSync(NODE, [join(HERE, 'verify-absolute-paths.mjs'), '--quiet'], {
+      cwd: ROOT, encoding: 'utf8', timeout: 60_000,
+    })
+    checks.push({
+      rule: 'absolute-paths-advisory',
+      ok: absPaths.status === 0,
+      detail: ((absPaths.stdout ?? '') + (absPaths.stderr ?? '')).trim().split('\n').join(' '),
+    })
+  }
+  {
     // R2 round: the second-level rail contract — every webui plugin owns a
     // home + settings page on its family rail, the three built-in pages own
     // section-tab rails, and every anchor tab has a live data-nav-anchor site.

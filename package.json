@@ -209,6 +209,8 @@
     "verify-provider-data": "node scripts/aek/run.mjs verify-provider-data",
     "verify-product-use": "node scripts/aek/run.mjs verify-product-use",
     "verify:aek-home": "node scripts/aek/verify-aek-home.mjs",
+    "verify:abs-paths": "node scripts/aek/verify-absolute-paths.mjs",
+    "verify:abs-paths:strict": "node scripts/aek/verify-absolute-paths.mjs --strict",
     "verify:user-paths": "node scripts/aek/verify-user-paths.mjs",
     "verify:user-paths:artifacts": "node scripts/aek/verify-user-paths.mjs --artifacts",
     "verify:build-rules": "node scripts/aek/verify-build-rules.mjs",

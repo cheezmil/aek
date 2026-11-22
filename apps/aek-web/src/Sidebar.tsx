@@ -22,9 +22,15 @@
  * `nav-model.ts` so the rail and the plugin side rails read one source.
  *
  * A round: a FAMILY row (one that owns plugin routes) gains click semantics:
- * SINGLE click = select the remembered route AND toggle the plugin's own
- * route rail (show/hide the `PluginSubNav` column); a QUICK DOUBLE click =
- * toggle that rail's LABELS (icon-only rows) without touching selection.
+ * SINGLE click on the lit row = select the remembered route AND toggle the
+ * plugin's own route rail (show/hide the `PluginSubNav` column); clicking a
+ * DIFFERENT family row just navigates (BO round, m07690 item 1). Every
+ * lit-row click toggles immediately — the BK-round 400 ms rolling window
+ * that kept fast clicks from re-toggling is retired (BO round 2026-11-23,
+ * m00001 ②). Collapsing a rail's LABELS (icon-only rows) is the dedicated
+ * `type` icon in the row's hover action box (BI round); while a family's
+ * rail is stowed the hover box also carries an accent-colored `columns`
+ * icon that reopens it (BO round, m00001 ①).
  * Both states persist on the host (`aek-home.pluginRailHidden` /
  * `aek-home.pluginRailLabelsHidden`, comma lists in `nav-model.ts`).
  *
@@ -360,7 +366,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
    * BI round: the old double-click "collapse labels" shortcut is retired
    * (it now lives in the row's hover action box as a dedicated icon).
    */
-  const [, setRailHidden] = usePref<string>(RAIL_HIDDEN_KEY, '', parseCommaList)
+  const [railHidden, setRailHidden] = usePref<string>(RAIL_HIDDEN_KEY, '', parseCommaList)
   const [railLabelsHidden, setRailLabelsHidden] = usePref<string>(RAIL_LABELS_HIDDEN_KEY, '', parseCommaList)
 
   /**
@@ -369,11 +375,10 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
    * "the sidebar's own selected item" hiding / showing the sub-rail.
    * Clicking a DIFFERENT family row just navigates (its remembered route),
    * never toggling the rail, so "A → B" clicks no longer collapse B's rail.
-   * Fast successive clicks on the same row collapse into a single toggle
-   * (BK round m04772): the browser resets `detail` back to 1 between click
-   * bursts, so a per-row rolling 400 ms window suppresses the burst (the
-   * timestamp is only recorded on a real toggle — a navigation click on an
-   * unlit row must not poison the next one). Plain rows select immediately.
+   * BO round 2026-11-23 (m00001 ②): the BK-round 400 ms rolling window is
+   * RETIRED — it kept rapid successive clicks from re-toggling the rail, but
+   * the user wants fast clicks to flip show / hide freely, so every lit-row
+   * click now toggles immediately. Plain rows select immediately.
    * The label collapse is the dedicated icon in the hover box (BI round).
    * @param entry - the row clicked.
    * @param subIds - the row's plugin routes (empty = plain row).
@@ -388,26 +393,8 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
     onSelect(remembered ?? entry.id)
     const rowActive = active === entry.id || subIds.includes(active)
     if (!rowActive) return
-    const now = Date.now()
-    const last = railToggleAt.current[entry.id] ?? 0
-    if (now - last >= 400) {
-      setRailHidden(current => toggleInCommaList(current, entry.id))
-    }
-    // The window rolls forward on EVERY lit-row click (BK round m04772), so
-    // a whole burst — even one whose individual clicks fall just outside
-    // 400 ms of the last *toggle* — stays collapsed. Navigation clicks on
-    // unlit rows never reach here and never record a timestamp.
-    railToggleAt.current[entry.id] = now
+    setRailHidden(current => toggleInCommaList(current, entry.id))
   }
-  /**
-   * BK round (m04772): "clicking fast" cancels the rail collapse because the
-   * browser resets `detail` back to 1 between bursts, so rapid clicks re-
-   * toggle the rail back and forth. Per-row rolling 400 ms window: the first
-   * click of a burst toggles, later clicks inside the window are suppressed
-   * (the window rolls forward on every click so the whole burst stays
-   * collapsed). A deliberate re-toggle is just a slower click (>400 ms apart).
-   */
-  const railToggleAt = useRef<Record<string, number>>({})
   /** X round: the base setting that restores the bottom horizontal scrollbar (default off). */
   const hScroll = prefs[H_SCROLL_KEY] === true
   /** Y round: fade the floating refresh/pin box in and out (default on; off = instant). */
@@ -706,6 +693,23 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
               aria-label={t('nav.labelsToggle')}
             >
               <Icon name="type" size={13} />
+            </button>
+          )}
+          {/* BO round 2026-11-23 (m00001 ①): while this family's plugin
+              rail is stowed, the hover box carries an ACCENT-COLORED panel
+              icon — the row itself is just an icon when compact, so the
+              hover card is the only place a "you can expand the sub-rail"
+              hint can live. Clicking it reopens the rail (same toggle as a
+              click on the lit row). */}
+          {subIds.length > 0 && railHidden.split(',').includes(entry.id) && (
+            <button
+              type="button"
+              className={cn(ROW_ICON_BUTTON, 'text-accent-ink bg-accent-soft hover:text-accent-ink hover:bg-accent-soft/70')}
+              onClick={() =>{  setRailHidden(current => toggleInCommaList(current, entry.id)) }}
+              title={t('nav.railExpand')}
+              aria-label={t('nav.railExpand')}
+            >
+              <Icon name="columns" size={13} />
             </button>
           )}
         </RowActionsFloat>

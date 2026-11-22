@@ -11,7 +11,8 @@
  * State machine mirrors the reference App: tab (skill/style/compare) +
  * src (which family compare shows) + repoFilter/kindFilter + search +
  * favOnly + curId + immersive; keyboard ←/→ step, "/" focus, c copy,
- * f favorite, Esc exit immersive. Favorites persist in localStorage.
+ * f favorite, Esc exit immersive. Favorites persist in localStorage as
+ * named groups (BO round: groupable favorites, group CRUD).
  *
  * @module @cheezmil/aek-web/src/webui-art-gallery/ArtGalleryPanel
  */
@@ -25,14 +26,16 @@ import { REPO_FALLBACK } from './data/skill-styles.ts'
 import {
   usageDoc,
   MODE_COUNT,
-  readFavorites,
   readCurId,
   writeCurId,
   specStyle,
-  writeFavorites,
+  favsOfGroups,
+  readFavGroups,
+  writeFavGroups,
   galleryItems,
   ALL_STYLE_KINDS,
   type GalleryItem,
+  type FavGroup,
 } from './spec.ts'
 import { TopBar, type GalleryTab } from './TopBar.tsx'
 import { GallerySidebar, type RepoGroup } from './GallerySidebar.tsx'
@@ -82,7 +85,53 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   const [kindFilter, setKindFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [favOnly, setFavOnly] = useState(false)
-  const [favs, setFavs] = useState<ReadonlySet<string>>(() => readFavorites())
+  // BO round (m00001 ⑪): favorites are groupable. The single shared
+  // `favs` set is now derived (union of every group), so all existing
+  // consumers (sidebar stars, compare grid, fav chip, favOnly filter) keep
+  // working unchanged. The group CRUD below is the new surface.
+  const [favGroups, setFavGroups] = useState<FavGroup[]>(() => readFavGroups())
+  const favs = useMemo(() => favsOfGroups(favGroups), [favGroups])
+
+  /** Persist a new group list (mutates only via the CRUD helpers below). */
+  const applyGroups = (next: FavGroup[]): void => {
+    setFavGroups(next)
+    writeFavGroups(next)
+  }
+
+  /** ⑪ create: a new named group. */
+  const addGroup = (name: string): void => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    applyGroups([...favGroups, { id: `g${Date.now().toString(36)}`, name: trimmed, items: [] }])
+    notify(t('art.favGroupAdded'))
+  }
+
+  /** ⑪ update: rename a group (the default group, id '', keeps its name). */
+  const renameGroup = (id: string, name: string): void => {
+    applyGroups(favGroups.map(g => (g.id === id ? { ...g, name: name.trim() || g.name } : g)))
+  }
+
+  /** ⑪ delete: drop the group; its items stay faved if they live in others. */
+  const removeGroup = (id: string): void => {
+    applyGroups(favGroups.filter(g => g.id !== id))
+    notify(t('art.favGroupRemoved'))
+  }
+
+  /** ⑪: assign the current item to a specific group. */
+  const assignGroup = (groupId: string, itemId: string): void => {
+    applyGroups(
+      favGroups.map(g =>
+        g.id === groupId ? { ...g, items: g.items.includes(itemId) ? g.items : [...g.items, itemId] } : g,
+      ),
+    )
+  }
+
+  /** ⑪: un-assign an item from one group only. */
+  const unassignGroup = (groupId: string, itemId: string): void => {
+    applyGroups(
+      favGroups.map(g => (g.id === groupId ? { ...g, items: g.items.filter(x => x !== itemId) } : g)),
+    )
+  }
   // BS round (m11967 ③④): open on the persisted whole-webui skin, not the
   // hard default — otherwise the stage preview shows a different (light) spec
   // than the chrome's dark skin on load, reading as "some elements not
@@ -231,13 +280,15 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
 
   const toggleFav = (id: string): void => {
     const has = favs.has(id)
-    setFavs((cur) => {
-      const next = new Set(cur)
-      if (has) next.delete(id)
-      else next.add(id)
-      writeFavorites(next)
-      return next
-    })
+    // Star = membership in the default group (id ''); un-star removes the
+    // item from EVERY group. A missing default group is re-created on demand.
+    applyGroups(
+      has
+        ? favGroups.map(g => ({ ...g, items: g.items.filter(x => x !== id) }))
+        : favGroups.some(g => g.id === '')
+          ? favGroups.map(g => (g.id === '' ? { ...g, items: [...g.items, id] } : g))
+          : [...favGroups, { id: '', name: '', items: [id] }],
+    )
     const item = allItems().find(i => i.id === id)
     notify(`${item ? `${item.spec.name} — ` : ''}${has ? t('art.favRemove') : t('art.favAdd')}`)
   }
@@ -339,7 +390,10 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
           />
         ) : null}
 
-        <main className="min-w-0 flex-1 overflow-auto">
+        {/* BO round (m00001 ⑩): the floating switcher pill sits bottom-right
+            over this scroll container — the extra bottom padding lets the
+            content scroll PAST the pill so it never hides the last row. */}
+        <main className="min-w-0 flex-1 overflow-auto pb-24">
           {tab === 'compare' ? (
             <CompareGrid
               visible={visible}
@@ -374,6 +428,7 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
 
       <GallerySwitcher
         items={items}
+        allItems={allItems()}
         curId={curId}
         curIdx={items.findIndex(i => i.id === curId)}
         immersive={immersive}
@@ -384,6 +439,14 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
         onExitImmersive={() => { setImmersive(false) }}
         onToggleImmersive={() => { setImmersive(v => !v) }}
         onReset={reset}
+        onGlobal={onGlobal}
+        globalActive={globalId === curId}
+        groups={favGroups}
+        onAddGroup={addGroup}
+        onRenameGroup={renameGroup}
+        onRemoveGroup={removeGroup}
+        onAssignGroup={assignGroup}
+        onUnassignGroup={unassignGroup}
       />
     </div>
   )
