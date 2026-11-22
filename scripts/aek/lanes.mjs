@@ -59,7 +59,7 @@ import {
 } from '../../packages/aek/base/coraek/lanes.mjs'
 import { isPidAlive, readSlotLock } from '../../packages/aek/base/coraek/slot-lock.mjs'
 import { resolveAekRoot } from '../../packages/aek/base/coraek/home.mjs'
-import { slotConfig, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
+import { SLOT_NAMES, slotConfig, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(SCRIPT_DIR, '..', '..')
@@ -151,18 +151,23 @@ function preflightLanes(name, expectedPid) {
 // ---------------------------------------------------------------- list
 
 /**
- * The dev-variant shell binaries that may be running: the built-in next
- * slot's dev bundle + every registered lane's dev bundle. The production
- * install (Applications dir) is deliberately EXCLUDED — `shell` only
- * arbitrates among dev variants (m02603).
- * @returns {string[]} absolute paths of dev-variant shell binaries.
+ * Every AEK desktop shell binary that may be running: the production
+ * installs of the built-in slots (Applications dir) + every built-in slot's
+ * dev bundle + every registered lane's dev bundle. m02603/m03270 rule: the
+ * AEK desktop is GLOBALLY exclusive — at most one instance of ANY kind at a
+ * time — so `shell` terminates all of these, production included, before it
+ * launches the requested lane shell.
+ * @returns {string[]} absolute paths of shell main executables.
  */
-function devVariantShellBinaries() {
+function allShellBinaries() {
   const paths = []
-  try {
-    const next = slotConfig('next')
-    paths.push(join(slotHome('next'), 'dev', `${next.devAppName}.app`, 'Contents', 'MacOS', next.devAppName))
-  } catch { /* next slot not resolvable — nothing to kill there */ }
+  for (const slot of SLOT_NAMES) {
+    try {
+      const cfg = slotConfig(slot)
+      paths.push(join(homedir(), 'Applications', `${cfg.productName}.app`, 'Contents', 'MacOS', cfg.productName))
+      paths.push(join(slotHome(slot), 'dev', `${cfg.devAppName}.app`, 'Contents', 'MacOS', cfg.devAppName))
+    } catch { /* slot not resolvable — nothing to kill there */ }
+  }
   for (const name of listLanes()) {
     try {
       const cfg = laneConfig(name)
@@ -173,12 +178,13 @@ function devVariantShellBinaries() {
 }
 
 /**
- * Terminate every running dev-variant shell (exclusive-shell discipline).
- * SIGTERM first, SIGKILL whatever is stuck after ~5s.
+ * Terminate every running AEK desktop shell, production install included
+ * (global exclusive-shell discipline, m02603/m03270). SIGTERM first,
+ * SIGKILL whatever is stuck after ~5s.
  * @returns {number[]} the pids terminated (or still pending at SIGKILL).
  */
-function killDevShells() {
-  const paths = devVariantShellBinaries()
+function killAllShells() {
+  const paths = allShellBinaries()
   if (paths.length === 0) return []
   const ps = spawnSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' })
   const pids = []
@@ -190,7 +196,7 @@ function killDevShells() {
   for (const pid of pids) {
     try {
       process.kill(pid, 'SIGTERM')
-      console.log(`[lanes] terminated dev shell pid ${pid}`)
+      console.log(`[lanes] terminated shell pid ${pid}`)
     } catch { /* already gone */ }
   }
   const deadline = Date.now() + 5000
@@ -439,7 +445,7 @@ function laneOps(name, verb) {
   const sh = takeArgs('shell')
   if (sh !== null) {
     const name = sh[0]
-    if (!CONFIRMED) fail(`"shell" terminates every OTHER dev-variant shell, then launches the "${name}" dev shell exclusively. Re-run with --yes.`)
+    if (!CONFIRMED) fail(`"shell" terminates EVERY running AEK desktop shell (production install included), then launches the "${name}" dev shell exclusively (global exclusive-shell rule, m03270). Re-run with --yes.`)
     if (!isLane(name)) fail(`lane "${name}" is not registered (run: lanes.mjs new ${name} --yes)`)
     const entry = readLanesRegistry().lanes[name]
     if (!entry) fail(`lane "${name}" is not registered`)
@@ -452,7 +458,7 @@ function laneOps(name, verb) {
     if (!waitForPort(cfg.webPort, 1000)) {
       fail(`lane "${name}" web is not up on ${cfg.webPort} — run \`lanes.mjs start ${name} --yes\` first`)
     }
-    const killed = killDevShells()
+    const killed = killAllShells()
     preflightLanes(name, process.pid)
     // Idempotent cold-start guards (desktop v0 tsc, typert, …) — the shell boot
     // needs lib/main/index.js even though `start` only warms the backend.

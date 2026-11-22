@@ -13,22 +13,28 @@
  *
  * Usage (no flags = read-only report, zero side effects, always exit 0):
  *   node scripts/aek/shell-instances.mjs            # report
- *   node scripts/aek/shell-instances.mjs --check   # exit 1 when a slot has >1 shell main
+ *   node scripts/aek/shell-instances.mjs --check   # exit 1 when 2+ AEK shell mains run (global)
  *   node scripts/aek/shell-instances.mjs --json    # machine-readable
  *
  * Safety conventions:
  *   - Read-only; it never signals or kills anything.
  *   - No hardcoded data-root paths: the slot dev-variant location comes from
  *     the slot manifest (`@cheezmil/coraek/slots`), the production install
- *     lives in the user's Applications dir. No machine-specific values in
- *     source.
+ *     lives in the user's Applications dir, and lane dev-variant bundles live
+ *     under each lane data root (`@cheezmil/coraek/lanes`). No machine-
+ *     specific values in source.
  *   - ps-based, POSIX only; Windows is reported as skipped, not failed.
+ *
+ * The "only one AEK.app instance" rule is GLOBAL (m02603/m03270): at most ONE
+ * AEK desktop shell main of ANY kind (production / dev-variant / lane) at a
+ * time. `--check` exits 1 when two or more shell mains are running.
  */
 import { execFileSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import { SLOTS, slotConfig, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
+import { listLanes, laneConfig, laneHome } from '../../packages/aek/base/coraek/lanes.mjs'
 
 const argv = process.argv.slice(2)
 const CHECK = argv.includes('--check')
@@ -55,6 +61,18 @@ function bundleMap() {
       family: 'dev-variant',
       slot,
     })
+  }
+  // Lanes are dev-only (no production install): each registered lane has a
+  // dev-variant bundle under its own data root.
+  for (const name of listLanes()) {
+    try {
+      const cfg = laneConfig(name)
+      map.push({
+        bundle: join(laneHome(name), 'dev', `${cfg.devAppName}.app`),
+        family: 'lane-dev',
+        slot: name,
+      })
+    } catch { /* lane no longer registered */ }
   }
   return map
 }
@@ -99,7 +117,7 @@ function scan() {
       if (!known) {
         // Unknown AEK-family bundle: still report it (as external), but only
         // when it looks like a shell main, not a helper or a plugin node.
-        if (!/AEK( Next)?\.app\/Contents\/MacOS\/AEK( Next)?(\s|$)/.test(command)) continue
+        if (!/AEK( [A-Za-z0-9]+)?\.app\/Contents\/MacOS\/AEK( [A-Za-z0-9]+)?(\s|$)/.test(command)) continue
       }
       found.push({
         pid,
@@ -109,7 +127,7 @@ function scan() {
       })
     } else {
       if (command.includes('--type=')) continue
-      if (!/AEK( Next)?\.exe(\s|$)/.test(command)) continue
+      if (!/AEK( [A-Za-z0-9]+)?\.exe(\s|$)/.test(command)) continue
       const known = map.find((entry) => command.includes(entry.bundle))
       found.push({
         pid,
@@ -153,7 +171,13 @@ function main() {
       }
       return 1
     }
-    console.log('check: at most one shell main per slot — OK')
+    if (instances.length > 1) {
+      console.error(
+        `  GLOBAL: ${String(instances.length)} AEK desktop shells running concurrently (${instances.map((i) => i.pid).join(', ')}) — at most one instance of any kind is allowed (production / dev-variant / lane). Kill all but one.`,
+      )
+      return 1
+    }
+    console.log('check: at most one AEK shell instance total — OK')
   }
   return 0
 }
