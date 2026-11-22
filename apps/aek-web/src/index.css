@@ -651,67 +651,21 @@ html.aek-in-shell {
     transition: opacity var(--aek-sidebar-duration) var(--aek-ease-out);
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .aek-rail-fold,
-    .aek-rail-fold ul {
-      transition-duration: var(--aek-sidebar-duration) !important;
-    }
-
-    /* 2026-11-19: the MAIN rail (first-level sidebar) show/stow is the SAME
-       functional fold as the plugin rail — it must glide under the system
-       "reduce motion" setting too, not snap: the rail's width / padding
-       glide plus the label + row choreography that makes the stow readable.
-       `aek-rail-fold` now lives on BOTH rails; the descendant selectors
-       below only exist inside the MAIN rail, so this block exempts the
-       first-level fold without touching the plugin rail. Hover decoration
-       (row color, the floating action box, search focus) stays crushed. */
-    .aek-rail-fold .aek-label-fade {
-      transition-duration:
-        150ms,
-        var(--aek-sidebar-duration),
-        var(--aek-sidebar-duration),
-        var(--aek-sidebar-duration),
-        0s !important;
-    }
-    .aek-rail-fold .aek-label-fade-hidden {
-      transition-duration:
-        140ms,
-        var(--aek-sidebar-duration),
-        var(--aek-sidebar-duration),
-        var(--aek-sidebar-duration),
-        0s !important;
-      /* The visibility flip must still wait for the width animation. */
-      transition-delay:
-        0s, 0s, 0s, 0s, var(--aek-sidebar-duration) !important;
-    }
-    /* Rows: the hover color / background stays snapped; the fold geometry
-       (gap / padding re-centering) glides. */
-    .aek-rail-fold .aek-rail-item {
-      transition-duration:
-        0.01ms, 0.01ms, var(--aek-sidebar-duration), var(--aek-sidebar-duration) !important;
-    }
-    .aek-rail-fold .aek-brand-button,
-    .aek-rail-fold .aek-sidebar-body,
-    .aek-rail-fold .aek-sidebar-header {
-      transition-duration: var(--aek-sidebar-duration) !important;
-    }
-    .aek-rail-fold .aek-drawer-group-compact::before {
-      transition-duration: 140ms !important;
-      /* The 200ms wait for the rail to stop narrowing (see the rule above). */
-      transition-delay: 200ms !important;
-    }
-  }
+  /* BK round (m05103): the system `prefers-reduced-motion` crush that used
+     to live here (and at the bottom of this file) is GONE — AEK's motion
+     deliberately does not follow the OS setting (the user's red line: "一切
+     动画效果别遵循系统设置"; a macOS "reduce motion" user must get the same
+     AEK as a Windows user). The ONLY crush left in this file is the
+     app-owned `aek-no-motion` switch below. The old fold-exemption rules in
+     this media block (label / row choreography gliding under the OS crush)
+     are moot now that nothing follows the OS. */
 
   /* 2026-11-19: the app-level MOTION kill switch (`aek-home.disableMotion`,
      the 基础设置 → 动态效果 row): the console root carries `aek-no-motion`
      and every transition / animation / delay in the whole app collapses to
-     0.01ms — the same shape as the SYSTEM crush at the bottom of this
-     file, but owned by AEK, not the OS (for cross-platform consistency AEK
-     ignores `prefers-reduced-motion`; this row is the user's own switch).
-     Placed AFTER the media exemption block above on purpose: the fold-exempt
-     rules there are equal-specificity `!important`, and a later rule wins
-     the tie — so turning the app switch on crushes the glide even on a
-     machine where the OS reduce-motion is on. */
+     0.01ms. BK round (m05103): with the system crush removed, this is now
+     the single place in the file that can crush motion — the user's own
+     explicit switch, and it must win on every OS. */
   .aek-no-motion *,
   .aek-no-motion *::before,
   .aek-no-motion *::after {
@@ -721,12 +675,12 @@ html.aek-in-shell {
     animation-delay: 0s !important;
   }
 
-  /* The 2026-11-19 first-level fold exemption (and its plugin-rail twin) is
-     a TWO-class `!important` rule, so it outranks the `*` crush above on the
-     elements it targets — with the OS reduce-motion setting on, the labels
-     would keep gliding even with the app switch on. The switch is the
-     user's explicit choice and must win: re-crush exactly those selectors
-     at higher specificity (three classes beat two). */
+  /* BK round (m05103): the two-class fold-exemption rules that used to make
+     this three-class re-crush necessary (the old system media block, now
+     deleted) are gone — the `*` crush above already wins over the plain
+     fold transitions. The re-crush is kept as a defensive guard: if a
+     future two-class `!important` fold rule lands, the user's explicit
+     switch still wins (three classes beat two). */
   .aek-no-motion .aek-rail-fold,
   .aek-no-motion .aek-rail-fold ul,
   .aek-no-motion .aek-rail-fold .aek-label-fade,
@@ -750,8 +704,8 @@ html.aek-in-shell {
      so the fading card could never be grabbed. The CSS now owns only the
      fade itself. */
   /* BJ round (m04565): the fade duration is the user setting
-     `aek-home.animHoverFade` (基础设置 → 动画): sidebarCssVars writes the
-     `--aek-row-actions-fade` CSS variable (default 200ms = a perceptible
+     `aek-home.animHoverFade` (基础设置 → 动画): the periodic writer in anim-vars.ts keeps the
+     `--aek-row-actions-fade` CSS variable current (default 200ms = a perceptible
      渐隐渐现; 0 = instant). The no-fade rail setting below still wins. */
   .aek-row-actions {
     transition: opacity var(--aek-row-actions-fade, 200ms) ease;
@@ -872,9 +826,11 @@ html.aek-in-shell {
     animation: aek-shimmer 1.4s ease infinite;
     border-radius: var(--aek-radius-sm);
   }
-  @media (prefers-reduced-motion: reduce) {
-    .aek-skeleton { animation: none; }
-  }
+  /* BK round (m05103): the `prefers-reduced-motion` kill that used to live
+     here (`.aek-skeleton { animation: none }`) is gone — AEK deliberately
+     does NOT follow the OS motion setting (user red line: "一切动画效果别
+     遵循系统设置"). The shimmer now only stops when the user's own app
+     switch (the `aek-no-motion` crush above) turns motion off. */
 }
 
 @keyframes aek-spin {
@@ -928,19 +884,11 @@ html.aek-in-shell {
   }
 }
 
-/* Respect users who ask for no motion: collapse every transition/delay and
-   kill the shimmer + tier entrance (global, not per-class, so new motion
-   gets covered without maintenance). */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition-duration: 0.01ms !important;
-    /* Delays are part of the choreography (the rail rule waits for the
-       width animation), so they have to collapse too or the rule shows up
-       260ms late with no animation to justify the wait. */
-    transition-delay: 0s !important;
-    animation-duration: 0.01ms !important;
-    animation-delay: 0s !important;
-  }
-}
+/* BK round (m05103): the global SYSTEM crush that used to live here
+   (`@media (prefers-reduced-motion: reduce) { *,*::before,*::after {
+   transition/animation-duration: 0.01ms !important; … } }`) is REMOVED —
+   the user's red line: "一切动画效果别遵循系统设置" (AEK's motion must not
+   follow the OS `reduce motion` setting; a user on macOS with it ON must
+   get the same AEK as a user on Windows with it OFF). The only crush left
+   in this file is the app-owned `.aek-no-motion` block (the 基础设置 →
+   动态效果 switch), which is the user's own explicit choice. */

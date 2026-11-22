@@ -65,7 +65,8 @@ const NAV_ROW_DROP_AFTER = 'after:content-[""] after:absolute after:left-1 after
    (m03469): show / hide timing is the JS hover-intent grace in
    RowActionsFloat.tsx (the fade itself is CSS; its duration + the grace
    window are the `aek-home.animHoverFade` / `aek-home.animHoverGrace`
-   settings, 基础设置 → 动画, BJ round). */
+   settings, 基础设置 → 动画, BJ round). BK round (m05103): the card is
+   portaled to <body> so the rail can never clip or z-trap it. */
 const ROW_ICON_BUTTON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted cursor-pointer transition-[color,background-color,transform] duration-140 ease-aek hover:text-primary hover:bg-accent-soft'
 const LABEL_FADE = 'aek-label-fade'
 const LABEL_FADE_HIDDEN = 'aek-label-fade-hidden'
@@ -616,7 +617,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
             tail (the user: "别放到外面") — they live in ONE floating card
             that fades in on row hover (the base setting `navActionsFade`
             switches the fade on / off). Keyboard focus reveals it too. */}
-        <RowActionsFloat className={compact && 'hidden'} graceMs={animHoverGrace}>
+        <RowActionsFloat className={compact && 'hidden'} graceMs={animHoverGrace} rowId={entry.id}>
           {/* Q round: the refresh icon refreshes the page THIS row opens —
               even when that page is not active yet. */}
           <button

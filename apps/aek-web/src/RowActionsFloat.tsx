@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 
 /**
@@ -24,6 +25,20 @@ import { cn } from '@/lib/utils'
  * pointer leaves the row AND the card, so crossing the gap re-enters the
  * card and cancels the pending hide.
  *
+ * BK round (m05103 "悬浮框被遮住了"): the card is now PORTALED to
+ * `document.body` — a viewport-`fixed` card that stays a DOM child of its
+ * row is still painted inside that row's stacking / clipping context: the
+ * plugin sub-rail's `nav.aek-rail-fold` is `sticky` + `overflow:hidden`
+ * (its scroll container), so a card z-50 in there cannot beat the gallery
+ * content's sticky `z-10` section bar — verified by a CDP z-bump to 99999
+ * (still covered) and by releasing ancestors one by one (only releasing
+ * that nav un-clips the card). Portal to <body> puts the card in the root
+ * stacking context, where `fixed` + `z-50` really is on top of everything.
+ * The component keeps a zero-size ANCHOR in the row's own tree so the row
+ * element, `closest('.aek-nav-no-fade')` and the no-fade rail behavior all
+ * still resolve exactly as before; every event listener stays a plain DOM
+ * listener, so none of it is disturbed by the portal.
+ *
  * @module @cheezmil/aek-web/src/RowActionsFloat
  */
 
@@ -44,9 +59,36 @@ const OFF_SCREEN = { top: -9999, left: -9999 }
  */
 export const ROW_ACTIONS_HIDE_GRACE_MS = 350
 
-/** @param props - the optional className, the hover-grace window and the action buttons. */
-export function RowActionsFloat({ className, children, graceMs }: { className?: string; children: ReactNode; graceMs?: number }) {
+/**
+ * BK round: the card is portaled to <body>, so the row can no longer be
+ * reached via `card.parentElement`. The row is always the anchor's parent
+ * `li` (both call sites render the card directly inside their row) — with a
+ * `closest` fallback for deeper nesting.
+ */
+function rowOf(anchor: HTMLElement): HTMLElement | null {
+  const parent = anchor.parentElement
+  if (parent === null) return null
+  return parent.closest('li[data-panel], li[data-family]') ?? parent
+}
+
+/**
+ * @param props - className, the optional row id (BK: locates the portaled
+ * card via `data-aek-row-id`), the hover-grace window and the action buttons.
+ */
+export function RowActionsFloat({
+  className,
+  rowId,
+  children,
+  graceMs,
+}: {
+  className?: string
+  rowId?: string
+  children: ReactNode
+  graceMs?: number
+}) {
   const cardRef = useRef<HTMLDivElement>(null)
+  /** BK round: zero-size anchor that stays in the row's DOM tree (see header). */
+  const anchorRef = useRef<HTMLSpanElement>(null)
   const [pos, setPos] = useState(OFF_SCREEN)
   const [visible, setVisible] = useState(false)
   /**
@@ -63,8 +105,10 @@ export function RowActionsFloat({ className, children, graceMs }: { className?: 
   const grace = graceMs ?? ROW_ACTIONS_HIDE_GRACE_MS
   const place = useCallback((): void => {
     const card = cardRef.current
-    const row = card?.parentElement
-    if (row === null || card === null) return
+    const anchor = anchorRef.current
+    if (card === null || anchor === null) return
+    const row = rowOf(anchor)
+    if (row === null) return
     const r = row.getBoundingClientRect()
     const next = { top: r.top + r.height / 2, left: Math.min(r.right + 8, window.innerWidth - 180) }
     setPos(prev => (prev.top === next.top && prev.left === next.left ? prev : next))
@@ -101,7 +145,9 @@ export function RowActionsFloat({ className, children, graceMs }: { className?: 
   const scheduleHide = useCallback((): void => {
     if (hideTimer.current !== null) window.clearTimeout(hideTimer.current)
     // No-fade rail setting (`.aek-nav-no-fade` on an ancestor): instant hide.
-    if (cardRef.current?.closest('.aek-nav-no-fade') !== null) {
+    // BK round: the card is portaled to <body>, so `closest` must run from
+    // the in-row anchor, not the card.
+    if (anchorRef.current?.closest('.aek-nav-no-fade') !== null) {
       hideTimer.current = null
       hideInstant()
       return
@@ -115,8 +161,10 @@ export function RowActionsFloat({ className, children, graceMs }: { className?: 
 
   useEffect((): (() => void) | undefined => {
     const card = cardRef.current
-    const row = card?.parentElement
-    if (card === null || row === null) return
+    const anchor = anchorRef.current
+    if (card === null || anchor === null) return
+    const row = rowOf(anchor)
+    if (row === null) return
     // BJ round (m04661): register this card so every OTHER option row can
     // evict it the instant the pointer lands on that row ("不用动画，直接
     // 消失"). One module-level Set; entries self-clean on unmount.
@@ -134,8 +182,10 @@ export function RowActionsFloat({ className, children, graceMs }: { className?: 
       show()
     }
     const onRowFocusOut = (event: FocusEvent): void => {
-      // The card is a DOM child of the row — focus moving onto it stays "inside".
-      if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) return
+      // The card is portaled OUT of the row (BK round), so "inside" now
+      // means the row OR the card: focus moving between them stays inside.
+      const next = event.relatedTarget
+      if (next instanceof Node && (row.contains(next) || card.contains(next))) return
       scheduleHide()
     }
     card.addEventListener('mouseenter', show)
@@ -161,13 +211,22 @@ export function RowActionsFloat({ className, children, graceMs }: { className?: 
   }, [place, show, scheduleHide, hideInstant])
 
   return (
-    <div
-      ref={cardRef}
-      className={cn(ROW_ACTIONS_CARD, visible ? 'opacity-100' : 'opacity-0 pointer-events-none', instant ? 'transition-none' : '', className)}
-      style={pos}
-    >
-      {children}
-    </div>
+    <>
+      {/* BK round: the row-side anchor — zero-size, stays in the row tree
+          so `closest` + row resolution keep working for the portaled card. */}
+      <span ref={anchorRef} style={{ display: 'none' }} />
+      {createPortal(
+        <div
+          ref={cardRef}
+          data-aek-row-id={rowId}
+          className={cn(ROW_ACTIONS_CARD, visible ? 'opacity-100' : 'opacity-0 pointer-events-none', instant ? 'transition-none' : '', className)}
+          style={pos}
+        >
+          {children}
+        </div>,
+        document.body,
+      )}
+    </>
   )
 }
 

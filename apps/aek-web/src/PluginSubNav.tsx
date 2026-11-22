@@ -350,7 +350,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                   <span className={cn('min-w-0 overflow-hidden text-ellipsis', labelsHidden && 'hidden')}>{route.label}</span>
                 </button>
                 {onRefresh !== undefined ? (
-                  <RowActionsFloat graceMs={animHoverGrace}>
+                  <RowActionsFloat graceMs={animHoverGrace} rowId={family + '/' + route.id}>
                     <button
                       type="button"
                       className={RAIL_ROW_ICON_BUTTON}
@@ -411,7 +411,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                             {row.badge !== undefined && row.badge !== null && row.badge > 0 ? <span className={cn('min-w-4.5 flex-none rounded-full bg-surface-hover px-1.5 text-aek-11 tabular-nums text-text-muted', labelsHidden && 'hidden')}>{String(row.badge)}</span> : null}
                           </button>
                           {onRefresh !== undefined ? (
-                            <RowActionsFloat graceMs={animHoverGrace}>
+                            <RowActionsFloat graceMs={animHoverGrace} rowId={family + '/' + row.id}>
                               <button
                                 type="button"
                                 className={RAIL_ROW_ICON_BUTTON}

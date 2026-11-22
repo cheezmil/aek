@@ -22,8 +22,9 @@ const port = process.argv[2] || process.env.AEK_CDP_PORT || '1691'
 const panel = process.argv[3] || 'skills'
 
 const res = await fetch(`http://127.0.0.1:${port}/json`)
-const targets = await res.json()
-const page = targets.find(t => t.type === 'page')
+// BK round: CDP lists DevTools pages too — pick the APP page target only.
+const targets = (await res.json()).filter(t => t.type === 'page' && !/^devtools:|^about:|^chrome:/.test(t.url || ''))
+const page = targets.find(t => /aek(-next)?\.localhost|127\.0\.0\.1/.test(t.url || '')) ?? targets[0]
 if (!page) {
   console.error(`hover-grace-probe: no page target on 127.0.0.1:${port} (is the shell running?)`)
   process.exit(1)
@@ -33,7 +34,9 @@ const expression = `
 (async () => {
   const row = document.querySelector('li[data-panel="${panel}"]')
   if (!row) return { error: 'row not found', panel: "${panel}", url: location.href }
-  const card = row.querySelector('.aek-row-actions')
+  // BK round: the card is portaled to <body> (RowActionsFloat), so it is no
+  // longer a DOM descendant of its row — locate it by the rowId attribute.
+  const card = document.querySelector('.aek-row-actions[data-aek-row-id="${panel}"]')
   if (!card) return { error: 'card not found' }
   const sample = () => ({
     cls: card.className,
@@ -42,7 +45,9 @@ const expression = `
     opacity: getComputedStyle(card).opacity,
   })
   const wait = ms => new Promise(r => setTimeout(r, ms))
-  const report = { url: location.href, noFade: !!card.closest('.aek-nav-no-fade') }
+  // no-fade rail behavior is resolved from the ROW tree (the card lives on
+  // <body>), so probe the row, not the card.
+  const report = { url: location.href, noFade: !!row.closest('.aek-nav-no-fade') }
 
   // 1. enter the row -> card shows (150ms fade).
   row.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }))
