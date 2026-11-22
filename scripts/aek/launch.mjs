@@ -10,6 +10,8 @@
  * Slots (names are fixed; no bundle id is ever swapped):
  *   aek   -> ~/.aek/current   web 1685 / cdp 1686
  *   next  -> ~/.aek/next      web 1687 / cdp 1688
+ *   <lane> -> ~/.aek/lanes/<name> (registered lanes, coraek/lanes; ports from
+ *              the 1690–1699 pool)
  * `~/.aek` is a pure container: one directory per slot plus `backups/`. The
  * container comes from `AEK_ROOT` (default `~/.aek`) and is forwarded to the
  * child, so a process can address the SIBLING slot without guessing from its
@@ -39,7 +41,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveAekHome, resolveAekRoot } from '../../packages/aek/base/coraek/home.mjs'
 import { assertBuildRules } from './verify-build-rules.mjs'
-import { SLOTS, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
+import { slotConfig, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NODE = process.execPath
@@ -79,20 +81,21 @@ Commands:
   data-root       scripts/aek/data-root.mjs (status / plan / copy)
   slots           scripts/aek/slots.mjs (check / only / both / stop-all / warm)
 
-Slots: aek (default) -> ~/.aek, next -> ~/.aek-next; ports 1685/1686 vs 1687/1688.`
+Slots: aek (default) -> ~/.aek, next -> ~/.aek-next; ports 1685/1686 vs 1687/1688.
+        Registered lanes are accepted too (node scripts/aek/lanes.mjs list).`
 
 /** @param {string} cmd @param {string[]} args @returns {[string, string[]] | undefined} */
 function invocation(cmd, args) {
   switch (cmd) {
     case 'aek': return [NODE, [AEK_BIN, ...args]]
-    // `--trusted-host` registers the slot's browser alias (see SLOTS webHost):
+    // `--trusted-host` registers the slot's browser alias (see slotConfig webHost):
     // shells load the combo via `http://<webHost>:<port>` for site-zoom
     // isolation, so the gateway's Host/Origin fence must accept that alias or
     // every `remote.mux` WebSocket handshake from the combo is rejected with
     // 403 and the connection layer retries forever.
-    case 'web': return [NODE, [AEK_BIN, 'web', '--port', String(SLOTS[slot].webPort), '--trusted-host', SLOTS[slot].webHost, ...args]]
-    case 'dev-web': return [TSX, [join(ROOT, 'scripts', 'dev-web.ts'), '--poll', '--trusted-host', SLOTS[slot].webHost, ...args]]
-    case 'inspector': return [NODE, [AEK_BIN, 'web', '--patch', './packages/experimental/inspector/cordis.source.patch.yml', '--trusted-host', SLOTS[slot].webHost, ...args]]
+    case 'web': return [NODE, [AEK_BIN, 'web', '--port', String(slotCfg.webPort), '--trusted-host', slotCfg.webHost, ...args]]
+    case 'dev-web': return [TSX, [join(ROOT, 'scripts', 'dev-web.ts'), '--poll', '--trusted-host', slotCfg.webHost, ...args]]
+    case 'inspector': return [NODE, [AEK_BIN, 'web', '--patch', './packages/experimental/inspector/cordis.source.patch.yml', '--trusted-host', slotCfg.webHost, ...args]]
     case 'demo-ptc': return [NODE, [join(ROOT, 'scripts', 'demo-ptc.mjs'), ...args]]
     case 'verify-web-ui': return [NODE, [join(HERE, 'verify-web-ui.mjs'), ...args]]
     case 'start-dev': return [NODE, [join(HERE, 'start-dev.mjs'), ...args]]
@@ -117,8 +120,16 @@ for (let i = 0; i < argv.length; i++) {
   else { rest = argv.slice(i); break }
 }
 
-if (!SLOTS[slot]) {
-  console.error(`Unknown slot: ${slot}. Use "aek" or "next".`)
+// BF-4: the slot may also be a registered lane (coraek/lanes) — the coraek
+// slotConfig resolver covers builtins + registry, garbage still rejects.
+let slotCfg
+try {
+  slotCfg = slotConfig(slot)
+} catch {
+  slotCfg = undefined
+}
+if (!slotCfg) {
+  console.error(`Unknown slot: ${slot}. Use "aek", "next" or a registered lane (node scripts/aek/lanes.mjs list).`)
   process.exit(2)
 }
 if (rest.length === 0) {
@@ -142,8 +153,8 @@ env.AEK_ROOT = resolveAekRoot(env)// Pin unconditionally: an inherited DSH_HOME 
 // runtimes at that home. AEK's data root is AEK_HOME or the default.
 env.DSH_HOME = env.AEK_HOME
 env.AEK_SLOT ??= slot
-env.AEK_WEB_PORT ??= String(SLOTS[slot].webPort)
-env.AEK_CDP_PORT ??= String(SLOTS[slot].cdpPort)
+env.AEK_WEB_PORT ??= String(slotCfg.webPort)
+env.AEK_CDP_PORT ??= String(slotCfg.cdpPort)
 // Only the dev loop. The host half reads this flag to decide whether the AEK
 // packages' build outputs are watched for in-process replacement; a plain
 // `web` run must never hold such a watcher.
