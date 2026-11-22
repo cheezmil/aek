@@ -25,6 +25,8 @@
  *   "reveal all" click. The only literal-returning route.
  * - `GET  /api/aek/preferences`     → the host-stored UI settings (C11)
  * - `POST /api/aek/preferences`     → `{ key, value }` upserts one setting
+ * - `GET  /api/aek/web-storage`     → the host-stored Web Storage map (C11+, BI)
+ * - `POST /api/aek/web-storage`     → `{ entries }` replaces the whole map
  * - `GET  /api/aek/inventory`        → real AEK package versions + dev/npm kind
  *
  * This plugin owns all host routes the AEK console reads. The inventory route
@@ -68,6 +70,7 @@ import { registerRanking } from './ranking.ts'
 import { KeyPool } from './key-pool.ts'
 import type { RecycleEntry } from './key-pool.ts'
 import { readPrefs, registerPreferences } from './preferences.ts'
+import { registerWebStorage } from './web-storage.ts'
 import { registerReleaseState } from './release-state.ts'
 import { registerConsole } from './console.ts'
 
@@ -744,6 +747,10 @@ export function apply(ctx: Context): void {
   registerRuntime(ctx)
   registerInstanceControl(ctx)
   registerPreferences(ctx)
+  // BI round: the web console's window.localStorage is auto-redirected to the
+  // data-root yml (see host-storage.ts in @cheezmil/aek-web). Plugin code
+  // keeps calling localStorage.*; this route is where the values land.
+  registerWebStorage(ctx)
   registerReleaseState(ctx)
   registerConsole(ctx)
   // Prompt Manager / Skill Manager are not mounted in the web profile, so

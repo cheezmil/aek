@@ -145,7 +145,16 @@ function parseScalar(raw) {
   if (/^-?\d+$/u.test(text)) return Number.parseInt(text, 10)
   if (/^-?\d*\.\d+$/u.test(text)) return Number.parseFloat(text)
   if ((text.startsWith('"') && text.endsWith('"') && text.length > 1)) {
-    return text.slice(1, -1).replace(/\\"/gu, '"')
+    // BI round: a double-quoted scalar is a JSON string — JSON escapes
+    // (\", \\, \n, \uXXXX) are valid in YAML double-quoted style too, and
+    // JSON.parse round-trips all of them. The web-storage dumper writes
+    // exactly these scalars; the legacy slice+replace below is only a
+    // fallback for a double-quoted token that is not valid JSON.
+    try {
+      return JSON.parse(text)
+    } catch {
+      return text.slice(1, -1).replace(/\\"/gu, '"')
+    }
   }
   if ((text.startsWith("'") && text.endsWith("'") && text.length > 1)) {
     return text.slice(1, -1).replace(/''/gu, "'")
@@ -199,10 +208,40 @@ export function parseYamlSubset(text, file = '<manifest>') {
       if (row.text.startsWith('- ')) {
         throw new SyntaxError(`${file}:${row.line}: 同一层混用了映射和列表`)
       }
-      const match = /^([^:]+):(?:\s+(.*))?$/u.exec(row.text)
-      if (!match) throw new SyntaxError(`${file}:${row.line}: 期望 "key: value"，实际 "${row.text}"`)
-      const key = String(parseScalar(match[1].trim()) ?? '').trim()
-      const rest = (match[2] ?? '').trim()
+      let key
+      let rest
+      if (row.text.startsWith('"')) {
+        // BI round: a double-quoted key (`"a:b": "v"`) — the plain `[^:]+`
+        // regex below would stop at the colon INSIDE the quotes. Scan the
+        // JSON-quoted token (honouring \" escapes), then expect `:`.
+        let i = 1
+        let token = '"'
+        while (i < row.text.length) {
+          const ch = row.text[i]
+          if (ch === '\\' && i + 1 < row.text.length) {
+            token += row.text.slice(i, i + 2)
+            i += 2
+            continue
+          }
+          token += ch
+          i += 1
+          if (ch === '"') break
+        }
+        if (!token.endsWith('"')) {
+          throw new SyntaxError(`${file}:${row.line}: 双引号键没有闭合（"${row.text}"）`)
+        }
+        const after = /^\s*:(?:\s+(.*))?$/u.exec(row.text.slice(i))
+        if (!after) {
+          throw new SyntaxError(`${file}:${row.line}: 期望 "key: value"，实际 "${row.text}"`)
+        }
+        key = String(parseScalar(token) ?? '')
+        rest = (after[1] ?? '').trim()
+      } else {
+        const match = /^([^:]+):(?:\s+(.*))?$/u.exec(row.text)
+        if (!match) throw new SyntaxError(`${file}:${row.line}: 期望 "key: value"，实际 "${row.text}"`)
+        key = String(parseScalar(match[1].trim()) ?? '').trim()
+        rest = (match[2] ?? '').trim()
+      }
       cursor++
       if (rest === '') {
         if (cursor < rows.length && rows[cursor].indent > indent) {

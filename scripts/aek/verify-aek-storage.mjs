@@ -19,10 +19,20 @@
  * documented throughout the codebase) are allowed — comments are stripped
  * before matching, so only CODE-POSITION usage counts.
  *
- * Scope: `packages/aek/**` and `apps/aek-desktop/src/**` (TS/TSX/JS/MJS),
- * excluding node_modules, build output and spec files. Upstream `apps/web`
- * test fixtures that seed `dsh.*` keys exercise the inherited DSH web app,
- * not AEK settings — out of scope on purpose.
+ * Scope: `packages/aek/**`, `apps/aek-desktop/src/**` and
+ * `apps/aek-web/**` (TS/TSX/JS/MJS), excluding node_modules, build output
+ * and spec files. Upstream `apps/web` test fixtures that seed `dsh.*` keys
+ * exercise the inherited DSH web app, not AEK settings — out of scope on
+ * purpose.
+ *
+ * C11+ exemption (BI round): `apps/aek-web`'s `host-storage.ts` replaces
+ * `window.localStorage` with a proxy that persists to the host data root
+ * (`<AEK_HOME>/preferences/web-storage.yml` via `@cheezmil/coraek/web-storage`
+ * and the `/api/aek/web-storage` routes), so the remaining code-position
+ * calls in the two art-gallery modules are transparently redirected and no
+ * value ever lives in a browser profile. Those three files are exempt below
+ * with their reason; every OTHER file — including new plugin code — stays
+ * under the red line and must not call the Web Storage APIs.
  *
  * Read-only. Usage:
  *   node scripts/aek/verify-aek-storage.mjs          # run the gate
@@ -31,7 +41,7 @@
  * @module scripts/aek/verify-aek-storage
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -49,9 +59,27 @@ function findRoot(start) {
 }
 
 const ROOT = findRoot(HERE)
-const SCOPES = ['packages/aek', join('apps', 'aek-desktop', 'src')]
+const SCOPES = ['packages/aek', join('apps', 'aek-desktop', 'src'), join('apps', 'aek-web')]
 const EXCLUDED_DIR = new Set(['node_modules', 'lib', 'dist', 'build', '__tests__', '.git'])
 const EXT = new Set(['.ts', '.tsx', '.js', '.mjs'])
+
+/**
+ * C11+ exemption (BI round): files whose `localStorage` calls are transparently
+ * redirected to the host data root by the `host-storage.ts` proxy — the values
+ * land in `<AEK_HOME>/preferences/web-storage.yml`, never in a browser profile.
+ * The exemptions are per-file and listed here on purpose: anything else that
+ * calls the Web Storage APIs is a red-line violation.
+ * @type {Record<string, string>}
+ */
+const EXEMPT_FILES = {
+  [join('apps', 'aek-web', 'src', 'host-storage.ts')]:
+    'the redirect proxy itself — its one native read is the legacy seed',
+  [join('apps', 'aek-web', 'src', 'webui-art-gallery', 'spec.ts')]:
+    'favorites key goes through the host-storage proxy (C11+)',
+  [join('apps', 'aek-web', 'src', 'webui-art-gallery', 'artGlobalTheme.ts')]:
+    'skin key goes through the host-storage proxy (C11+)',
+}
+const EXEMPT = new Set(Object.keys(EXEMPT_FILES).map((p) => resolve(ROOT, p)))
 
 /** @param {string} root @returns AEK-owned source files in scope. */
 function walk(root, out = []) {
@@ -125,10 +153,17 @@ const USAGE = /(?:localStorage|sessionStorage)\s*[.\[]|window\s*\[\s*['"](?:loca
 /** @type {string[]} */
 const violations = []
 let scanned = 0
+let exempted = 0
 for (const scope of SCOPES) {
   const base = join(ROOT, scope)
   if (!existsSync(base)) continue
   for (const file of walk(base)) {
+    if (EXEMPT.has(resolve(file))) {
+      // C11+ exemption: the call is redirected to the host data root by the
+      // proxy — allowed by architecture, tracked so the list stays explicit.
+      exempted += 1
+      continue
+    }
     scanned += 1
     const masked = maskNonCode(readFileSync(file, 'utf8'))
     masked.split('\n').forEach((line, n) => {
@@ -139,10 +174,10 @@ for (const scope of SCOPES) {
 
 if (violations.length > 0) {
   for (const v of violations) console.error(`  ✗ ${v}`)
-  console.error(`verify-aek-storage: FAIL — ${violations.length} Web Storage API use(s) in AEK-owned code. Settings belong on the host: /api/aek/preferences → <AEK_HOME>/preferences/ (no Electron, no localStorage).`)
+  console.error(`verify-aek-storage: FAIL — ${violations.length} Web Storage API use(s) in AEK-owned code. Settings belong on the host: /api/aek/preferences or the C11+ web-storage redirect → <AEK_HOME>/preferences/ (no Electron, no browser localStorage).`)
   process.exit(1)
 }
 if (!process.argv.includes('--quiet')) {
-  console.log(`verify-aek-storage: OK — no Web Storage API use in AEK-owned product source (${scanned} files; scopes: ${SCOPES.join(', ')}).`)
+  console.log(`verify-aek-storage: OK — no unexempted Web Storage API use in AEK-owned product source (${scanned} files scanned, ${exempted} C11+ exemption(s); scopes: ${SCOPES.join(', ')}).`)
 }
 process.exit(0)

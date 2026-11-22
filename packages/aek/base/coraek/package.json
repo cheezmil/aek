@@ -97,6 +97,10 @@
     "./logging": {
       "types": "./logging.d.mts",
       "default": "./logging.mjs"
+    },
+    "./web-storage": {
+      "types": "./web-storage.d.mts",
+      "default": "./web-storage.mjs"
     }
   },
   "dsh": {
@@ -165,7 +169,9 @@
     "build-flags.mjs",
     "build-flags.d.mts",
     "icon-sets.mjs",
-    "icon-sets.d.mts"
+    "icon-sets.d.mts",
+    "web-storage.mjs",
+    "web-storage.d.mts"
   ],
   "oclif": {
     "bin": "aek",
