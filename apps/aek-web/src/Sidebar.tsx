@@ -61,8 +61,9 @@ const NAV_ROW_DROP_AFTER = 'after:content-[""] after:absolute after:left-1 after
 /* BR round: the hover action card is a viewport-fixed float anchored to the
    row's RIGHT edge (+ 8px) by <RowActionsFloat> (it must never cover the
    option — the old in-row `right-0.5` card sat on top of the row, and
-   anything past the rail edge was clipped by `overflow-hidden`). Opacity /
-   pointer-events keep the `.aek-row-actions` timing in index.css. */
+   anything past the rail edge was clipped by `overflow-hidden`). BG round
+   (m03469): show / hide timing is the JS hover-intent grace in
+   RowActionsFloat.tsx (CSS only owns the 150ms opacity fade). */
 const ROW_ICON_BUTTON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted cursor-pointer transition-[color,background-color,transform] duration-140 ease-aek hover:text-primary hover:bg-accent-soft'
 const LABEL_FADE = 'aek-label-fade'
 const LABEL_FADE_HIDDEN = 'aek-label-fade-hidden'

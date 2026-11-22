@@ -735,17 +735,17 @@ html.aek-in-shell {
     transition-delay: 0s !important;
   }
 
-  /* BL round: the row-actions hover card fades in instantly on row hover /
-     focus, and fades out only 2.5s AFTER the pointer leaves (so it can be
-     reached); hovering the card itself keeps it alive. The base state
-     carries the 2.5s delay; the live states zero it out. */
+  /* BG round (m03469): the hover-intent linger moved into
+     RowActionsFloat.tsx — a JS grace timer (ROW_ACTIONS_HIDE_GRACE_MS) keeps
+     the card grabbable across the 8px gap between the row and the card, so
+     the user can move the cursor onto it and cancel the pending hide. The
+     BL-round CSS linger (2.5s `transition-delay` on the base state) was
+     unreachable: `:hover` is hit-test based, and `pointer-events` (not
+     transitionable) dropped to `none` the instant the show state released,
+     so the fading card could never be grabbed. The CSS now owns only the
+     fade itself. */
   .aek-row-actions {
-    transition: opacity 150ms ease 2.5s, translate 150ms ease 2.5s;
-  }
-  .group:hover .aek-row-actions,
-  .group:focus-within .aek-row-actions,
-  .aek-row-actions:hover {
-    transition-delay: 0s;
+    transition: opacity 150ms ease;
   }
 
   /* No-fade rail setting: the row-actions card shows/hides instantly. */
