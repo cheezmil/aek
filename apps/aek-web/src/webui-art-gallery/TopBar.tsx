@@ -18,7 +18,6 @@ export type GalleryTab = 'skill' | 'style' | 'compare'
 export interface TopBarProps {
   tab: GalleryTab
   onTab: (tab: GalleryTab) => void
-  skillCount: number
   styleCount: number
   search: string
   onSearch: (value: string) => void
@@ -48,14 +47,13 @@ const TabPill = ({
 )
 
 export function TopBar({
-  tab, onTab, skillCount, styleCount, search, onSearch, searchRef, stat,
+  tab, onTab, styleCount, search, onSearch, searchRef, stat,
 }: TopBarProps): JSX.Element {
   const { t } = useI18n()
   return (
     <header className="flex flex-none items-center gap-3 border-b bg-background px-5 py-2.5">
       <span className="flex-none text-aek-13 font-bold tracking-wide">{t('art.title')}</span>
       <div className="flex items-center gap-1.5">
-        <TabPill active={tab === 'skill'} label={t('art.tab.skill')} count={skillCount} onClick={() => { onTab('skill') }} />
         <TabPill active={tab === 'style'} label={t('art.tab.style')} count={styleCount} onClick={() => { onTab('style') }} />
         <TabPill active={tab === 'compare'} label={t('art.tab.compare')} onClick={() => { onTab('compare') }} />
       </div>

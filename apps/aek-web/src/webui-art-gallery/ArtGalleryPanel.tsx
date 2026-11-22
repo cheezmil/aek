@@ -76,8 +76,8 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     [],
   )
 
-  const [tab, setTab] = useState<GalleryTab>('skill')
-  const [src, setSrc] = useState<Family>('skill')
+  const [tab, setTab] = useState<GalleryTab>('style')
+  const [src, setSrc] = useState<Family>('style')
   const [repoFilter, setRepoFilter] = useState<string | null>(null)
   const [kindFilter, setKindFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -97,7 +97,10 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     const remembered = readCurId()
     if (valid(remembered)) return remembered
     if (valid(globalThemeId())) return globalThemeId() as string
-    return DEFAULT_SKILL
+    // BN round (m06297 ①): the gallery now defaults to the style family, so a
+    // fresh install (no remembered / no global skin) lands on the first style,
+    // not a skill id that the style family cannot resolve.
+    return styles[0]?.id ?? DEFAULT_SKILL
   })
   // BL round: persist the selected item on every change so it survives restarts.
   useEffect(() => { writeCurId(curId) }, [curId])
@@ -299,7 +302,6 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
         <TopBar
           tab={tab}
           onTab={switchTab}
-          skillCount={skills.length}
           styleCount={styles.length}
           search={search}
           onSearch={setSearch}

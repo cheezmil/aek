@@ -8,11 +8,13 @@
  *
  * @module @cheezmil/aek-web/src/webui-art-gallery/Stage
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import { Icon } from '../Icons.tsx'
 import { useI18n } from '../i18n.tsx'
 import { cssSnippet, normRadius, usageDoc, type GalleryItem, type StageSpec, galleryItems, ALL_STYLE_KINDS } from './spec.ts'
+import { REPO_FALLBACK } from './data/skill-styles.ts'
+import { useConsoleFacts } from '../useConsoleFacts.ts'
 import { copyToClipboard } from '../clipboard.ts'
 import { ComponentsPanel, MotionPanel } from './StagePanels.tsx'
 import { cn } from '@/lib/utils'
@@ -53,6 +55,16 @@ const NAVS: { key: string; icon: 'layout' | 'plugins' | 'zap' | 'terminal' }[] =
 
 const CHART = [38, 62, 47, 88, 56, 73, 34, 91]
 
+/**
+ * BN round (m06297 ⑤): the on-disk usage-record file name for one item —
+ * the SAME sanitization scripts/aek/seed-art-gallery-usage.mjs uses, so the
+ * path we show is byte-for-byte the file the seeder writes.
+ */
+const sanitizeItem = (id: string): string => id.replace(/::/g, '__').replace(/[:/\\]/g, '_')
+
+/** The shelf directory name the seeder writes into (host-side, sibling of aek-usage). */
+const ART_SHELF = 'aek-webui-art-gallery'
+
 /** Composition-table rows: one per style kind (incl. AEK base) + the colored-entry count. */
 const KIND_STYLE_ITEMS = galleryItems().styles
 const KIND_ROWS = ALL_STYLE_KINDS.map(({ id, name, src, color, count }) => ({
@@ -89,6 +101,18 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
 
   const isSkill = item.kind === 'skill'
   const swatches = [spec.p[0], spec.p[1], spec.p[3], spec.p[4]]
+
+  // BN round (m06297 ⑤): the provenance facts. The usage-record file path is
+  // derived from the host's own console facts (facts.skillPath = the aek-usage
+  // shelf under the slot data root) so no absolute path is ever hardcoded —
+  // it resolves per machine, exactly where the seeder wrote the .md.
+  const { facts } = useConsoleFacts()
+  const repoMeta = item.repoId ? REPO_FALLBACK[item.repoId] : undefined
+  const usageDocPath = useMemo((): string | undefined => {
+    if (!facts?.skillPath) return undefined
+    const shelfRoot = facts.skillPath.replace(/aek-usage$/, '') // keep the trailing slash
+    return `${shelfRoot}${ART_SHELF}/${sanitizeItem(item.id)}.md`
+  }, [facts?.skillPath, item.id])
 
   const doCopy = async (): Promise<void> => {
     // BL 轮 (m05632 任务 E): copy the item's "使用方法" doc — the same single
@@ -200,6 +224,49 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
           {spec.p.join('  ')}
         </span>
       </div>
+
+      {/* ---- provenance (BN round, m06297 ⑤): absolute usage-record file
+          path + the author's skill + a clickable repo link. The path is
+          derived from the host's console facts, never hardcoded. ---- */}
+      {(usageDocPath || (isSkill && item.repoName) || repoMeta?.url) ? (
+        <div className="bg-card rounded-lg border px-5 py-4">
+          <div className="flex flex-col gap-2.5">
+            <span className="text-muted-foreground text-2xxs leading-none font-bold uppercase">
+              {t('art.provenance')}
+            </span>
+            {usageDocPath ? (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-muted-foreground text-2xxs leading-none font-bold uppercase">
+                  {t('art.usageDoc')}
+                </span>
+                <code className="text-xs leading-relaxed font-mono break-all">{usageDocPath}</code>
+              </div>
+            ) : null}
+            {isSkill && item.repoName ? (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-muted-foreground text-2xxs leading-none font-bold uppercase">
+                  {t('art.author')}
+                </span>
+                <span className="text-xs leading-relaxed font-semibold">
+                  {item.repoName}
+                  {repoMeta?.note ? <span className="text-muted-foreground font-normal"> · {repoMeta.note}</span> : null}
+                </span>
+              </div>
+            ) : null}
+            {repoMeta?.url ? (
+              <a
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                href={repoMeta.url}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                <Icon name="externalLink" size={13} />
+                {t('art.openRepo')} · {repoMeta.url.replace('https://github.com/', '')}
+              </a>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {/* ---- demo tabs: real content switches, not just the highlight ---- */}
       <div className="inline-flex items-center gap-1 rounded-lg bg-secondary p-1">

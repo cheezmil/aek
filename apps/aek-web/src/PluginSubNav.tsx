@@ -35,7 +35,7 @@
  *
  * @module @cheezmil/aek-web/src/PluginSubNav
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { Icon } from './Icons.tsx'
 import { RAIL_SEARCH_ICON, RAIL_SEARCH_INPUT, RAIL_SEARCH_WRAP } from './rail-searchbox.ts'
@@ -165,6 +165,12 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
   // feeds the two row-action cards below as a prop.
   const [animHoverGrace] = usePref<number>('aek-home.animHoverGrace', ROW_ACTIONS_HIDE_GRACE_MS, parseAnimHoverGrace)
   const [resized, setResized] = useState<number | undefined>(undefined)
+  // BN round (m06297 ③): which of this rail's labels are ellipsized, tracked
+  // live — the hover card shows the option's name when the labels are hidden
+  // (compact icon column) OR the row's label is truncated (see the cards'
+  // `name` prop below).
+  const [labelTrunc, setLabelTrunc] = useState<Set<string>>(() => new Set())
+  const subNavRef = useRef<HTMLElement>(null)
   // BH round Plan C: the plugin-filled extras sections (Preset / 全局工作区
   // agent sub-list) collapse independently; the set holds the CLOSED keys.
   const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set())
@@ -246,8 +252,39 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
       }))
       .filter(section => section.rows.length > 0)
 
+  /**
+   * BN round (m06297 ③): re-measure which of this rail's labels are
+   * ellipsized (`scrollWidth > clientWidth` on the `[data-aek-trunc]`
+   * spans). A ResizeObserver on the rail catches width changes (the resizer
+   * drag, the labels-hidden compact fold); the dep list re-binds it when the
+   * row set or geometry inputs change. Hidden labels (`labelsHidden` /
+   * `hidden`) have `clientWidth` 0 and are skipped — the card call sites OR
+   * those flags in themselves.
+   */
+  useEffect(() => {
+    const nav = subNavRef.current
+    if (nav === null) return
+    const measure = (): void => {
+      const next = new Set<string>()
+      for (const el of Array.from(nav.querySelectorAll<HTMLElement>('[data-aek-trunc]'))) {
+        if (el.clientWidth <= 0) continue
+        if (el.scrollWidth - el.clientWidth <= 1) continue
+        const id = el.dataset.aekTrunc
+        if (id !== undefined) next.add(id)
+      }
+      setLabelTrunc(prev => (
+        prev.size === next.size && [...prev].every(pid => next.has(pid)) ? prev : next
+      ))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(nav)
+    return () => { ro.disconnect() }
+  }, [labelsHidden, hidden, family, query, resized, railWidth])
+
   return (
     <nav
+      ref={subNavRef}
       className={cn(
         'aek-rail-fold sticky top-(--aek-titlebar-h) flex h-(--aek-viewport-h) flex-col grow-0 shrink-0 basis-(--aek-plugin-rail-width) w-(--aek-plugin-rail-width) bg-surface border-r border-border pt-6 px-3 pb-3 overflow-hidden',
         resized !== undefined && 'aek-no-transition',
@@ -347,10 +384,14 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                   }}
                 >
                   <span className={cn('inline-flex flex-none items-center justify-center text-text-muted', routeActive && 'text-accent-ink')}><Icon name={route.icon} size={14} /></span>
-                  <span className={cn('min-w-0 overflow-hidden text-ellipsis', labelsHidden && 'hidden')}>{route.label}</span>
+                  <span data-aek-trunc={route.id} className={cn('min-w-0 overflow-hidden text-ellipsis', labelsHidden && 'hidden')}>{route.label}</span>
                 </button>
                 {onRefresh !== undefined ? (
-                  <RowActionsFloat graceMs={animHoverGrace} rowId={family + '/' + route.id}>
+                  <RowActionsFloat
+                    graceMs={animHoverGrace}
+                    rowId={family + '/' + route.id}
+                    name={labelsHidden || labelTrunc.has(route.id) ? route.label : undefined}
+                  >
                     <button
                       type="button"
                       className={RAIL_ROW_ICON_BUTTON}
@@ -407,11 +448,15 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                             onClick={() => { row.onClick?.() }}
                           >
                             {row.icon !== undefined ? <span className="inline-flex flex-none items-center justify-center text-text-muted">{row.icon}</span> : null}
-                            <span className={cn('min-w-0 flex-1 overflow-hidden text-ellipsis text-left', labelsHidden && 'hidden')}>{row.label}</span>
+                            <span data-aek-trunc={row.id} className={cn('min-w-0 flex-1 overflow-hidden text-ellipsis text-left', labelsHidden && 'hidden')}>{row.label}</span>
                             {row.badge !== undefined && row.badge !== null && row.badge > 0 ? <span className={cn('min-w-4.5 flex-none rounded-full bg-surface-hover px-1.5 text-aek-11 tabular-nums text-text-muted', labelsHidden && 'hidden')}>{String(row.badge)}</span> : null}
                           </button>
                           {onRefresh !== undefined ? (
-                            <RowActionsFloat graceMs={animHoverGrace} rowId={family + '/' + row.id}>
+                            <RowActionsFloat
+                              graceMs={animHoverGrace}
+                              rowId={family + '/' + row.id}
+                              name={labelsHidden || labelTrunc.has(row.id) ? row.label : undefined}
+                            >
                               <button
                                 type="button"
                                 className={RAIL_ROW_ICON_BUTTON}

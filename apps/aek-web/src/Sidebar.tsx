@@ -40,6 +40,9 @@ import { NAV, NAV_TOP, RAIL_HIDDEN_KEY, RAIL_LABELS_HIDDEN_KEY, parseCommaList, 
 import type { NavEntry, PanelId } from './nav-model.ts'
 import { parseBoolean, PREF_KEYS, usePrefLanded, usePref, useSettings } from './preferences.tsx'
 import { ROW_ACTIONS_HIDE_GRACE_MS, RowActionsFloat } from './RowActionsFloat.tsx'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { parseBaseTheme } from './base-theme.ts'
+import type { BaseTheme } from './base-theme.ts'
 import { cn } from '@/lib/utils'
 import { RAIL_SEARCH_INPUT as NAV_SEARCH_INPUT, RAIL_SEARCH_ICON as NAV_SEARCH_ICON, RAIL_SEARCH_WRAP as NAV_SEARCH_WRAP } from './rail-searchbox.ts'
 
@@ -217,6 +220,15 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   const [collapsed, setCollapsed] = usePref<boolean>(PREF_KEYS.collapsed, false, parseBoolean)
   const [hoverExpand] = usePref<boolean>(PREF_KEYS.hoverExpand, true, parseBoolean)
   const [logoToggle] = usePref<boolean>(PREF_KEYS.logoToggle, true, parseBoolean)
+  // BN round (m06297 ④): the footer's base-appearance quick-toggle. It owns the
+  // SAME `aek-home.baseTheme` pref the settings page renders (settings-schema
+  // group 'general'); Home's useBaseTheme() applies it to <html> on change, so
+  // writing the value here re-themes the whole webui live. The button cycles
+  // light → dark → auto → light.
+  const [baseTheme, setBaseTheme] = usePref<BaseTheme>('aek-home.baseTheme', 'light', parseBaseTheme)
+  const NEXT_BASE_THEME: Record<BaseTheme, BaseTheme> = { light: 'dark', dark: 'auto', auto: 'light' }
+  /** @returns cycles the base appearance to its next state. */
+  const cycleBaseTheme = (): void => { setBaseTheme(current => NEXT_BASE_THEME[current]) }
   // W round: the user-dragged rail width (persisted like every other rail
   // setting; the CSS variable only animates the DEFAULT width).
   const [sidebarWidth, setSidebarWidth] = usePref<number>('aek-home.sidebarWidth', SIDEBAR_DEFAULT_WIDTH, parseSidebarWidth)
@@ -269,6 +281,11 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   const [dropMark, setDropMark] = useState<DropMark | undefined>(undefined)
   const navRef = useRef<HTMLElement>(null)
   const localeWrap = useRef<HTMLDivElement>(null)
+  // BN round (m06297 ③): the row ids whose EXPANDED-rail label is truncated to
+  // an ellipsis, tracked live (see the effect below). The hover card shows
+  // the option's NAME whenever the rail is compact OR this set has the row —
+  // a fully visible label never needs the card to repeat it.
+  const [labelTrunc, setLabelTrunc] = useState<Set<string>>(() => new Set())
   /**
    * D round: the hover-peek delays are rAF FRAME counts, not `setTimeout`
    * ms — in long-lived / occluded sessions Chromium's intensive timer
@@ -447,6 +464,37 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   const compact = collapsed && !peek
   const brandLabel = !logoToggle ? brandText : (compact ? t('brand.expand') : (collapsed ? t('brand.pinOpen') : t('brand.collapse')))
 
+  /**
+   * BN round (m06297 ③): track which rows' labels are ellipsized so the hover
+   * card knows when to show the option's NAME. Measured live — a fresh
+   * ResizeObserver on the rail re-measures every row's label
+   * (`scrollWidth > clientWidth`) on rail resizes / group folds; the dep
+   * list re-binds it whenever the visible row set, width, locale or compact
+   * state changes (search, pin, i18n, stow). Compact rows are never measured
+   * (their labels are `max-w-0`), the call site ORs in `compact` itself.
+   */
+  useEffect(() => {
+    const nav = navRef.current
+    if (nav === null) return
+    const measure = (): void => {
+      const next = new Set<string>()
+      for (const el of Array.from(nav.querySelectorAll<HTMLElement>('li[data-panel] .aek-label-fade'))) {
+        if (el.clientWidth <= 0) continue
+        if (el.scrollWidth - el.clientWidth <= 1) continue
+        const row = el.closest('li[data-panel]') as HTMLElement | null
+        const id = row?.dataset.panel
+        if (id !== undefined) next.add(id)
+      }
+      setLabelTrunc(prev => (
+        prev.size === next.size && [...prev].every(pid => next.has(pid)) ? prev : next
+      ))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(nav)
+    return () => { ro.disconnect() }
+  }, [compact, railWidth, locale, query, prefLanded, orderIds, pinned])
+
   const needle = query.trim().toLowerCase()
   // Z round: the search box surfaces top-level rows only — a plugin's own
   // routes are found in the plugin's side rail, not in the main nav.
@@ -616,8 +664,16 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
         {/* Y round: the refresh + pin actions no longer sit at the row's
             tail (the user: "别放到外面") — they live in ONE floating card
             that fades in on row hover (the base setting `navActionsFade`
-            switches the fade on / off). Keyboard focus reveals it too. */}
-        <RowActionsFloat className={compact && 'hidden'} graceMs={animHoverGrace} rowId={entry.id}>
+            switches the fade on / off). Keyboard focus reveals it too.
+            BN round (m06297 ③): when the rail is compact, OR this row's label
+            is ellipsized, the card ALSO carries the option's name at its right
+            edge — the row itself cannot read its own label there. The card is
+            no longer `hidden` in compact mode for the same reason. */}
+        <RowActionsFloat
+          graceMs={animHoverGrace}
+          rowId={entry.id}
+          name={compact || labelTrunc.has(entry.id) ? t(entry.labelKey) : undefined}
+        >
           {/* Q round: the refresh icon refreshes the page THIS row opens —
               even when that page is not active yet. */}
           <button
@@ -644,7 +700,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
           {subIds.length > 0 && (
             <button
               type="button"
-              className={cn(ROW_ICON_BUTTON, railLabelsHidden.split(',').includes(entry.id) && 'text-primary')}
+              className={cn(ROW_ICON_BUTTON, !railLabelsHidden.split(',').includes(entry.id) && 'text-primary')}
               onClick={() =>{  setRailLabelsHidden(current => toggleInCommaList(current, entry.id)) }}
               title={t('nav.labelsToggle')}
               aria-label={t('nav.labelsToggle')}
@@ -807,16 +863,20 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
       )}>
         <div className={compact ? 'flex flex-col justify-center items-center gap-2 w-full' : 'flex items-center justify-between gap-2'}>
           <div className='relative' ref={localeWrap}>
-            <button
-              type="button"
-              className={cn(FOOTER_ICON_BUTTON, compact && 'mx-auto')}
-              onClick={() =>{  setMenuOpen(value => !value) }}
-              title={t('footer.language')}
-              aria-label={t('footer.language')}
-              aria-expanded={menuOpen}
-            >
-              <Icon name="language" size={18} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(FOOTER_ICON_BUTTON, compact && 'mx-auto')}
+                  onClick={() =>{  setMenuOpen(value => !value) }}
+                  aria-label={t('footer.language')}
+                  aria-expanded={menuOpen}
+                >
+                  <Icon name="language" size={18} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{t('footer.language')}</TooltipContent>
+            </Tooltip>
             {menuOpen
               ? (
                 <ul className='fixed left-4 bottom-18 min-w-42 p-1.5 bg-card border border-border rounded-md shadow-lg z-20 list-none m-0' role="menu">
@@ -846,16 +906,33 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
               )
               : null}
           </div>
-          <a
-            className={cn(FOOTER_ICON_BUTTON, compact && 'mx-auto')}
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noreferrer noopener"
-            title={t('footer.github')}
-            aria-label={t('footer.github')}
-          >
-            <Icon name="star" size={18} />
-          </a>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(FOOTER_ICON_BUTTON, compact && 'mx-auto')}
+                onClick={cycleBaseTheme}
+                aria-label={t('footer.theme')}
+              >
+                <Icon name={baseTheme === 'light' ? 'sun' : baseTheme === 'dark' ? 'moon' : 'contrast'} size={18} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{t('footer.theme')}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a
+                className={cn(FOOTER_ICON_BUTTON, compact && 'mx-auto')}
+                href={GITHUB_REPO_URL}
+                target="_blank"
+                rel="noreferrer noopener"
+                aria-label={t('footer.github')}
+              >
+                <Icon name="star" size={18} />
+              </a>
+            </TooltipTrigger>
+            <TooltipContent>{t('footer.github')}</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 

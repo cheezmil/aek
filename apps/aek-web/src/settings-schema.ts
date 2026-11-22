@@ -35,7 +35,7 @@ export interface SettingField {
   /** Which control to render. */
   kind: SettingKind
   /** Group id, used only for headings + in-page search. */
-  group: 'sidebar' | 'navigation' | 'general' | 'motion' | 'animation' | 'websearch' | 'test'
+  group: 'sidebar' | 'navigation' | 'general' | 'motion' | 'websearch' | 'test'
     | 'skills' | 'prompts' | 'icons'
   /** i18n key of the visible label. */
   labelKey: string
@@ -226,7 +226,7 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     // user's ms into it (0 = instant show / hide). Default 200ms = a clearly
     // perceptible 渐隐渐现 (the 150ms the card shipped with read as "no
     // fade" to the user).
-    key: 'aek-home.animHoverFade', kind: 'range', group: 'animation',
+    key: 'aek-home.animHoverFade', kind: 'range', group: 'motion',
     labelKey: 'settings.animHoverFade', hintKey: 'settings.animHoverFadeHint',
     default: 200, min: 0, max: 500, step: 25, unit: 'ms', cssVar: '--aek-row-actions-fade',
   },
@@ -236,7 +236,7 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     // cursor can cross the 8px gap between row and card and cancel the hide;
     // 0 = hide the instant the pointer leaves. Driven into RowActionsFloat
     // as a prop (a JS timer, so no CSS variable).
-    key: 'aek-home.animHoverGrace', kind: 'range', group: 'animation',
+    key: 'aek-home.animHoverGrace', kind: 'range', group: 'motion',
     labelKey: 'settings.animHoverGrace', hintKey: 'settings.animHoverGraceHint',
     default: 350, min: 0, max: 1000, step: 50, unit: 'ms',
   },
@@ -247,7 +247,7 @@ export const SETTINGS_SCHEMA: readonly SettingField[] = [
     // it and it writes the `--aek-skin-anim-ms` CSS variable on <html> (the
     // `.aek-skin-anim` class lives on <html>, so a layout-root variable from
     // sidebarCssVars could not reach it — hence no cssVar on this field).
-    key: 'aek-home.skinAnimMs', kind: 'range', group: 'animation',
+    key: 'aek-home.skinAnimMs', kind: 'range', group: 'motion',
     labelKey: 'settings.skinAnimMs', hintKey: 'settings.skinAnimMsHint',
     default: 320, min: 0, max: 1000, step: 20, unit: 'ms',
   },

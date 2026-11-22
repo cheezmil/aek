@@ -51,7 +51,7 @@ export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts'
   // R2 round: the second-level rail of the 基础设置 page — one tab per
   // settings section (in-page position).
   | 'settingsSidebarFirst' | 'settingsSidebarSecond' | 'settingsNavigation'
-  | 'settingsGeneral' | 'settingsAccess' | 'settingsPermissions' | 'settingsDefaults' | 'settingsMotion' | 'settingsAnimation'
+  | 'settingsGeneral' | 'settingsAccess' | 'settingsPermissions' | 'settingsDefaults' | 'settingsMotion'
   | 'settings' | 'about'
 
 /** The two drawer groups the user asked for (plus the pinned bucket). */
@@ -150,12 +150,10 @@ export const NAV: readonly NavEntry[] = [
   { id: 'settingsGeneral', labelKey: 'settings.group.general', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'general', keywords: ['general', '通用'] },
   // 2026-11-19: the MOTION section of 基础设置 (the app-wide front-end
   // motion kill switch, `aek-home.disableMotion`).
-  { id: 'settingsMotion', labelKey: 'settings.group.motion', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'motion', keywords: ['motion', 'animation', '动态效果'] },
-  // BJ round (m04565): the ANIMATION section of 基础设置 — fine-grained
-  // duration tuning for the web UI's animations (hover-card fade /
-  // hide-delay, skin-switch glide). In-page position, like every other
-  // settings anchor tab.
-  { id: 'settingsAnimation', labelKey: 'settings.group.animation', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'animation', keywords: ['animation', 'fade', 'transition', '动画'] },
+  // BN round (m06297 ②): the former settingsAnimation panel is gone — its
+  // animation-duration fields now live under this motion section, so its
+  // keywords are folded in here (searching fade/transition/动画 still lands).
+  { id: 'settingsMotion', labelKey: 'settings.group.motion', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'motion', keywords: ['motion', 'animation', 'fade', 'transition', '动态效果', '动画'] },
   { id: 'settingsAccess', labelKey: 'settings.group.access', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'access', keywords: ['access', 'lan', '访问设置'] },
   { id: 'settingsPermissions', labelKey: 'settings.group.permissions', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'permissions', keywords: ['permissions', '权限'] },
   { id: 'settingsDefaults', labelKey: 'settings.group.defaults', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'defaults', keywords: ['defaults', '默认值'] },

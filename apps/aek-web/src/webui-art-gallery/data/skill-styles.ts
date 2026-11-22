@@ -38,6 +38,13 @@ export interface RepoFallback {
   note: string
   /** 缺省质感类池。 */
   modes: string[]
+  /**
+   * BN round (m06297 ⑤): the skill's upstream repository URL — the
+   * gallery's content pane links it next to the usage-doc path so the
+   * user can open the author's source. Verified 2026-11-22 against the
+   * local clone's origin remote.
+   */
+  url?: string
 }
 export const SKILL_STYLES: Record<string, SkillStyle> = {  'anthropics-skills::academy-guide': {    m: 'editorial',
   p: [      '#FBFAF6',
@@ -743,6 +750,7 @@ export const SKILL_STYLES: Record<string, SkillStyle> = {  'anthropics-skills::a
 
 /** 仓库兜底：展示名、配色、一句话说明、缺省质感类池（BO round: 参考仓注释保留）。 */
 export const REPO_FALLBACK: Record<string, RepoFallback> = {  'anthropics-skills': {    name: 'Anthropic 官方',
+  url: 'https://github.com/anthropics/skills',
   color: '#D97757',
   note: 'Anthropic 官方 skills 合集',
   modes: [      'minimal',
@@ -752,6 +760,7 @@ export const REPO_FALLBACK: Record<string, RepoFallback> = {  'anthropics-skills
   ],
 },
 'emilkowalski-skills': {    name: 'Emil Kowalski',
+  url: 'https://github.com/emilkowalski/skills',
   color: '#0EA5E9',
   note: '动效与交互手感（Sonner / Vaul 作者）',
   modes: [      'motion',
@@ -761,6 +770,7 @@ export const REPO_FALLBACK: Record<string, RepoFallback> = {  'anthropics-skills
   ],
 },
 hallmark: {    name: 'Hallmark',
+  url: 'https://github.com/Nutlope/hallmark',
   color: '#8B5CF6',
   note: '反 AI 味设计 skill',
   modes: [      'boldmin',
@@ -768,6 +778,7 @@ hallmark: {    name: 'Hallmark',
   ],
 },
 impeccable: {    name: 'Impeccable',
+  url: 'https://github.com/pbakaus/impeccable',
   color: '#10B981',
   note: '重装前端设计工程 skill',
   modes: [      'layer',
@@ -776,6 +787,7 @@ impeccable: {    name: 'Impeccable',
   ],
 },
 'superdesign-skill': {    name: 'Superdesign',
+  url: 'https://github.com/superdesigndev/superdesign-skill',
   color: '#EC4899',
   note: '无限画布多模型出设计稿',
   modes: [      'mesh',
@@ -784,6 +796,7 @@ impeccable: {    name: 'Impeccable',
   ],
 },
 'taste-skill': {    name: 'TasteSkill',
+  url: 'https://github.com/Leonxlnx/taste-skill',
   color: '#F97316',
   note: '反模板化前端审美合集',
   modes: [      'editorial',
@@ -793,6 +806,7 @@ impeccable: {    name: 'Impeccable',
   ],
 },
 'ui-ux-pro-max-skill': {    name: 'UI/UX Pro Max',
+  url: 'https://github.com/nextlevelbuilder/ui-ux-pro-max-skill',
   color: '#6366F1',
   note: '可检索的 UI/UX 设计智库',
   modes: [      'hud',

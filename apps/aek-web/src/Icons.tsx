@@ -40,6 +40,9 @@ export type IconName =
   | 'list'
   | 'checkCircle'
   | 'shuffle'
+  | 'sun'
+  | 'moon'
+  | 'contrast'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 export const ICONS: Record<IconName, ReactNode> = {
@@ -359,6 +362,22 @@ export const ICONS: Record<IconName, ReactNode> = {
       <path d="m18 3 3 3-3 3" />
     </>
   ),
+  /** Lucide `sun`: the base-theme quick-toggle glyph in light mode. */
+  sun: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2 M12 20v2 M4.93 4.93l1.41 1.41 M17.66 17.66l1.41 1.41 M2 12h2 M20 12h2 M6.34 17.66l-1.41 1.41 M19.07 4.93l-1.41 1.41" />
+    </>
+  ),
+  /** Lucide `moon`: the base-theme quick-toggle glyph in dark mode. */
+  moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
+  /** Lucide `contrast`: the base-theme quick-toggle glyph in auto (follow-system) mode. */
+  contrast: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 18a6 6 0 0 0 0-12v12Z" />
+    </>
+  ),
 }
 
 /** Props for {@link Icon}. */
@@ -388,6 +407,9 @@ export const ICON_NAMES: readonly IconName[] = [
   'list',
   'checkCircle',
   'shuffle',
+  'sun',
+  'moon',
+  'contrast',
 ]
 
 export interface IconProps {

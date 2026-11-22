@@ -73,16 +73,22 @@ function rowOf(anchor: HTMLElement): HTMLElement | null {
 
 /**
  * @param props - className, the optional row id (BK: locates the portaled
- * card via `data-aek-row-id`), the hover-grace window and the action buttons.
+ * card via `data-aek-row-id`), the hover-grace window, the action buttons,
+ * and the optional option NAME (BN round, m06297 ③): shown at the card's
+ * right edge, to the right of the icons, whenever the row's own label is
+ * not fully readable (collapsed rail, or an expanded rail whose label is
+ * truncated to an ellipsis). Omitted when the label is fully visible.
  */
 export function RowActionsFloat({
   className,
   rowId,
+  name,
   children,
   graceMs,
 }: {
   className?: string
   rowId?: string
+  name?: string
   children: ReactNode
   graceMs?: number
 }) {
@@ -223,6 +229,16 @@ export function RowActionsFloat({
           style={pos}
         >
           {children}
+          {/* BN round (m06297 ③): the option's name at the card's right edge,
+              to the right of the icons — only when the row's own label is
+              not readable (collapsed rail, or an ellipsized expanded label). */}
+          {name
+            ? (
+              <span className="aek-row-actions-name border-l border-border pl-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                {name}
+              </span>
+            )
+            : null}
         </div>,
         document.body,
       )}
