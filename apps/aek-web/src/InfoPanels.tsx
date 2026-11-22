@@ -754,6 +754,11 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
   // section hint). A real schema row, so it stages / commits through the same
   // draft system as every other setting.
   const motionRows = visible.filter(field => field.group === 'motion')
+  // BJ round (m04565): the ANIMATION section — fine-grained tuning of the web
+  // UI's animation durations (hover-card fade + hide-delay, skin-switch
+  // glide). Real schema rows, so they stage / commit through the same
+  // draft system as every other setting.
+  const animationRows = visible.filter(field => field.group === 'animation')
   // K round: the dedicated TEST section — a real schema row (so it flows
   // through the draft/commit system exactly like every setting) but wired
   // to NOTHING; it exists so the user (and agents) can poke the settings
@@ -840,6 +845,18 @@ function SettingsPanel({ refreshSignal }: { refreshSignal: number }) {
               <p className={HINT}>{t('settings.group.motionHint')}</p>
               <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
                 {motionRows.map(fieldRow)}
+              </ul>
+            </section>
+          )
+          : null}
+        {animationRows.length > 0
+          ? (
+            <section className="mb-8 last:mb-0" data-nav-anchor="animation">
+              {/* FF-NOTE: .sectionTitle accent bar now exact via 0.25-step scale + rounded-3xs. */}
+              <h3 className="relative mt-8 first:mt-0 mb-4 pl-3 text-base font-bold tracking-normal text-text before:content-[''] before:absolute before:left-0 before:top-0.75 before:w-1 before:h-4 before:rounded-3xs before:bg-primary">{t('settings.group.animation')}</h3>
+              <p className={HINT}>{t('settings.group.animationHint')}</p>
+              <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
+                {animationRows.map(fieldRow)}
               </ul>
             </section>
           )

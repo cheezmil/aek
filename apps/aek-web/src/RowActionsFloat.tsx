@@ -38,15 +38,29 @@ const OFF_SCREEN = { top: -9999, left: -9999 }
  * before the card hides. Long enough to carry the cursor across the 8px gap
  * (a normal move takes well under 200ms); short enough that a real leave
  * does not feel laggy. The no-fade rail setting bypasses it entirely.
+ * BJ round (m04565): the default value — the user setting
+ * `aek-home.animHoverGrace` overrides it per launch (0 = hide instantly on
+ * leave).
  */
 export const ROW_ACTIONS_HIDE_GRACE_MS = 350
 
-/** @param props - the optional className and the action buttons. */
-export function RowActionsFloat({ className, children }: { className?: string; children: ReactNode }) {
+/** @param props - the optional className, the hover-grace window and the action buttons. */
+export function RowActionsFloat({ className, children, graceMs }: { className?: string; children: ReactNode; graceMs?: number }) {
   const cardRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState(OFF_SCREEN)
   const [visible, setVisible] = useState(false)
+  /**
+   * BJ round (m04661): `true` while the card is in its INSTANT-hide mode
+   * (the pointer landed on a different option, or the no-fade rail won) —
+   * the fade transition is suppressed for that change only, so the card
+   * vanishes with no animation. `show()` always clears it.
+   */
+  const [instant, setInstant] = useState(false)
   const hideTimer = useRef<number | null>(null)
+  /** BJ round: mirrors `visible` for the cross-instance registry below. */
+  const visibleRef = useRef(false)
+  /** BJ round (m04661): the effective grace window (the prop wins; 0 = instant hide). */
+  const grace = graceMs ?? ROW_ACTIONS_HIDE_GRACE_MS
   const place = useCallback((): void => {
     const card = cardRef.current
     const row = card?.parentElement
@@ -62,7 +76,25 @@ export function RowActionsFloat({ className, children }: { className?: string; c
       window.clearTimeout(hideTimer.current)
       hideTimer.current = null
     }
+    setInstant(false)
+    visibleRef.current = true
     setVisible(true)
+  }, [])
+
+  /**
+   * BJ round (m04661): vanishing with NO animation — the user's ruling: when
+   * the pointer lands on a DIFFERENT option, this card drops out instantly
+   * (no grace window, no opacity fade). Sibling rows call it through the
+   * module-level registry; the no-fade rail setting uses it too.
+   */
+  const hideInstant = useCallback((): void => {
+    if (hideTimer.current !== null) {
+      window.clearTimeout(hideTimer.current)
+      hideTimer.current = null
+    }
+    visibleRef.current = false
+    setInstant(true)
+    setVisible(false)
   }, [])
 
   /** BG round: start the hide grace window (the card fades out when it elapses). */
@@ -71,21 +103,36 @@ export function RowActionsFloat({ className, children }: { className?: string; c
     // No-fade rail setting (`.aek-nav-no-fade` on an ancestor): instant hide.
     if (cardRef.current?.closest('.aek-nav-no-fade') !== null) {
       hideTimer.current = null
-      setVisible(false)
+      hideInstant()
       return
     }
     hideTimer.current = window.setTimeout((): void => {
       hideTimer.current = null
+      visibleRef.current = false
       setVisible(false)
-    }, ROW_ACTIONS_HIDE_GRACE_MS)
-  }, [])
+    }, Math.max(0, grace))
+  }, [grace, hideInstant])
 
   useEffect((): (() => void) | undefined => {
     const card = cardRef.current
     const row = card?.parentElement
     if (card === null || row === null) return
-    const onRowEnter = (): void => { place(); show() }
-    const onRowFocusIn = (): void => { place(); show() }
+    // BJ round (m04661): register this card so every OTHER option row can
+    // evict it the instant the pointer lands on that row ("不用动画，直接
+    // 消失"). One module-level Set; entries self-clean on unmount.
+    const entry: LiveCard = { row, visible: () => visibleRef.current, hideInstant }
+    liveCards.add(entry)
+    // BJ round (m04661): pointer / keyboard landing on THIS row evicts every
+    // other visible card instantly and shows this one — one handler for
+    // mouseenter and focusin (identical bodies; the lint gate forbids
+    // duplicates, so they share it).
+    const onRowEnter = (): void => {
+      liveCards.forEach((other) => {
+        if (other !== entry && other.visible()) other.hideInstant()
+      })
+      place()
+      show()
+    }
     const onRowFocusOut = (event: FocusEvent): void => {
       // The card is a DOM child of the row — focus moving onto it stays "inside".
       if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) return
@@ -95,30 +142,41 @@ export function RowActionsFloat({ className, children }: { className?: string; c
     card.addEventListener('mouseleave', scheduleHide)
     row.addEventListener('mouseenter', onRowEnter)
     row.addEventListener('mouseleave', scheduleHide)
-    row.addEventListener('focusin', onRowFocusIn)
+    row.addEventListener('focusin', onRowEnter)
     row.addEventListener('focusout', onRowFocusOut)
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
     return () => {
+      liveCards.delete(entry)
       card.removeEventListener('mouseenter', show)
       card.removeEventListener('mouseleave', scheduleHide)
       row.removeEventListener('mouseenter', onRowEnter)
       row.removeEventListener('mouseleave', scheduleHide)
-      row.removeEventListener('focusin', onRowFocusIn)
+      row.removeEventListener('focusin', onRowEnter)
       row.removeEventListener('focusout', onRowFocusOut)
       window.removeEventListener('resize', place)
       window.removeEventListener('scroll', place, true)
       if (hideTimer.current !== null) window.clearTimeout(hideTimer.current)
     }
-  }, [place, show, scheduleHide])
+  }, [place, show, scheduleHide, hideInstant])
 
   return (
     <div
       ref={cardRef}
-      className={cn(ROW_ACTIONS_CARD, visible ? 'opacity-100' : 'opacity-0 pointer-events-none', className)}
+      className={cn(ROW_ACTIONS_CARD, visible ? 'opacity-100' : 'opacity-0 pointer-events-none', instant ? 'transition-none' : '', className)}
       style={pos}
     >
       {children}
     </div>
   )
 }
+
+/**
+ * BJ round (m04661): the live-card registry. Every rendered RowActionsFloat
+ * registers itself here; when the pointer lands on a DIFFERENT option row,
+ * that row's `onRowEnter` evicts every other VISIBLE card instantly. The
+ * `row` member is retained for future per-list scoping; the identity check
+ * happens on the caller's own entry object.
+ */
+type LiveCard = { row: HTMLElement; visible: () => boolean; hideInstant: () => void }
+const liveCards = new Set<LiveCard>()

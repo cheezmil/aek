@@ -55,7 +55,7 @@ import {
 } from './nav-model.ts'
 import type { PanelId } from './nav-model.ts'
 import { parseBoolean, usePref } from './preferences.tsx'
-import { RowActionsFloat } from './RowActionsFloat.tsx'
+import { ROW_ACTIONS_HIDE_GRACE_MS, RowActionsFloat } from './RowActionsFloat.tsx'
 import { cn } from '@/lib/utils'
 
 /** One route row of the plugin rail. */
@@ -127,6 +127,13 @@ function parseRailWidth(raw: unknown): number | undefined {
   return Math.min(RAIL_MAX_WIDTH, Math.max(RAIL_MIN_WIDTH, value))
 }
 
+/** BJ round: clamp the hover-card grace-window setting to its schema range (0–1000ms). */
+function parseAnimHoverGrace(raw: unknown): number | undefined {
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return undefined
+  return Math.min(1000, Math.max(0, value))
+}
+
 /**
  * The plugin-owned route rail next to the plugin's content.
  * @param props - active panel, selection and the label state.
@@ -154,6 +161,9 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
   // A round addendum: the compact (labels-hidden) width is a Settings value,
   // not a constant — the user gets a granular row for the mini rail column.
   const [railCompactWidth] = usePref<number>(RAIL_COMPACT_WIDTH_KEY, RAIL_COMPACT_DEFAULT, parseRailCompactWidth)
+  // BJ round (m04565): the hover-card grace-window setting (基础设置 → 动画);
+  // feeds the two row-action cards below as a prop.
+  const [animHoverGrace] = usePref<number>('aek-home.animHoverGrace', ROW_ACTIONS_HIDE_GRACE_MS, parseAnimHoverGrace)
   const [resized, setResized] = useState<number | undefined>(undefined)
   // BH round Plan C: the plugin-filled extras sections (Preset / 全局工作区
   // agent sub-list) collapse independently; the set holds the CLOSED keys.
@@ -340,7 +350,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                   <span className={cn('min-w-0 overflow-hidden text-ellipsis', labelsHidden && 'hidden')}>{route.label}</span>
                 </button>
                 {onRefresh !== undefined ? (
-                  <RowActionsFloat>
+                  <RowActionsFloat graceMs={animHoverGrace}>
                     <button
                       type="button"
                       className={RAIL_ROW_ICON_BUTTON}
@@ -401,7 +411,7 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                             {row.badge !== undefined && row.badge !== null && row.badge > 0 ? <span className={cn('min-w-4.5 flex-none rounded-full bg-surface-hover px-1.5 text-aek-11 tabular-nums text-text-muted', labelsHidden && 'hidden')}>{String(row.badge)}</span> : null}
                           </button>
                           {onRefresh !== undefined ? (
-                            <RowActionsFloat>
+                            <RowActionsFloat graceMs={animHoverGrace}>
                               <button
                                 type="button"
                                 className={RAIL_ROW_ICON_BUTTON}

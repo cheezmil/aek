@@ -145,11 +145,29 @@ export const setSkinAnimEnabled = (on: boolean): void => {
   }
 }
 
+/**
+ * BJ round (m04565): the skin-switch glide duration in ms, from the user
+ * setting `aek-home.skinAnimMs` (基础设置 → 动画). The art panel syncs it
+ * here; 0 forces the instant-swap path even while `aek-home.skinAnim` is on.
+ * The CSS variable below carries it to the `.aek-skin-anim` longhands in
+ * index.css (that class lives on <html>, so a layout-root variable from
+ * sidebarCssVars could not reach it — which is why the schema field has no
+ * `cssVar` of its own).
+ */
+let skinAnimMs = 320
+export const setSkinAnimMs = (ms: number): void => {
+  skinAnimMs = Number.isFinite(ms) ? Math.max(0, ms) : 320
+  const el = document.documentElement
+  el.style.setProperty('--aek-skin-anim-ms', `${skinAnimMs}ms`)
+  if (skinAnimMs === 0) el.classList.remove('aek-skin-anim')
+}
+
 let skinAnimTimer: ReturnType<typeof setTimeout> | undefined
 
 export const applyGlobalTheme = (spec: StageSpec | null): void => {
   const el = document.documentElement
-  if (skinAnimEnabled) {
+  const glide = skinAnimEnabled && skinAnimMs > 0
+  if (glide) {
     el.classList.add('aek-skin-anim')
   } else {
     // BU round (m12968 ①): the instant swap must not let the app's ~1600
@@ -172,10 +190,10 @@ export const applyGlobalTheme = (spec: StageSpec | null): void => {
     else el.style.removeProperty('--font-sans')
   }
   if (skinAnimTimer) clearTimeout(skinAnimTimer)
-  if (skinAnimEnabled) {
+  if (glide) {
     skinAnimTimer = setTimeout(() => {
       el.classList.remove('aek-skin-anim')
-    }, 320)
+    }, skinAnimMs)
   } else {
     skinAnimTimer = setTimeout(() => {
       el.classList.remove('aek-skin-swap')

@@ -39,7 +39,7 @@ import type { Locale } from './i18n.tsx'
 import { NAV, NAV_TOP, RAIL_HIDDEN_KEY, RAIL_LABELS_HIDDEN_KEY, parseCommaList, subEntriesOf, toggleInCommaList, useLastSubMemory } from './nav-model.ts'
 import type { NavEntry, PanelId } from './nav-model.ts'
 import { parseBoolean, PREF_KEYS, usePrefLanded, usePref, useSettings } from './preferences.tsx'
-import { RowActionsFloat } from './RowActionsFloat.tsx'
+import { ROW_ACTIONS_HIDE_GRACE_MS, RowActionsFloat } from './RowActionsFloat.tsx'
 import { cn } from '@/lib/utils'
 import { RAIL_SEARCH_INPUT as NAV_SEARCH_INPUT, RAIL_SEARCH_ICON as NAV_SEARCH_ICON, RAIL_SEARCH_WRAP as NAV_SEARCH_WRAP } from './rail-searchbox.ts'
 
@@ -63,7 +63,9 @@ const NAV_ROW_DROP_AFTER = 'after:content-[""] after:absolute after:left-1 after
    option — the old in-row `right-0.5` card sat on top of the row, and
    anything past the rail edge was clipped by `overflow-hidden`). BG round
    (m03469): show / hide timing is the JS hover-intent grace in
-   RowActionsFloat.tsx (CSS only owns the 150ms opacity fade). */
+   RowActionsFloat.tsx (the fade itself is CSS; its duration + the grace
+   window are the `aek-home.animHoverFade` / `aek-home.animHoverGrace`
+   settings, 基础设置 → 动画, BJ round). */
 const ROW_ICON_BUTTON = 'inline-flex items-center justify-center size-6 p-0 border-0 rounded-xs bg-transparent text-text-muted cursor-pointer transition-[color,background-color,transform] duration-140 ease-aek hover:text-primary hover:bg-accent-soft'
 const LABEL_FADE = 'aek-label-fade'
 const LABEL_FADE_HIDDEN = 'aek-label-fade-hidden'
@@ -104,6 +106,13 @@ function parseSidebarWidth(raw: unknown): number | undefined {
   const value = Number(raw)
   if (!Number.isFinite(value)) return undefined
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, value))
+}
+
+/** BJ round: clamp the hover-card grace-window setting to its schema range (0–1000ms). */
+function parseAnimHoverGrace(raw: unknown): number | undefined {
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return undefined
+  return Math.min(1000, Math.max(0, value))
 }
 
 /** The project's public repository (verified with `gh repo view`). */
@@ -210,6 +219,8 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   // W round: the user-dragged rail width (persisted like every other rail
   // setting; the CSS variable only animates the DEFAULT width).
   const [sidebarWidth, setSidebarWidth] = usePref<number>('aek-home.sidebarWidth', SIDEBAR_DEFAULT_WIDTH, parseSidebarWidth)
+  // BJ round: the hover-card grace window (基础设置 → 动画); 0 = hide on leave.
+  const [animHoverGrace] = usePref<number>('aek-home.animHoverGrace', ROW_ACTIONS_HIDE_GRACE_MS, parseAnimHoverGrace)
   const [resized, setResized] = useState<number | undefined>(undefined)
   const railWidth = resized ?? sidebarWidth
 
@@ -605,7 +616,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
             tail (the user: "别放到外面") — they live in ONE floating card
             that fades in on row hover (the base setting `navActionsFade`
             switches the fade on / off). Keyboard focus reveals it too. */}
-        <RowActionsFloat className={compact && 'hidden'}>
+        <RowActionsFloat className={compact && 'hidden'} graceMs={animHoverGrace}>
           {/* Q round: the refresh icon refreshes the page THIS row opens —
               even when that page is not active yet. */}
           <button

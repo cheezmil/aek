@@ -593,14 +593,19 @@ html.aek-in-shell {
      rule disappears and component hover timings are back to normal. Placed
      BEFORE the .aek-no-motion crush block so the crush (equal specificity,
      later source order, individual longhands) still wins for motion-off. */
+  /* BJ round (m04565): the glide duration is the user setting
+     `aek-home.skinAnimMs` (基础设置 → 动画): the periodic writer
+     (anim-vars.ts, m04792) keeps the `--aek-skin-anim-ms` CSS variable
+     on <html> in sync with the live setting, so the whole-window glide
+     tracks the slider without any switch toggle. */
   .aek-skin-anim,
   .aek-skin-anim * {
     transition:
-      background-color 280ms ease,
-      color 280ms ease,
-      border-color 280ms ease,
-      fill 280ms ease,
-      stroke 280ms ease !important;
+      background-color var(--aek-skin-anim-ms, 320ms) ease,
+      color var(--aek-skin-anim-ms, 320ms) ease,
+      border-color var(--aek-skin-anim-ms, 320ms) ease,
+      fill var(--aek-skin-anim-ms, 320ms) ease,
+      stroke var(--aek-skin-anim-ms, 320ms) ease !important;
   }
 
   /* BU round (m12968 ①): swap suppression. The running webui carries ~1600
@@ -744,8 +749,12 @@ html.aek-in-shell {
      transitionable) dropped to `none` the instant the show state released,
      so the fading card could never be grabbed. The CSS now owns only the
      fade itself. */
+  /* BJ round (m04565): the fade duration is the user setting
+     `aek-home.animHoverFade` (基础设置 → 动画): sidebarCssVars writes the
+     `--aek-row-actions-fade` CSS variable (default 200ms = a perceptible
+     渐隐渐现; 0 = instant). The no-fade rail setting below still wins. */
   .aek-row-actions {
-    transition: opacity 150ms ease;
+    transition: opacity var(--aek-row-actions-fade, 200ms) ease;
   }
 
   /* No-fade rail setting: the row-actions card shows/hides instantly. */

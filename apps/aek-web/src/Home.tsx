@@ -26,7 +26,8 @@ import { useBaseTheme } from './base-theme.ts'
 import { InfoPanels } from './InfoPanels.tsx'
 import { PromptsPanel } from './ConsolePanels.tsx'
 import { SkillsManagerPanel } from './SkillsManagerPanel.tsx'
-import { oneOf, PREF_KEYS, PrefProvider, usePref, usePrefLanded, useSettings, parseBoolean } from './preferences.tsx'
+import { oneOf, PREF_KEYS, PrefProvider, useDraftSettings, usePref, usePrefLanded, useSettings, parseBoolean } from './preferences.tsx'
+import { startAnimVarsSync } from './anim-vars.ts'
 import { Sidebar } from './Sidebar.tsx'
 import type { PanelId } from './nav-model.ts'
 import {
@@ -275,6 +276,16 @@ function Console() {
   // setting `aek-home.baseTheme` (settings page, default light) applied as
   // the `.dark` class on <html>; `auto` tracks the OS color scheme live.
   useBaseTheme()
+
+  // BJ round (m04565 + m04792): the PERIODIC animation-variable writer —
+  // the 基础设置 → 动画 durations track the live DRAFT settings on a 250ms
+  // interval (`aek-home.skinAnimMs` → `--aek-skin-anim-ms` on <html>,
+  // `aek-home.animHoverFade` → `--aek-row-actions-fade`), so a slider move
+  // previews without any switch toggle or save.
+  const { values: draftPrefs } = useDraftSettings()
+  const draftPrefsRef = useRef(draftPrefs)
+  draftPrefsRef.current = draftPrefs
+  useEffect((): (() => void) => startAnimVarsSync(() => draftPrefsRef.current), [])
 
   const signalFor = (id: PanelId): number => refreshTicks[id] ?? 0
 
