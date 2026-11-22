@@ -320,13 +320,17 @@ export function laneConfig(name) {
   const entry = readLanesRegistry().lanes[String(name)]
   if (!entry) throw new Error(`lane ${String(name)} is not registered`)
   const slug = String(name)
-  const display = `AEK ${slug.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')}`
+  // m03363 hard rule: the Dock may only ever show the two pre-existing AEK
+  // app names ("AEK" production + "AEK Next" dev). A lane shell is a dev
+  // variant of AEK, so its bundle is branded "AEK" — NEVER a new per-lane
+  // name ("AEK L1" etc.), which would be a third instance name. The slug
+  // stays in the machine-side identity only (appId/bundleId/webHost).
   return {
     slot: slug,
     appId: `com.aek.desktop.lane.${slug}`,
     bundleId: `com.aek.desktop.lane.${slug}`,
-    productName: display,
-    devAppName: display,
+    productName: 'AEK',
+    devAppName: 'AEK',
     legacyDevAppNames: [],
     webPort: entry.webPort,
     cdpPort: entry.cdpPort,

@@ -116,8 +116,11 @@ function scan() {
       })
       if (!known) {
         // Unknown AEK-family bundle: still report it (as external), but only
-        // when it looks like a shell main, not a helper or a plugin node.
-        if (!/AEK( [A-Za-z0-9]+)?\.app\/Contents\/MacOS\/AEK( [A-Za-z0-9]+)?(\s|$)/.test(command)) continue
+        // when the FIRST token (the executable path) is a shell main. Wrapper
+        // lines (bash -c '… AEK.app/Contents/MacOS/AEK …') contain the path
+        // mid-command and must NOT count (m03363 false-positive fix).
+        const exe0 = command.trimStart().split(/\s+/)[0]
+        if (!/AEK( [A-Za-z0-9]+)?\.app\/Contents\/MacOS\/AEK( [A-Za-z0-9]+)?$/.test(exe0)) continue
       }
       found.push({
         pid,
@@ -127,7 +130,10 @@ function scan() {
       })
     } else {
       if (command.includes('--type=')) continue
-      if (!/AEK( [A-Za-z0-9]+)?\.exe(\s|$)/.test(command)) continue
+      // First token only: wrapper command lines that merely MENTION an AEK
+      // .exe path are not shell mains (m03363 false-positive fix).
+      const exe0 = command.trimStart().split(/\s+/)[0]
+      if (!/AEK( [A-Za-z0-9]+)?\.exe$/i.test(exe0)) continue
       const known = map.find((entry) => command.includes(entry.bundle))
       found.push({
         pid,
