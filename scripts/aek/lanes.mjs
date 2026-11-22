@@ -371,6 +371,15 @@ function bootstrapTree(worktree) {
     const res = spawnSync('pnpm', ['--filter', '@cheezmil/coraek', 'run', 'build:cli'], { cwd: worktree, stdio: ['ignore', 'inherit', 'inherit'] })
     if (res.status !== 0) fail(`coraek build:cli failed in ${worktree}`)
   }
+  // The dev shell boots apps/aek-desktop/v0/lib/main/index.js, which build:artifacts
+  // does NOT emit (separate tsc -p step in the desktop package). Cold lane trees
+  // need it or the shell dies on startup with an empty shell.log.
+  const desktopMarker = join(worktree, 'apps', 'aek-desktop', 'v0', 'lib', 'main', 'index.js')
+  if (!existsSync(desktopMarker)) {
+    console.log('[lanes] building desktop shell bundle (apps/aek-desktop/v0 tsc, ~15s)')
+    const res = spawnSync('pnpm', ['exec', 'tsc', '-p', 'tsconfig.json'], { cwd: join(worktree, 'apps', 'aek-desktop', 'v0'), stdio: ['ignore', 'inherit', 'inherit'] })
+    if (res.status !== 0) fail(`desktop v0 tsc failed in ${worktree}`)
+  }
   // Two-face members: root tsconfig.json with "files": [] next to a host face.
   const twoFace = spawnSync('find', ['packages', 'vendor', 'apps', '-name', 'tsconfig.host.json', '-not', '-path', '*/node_modules/*'], { cwd: worktree, encoding: 'utf8' })
   for (const rel of twoFace.stdout.trim().split('\n').filter(Boolean)) {
@@ -445,6 +454,9 @@ function laneOps(name, verb) {
     }
     const killed = killDevShells()
     preflightLanes(name, process.pid)
+    // Idempotent cold-start guards (desktop v0 tsc, typert, …) — the shell boot
+    // needs lib/main/index.js even though `start` only warms the backend.
+    bootstrapTree(worktree)
     runInTree(worktree, 'start-dev.mjs', [name, '--shell-only', '--detach'])
     if (!waitForPort(cfg.cdpPort, 20_000)) {
       fail(`CDP ${cfg.cdpPort} not listening 20s after launch (see ${join(laneHome(name), 'logs', 'shell.log')})`)

@@ -367,6 +367,12 @@ export function containerOf(home) {
   if (manifest) return manifest.container
   const name = basename(abs)
   if (name === DEFAULT_SLOT_DIRS.aek || name === DEFAULT_SLOT_DIRS.next) return dirname(abs)
+  // BF-4 lanes: a lane data root is `<container>/lanes/<name>` (coraek/lanes),
+  // so `<container>/lanes` is still the container — the registry `lanes.json`
+  // lives at the container level, not inside the lane. Without this, a shell
+  // spawned with AEK_HOME=<lane root> would derive the container as the lane
+  // itself and never find the registry (isLane → false → wrong slot fallback).
+  if (basename(dirname(abs)) === 'lanes') return dirname(dirname(abs))
   return abs
 }
 
