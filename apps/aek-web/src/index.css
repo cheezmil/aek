@@ -360,6 +360,12 @@
      and do not run off the bottom of the window. In a plain browser
      `--aek-titlebar-h` is 0px, so this equals `100vh` and is a no-op. */
   --aek-viewport-h: calc(100vh - var(--aek-titlebar-h));
+  /* BL6 round (m06155): the pinned settings search toolbar's height — the
+     `h-9` search row (36px) plus the wrap's `pb-4` (16px) = 52px; the dirty
+     popover inside it is absolute, so it adds no flow height. Feeds the
+     anchor `scroll-margin-top` override so a jumped-to section title lands
+     BELOW the toolbar instead of under it. */
+  --aek-sticky-panel-h: 52px;
 }
 html.aek-in-shell {
   --aek-titlebar-h: 36px;
@@ -756,6 +762,29 @@ html.aek-in-shell {
     z-index: 3;
     background: color-mix(in srgb, var(--aek-surface) 82%, transparent);
     backdrop-filter: blur(10px) saturate(1.2);
+  }
+
+  /* BL6 round (m06155): when a sub-nav anchor tab jumps the page to a section
+     (`Home.tsx`'s R2 effect → `scrollIntoView({ block: 'start' })`), the
+     section's TOP aligns with the scroll port's top — but the pinned title
+     bar (0..--aek-titlebar-h) and, on the settings panels, the sticky search
+     toolbar pinned just below it BOTH overlap that top band, so the section's
+     `h3` title ends up hidden. `scroll-margin-top` is the extra distance kept
+     above the element when aligning to the top, so the title lands in the
+     clear. Two tiers:
+     - base: every page clears its pinned title bar;
+     - override: the card body that owns the sticky toolbar (matched via
+       `:has(> .aek-sticky-panel-search)` — only that container has it as a
+       DIRECT child, so higher ancestors / other panels are not touched) also
+       clears the toolbar itself. */
+  [data-nav-anchor] {
+    scroll-margin-top: calc(var(--aek-titlebar-h, 0px) + var(--aek-space-3));
+  }
+  :has(> .aek-sticky-panel-search) [data-nav-anchor] {
+    scroll-margin-top: calc(
+      var(--aek-titlebar-h, 0px) + var(--aek-space-3)
+      + var(--aek-sticky-panel-h, 52px) + var(--aek-space-3)
+    );
   }
 
   /* ── Descendant one-offs (module-scoped descendant rules that need a
