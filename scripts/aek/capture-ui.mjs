@@ -35,7 +35,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { slotHome, SLOTS } from './shared-logic.mjs'
+import { slotHome, slotConfig, SLOTS } from './shared-logic.mjs'
 
 /** Walk up from this script until `pnpm-workspace.yaml` is found. */
 function findRoot(start) {
@@ -57,9 +57,12 @@ const argv = process.argv.slice(2)
 // `AEK_CDP_PORT` (the launcher's env convention) still wins when set.
 const slotIndex = argv.indexOf('--slot')
 const slotName = slotIndex >= 0 ? argv[slotIndex + 1] : 'aek'
-const slotCfg = SLOTS[slotName]
+// BF-4: accept builtin slots AND registered lanes (slotConfig throws for
+// unknown names — the soft sentinel keeps the legacy "unknown slot" error).
+let slotCfg
+try { slotCfg = slotConfig(slotName) } catch { slotCfg = undefined }
 if (slotCfg === undefined) {
-  process.stderr.write(`unknown --slot ${String(slotName)} — expected ${Object.keys(SLOTS).join(' | ')}\n`)
+  process.stderr.write(`unknown --slot ${String(slotName)} — expected a builtin slot (${Object.keys(SLOTS).join(' | ')}) or a registered lane\n`)
   process.exit(2)
 }
 const CDP_PORT = Number(process.env.AEK_CDP_PORT ?? slotCfg.cdpPort)
