@@ -24,7 +24,7 @@ import { parseBoolean, usePref } from '../preferences.tsx'
 import { copyToClipboard } from '../clipboard.ts'
 import { REPO_FALLBACK } from './data/skill-styles.ts'
 import {
-  usageDoc,
+
   MODE_COUNT,
   readCurId,
   writeCurId,
@@ -34,8 +34,13 @@ import {
   writeFavGroups,
   galleryItems,
   ALL_STYLE_KINDS,
+  kindDisplayName,
+  readToneOverrides,
+  writeToneOverride,
+  effectiveToneOf,
   type GalleryItem,
   type FavGroup,
+  type Tone,
 } from './spec.ts'
 import { TopBar, type GalleryTab } from './TopBar.tsx'
 import { GallerySidebar, type RepoGroup } from './GallerySidebar.tsx'
@@ -75,7 +80,14 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     return [...groups.values()]
   }, [skills])
   const kindGroups = useMemo<RepoGroup[]>(
-    () => ALL_STYLE_KINDS.map(k => ({ id: k.id, name: k.name, color: k.color, count: k.count })),
+    () => ALL_STYLE_KINDS.map(k => ({
+      id: k.id,
+      // BP round ⑨: display-layer rename map (raw generated name stays in
+      // the data; the chip shows the mapped label).
+      name: kindDisplayName(k.name) ?? k.name,
+      color: k.color,
+      count: k.count,
+    })),
     [],
   )
 
@@ -91,6 +103,9 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   // working unchanged. The group CRUD below is the new surface.
   const [favGroups, setFavGroups] = useState<FavGroup[]>(() => readFavGroups())
   const favs = useMemo(() => favsOfGroups(favGroups), [favGroups])
+  // BP round (m02138 ⑦): the user's click-marks — an item the automatic
+  // luminance classification got wrong; persisted next to the fav groups.
+  const [toneOverrides, setToneOverrides] = useState<Record<string, Tone>>(() => readToneOverrides())
 
   /** Persist a new group list (mutates only via the CRUD helpers below). */
   const applyGroups = (next: FavGroup[]): void => {
@@ -144,8 +159,12 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     const valid = (id: string | null): boolean =>
       !!id && (styles.some(i => i.id === id) || skills.some(i => i.id === id))
     const remembered = readCurId()
-    if (valid(remembered)) return remembered
-    if (valid(globalThemeId())) return globalThemeId() as string
+    // BP round (BP-13): narrow through the null check itself — `valid` is a
+    // plain boolean, so returning `remembered` un-narrowed made the initializer
+    // `string | null` and broke `useState<string>`.
+    if (remembered !== null && valid(remembered)) return remembered
+    const themed = globalThemeId()
+    if (themed !== null && valid(themed)) return themed
     // BN round (m06297 ①): the gallery now defaults to the style family, so a
     // fresh install (no remembered / no global skin) lands on the first style,
     // not a skill id that the style family cannot resolve.
@@ -153,6 +172,14 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   })
   // BL round: persist the selected item on every change so it survives restarts.
   useEffect(() => { writeCurId(curId) }, [curId])
+  // BP round (m02138 ⑦): the pill's active pool starts on the current item's
+  // own (effective) tone — the user then switches pools with the 浅色/深色
+  // buttons; prev/next and the list stay inside the active pool.
+  const [tone, setTone] = useState<Tone>(() => {
+    const { styles, skills } = galleryItems()
+    const cur = styles.find(i => i.id === curId) ?? skills.find(i => i.id === curId)
+    return cur ? effectiveToneOf(cur, toneOverrides) : 'light'
+  })
   // BR round (m11298 ①): gallery opens immersive by default (full-bleed stage; the
   // floating switcher bottom-right or Esc exits back to TopBar + Sidebar chrome).
   const [immersive, setImmersive] = useState(true)
@@ -226,17 +253,38 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     switchTab(src)
   }
 
-  /** Reference App keyboard step — shared by the ←/→ handler and the corner switcher. */
+  /** BP round ⑦: the visible family items of the active tone = the pool prev/next/list move in. */
+  const pool = useMemo(
+    () => visible.filter(i => effectiveToneOf(i, toneOverrides) === tone),
+    [visible, tone, toneOverrides],
+  )
+
+  /** Reference App keyboard step — now bounded to the tone pool (BP round ⑦). */
   const stepCur = (delta: number): void => {
-    const idx = items.findIndex(i => i.id === curId)
-    const next = items.length ? items[(idx + delta + items.length) % items.length] : items[0]
+    if (!pool.length) return
+    const idx = pool.findIndex(i => i.id === curId)
+    // A first press after the current item fell out of the pool jumps to its head.
+    const next = idx === -1 ? pool[0] : pool[(idx + delta + pool.length) % pool.length]
     setCurId(next.id)
   }
 
-  /** Reference Switcher's 随机 button. */
-  const pickRandom = (): void => {
-    if (!items.length) return
-    setCurId(items[Math.floor(Math.random() * items.length)].id)
+  /** BP round ⑦: switch the active pool; keep the stage inside it. */
+  const selectTone = (next: Tone): void => {
+    if (next === tone) return
+    setTone(next)
+    const p = visible.filter(i => effectiveToneOf(i, toneOverrides) === next)
+    if (p.length && !p.some(i => i.id === curId)) setCurId(p[0].id)
+  }
+
+  /** BP round ⑦: the user's click-mark — flip this item's tone, persisted. */
+  const toggleToneMark = (id: string): void => {
+    const all = allItems()
+    const item = all.find(i => i.id === id)
+    if (!item) return
+    const next: Tone = effectiveToneOf(item, toneOverrides) === 'light' ? 'dark' : 'light'
+    const nextOverrides = { ...toneOverrides, [id]: next }
+    setToneOverrides(nextOverrides)
+    writeToneOverride(id, next)
   }
 
   /** BP round: apply this spec to the whole webui, or reset when active. */
@@ -323,7 +371,9 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
           searchRef.current?.focus()
           break
         case 'c':
-          if (curItem) void copyToClipboard(usageDoc(curItem)).then((ok) => { notify(ok ? t('art.copied') : 'copy failed') })
+          // BP round ① (m02138): c copies the spec NAME only — same as the
+          // header copy button; the full usage doc is not copied anywhere.
+          if (curItem) void copyToClipboard(curItem.spec.name).then((ok) => { notify(ok ? t('art.copied') : 'copy failed') })
           break
         case 'f':
           if (curItem) toggleFav(curItem.id)
@@ -344,7 +394,11 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     setFavOnly(false)
     setRepoFilter(null)
     setKindFilter(null)
-    setCurId(defaultOf(src))
+    const target = defaultOf(src)
+    setCurId(target)
+    // BP round ⑦: reset also lands the pool on the default item's own tone.
+    const def = allItems().find(i => i.id === target)
+    if (def) setTone(effectiveToneOf(def, toneOverrides))
   }
 
   return (
@@ -410,14 +464,15 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
               data-mode={curItem.spec.mode}
               data-font={curItem.spec.font}
             >
+              {/* BP round (BP-13): Stage no longer owns the global apply/reset
+                  button — it moved into the floating pill (BO round ⑦), so the
+                  panel passes no global props to Stage. */}
               <Stage
                 item={curItem}
                 counts={counts}
                 faved={favs.has(curItem.id)}
                 onToggleFav={() => { toggleFav(curItem.id) }}
                 onNotify={notify}
-                globalActive={globalId === curItem.id}
-                onGlobal={onGlobal}
               />
             </div>
           ) : (
@@ -427,20 +482,26 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
       </div>
 
       <GallerySwitcher
-        items={items}
+        items={pool}
         allItems={allItems()}
         curId={curId}
-        curIdx={items.findIndex(i => i.id === curId)}
+        curIdx={pool.findIndex(i => i.id === curId)}
         immersive={immersive}
         onPrev={() => { stepCur(-1) }}
         onNext={() => { stepCur(1) }}
-        onRandom={pickRandom}
         onSelect={(id) => { if (tab === 'compare') { pickFromCompare(id) } else { setCurId(id) } }}
         onExitImmersive={() => { setImmersive(false) }}
         onToggleImmersive={() => { setImmersive(v => !v) }}
         onReset={reset}
         onGlobal={onGlobal}
         globalActive={globalId === curId}
+        tone={tone}
+        onSelectTone={selectTone}
+        toneOf={(id) => {
+          const it = allItems().find(i => i.id === id)
+          return it ? effectiveToneOf(it, toneOverrides) : 'light'
+        }}
+        onToggleToneMark={toggleToneMark}
         groups={favGroups}
         onAddGroup={addGroup}
         onRenameGroup={renameGroup}

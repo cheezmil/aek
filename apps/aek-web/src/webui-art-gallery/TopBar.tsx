@@ -52,7 +52,7 @@ export function TopBar({
   const { t } = useI18n()
   return (
     <header className="flex flex-none items-center gap-3 border-b bg-background px-5 py-2.5">
-      <span className="flex-none text-aek-13 font-bold tracking-wide">{t('art.title')}</span>
+      {/* BP round ⑩: the gallery title span is retired — the tab pills lead. */}
       <div className="flex items-center gap-1.5">
         <TabPill active={tab === 'style'} label={t('art.tab.style')} count={styleCount} onClick={() => { onTab('style') }} />
         <TabPill active={tab === 'compare'} label={t('art.tab.compare')} onClick={() => { onTab('compare') }} />

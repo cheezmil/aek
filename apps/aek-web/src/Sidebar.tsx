@@ -235,6 +235,13 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
   const NEXT_BASE_THEME: Record<BaseTheme, BaseTheme> = { light: 'dark', dark: 'auto', auto: 'light' }
   /** @returns cycles the base appearance to its next state. */
   const cycleBaseTheme = (): void => { setBaseTheme(current => NEXT_BASE_THEME[current]) }
+  // BP round ⑧: the footer tooltip names ONLY what the click triggers —
+  // the next state in the cycle, never an enumeration of all options.
+  const themeNextKey = baseTheme === 'light'
+    ? 'footer.theme.toDark'
+    : baseTheme === 'dark'
+      ? 'footer.theme.toAuto'
+      : 'footer.theme.toLight'
   // W round: the user-dragged rail width (persisted like every other rail
   // setting; the CSS variable only animates the DEFAULT width).
   const [sidebarWidth, setSidebarWidth] = usePref<number>('aek-home.sidebarWidth', SIDEBAR_DEFAULT_WIDTH, parseSidebarWidth)
@@ -916,12 +923,12 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
                 type="button"
                 className={cn(FOOTER_ICON_BUTTON, compact && 'mx-auto')}
                 onClick={cycleBaseTheme}
-                aria-label={t('footer.theme')}
+                aria-label={t(themeNextKey)}
               >
                 <Icon name={baseTheme === 'light' ? 'sun' : baseTheme === 'dark' ? 'moon' : 'contrast'} size={18} />
               </button>
             </TooltipTrigger>
-            <TooltipContent>{t('footer.theme')}</TooltipContent>
+            <TooltipContent>{t(themeNextKey)}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>

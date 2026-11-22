@@ -25,10 +25,17 @@
 #     renames them, and the naming plan is checked by
 #     scripts/aek/verify-builder-config.mjs)
 #   - Artifacts go to the GITHUB release (never Gitea). Release tags
-#     follow the `aek-desktop-<sha7>` convention — the release carries
-#     aek-desktop artifacts only, so the tag says what it contains
-#     (2026-11-16 user ruling; the old `aek-cloud` tag was the build
+#     follow the `aek-desktop-v<major.minor.patch>` convention — the
+#     version comes from apps/aek-desktop/v0/package.json, not from a
+#     commit sha (2026-11-23 user ruling: no `aek-desktop-f72c611`-style
+#     titles; the release carries aek-desktop artifacts only, so the tag
+#     says what it contains; the old `aek-cloud` tag was the build
 #     PIPELINE name, not the product name, and is deleted).
+#   - The release body is a FIXED paragraph (2026-11-23 user ruling): it
+#     states that AEK is primarily a WebUI for desktop-less environments,
+#     that the Electron layer is only a shell, and that a stale-looking
+#     shell release does not mean the AEK system as a whole is stale.
+#     No commit-log-style entries belong in the release body.
 #   - NEVER triggered by push. Manual `workflow_dispatch` only; the prompter
 #     (`node scripts/aek/electron-cloud.mjs`) tells a developer WHEN a cloud
 #     build is actually needed (the electron layer changed since the last one).
@@ -42,7 +49,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'GitHub release tag — the release carries aek-desktop artifacts only, use aek-desktop-<sha7> style, e.g. aek-desktop-0dda685'
+        description: 'GitHub release tag — use aek-desktop-v<major.minor.patch> style (the version in apps/aek-desktop/v0/package.json), e.g. aek-desktop-v0.2.0'
         required: true
         default: 'aek-desktop'
 
@@ -208,5 +215,11 @@ jobs:
           tag_name: ${{ github.event.inputs.tag }}
           draft: false
           generate_release_notes: false
+          # FIXED body (2026-11-23 user ruling): one static paragraph for every
+          # shell release. No commit-log entries, no auto-generated notes —
+          # a stale-looking shell release does NOT mean the AEK system as a
+          # whole is stale.
+          body: |
+            For compatibility with systems that have no desktop UI environment, AEK is primarily a web UI; the Electron layer is just a shell. Shell version updates happen only when the Electron source code itself changes. You may notice this shell going a long time without an update — that does not mean the AEK system as a whole has not been updated.
           files: |
             release/staging/**/*

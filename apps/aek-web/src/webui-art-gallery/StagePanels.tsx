@@ -8,9 +8,9 @@
  *
  * @module @cheezmil/aek-web/src/webui-art-gallery/StagePanels
  */
-import { useState } from 'react'
-import type { ReactNode } from 'react'
-import { Icon } from '../Icons.tsx'
+import { useState, useRef } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import { Icon, type IconName } from '../Icons.tsx'
 import { useI18n } from '../i18n.tsx'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -119,12 +119,62 @@ function FancySkeleton() {
   )
 }
 
+/** BP round ⑪: a keyboard-shortcut chip (no aek counterpart — P16 token). */
+function KbdChip({ label }: { label: string }) {
+  return (
+    <kbd className="border-border/70 bg-secondary text-muted-foreground inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-md border px-1.5 font-sans text-2xs font-semibold">
+      {label}
+    </kbd>
+  )
+}
+
+/** BP round ⑪: a fixed-ratio media placeholder (the shadcn Aspect Ratio
+ * family) — the frame itself re-skins with the selected spec. */
+function AspectCard({
+  label, className, style,
+}: { label: string; className?: string; style?: CSSProperties }) {
+  return (
+    <div className={cn('border-border relative h-28 overflow-hidden rounded-lg border', className)} style={style}>
+      <Icon name="externalLink" size={14} className="text-muted-foreground absolute top-2.5 right-2.5" />
+      <span className="text-muted-foreground absolute bottom-2.5 left-2.5 text-2xs font-bold tabular-nums">{label}</span>
+    </div>
+  )
+}
+
+/** BP round ⑪: a multi-select toggle group (shadcn ToggleGroup pattern,
+ * self-drawn on theme tokens). */
+function FancyToggleGroup({
+  options, active, onToggle,
+}: { options: [string, string][]; active: Set<string>; onToggle: (id: string) => void }) {
+  return (
+    <div className="border-border inline-flex rounded-md border p-0.5">
+      {options.map(([id, label]) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={active.has(id)}
+          onClick={() => { onToggle(id) }}
+          className={cn(
+            'rounded-sm px-2.5 py-1 text-aek-125 transition-colors',
+            active.has(id) ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function ComponentsPanel() {
   const { t } = useI18n()
   const [check, setCheck] = useState(true)
   const [radio, setRadio] = useState('a')
   const [slider, setSlider] = useState(62)
   const [accOpen, setAccOpen] = useState<string | null>('q1')
+  // BP round ⑪: a toggle-group demo (exclusive view mode).
+  const [view, setView] = useState<Set<string>>(new Set(['grid']))
+  const flipView = (id: string) => { setView(new Set([id])) }
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -265,6 +315,23 @@ export function ComponentsPanel() {
               <TooltipContent>{t('art.tooltipBDesc')}</TooltipContent>
             </Tooltip>
           </div>
+        </Group>
+
+        <Group title={t('art.kbdGroup')} note={t('art.kbdNote')}>
+          <Row label={t('art.kbdRow')}>
+            <KbdChip label="⌘ K" />
+            <KbdChip label="⌘ B" />
+            <KbdChip label="⌘ ." />
+            <KbdChip label="Esc" />
+          </Row>
+          <Separator />
+          <Row label={t('art.kbdToggleRow')}>
+            <FancyToggleGroup
+              options={[[ 'grid', t('art.nvViewGrid')], ['list', t('art.nvViewList')]]}
+              active={view}
+              onToggle={flipView}
+            />
+          </Row>
         </Group>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -810,6 +877,420 @@ export function TablesPanel() {
           </div>
         </div>
       </Group>
+    </div>
+  )
+}
+
+/**
+ * BP round ⑪: the stage's "浮层" tab — the shadcn overlay family (Popover,
+ * Dropdown Menu, Dialog, Sheet, Kbd / Input Group). aek-web ships none of
+ * them, so every surface is self-drawn on theme tokens (P16) and re-skins
+ * with the selected spec.
+ */
+export function OverlaysPanel() {
+  const { t } = useI18n()
+  const [popOpen, setPopOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [dlgOpen, setDlgOpen] = useState(false)
+  const [sheetOpen, setSheetOpen] = useState(false)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Group title={t('art.ovGroup')} note={t('art.ovGroupNote')}>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="relative min-h-28">
+            <Button variant="outline" size="sm" onClick={() => { setPopOpen(v => !v) }}>
+              {t('art.ovShow')}
+            </Button>
+            {popOpen
+              ? (
+                <div className="border-border bg-background absolute top-9 left-0 z-20 w-56 rounded-lg border p-3 shadow-lg">
+                  <div className="text-aek-13 font-semibold">{t('art.ovShow')}</div>
+                  <p className="text-muted-foreground mt-1 text-aek-115">{t('art.ovBody')}</p>
+                </div>
+              )
+              : null}
+          </div>
+
+          <div className="relative min-h-28">
+            <Button variant="outline" size="sm" onClick={() => { setMenuOpen(v => !v) }}>
+              {t('art.ovMenu')}
+            </Button>
+            {menuOpen
+              ? (
+                <ul className="border-border bg-background absolute top-9 left-0 z-20 min-w-32 rounded-lg border p-1.5 shadow-lg m-0 list-none">
+                  {([
+                    { label: t('art.ovOpen'), icon: 'plus' },
+                    { label: t('art.ovCopy'), icon: 'copy' },
+                    { label: t('art.ovShare'), icon: 'externalLink' },
+                  ] as { label: string; icon: IconName }[]).map(item => (
+                    <li key={item.label}>
+                      <button
+                        type="button"
+                        className="hover:bg-muted flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-aek-125"
+                        onClick={() => { setMenuOpen(false) }}
+                      >
+                        <Icon name={item.icon} size={13} className="text-muted-foreground" />
+                        {item.label}
+                      </button>
+                    </li>
+                  ))}
+                  <li>
+                    <button
+                      type="button"
+                      className="text-danger hover:bg-danger-soft flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-aek-125"
+                      onClick={() => { setMenuOpen(false) }}
+                    >
+                      <Icon name="trash" size={13} />
+                      {t('art.ovDelete')}
+                    </button>
+                  </li>
+                </ul>
+              )
+              : null}
+          </div>
+
+          <div className="relative min-h-28">
+            <Button variant="outline" size="sm" onClick={() => { setDlgOpen(v => !v) }}>
+              {t('art.ovOpenDialog')}
+            </Button>
+            {dlgOpen
+              ? (
+                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-secondary/40">
+                  <div className="border-border bg-background w-64 rounded-lg border p-3 shadow-lg">
+                    <div className="text-aek-13 font-semibold">{t('art.ovDialogTitle')}</div>
+                    <p className="text-muted-foreground mt-1 text-aek-115">{t('art.ovDialogBody')}</p>
+                    <div className="mt-3 flex justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={() => { setDlgOpen(false) }}>
+                        {t('art.ovCancel')}
+                      </Button>
+                      <Button variant="destructive" size="sm" onClick={() => { setDlgOpen(false) }}>
+                        {t('art.ovConfirm')}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )
+              : null}
+          </div>
+
+          <div className="relative min-h-28">
+            <Button variant="outline" size="sm" onClick={() => { setSheetOpen(v => !v) }}>
+              {t('art.ovOpenSheet')}
+            </Button>
+            {sheetOpen
+              ? (
+                <div className="border-border bg-background animate-tier-in absolute top-0 right-0 z-10 flex h-full w-44 flex-col gap-2 rounded-lg border p-3 shadow-lg">
+                  <div className="text-aek-13 font-semibold">{t('art.ovSheet')}</div>
+                  <p className="text-muted-foreground text-aek-115">{t('art.ovSheetBody')}</p>
+                  <Button variant="outline" size="sm" onClick={() => { setSheetOpen(false) }}>
+                    {t('art.ovCancel')}
+                  </Button>
+                </div>
+              )
+              : null}
+          </div>
+        </div>
+      </Group>
+
+      <Group title={t('art.ovKbd')} note={t('art.ovKbdNote')}>
+        <div className="border-border bg-background flex h-8.5 w-64 items-center gap-2 rounded-md border px-2.5">
+          <Icon name="search" size={13} className="text-muted-foreground" />
+          <input type="text" placeholder={t('art.ovSearchPh')} className="text-aek-125 w-full bg-transparent focus:outline-none" />
+          <KbdChip label="⌘ K" />
+        </div>
+      </Group>
+    </div>
+  )
+}
+
+/**
+ * BP round ⑪: the stage's "反馈" tab — the shadcn feedback family (Toast,
+ * Alert, Spinner, Skeleton, Empty). Toasts are self-drawn and auto-dismiss
+ * after 3s; every surface rides the theme tokens so the skin drives it.
+ */
+export function FeedbackPanel() {
+  const { t } = useI18n()
+  const [toasts, setToasts] = useState<{ id: number; tone: 'success' | 'warning' | 'error' | 'info'; text: string }[]>([])
+
+  const fire = (tone: 'success' | 'warning' | 'error' | 'info', text: string) => {
+    const id = Date.now() + Math.random()
+    setToasts(v => [...v, { id, tone, text }])
+    window.setTimeout(() => { setToasts(v => v.filter(x => x.id !== id)) }, 3000)
+  }
+
+  const alerts: { cls: string; icon: IconName; text: string }[] = [
+    { cls: 'border-success/30 bg-success/10 text-success', icon: 'check', text: t('art.fbAlertSuccess') },
+    { cls: 'border-accent/30 bg-accent/10 text-accent', icon: 'about', text: t('art.fbAlertInfo') },
+    { cls: 'border-danger/30 bg-danger-soft text-danger', icon: 'alert', text: t('art.fbAlertWarn') },
+    { cls: 'border-danger/40 bg-danger-soft text-danger', icon: 'alert', text: t('art.fbAlertErr') },
+  ]
+
+  return (
+    <div className="relative flex flex-col gap-4">
+      <Group title={t('art.fbGroup')} note={t('art.fbGroupNote')}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-aek-125 flex items-center gap-1.5"><Icon name="bell" size={13} />{t('art.fbToast')}</span>
+          <Button variant="outline" size="sm" onClick={() => { fire('success', t('art.fbToastOk')) }}>{t('art.fbToastOk')}</Button>
+          <Button variant="outline" size="sm" onClick={() => { fire('warning', t('art.fbToastWarn')) }}>{t('art.fbToastWarn')}</Button>
+          <Button variant="outline" size="sm" onClick={() => { fire('error', t('art.fbToastErr')) }}>{t('art.fbToastErr')}</Button>
+          <Button variant="outline" size="sm" onClick={() => { fire('info', t('art.fbToastInfo')) }}>{t('art.fbToastInfo')}</Button>
+        </div>
+        <Separator />
+        <div className="space-y-2">
+          {alerts.map(a => (
+            <div key={a.text} className={cn('flex items-center gap-3 rounded-lg border px-3 py-2.5', a.cls)}>
+              <Icon name={a.icon} size={15} />
+              <span className="text-aek-125 flex-1">{a.text}</span>
+            </div>
+          ))}
+        </div>
+      </Group>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Group title={t('art.fbLoading')}>
+          <div className="flex items-center gap-4">
+            <Icon name="loader" size={16} className="text-muted-foreground animate-spin" />
+            <div className="text-primary size-4 animate-spin rounded-full border-2 border-t-transparent" />
+            <FancySkeleton />
+          </div>
+        </Group>
+
+        <Group title={t('art.fbEmpty')}>
+          <div className="border-border flex flex-col items-center gap-2 rounded-lg border border-dashed p-5 text-center">
+            <span className="bg-secondary flex size-10 items-center justify-center rounded-full">
+              <Icon name="about" size={18} className="text-muted-foreground" />
+            </span>
+            <div>
+              <div className="text-aek-13 font-semibold">{t('art.fbEmptyTitle')}</div>
+              <p className="text-muted-foreground mt-1 text-aek-115">{t('art.fbEmptyBody')}</p>
+            </div>
+            <Button variant="outline" size="sm">
+              <Icon name="plus" size={13} />
+              {t('art.fbEmptyAction')}
+            </Button>
+          </div>
+        </Group>
+      </div>
+
+      <div className="pointer-events-none absolute right-0 bottom-0 z-30 flex w-60 flex-col gap-2">
+        {toasts.map(msg => (
+          <div key={msg.id} className="border-border bg-background pointer-events-auto animate-tier-in flex items-center gap-2 rounded-lg border p-2.5 shadow-lg">
+            <Icon
+              name={msg.tone === 'success' ? 'check' : msg.tone === 'info' ? 'about' : 'alert'}
+              size={14}
+              className={msg.tone === 'success' ? 'text-success' : msg.tone === 'info' ? 'text-accent' : 'text-danger'}
+            />
+            <span className="text-aek-125 flex-1">{msg.text}</span>
+            <button
+              type="button"
+              aria-label={t('art.fbClose')}
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => { setToasts(v => v.filter(x => x.id !== msg.id)) }}
+            >
+              <Icon name="close" size={13} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * BP round ⑪: the stage's "导航" tab — the shadcn navigation family
+ * (Breadcrumb, Pagination, Tabs, Toggle Group). Everything is self-drawn
+ * on theme tokens so the selected spec re-skins the whole panel.
+ */
+export function NavigationPanel() {
+  const { t } = useI18n()
+  const [page, setPage] = useState(3)
+  const [tab, setTab] = useState('a')
+  const [view, setView] = useState<Set<string>>(new Set(['grid']))
+  const [text, setText] = useState<Set<string>>(new Set(['bold']))
+
+  const flipView = (id: string) => { setView(new Set([id])) }
+  const flipText = (id: string) => {
+    setText((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const crumbs = [t('art.nvHome'), t('art.nvProjects'), t('art.nvProject')]
+  const pages: (number | string)[] = [1, 2, 3, 4, 5, '…', 6]
+  const tabs: [string, string, string][] = [
+    ['a', t('art.nvTabA'), t('art.nvTabABody')],
+    ['b', t('art.nvTabB'), t('art.nvTabBBody')],
+    ['c', t('art.nvTabC'), t('art.nvTabCBody')],
+  ]
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Group title={t('art.nvGroup')} note={t('art.nvGroupNote')}>
+        <div className="space-y-4">
+          <nav aria-label={t('art.nvGroup')} className="flex items-center gap-1.5">
+            {crumbs.map((label, i) => (
+              <span key={label} className="flex items-center gap-1.5">
+                {i > 0 ? <Icon name="chevronRight" size={12} className="text-muted-foreground" /> : null}
+                <span className={i === crumbs.length - 1 ? 'text-aek-125 font-semibold' : 'text-muted-foreground text-aek-125'}>
+                  {label}
+                </span>
+              </span>
+            ))}
+          </nav>
+
+          <div className="flex items-center gap-1.5">
+            <Button variant="outline" size="sm" disabled={page === 1} aria-label={t('art.nvPrev')} onClick={() => { setPage(p => Math.max(1, p - 1)) }}>
+              <Icon name="chevronLeft" size={13} />
+            </Button>
+            {pages.map((n, i) =>
+              n === '…'
+                ? <span key={`e${i}`} className="text-muted-foreground px-1 text-aek-125">…</span>
+                : (
+                  <button
+                    key={n}
+                    type="button"
+                    aria-current={page === n ? 'page' : undefined}
+                    onClick={() => { setPage(n as number) }}
+                    className={cn(
+                      'size-7 rounded-md text-aek-125 transition-colors',
+                      page === n ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
+                    )}
+                  >
+                    {n}
+                  </button>
+                ),
+            )}
+            <Button variant="outline" size="sm" disabled={page === 6} aria-label={t('art.nvNext')} onClick={() => { setPage(p => Math.min(6, p + 1)) }}>
+              <Icon name="chevronRight" size={13} />
+            </Button>
+            <span className="text-muted-foreground ml-2 text-aek-115">{t('art.nvPages')} {page}/6</span>
+          </div>
+        </div>
+      </Group>
+
+      <Group title={t('art.nvTabs')} note={t('art.nvToggleNote')}>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <div className="border-border flex gap-4 border-b">
+              {tabs.map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => { setTab(id) }}
+                  className={cn(
+                    'text-aek-125 border-b-2 pb-2 transition-colors',
+                    tab === id ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-muted-foreground text-aek-125">{tabs.find(x => x[0] === tab)?.[2]}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <FancyToggleGroup
+              options={[['grid', t('art.nvViewGrid')], ['list', t('art.nvViewList')]]}
+              active={view}
+              onToggle={flipView}
+            />
+            <FancyToggleGroup
+              options={[['bold', t('art.nvBold')], ['italic', t('art.nvItalic')]]}
+              active={text}
+              onToggle={flipText}
+            />
+          </div>
+        </div>
+      </Group>
+    </div>
+  )
+}
+
+/**
+ * BP round ⑪: the stage's "布局" tab — the shadcn layout family (Resizable
+ * panes, Aspect Ratio frames, Scroll Area). The divider is a real drag
+ * handle; every surface rides the theme tokens.
+ */
+export function LayoutPanel() {
+  const { t } = useI18n()
+  const [leftW, setLeftW] = useState(42)
+  const boxRef = useRef<HTMLDivElement>(null)
+
+  const startDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const box = boxRef.current
+    if (!box) return
+    const rect = box.getBoundingClientRect()
+    const onMove = (ev: PointerEvent) => {
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100
+      setLeftW(Math.min(78, Math.max(22, pct)))
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    e.preventDefault()
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Group title={t('art.layGroup')} note={t('art.layGroupNote')}>
+        <div className="space-y-3">
+          <div ref={boxRef} className="border-border flex h-40 overflow-hidden rounded-lg border">
+            <div style={{ width: `${leftW}%` }} className="bg-background flex min-w-0 items-center justify-center p-3">
+              <span className="text-aek-125 font-semibold">{t('art.layLeft')}</span>
+            </div>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              onPointerDown={startDrag}
+              className="border bg-border/20 flex h-full w-4 cursor-col-resize items-center justify-center"
+            >
+              <span className="bg-muted-foreground size-1.5 rounded-full" />
+            </div>
+            <div className="bg-secondary/50 flex flex-1 items-center justify-center p-3">
+              <span className="text-aek-125 font-semibold">{t('art.layRight')}</span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-aek-115 tabular-nums">
+              {t('art.layLeft')} {Math.round(leftW)}% · {t('art.layRight')} {100 - Math.round(leftW)}%
+            </span>
+            <Button variant="outline" size="sm" onClick={() => { setLeftW(42) }}>{t('art.layReset')}</Button>
+          </div>
+        </div>
+      </Group>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Group title={t('art.layAspect')} note={t('art.layAspectNote')}>
+          <div className="grid grid-cols-3 gap-3">
+            <AspectCard label="16:9" className="aspect-video" />
+            <AspectCard label="4:3" style={{ aspectRatio: '4 / 3' }} />
+            <AspectCard label="1:1" style={{ aspectRatio: '1 / 1' }} />
+          </div>
+        </Group>
+
+        <Group title={t('art.layScroll')} note={t('art.layScrollNote')}>
+          <div className="max-h-40 overflow-auto rounded-lg border border-border">
+            <div className="bg-secondary/60 sticky top-0 flex items-center justify-between px-3 py-1.5 text-2xs font-bold uppercase">
+              <span>{t('art.layItem')}</span>
+              <span className="tabular-nums">8</span>
+            </div>
+            {Array.from({ length: 8 }, (_, i) => i + 1).map(n => (
+              <div key={n} className="border-border flex items-center gap-2 border-t px-3 py-2">
+                <span className="text-muted-foreground text-2xs tabular-nums">{n}</span>
+                <span className="text-aek-125">{t('art.layItem')} {n}</span>
+                <Badge variant="secondary" className="ml-auto">v{n}</Badge>
+              </div>
+            ))}
+          </div>
+        </Group>
+      </div>
     </div>
   )
 }

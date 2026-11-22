@@ -1,6 +1,6 @@
 {
   "name": "aek-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AEK Desktop - Electron shell for AEK web app",
   "homepage": "https://github.com/cheezmil/aek",
   "author": "AEK Team",

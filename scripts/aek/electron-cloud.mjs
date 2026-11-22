@@ -42,7 +42,7 @@ async function main() {
 
   if (previous === null) {
     console.log(`[electron-cloud] no cloud build recorded yet (fingerprint ${fp})`)
-    console.log('[electron-cloud] 建议：手动触发 GitHub Actions「electron-cloud-build」（输入 release tag），完成后跑 --record 落 marker。')
+    console.log('[electron-cloud] 建议：手动触发 GitHub Actions「electron-cloud-build」（输入 release tag，aek-desktop-v<major.minor.patch> 风格，取 apps/aek-desktop/v0/package.json 的版本），完成后跑 --record 落 marker。')
     return
   }
   if (previous === fp) {
@@ -50,7 +50,7 @@ async function main() {
     return
   }
   console.log(`[electron-cloud] ⚠ electron 层代码已变化：fingerprint ${previous} → ${fp}`)
-  console.log('[electron-cloud] 请手动触发 GitHub Actions「electron-cloud-build」（workflow_dispatch，输入 release tag）—— 本工作流从不随 push 自动触发。')
+  console.log('[electron-cloud] 请手动触发 GitHub Actions「electron-cloud-build」（workflow_dispatch，输入 release tag，aek-desktop-v<major.minor.patch> 风格）—— 本工作流从不随 push 自动触发。')
   console.log('[electron-cloud] 云编译成功后跑：node scripts/aek/electron-cloud.mjs --record')
 }
 

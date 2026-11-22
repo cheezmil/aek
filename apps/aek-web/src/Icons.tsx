@@ -46,6 +46,10 @@ export type IconName =
   | 'chart'
   | 'form'
   | 'table'
+  | 'popover'
+  | 'bell'
+  | 'compass'
+  | 'frame'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 export const ICONS: Record<IconName, ReactNode> = {
@@ -413,6 +417,41 @@ export const ICONS: Record<IconName, ReactNode> = {
       <path d="M12 3v18" />
     </>
   ),
+  /** BP round ⑪: the stage's "overlays" tab. A card floating above a
+       backdrop (Lucide `square` + a raised panel) — reads as "a layer that
+       pops over the page". */
+  popover: (
+    <>
+      <rect width="8" height="8" x="3" y="3" rx="2" />
+      <path d="M7 21h10a2 2 0 0 0 2-2V7" />
+      <rect width="12" height="12" x="9" y="9" rx="2" />
+    </>
+  ),
+  /** BP round ⑪: the stage's "feedback" tab. Lucide `bell` — reads as
+       "notifications / alerts". */
+  bell: (
+    <>
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+    </>
+  ),
+  /** BP round ⑪: the stage's "navigation" tab. Lucide `compass` — reads as
+       "finding your way through the UI". */
+  compass: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88" />
+    </>
+  ),
+  /** BP round ⑪: the stage's "layout" tab. Lucide `layout-grid` — reads as
+       "arranging panes and regions". */
+  frame: (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M12 3v18" />
+      <path d="M3 12h18" />
+    </>
+  ),
 }
 
 /** Props for {@link Icon}. */
@@ -448,6 +487,10 @@ export const ICON_NAMES: readonly IconName[] = [
   'chart',
   'form',
   'table',
+  'popover',
+  'bell',
+  'compass',
+  'frame',
 ]
 
 export interface IconProps {

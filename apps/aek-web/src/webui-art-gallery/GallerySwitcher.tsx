@@ -1,12 +1,16 @@
 /**
  * The bottom-right quick switcher — aek-web's own port of the
- * style-gallery reference's Switcher IA: a pill with prev / random /
+ * style-gallery reference's Switcher IA: a pill with prev / 浅色 / 深色 /
  * next + the current item's name and position, an expandable searchable
- * item list, and the immersive-mode exit button. P16: aek's own widgets
- * only — the reference's ScrollArea becomes a native overflow scroll,
- * its lucide glyphs become aek Icons, and it sits absolutely inside the
- * panel (after the BP round the panel owns the whole window, so it
- * reads the same as the reference's fixed corner widget).
+ * item list, and the immersive-mode exit button. BP round ⑦ (m02138):
+ * the random button is retired — the two tone buttons pick the active
+ * pool (prev/next/list move only inside it), and each list row carries
+ * a click-mark that overrides the automatic light/dark classification.
+ * P16: aek's own widgets only — the reference's ScrollArea becomes a
+ * native overflow scroll, its lucide glyphs become aek Icons, and it
+ * sits absolutely inside the panel (after the BP round the panel owns
+ * the whole window, so it reads the same as the reference's fixed
+ * corner widget).
  *
  * @module @cheezmil/aek-web/src/webui-art-gallery/GallerySwitcher
  */
@@ -18,7 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import type { GalleryItem, FavGroup } from './spec.ts'
+import type { GalleryItem, FavGroup, Tone } from './spec.ts'
 
 export interface GallerySwitcherProps {
   items: GalleryItem[]
@@ -29,11 +33,16 @@ export interface GallerySwitcherProps {
   immersive: boolean
   onPrev: () => void
   onNext: () => void
-  onRandom: () => void
   onSelect: (id: string) => void
   onExitImmersive: () => void
   onToggleImmersive: () => void
   onReset: () => void
+  /** BP round ⑦: the active tone pool + its switcher. */
+  tone: Tone
+  onSelectTone: (tone: Tone) => void
+  /** The effective tone of one item (user mark beats auto-classification). */
+  toneOf: (id: string) => Tone
+  onToggleToneMark: (id: string) => void
   /** BO round ⑦: apply the current spec to the whole webui, or reset. */
   onGlobal: () => void
   globalActive: boolean
@@ -85,26 +94,42 @@ export function GallerySwitcher(p: GallerySwitcherProps): JSX.Element {
           <div className="max-h-75 overflow-auto p-1.5">
             {list.map((x) => {
               const on = x.id === p.curId
+              const mark = p.toneOf(x.id)
               return (
-                <button
+                <div
                   key={x.id}
-                  type="button"
-                  onClick={() => { p.onSelect(x.id); setOpen(false) }}
                   className={cn(
-                    'flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-xs transition-colors',
+                    'flex items-center gap-1 rounded-sm px-2 py-1.5 text-xs transition-colors',
                     on ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
                   )}
                 >
-                  <span className="flex shrink-0 gap-0.5">
-                    {[x.spec.p[0], x.spec.p[4], x.spec.p[5]].map((c, i) => (
-                      <span key={i} className="size-2 rounded-xs" style={{ background: c }} />
-                    ))}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{x.spec.name}</span>
-                  <span className={cn('shrink-0 text-2xxs', on ? 'opacity-85' : 'text-muted-foreground')}>
-                    {x.desc || x.spec.mode || ''}
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => { p.onSelect(x.id); setOpen(false) }}
+                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 bg-transparent"
+                  >
+                    <span className="flex shrink-0 gap-0.5">
+                      {[x.spec.p[0], x.spec.p[4], x.spec.p[5]].map((c, i) => (
+                        <span key={i} className="size-2 rounded-xs" style={{ background: c }} />
+                      ))}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{x.spec.name}</span>
+                    <span className={cn('shrink-0 text-2xxs', on ? 'opacity-85' : 'text-muted-foreground')}>
+                      {x.desc || x.spec.mode || ''}
+                    </span>
+                  </button>
+                  {/* BP round ⑦: the click-mark — flip this item's light/dark
+                      tone when the automatic classification is wrong. */}
+                  <button
+                    type="button"
+                    onClick={() => { p.onToggleToneMark(x.id) }}
+                    title={t('art.toneMark')}
+                    aria-label={t('art.toneMark')}
+                    className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-xs text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                  >
+                    <Icon name={mark === 'light' ? 'sun' : 'moon'} size={12} />
+                  </button>
+                </div>
               )
             })}
           </div>
@@ -256,9 +281,37 @@ export function GallerySwitcher(p: GallerySwitcherProps): JSX.Element {
             </TooltipTrigger>
             <TooltipContent>{t('art.switcherPrev')}</TooltipContent>
           </Tooltip>
-          <Button variant="ghost" size="sm" onClick={p.onRandom}>
-            <Icon name="shuffle" />{t('art.switcherRandom')}
-          </Button>
+          {/* BP round ⑦: the random button is retired — the pill now holds
+              the two tone-pool switches (prev/next/list stay inside the
+              active pool). The active pool's button reads as filled. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => { p.onSelectTone('light') }}
+                aria-label={t('art.toneLight')}
+                className={cn(p.tone === 'light' && 'bg-muted text-foreground')}
+              >
+                <Icon name="sun" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('art.toneLight')}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => { p.onSelectTone('dark') }}
+                aria-label={t('art.toneDark')}
+                className={cn(p.tone === 'dark' && 'bg-muted text-foreground')}
+              >
+                <Icon name="moon" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('art.toneDark')}</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon-sm" onClick={p.onNext} aria-label={t('art.switcherNext')}>

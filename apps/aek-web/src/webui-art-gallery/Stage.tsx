@@ -12,20 +12,16 @@ import { useMemo, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import { Icon } from '../Icons.tsx'
 import { useI18n } from '../i18n.tsx'
-import { cssSnippet, normRadius, usageDoc, type GalleryItem, type StageSpec, galleryItems, ALL_STYLE_KINDS } from './spec.ts'
+import { cssSnippet, normRadius, type GalleryItem, type StageSpec } from './spec.ts'
 import { REPO_FALLBACK } from './data/skill-styles.ts'
 import { useConsoleFacts } from '../useConsoleFacts.ts'
 import { formatDisplayPath, parsePathStyle } from '../paths.ts'
 import { PREF_KEYS, usePref } from '../preferences.tsx'
 import { copyToClipboard } from '../clipboard.ts'
-import { ComponentsPanel, MotionPanel, ChartsPanel, FormsPanel, TablesPanel } from './StagePanels.tsx'
+import { ComponentsPanel, MotionPanel, ChartsPanel, FormsPanel, TablesPanel, OverlaysPanel, FeedbackPanel, NavigationPanel, LayoutPanel } from './StagePanels.tsx'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardAction } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Separator } from '@/components/ui/separator'
-import { Switch } from '@/components/ui/switch'
-import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 export interface StageCounts {
@@ -44,17 +40,25 @@ export interface StageProps {
   onNotify: (msg: string) => void
 }
 
-const NAVS: { key: string; icon: 'layout' | 'plugins' | 'zap' | 'terminal' | 'chart' | 'form' | 'table' }[] = [
-  { key: 'overview', icon: 'layout' },
+// BP round (m02138 ⑪): the "overview" tab is retired — the stage opens on
+// the charts panel directly; the demo/diagnostics cards and the stats grid
+// that lived under it are gone with it.
+/** BP round ⑪ (m02138): the tab set follows the shadcn/ui 2026 component
+ * families — the four new tabs (overlays / feedback / navigation / layout)
+ * each own a showcase panel in StagePanels; the stage still opens on
+ * charts. */
+const NAVS: { key: string; icon: 'plugins' | 'zap' | 'terminal' | 'chart' | 'form' | 'table' | 'popover' | 'bell' | 'compass' | 'frame' }[] = [
   { key: 'components', icon: 'plugins' },
   { key: 'motion', icon: 'zap' },
   { key: 'charts', icon: 'chart' },
   { key: 'forms', icon: 'form' },
   { key: 'tables', icon: 'table' },
+  { key: 'overlays', icon: 'popover' },
+  { key: 'feedback', icon: 'bell' },
+  { key: 'navigation', icon: 'compass' },
+  { key: 'layout', icon: 'frame' },
   { key: 'logs', icon: 'terminal' },
 ]
-
-const CHART = [38, 62, 47, 88, 56, 73, 34, 91]
 
 /**
  * BN round (m06297 ⑤): the on-disk usage-record file name for one item —
@@ -66,25 +70,6 @@ const sanitizeItem = (id: string): string => id.replace(/::/g, '__').replace(/[:
 /** The shelf directory name the seeder writes into (host-side, sibling of aek-usage). */
 const ART_SHELF = 'aek-webui-art-gallery'
 
-/** Composition-table rows: one per style kind (incl. AEK base) + the colored-entry count. */
-const KIND_STYLE_ITEMS = galleryItems().styles
-const KIND_ROWS = ALL_STYLE_KINDS.map(({ id, name, src, color, count }) => ({
-  id, name, src, color, count,
-  colored: KIND_STYLE_ITEMS.filter(s => s.kindId === id && (s.colors?.length ?? 0) > 0).length,
-}))
-
-const Bar = ({ value, tone = 'default' }: { value: number; tone?: 'default' | 'ok' | 'bad' }): JSX.Element => (
-  <div className="h-2 overflow-hidden rounded-full bg-foreground/10">
-    <div
-      className={cn(
-        'h-full rounded-full',
-        tone === 'ok' ? 'bg-success' : tone === 'bad' ? 'bg-destructive' : 'bg-primary',
-      )}
-      style={{ width: `${value}%` }}
-    />
-  </div>
-)
-
 const SpecItem = ({ k, children }: { k: string; children: ReactNode }): JSX.Element => (
   <div className="flex min-w-0 flex-col gap-1">
     <span className="text-muted-foreground text-2xxs leading-none font-bold uppercase">{k}</span>
@@ -93,12 +78,12 @@ const SpecItem = ({ k, children }: { k: string; children: ReactNode }): JSX.Elem
 )
 
 export function Stage({ item, counts, faved, onToggleFav, onNotify }: StageProps): JSX.Element {
-  const { t, tf } = useI18n()
+  const { t } = useI18n()
   const spec = item.spec
-  const [nav, setNav] = useState('overview')
+  // BP round (m02138 ⑪): first visible tab is the charts panel.
+  const [nav, setNav] = useState('charts')
   const [copied, setCopied] = useState(false)
 
-  const isSkill = item.kind === 'skill'
   const swatches = [spec.p[0], spec.p[1], spec.p[3], spec.p[4]]
 
   // BN round (m06297 ⑤): the provenance facts. The usage-record file path is
@@ -121,14 +106,26 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify }: StageProps
     : undefined
 
   const doCopy = async (): Promise<void> => {
-    // BL 轮 (m05632 任务 E): copy the item's "使用方法" doc — the same single
-    // source (usageDoc) that scripts/aek/seed-art-gallery-usage.ts writes to
-    // aek-system-skill/aek-webui-art-gallery/<id>.md — not the bare CSS snippet.
-    const ok = await copyToClipboard(usageDoc(item))
+    // BP round (m02138 ①): the header copy button copies the item NAME only —
+    // nothing else (the BL-round full usageDoc copy is retired).
+    const ok = await copyToClipboard(spec.name)
     if (ok) {
       onNotify(t('art.copied'))
       setCopied(true)
       setTimeout(() => { setCopied(false) }, 1400)
+    }
+  }
+
+  const [pathCopied, setPathCopied] = useState(false)
+  const doCopyPath = async (): Promise<void> => {
+    // BP round (m02138 ④): the path line's copy icon copies the RAW
+    // usage-record path — the visible text stays abbreviated/full per the
+    // global path style, the clipboard always gets the original value.
+    if (usageDocPath === undefined) return
+    const ok = await copyToClipboard(usageDocPath)
+    if (ok) {
+      setPathCopied(true)
+      setTimeout(() => { setPathCopied(false) }, 1400)
     }
   }
 
@@ -175,16 +172,50 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify }: StageProps
                 </Tooltip>
               </TooltipProvider>
             </div>
+            {/* BP round (m02138 ②): the repo chip IS the provenance — the
+                dedicated provenance card is gone; the chip links to the repo. */}
             {item.repoName && (
-              <span className="bg-secondary text-secondary-foreground rounded-full border px-2.5 py-0.5 text-xs font-semibold">
-                {item.repoName}
-              </span>
+              repoMeta?.url ? (
+                <a
+                  className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold hover:underline"
+                  href={repoMeta.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {item.repoName}
+                  <Icon name="externalLink" size={12} />
+                </a>
+              ) : (
+                <span className="bg-secondary text-secondary-foreground rounded-full border px-2.5 py-0.5 text-xs font-semibold">
+                  {item.repoName}
+                </span>
+              )
             )}
           </div>
-          {/* BO round ⑥ (m00001): the description wraps on its natural width
-              instead of hard-clamping after one line — the earlier
-              line-clamp-1 cut off most descriptions far too early. */}
-          <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed break-words">{item.desc}</p>
+          {/* BP round (m02138 ④): the free-text description is replaced by the
+              usage-record file path (abbreviated/full per the global path
+              style) with its own copy icon — the raw path is the copy target. */}
+          {usageDocPath ? (
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <code className="text-muted-foreground min-w-0 truncate font-mono text-xs" title={usageDocPath}>
+                {usageDocDisplay}
+              </code>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => { void doCopyPath() }}
+                    aria-label={t('art.copyPath')}
+                    className="size-5 shrink-0"
+                  >
+                    {pathCopied ? <Icon name="check" size={12} className="text-success" /> : <Icon name="copy" size={12} />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t('art.copyPath')}</TooltipContent>
+              </Tooltip>
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -203,59 +234,16 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify }: StageProps
             ))}
           </div>
         </div>
-        <span className="text-muted-foreground col-span-2 font-mono text-xs leading-relaxed break-all sm:col-span-4">
-          {spec.p.join('  ')}
-        </span>
       </div>
 
-      {/* ---- provenance (BN round, m06297 ⑤): absolute usage-record file
-          path + the author's skill + a clickable repo link. The path is
-          derived from the host's console facts, never hardcoded. BO round
-          ⑤ (m00001): the author row is no longer skill-family only — style
-          entries resolve their origin repo via the src mapping, so every
-          page shows author + a clickable GitHub link. ---- */}
-      {(usageDocPath || item.repoName || repoMeta?.url) ? (
-        <div className="bg-card rounded-lg border px-5 py-4">
-          <div className="flex flex-col gap-2.5">
-            <span className="text-muted-foreground text-2xxs leading-none font-bold uppercase">
-              {t('art.provenance')}
-            </span>
-            {usageDocPath ? (
-              <div className="flex flex-col gap-0.5">
-                <span className="text-muted-foreground text-2xxs leading-none font-bold uppercase">
-                  {t('art.usageDoc')}
-                </span>
-                <code className="text-xs leading-relaxed font-mono break-all" title={usageDocPath}>{usageDocDisplay}</code>
-              </div>
-            ) : null}
-            {item.repoName ? (
-              <div className="flex flex-col gap-0.5">
-                <span className="text-muted-foreground text-2xxs leading-none font-bold uppercase">
-                  {t('art.author')}
-                </span>
-                <span className="text-xs leading-relaxed font-semibold">
-                  {item.repoName}
-                  {repoMeta?.note ? <span className="text-muted-foreground font-normal"> · {repoMeta.note}</span> : null}
-                </span>
-              </div>
-            ) : null}
-            {repoMeta?.url ? (
-              <a
-                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-                href={repoMeta.url}
-                target="_blank"
-                rel="noreferrer noopener"
-              >
-                <Icon name="externalLink" size={13} />
-                {t('art.openRepo')} · {repoMeta.url.replace('https://github.com/', '')}
-              </a>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      {/* BP round (m02138 ②): the dedicated provenance card is gone — the
+          header's repo chip is the clickable repo link and the header's path
+          line is the usage-record file; the card duplicated both. */}
 
       {/* ---- demo tabs: real content switches, not just the highlight ---- */}
-      <div className="inline-flex items-center gap-1 rounded-lg bg-secondary p-1">
+      {/* BP round ⑪: 10 tabs — wrap on narrow stage widths instead of
+          overflowing the pill row. */}
+      <div className="inline-flex flex-wrap items-center gap-1 rounded-lg bg-secondary p-1">
         {NAVS.map(n => (
           <button
             key={n.key}
@@ -282,168 +270,20 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify }: StageProps
         <div data-panel="forms"><FormsPanel /></div>
       ) : nav === 'tables' ? (
         <div data-panel="tables"><TablesPanel /></div>
+      ) : nav === 'overlays' ? (
+        <div data-panel="overlays"><OverlaysPanel /></div>
+      ) : nav === 'feedback' ? (
+        <div data-panel="feedback"><FeedbackPanel /></div>
+      ) : nav === 'navigation' ? (
+        <div data-panel="navigation"><NavigationPanel /></div>
+      ) : nav === 'layout' ? (
+        <div data-panel="layout"><LayoutPanel /></div>
       ) : nav === 'logs' ? (
         <div data-panel="logs" className="flex flex-col gap-4"><LogPanel item={item} spec={spec} counts={counts} /></div>
-      ) : (
-        <div data-panel="overview" className="flex flex-col gap-6">
-          {/* ---- stats ---- */}
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { lb: t('art.stat.uiStyles'), vl: counts.styles, dl: tf('art.stat.uiStylesSub', { n: counts.kinds }) },
-              { lb: t('art.stat.skill'), vl: counts.skills, dl: tf('art.stat.skillSub', { n: counts.repos }) },
-              { lb: t('art.stat.mode'), vl: counts.modes, dl: spec.mode },
-            ].map(({ lb, vl, dl }) => (
-              <div key={lb} className="bg-card flex flex-col gap-1.5 rounded-lg border px-4 py-3.5">
-                <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
-                  <Icon name="layers" size={14} />{lb}
-                </span>
-                <span className="text-2xl leading-none font-extrabold tracking-tight">{vl}</span>
-                <span className="text-primary text-xs font-bold">{dl}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* ---- two columns: demo card + diagnostics ---- */}
-          <div className="grid grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <div className="size-2 flex-none animate-pulse rounded-full bg-success" />
-                  <div className="min-w-0 flex-1">
-                    <CardTitle className="truncate text-aek-135">{spec.name}</CardTitle>
-                    <CardDescription className="truncate">{isSkill ? item.repoName : item.kindName}</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardDescription className="leading-relaxed px-(--card-spacing)">{t('art.demoCardDesc')}</CardDescription>
-              {/* BV round (m13340, 3rd reject of the demo card layout): kill the
-                  dead elements — 更新 buttons (no onClick), version chips, the
-                  "状态：关" state-echo line and the nested bordered row boxes.
-                  Standard settings rows: title + natural-wrap description left,
-                  switch right, hairline dividers. */}
-              <CardContent className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="destructive" size="sm">{t('art.stop')}</Button>
-                  <Button size="sm">{t('art.start')}</Button>
-                  <Button variant="outline" size="sm" className="gap-1">
-                    {t('art.open')} <Icon name="externalLink" size={12} />
-                  </Button>
-                </div>
-                <Separator />
-                {/* BO round ⑨ (m00001): display-only demo card — the user's
-                    intent is "UI 只展示、别做成能交互的功能". The buttons carry
-                    no handlers and the switches are frozen (checked + no
-                    onCheckedChange) so the card shows the look without any
-                    live behavior. */}
-                <div className="bg-background flex items-center gap-3 rounded-lg border border-border px-3.5 py-2.5">
-                  <Switch checked className="flex-none" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-aek-13 font-medium">{t('art.injectOn')}</div>
-                    <div className="mt-0.5 text-aek-12 leading-snug text-muted-foreground">
-                      {t('art.injectDesc')}
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-background flex items-center gap-3 rounded-lg border border-border px-3.5 py-2.5">
-                  <Switch className="flex-none" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-aek-13 font-medium">{t('art.disabledEx')}</div>
-                    <div className="mt-0.5 text-aek-12 leading-snug text-muted-foreground">
-                      {t('art.disabledExDesc')}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-aek-135">{t('art.diag')}</CardTitle>
-                <CardDescription>{t('art.diagDesc')}</CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-3">
-                <div className="flex items-center gap-2">
-                  <Input type="text" placeholder={t('art.installPh')} />
-                  <Button className="flex-none">{t('art.install')}</Button>
-                </div>
-                {[
-                  { ok: true, name: 'Node.js', meta: t('art.nodeMeta') },
-                  { ok: false, name: 'aeknext CLI', meta: t('art.notInstalled') },
-                ].map(c => (
-                  <div
-                    key={c.name}
-                    className="bg-background flex items-center gap-3 rounded-lg border px-3.5 py-2.5"
-                  >
-                    <span
-                      className={cn(
-                        'flex size-5 flex-none items-center justify-center rounded-full text-xs font-extrabold text-primary-foreground',
-                        c.ok ? 'bg-success' : 'bg-destructive',
-                      )}
-                    >
-                      {c.ok ? '✓' : '✗'}
-                    </span>
-                    <span className="flex-1 text-xs font-semibold">{c.name}</span>
-                    <span className="text-muted-foreground font-mono text-xs">{c.meta}</span>
-                  </div>
-                ))}
-                <div className="flex flex-col gap-2.5">
-                  <Bar value={72} />
-                  <Bar value={44} tone="ok" />
-                </div>
-                <div className="flex h-21 items-end gap-2">
-                  {CHART.map((h, i) => (
-                    <span
-                      key={i}
-                      className="flex-1 rounded-t-md"
-                      style={{
-                        height: `${h}%`,
-                        background: 'linear-gradient(to top, var(--color-primary), var(--color-accent))',
-                      }}
-                    />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* ---- style library composition ---- */}
-          <Card>
-            <CardHeader>
-              <div>
-                <CardTitle className="text-aek-135">{t('art.tableTitle')}</CardTitle>
-                <CardDescription>{tf('art.tableDesc', { n: counts.styles, k: counts.kinds })}</CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent className="px-3">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('art.colCategory')}</TableHead>
-                    <TableHead className="pr-6 text-right">{t('art.colCount')}</TableHead>
-                    <TableHead>{t('art.colSource')}</TableHead>
-                    <TableHead className="text-right">{t('art.colSwatch')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {KIND_ROWS.map(row => (
-                    <TableRow key={row.id}>
-                      <TableCell>
-                        <span className="flex items-center gap-2.5">
-                          <span className="size-2.5 flex-none rounded-full" style={{ background: row.color }} />
-                          {row.name}
-                        </span>
-                      </TableCell>
-                      <TableCell className="pr-6 text-right font-mono tabular-nums">{row.count}</TableCell>
-                      <TableCell className="text-muted-foreground truncate">{row.src}</TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">{row.colored}/{row.count}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      // BP round (m02138 ⑪): no "overview" fallback — every NAVS key above
+      // renders its own panel; the deleted branch carried the stats grid +
+      // demo/diagnostics cards + the composition table.
+      ) : null}
     </div>
   )
 }

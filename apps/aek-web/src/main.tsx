@@ -17,8 +17,12 @@ import { TooltipProvider } from './components/ui/tooltip'
 import { bootGlobalTheme } from './webui-art-gallery/artGlobalTheme.ts'
 import './index.css'
 
-const el = document.getElementById('root')
-if (el === null) throw new Error('aek-web: missing #root')
+// BP round (m02138 BP-13): the null check must narrow before any closure can
+// use the element — a plain module-scope `const el` with the guard at the top
+// level does NOT narrow inside the boot() function below.
+const rootEl = document.getElementById('root')
+if (rootEl === null) throw new Error('aek-web: missing #root')
+const el: HTMLElement = rootEl
 
 /**
  * Boot sequence. The build target (es2020) does not allow top-level await,
