@@ -4,9 +4,16 @@
  *
  * A LANE is a dynamic slot (coraek `lanes` registry): its own git worktree +
  * branch, its own data root (`~/.aek/lanes/<name>`), its own port pair from
- * the cpuh-allocated pool, its own LaunchAgent, its own dev shell + CDP port.
- * Every lane's dev infrastructure runs from its OWN worktree's scripts, so
- * two agents in two lanes never share a process, a port, or a data root.
+ * the cpuh-allocated pool, its own LaunchAgent, its own CDP port. Every
+ * lane's dev infrastructure runs from its OWN worktree's scripts, so two
+ * agents in two lanes never share a process, a port, or a data root.
+ *
+ * Desktop-shell discipline (m02603: AEK 桌面不允许有多个实例): the desktop
+ * shell is a GLOBALLY EXCLUSIVE resource. `start` is backend-only (agent +
+ * web); `shell` launches this lane's dev shell and terminates EVERY other
+ * dev-variant shell (the built-in next slot's + all other lanes') first.
+ * The production install in the user's Applications dir is user-managed and
+ * never touched by lane verbs.
  *
  * The one shared coordinate is the registry (`~/.aek/lanes.json`), guarded by
  * an atomic mkdir lock; the claim protocol makes a second agent's grab of an
@@ -23,9 +30,10 @@
  *   node scripts/aek/lanes.mjs list
  *   node scripts/aek/lanes.mjs new <name> [--from <ref>] [--worktree <path>] [--yes]
  *   node scripts/aek/lanes.mjs claim <name>            # agent handshake (AEK_AGENT_ID env or pid)
- *   node scripts/aek/lanes.mjs start <name> --yes      # agent + dev web + dev shell on this lane
- *   node scripts/aek/lanes.mjs stop <name> --yes       # shell + web + bootout the agent
- *   node scripts/aek/lanes.mjs remove <name> --yes     # stop + worktree remove + data root to backups
+ *   node scripts/aek/lanes.mjs start <name> --yes      # backend only: agent + web (cold-start bootstrap)
+ *   node scripts/aek/lanes.mjs shell <name> --yes      # exclusive dev shell (kills every other dev-variant shell)
+ *   node scripts/aek/lanes.mjs stop <name> --yes       # shell + web, bootout the lane's LaunchAgent
+ *   node scripts/aek/lanes.mjs remove <name> --yes     # stop, drop the worktree, archive the data root, release the pair
  *
  * Agent discipline (NOT encoded here, per cpuh rules): after `new` mark the
  * pair with `cpuh use <web> <cdp>` ("aek lane <name>"); after `remove` run
@@ -51,6 +59,7 @@ import {
 } from '../../packages/aek/base/coraek/lanes.mjs'
 import { isPidAlive, readSlotLock } from '../../packages/aek/base/coraek/slot-lock.mjs'
 import { resolveAekRoot } from '../../packages/aek/base/coraek/home.mjs'
+import { slotConfig, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(SCRIPT_DIR, '..', '..')
@@ -64,10 +73,15 @@ function usage() {
   lanes.mjs new <name> [--from <ref>] [--worktree <path>] --yes
                                           allocate ports + worktree + data root + claim
   lanes.mjs claim <name>                  agent handshake (refuse when another live agent holds it)
-  lanes.mjs start <name> --yes            LaunchAgent + dev web + dev shell, all from the lane's own tree
+  lanes.mjs start <name> --yes            backend only: LaunchAgent + web (cold-start bootstrap, no shell)
+  lanes.mjs shell <name> --yes            exclusive dev shell: terminates every OTHER dev-variant
+                                          shell (next slot + other lanes), then launches this lane's
+                                          shell with CDP on the lane's cdp port
   lanes.mjs stop <name> --yes             stop shell + web, bootout the lane's LaunchAgent
   lanes.mjs remove <name> --yes           stop, drop the worktree, archive the data root, release the pair
 
+Desktop-shell rule (m02603): at most ONE dev-variant AEK shell at a time;
+the production install is user-managed and never touched by lane verbs.
 After 'new' / 'remove': run cpuh use/unuse for the allocated pair (agent discipline).`)
 }
 
@@ -135,6 +149,74 @@ function preflightLanes(name, expectedPid) {
 }
 
 // ---------------------------------------------------------------- list
+
+/**
+ * The dev-variant shell binaries that may be running: the built-in next
+ * slot's dev bundle + every registered lane's dev bundle. The production
+ * install (Applications dir) is deliberately EXCLUDED — `shell` only
+ * arbitrates among dev variants (m02603).
+ * @returns {string[]} absolute paths of dev-variant shell binaries.
+ */
+function devVariantShellBinaries() {
+  const paths = []
+  try {
+    const next = slotConfig('next')
+    paths.push(join(slotHome('next'), 'dev', `${next.devAppName}.app`, 'Contents', 'MacOS', next.devAppName))
+  } catch { /* next slot not resolvable — nothing to kill there */ }
+  for (const name of listLanes()) {
+    try {
+      const cfg = laneConfig(name)
+      paths.push(join(laneHome(name), 'dev', `${cfg.devAppName}.app`, 'Contents', 'MacOS', cfg.devAppName))
+    } catch { /* lane no longer registered */ }
+  }
+  return paths
+}
+
+/**
+ * Terminate every running dev-variant shell (exclusive-shell discipline).
+ * SIGTERM first, SIGKILL whatever is stuck after ~5s.
+ * @returns {number[]} the pids terminated (or still pending at SIGKILL).
+ */
+function killDevShells() {
+  const paths = devVariantShellBinaries()
+  if (paths.length === 0) return []
+  const ps = spawnSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' })
+  const pids = []
+  for (const line of String(ps.stdout ?? '').split('\n')) {
+    const m = line.match(/^\s*(\d+)\s/)
+    if (!m) continue
+    if (paths.some((p) => line.includes(p))) pids.push(Number(m[1]))
+  }
+  for (const pid of pids) {
+    try {
+      process.kill(pid, 'SIGTERM')
+      console.log(`[lanes] terminated dev shell pid ${pid}`)
+    } catch { /* already gone */ }
+  }
+  const deadline = Date.now() + 5000
+  while (pids.some(isPidAlive) && Date.now() < deadline) {
+    spawnSync('sleep', ['0.5'])
+  }
+  for (const pid of pids) {
+    if (isPidAlive(pid)) {
+      try {
+        process.kill(pid, 'SIGKILL')
+      } catch { /* gone */ }
+    }
+  }
+  return pids
+}
+
+/** Poll a TCP port until something listens (or the budget runs out). */
+function waitForPort(port, ms) {
+  const startAt = Date.now()
+  while (Date.now() - startAt < ms) {
+    const out = spawnSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).stdout.trim()
+    if (out.split('\n').filter(Boolean).length > 1) return true
+    spawnSync('sleep', ['0.5'])
+  }
+  return false
+}
 
 if (process.argv.length === 2 || process.argv[2] === 'list') {
   const lanes = listLanes()
@@ -305,10 +387,13 @@ function laneOps(name, verb) {
     bootstrapTree(worktree)
     console.log(`[lanes] ${name}: ${cfg.webPort}/${cfg.cdpPort} agent ${agentFor(name)} web ${cfg.webHost}`)
     runInTree(worktree, 'service.mjs', ['install', name, '--yes'])
-    // The dev chain: desktop.mjs dev spawns the lane's web (detached, log to
-    // the lane's data root) + the dev shell with CDP on the lane's cdp port.
-    runInTree(worktree, 'desktop.mjs', ['dev', name, '--yes'])
-    console.log(`[lanes] ${name} up: shell CDP http://127.0.0.1:${cfg.cdpPort} web http://${cfg.webHost}:${cfg.webPort}`)
+    // m02603: backend only — the LaunchAgent (serve-slot, KeepAlive) owns the
+    // web. The desktop shell is globally exclusive and is launched through
+    // `lanes.mjs shell <name> --yes` instead.
+    if (!waitForPort(cfg.webPort, 60_000)) {
+      fail(`lane "${name}" web did not come up on ${cfg.webPort} within 60s (see ${join(laneHome(name), 'logs', 'web.log')})`)
+    }
+    console.log(`[lanes] ${name} backend up: web http://${cfg.webHost}:${cfg.webPort} (agent-managed); shell via: node scripts/aek/lanes.mjs shell ${name} --yes`)
   } else if (verb === 'stop') {
     // Bootout the agent FIRST: its KeepAlive would respawn a web the arbiter
     // is about to kill, so the supervisor has to go before the port does.
@@ -328,9 +413,34 @@ function laneOps(name, verb) {
 {
   const args = takeArgs('start')
   if (args !== null) {
-    if (!CONFIRMED) fail(`"start" launches the lane's agent + web + shell. Re-run with --yes.`)
+    if (!CONFIRMED) fail(`"start" installs the lane's LaunchAgent + warms the tree (backend only, no shell). Re-run with --yes.`)
     if (!isLane(args[0])) fail(`lane "${args[0]}" is not registered (run: lanes.mjs new ${args[0]} --yes)`)
     laneOps(args[0], 'start')
+    process.exit(0)
+  }
+  const sh = takeArgs('shell')
+  if (sh !== null) {
+    const name = sh[0]
+    if (!CONFIRMED) fail(`"shell" terminates every OTHER dev-variant shell, then launches the "${name}" dev shell exclusively. Re-run with --yes.`)
+    if (!isLane(name)) fail(`lane "${name}" is not registered (run: lanes.mjs new ${name} --yes)`)
+    const entry = readLanesRegistry().lanes[name]
+    if (!entry) fail(`lane "${name}" is not registered`)
+    const worktree = worktreeOf(name)
+    if (!existsSync(join(worktree, 'scripts', 'aek', 'lanes.mjs'))) fail(`lane worktree missing its scripts: ${worktree}`)
+    const cfg = laneConfig(name)
+    claimLane(name, AGENT_ID, process.pid)
+    // The lane's web must be agent-managed and up; otherwise the shell would
+    // boot into the reconnecting page and the exclusive-shell swap is pointless.
+    if (!waitForPort(cfg.webPort, 1000)) {
+      fail(`lane "${name}" web is not up on ${cfg.webPort} — run \`lanes.mjs start ${name} --yes\` first`)
+    }
+    const killed = killDevShells()
+    preflightLanes(name, process.pid)
+    runInTree(worktree, 'start-dev.mjs', [name, '--shell-only', '--detach'])
+    if (!waitForPort(cfg.cdpPort, 20_000)) {
+      fail(`CDP ${cfg.cdpPort} not listening 20s after launch (see ${join(laneHome(name), 'logs', 'shell.log')})`)
+    }
+    console.log(`[lanes] ${name} shell up: CDP http://127.0.0.1:${cfg.cdpPort} web http://${cfg.webHost}:${cfg.webPort}${killed.length ? ` (terminated ${killed.length} other dev shell(s))` : ''}`)
     process.exit(0)
   }
   const stop = takeArgs('stop')

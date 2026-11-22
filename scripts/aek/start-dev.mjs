@@ -9,7 +9,7 @@
  * Usage: node scripts/aek/start-dev.mjs [aek|next]
  */
 import { execFileSync, spawn } from 'node:child_process'
-import { readdirSync, statSync } from 'node:fs'
+import { openSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -27,6 +27,7 @@ import {
   SLOTS,
   slotConfig,
 } from './shared-logic.mjs'
+import { writeSlotLock } from '../../packages/aek/base/coraek/slot-lock.mjs'
 
 const slot = process.argv[2] ?? 'aek'
 // BF-4 lane round: accept built-in slots AND registered lanes (coraek/slots).
@@ -40,6 +41,13 @@ if (!cfg) {
   console.error(`[start] unknown slot: ${slot} (expected one of ${Object.keys(SLOTS).join(', ')} or a registered lane)`)
   process.exit(2)
 }
+
+// BF-4 shell-exclusive mode: a lane's LaunchAgent already serves the web, so
+// --shell-only skips the web half entirely (no killSlot, no web spawn) and
+// --detach (requires --shell-only) puts the shell in its own process group
+// with log-file stdio, so the launcher exits while the shell keeps running.
+const shellOnly = process.argv.includes('--shell-only')
+const detach = shellOnly && process.argv.includes('--detach')
 
 /**
  * Y round (B-round lesson, machine half): the dev shell boots
@@ -82,15 +90,20 @@ console.log(`[start] AEK Desktop v0  mode=dev  slot=${slot}`)
 // Terminate THIS slot's previous instance only. Killing by the shared default
 // ports here would take down the other slot as well. A FOREIGN process holding
 // one of our ports is never killed — we abort and let the user decide.
-const cleared = await killSlot(slot)
-if (cleared.foreign.length > 0) {
-  console.error(`[start] port conflict: ${cleared.foreign.map(f => `${f.kind} :${f.port} held by pid ${f.pid}`).join(', ')}`)
-  console.error('[start] refusing to start — the holding process is not ours')
-  process.exit(3)
-}
-if (cleared.stuck.length > 0) {
-  console.error(`[start] previous instance did not exit: ${cleared.stuck.join(' ')}`)
-  process.exit(3)
+// BF-4: skipped in shell-only mode — the slot's LaunchAgent owns the web
+// (KeepAlive would respawn whatever killSlot took out), and the caller
+// (scripts/aek/lanes.mjs shell) already terminated the stale shell.
+if (!shellOnly) {
+  const cleared = await killSlot(slot)
+  if (cleared.foreign.length > 0) {
+    console.error(`[start] port conflict: ${cleared.foreign.map(f => `${f.kind} :${f.port} held by pid ${f.pid}`).join(', ')}`)
+    console.error('[start] refusing to start — the holding process is not ours')
+    process.exit(3)
+  }
+  if (cleared.stuck.length > 0) {
+    console.error(`[start] previous instance did not exit: ${cleared.stuck.join(' ')}`)
+    process.exit(3)
+  }
 }
 
 if (!brandDevBundle(slot)) {
@@ -117,20 +130,11 @@ try {
   if (message) console.warn(`[start] ${message.split('\n').join('\n[start] ')}`)
 }
 
-const web = spawnWebServerForSlot(slot)
-attachCleanup(web)
-
-// Wait for web server, then launch Electron
-;(async () => {
-  const ready = await waitForWebReady(2000, cfg.webPort)
-  if (!ready) console.warn('[start] web server not ready in time, launching anyway')
-  else console.log('[start] web app ready')
-
-  console.log(`[start] launching dev ${cfg.productName} (CDP → port ${cfg.cdpPort})`)
-  warnIfMainStale()
+/** The shell's slot identity env (shared by the normal and shell-only paths). */
+function shellEnv() {
   // The shell must know which slot it is: without AEK_SLOT / AEK_HOME it would
   // fall back to the default data root and lock the wrong slot's pid file.
-  const env = electronEnv({
+  return electronEnv({
     DSH_HOME: slotHome(slot),
     AEK_HOME: slotHome(slot),
     AEK_SLOT: slot,
@@ -144,10 +148,51 @@ attachCleanup(web)
     // shared-logic's startShellDev, which already passes this.
     AEK_MODE: 'dev',
   })
-  const app = spawn(electronBin(devAppDirForSlot(slot), cfg.devAppName), [
-    mainJs,
-    `--remote-debugging-port=${cfg.cdpPort}`,
-  ], { cwd: APP_ROOT, env, stdio: 'inherit' })
+}
 
-  app.on('close', code => { web.kill(); process.exit(code ?? 0) })
-})()
+if (shellOnly) {
+  // The slot's LaunchAgent (serve-slot) already owns the web; this path only
+  // spawns the Electron shell on top of it. Closing the shell therefore never
+  // takes the slot's web down.
+  warnIfMainStale()
+  const env = shellEnv()
+  const bin = electronBin(devAppDirForSlot(slot), cfg.devAppName)
+  if (detach) {
+    // Own process group + log-file stdio: the shell outlives this launcher.
+    // (The 复盘 §169/§170 detached-pipe lesson — never leave the child's
+    // stdout/stderr on pipes the parent will close.)
+    const log = join(slotHome(slot), 'logs', 'shell.log')
+    const fd = openSync(log, 'a')
+    const app = spawn(bin, [mainJs, `--remote-debugging-port=${cfg.cdpPort}`], {
+      cwd: APP_ROOT, env, stdio: ['ignore', fd, fd], detached: true,
+    })
+    app.unref()
+    writeSlotLock(slot, { shellPid: app.pid })
+    console.log(`[start] ${cfg.productName} shell detached (pid ${app.pid}, CDP http://127.0.0.1:${cfg.cdpPort}, log ${log})`)
+    process.exit(0)
+  }
+  const app = spawn(bin, [mainJs, `--remote-debugging-port=${cfg.cdpPort}`], { cwd: APP_ROOT, env, stdio: 'inherit' })
+  app.on('close', code => process.exit(code ?? 0))
+}
+
+if (!shellOnly) {
+  const web = spawnWebServerForSlot(slot)
+  attachCleanup(web)
+
+  // Wait for web server, then launch Electron
+  ;(async () => {
+    const ready = await waitForWebReady(2000, cfg.webPort)
+    if (!ready) console.warn('[start] web server not ready in time, launching anyway')
+    else console.log('[start] web app ready')
+
+    console.log(`[start] launching dev ${cfg.productName} (CDP → port ${cfg.cdpPort})`)
+    warnIfMainStale()
+    const env = shellEnv()
+    const app = spawn(electronBin(devAppDirForSlot(slot), cfg.devAppName), [
+      mainJs,
+      `--remote-debugging-port=${cfg.cdpPort}`,
+    ], { cwd: APP_ROOT, env, stdio: 'inherit' })
+
+    app.on('close', code => { web.kill(); process.exit(code ?? 0) })
+  })()
+}
