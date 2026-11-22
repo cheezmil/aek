@@ -204,7 +204,16 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     }
   }
 
-  const curItem = items.find(i => i.id === curId) ?? null
+  // BN round (m06297 ①⑤): the list follows the selected family, but the
+  // remembered / global current item may belong to the OTHER family (a skill
+  // skin persisted while the gallery now defaults to styles). Resolve it
+  // across both so the stage still previews the current skin with its
+  // provenance card instead of dropping to the empty state.
+  const curItem =
+    items.find(i => i.id === curId) ??
+    skills.find(i => i.id === curId) ??
+    styles.find(i => i.id === curId) ??
+    null
 
   /**
    * BQ round (m10857 item 3): switching to any style applies it to the
