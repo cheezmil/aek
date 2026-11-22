@@ -13,7 +13,7 @@
  *
  * Usage (no flags = read-only report, zero side effects, always exit 0):
  *   node scripts/aek/shell-instances.mjs            # report
- *   node scripts/aek/shell-instances.mjs --check   # exit 1 when 2+ AEK shell mains run (global)
+ *   node scripts/aek/shell-instances.mjs --check   # exit 1 on a whitelist / duplicate violation
  *   node scripts/aek/shell-instances.mjs --json    # machine-readable
  *
  * Safety conventions:
@@ -25,9 +25,12 @@
  *     specific values in source.
  *   - ps-based, POSIX only; Windows is reported as skipped, not failed.
  *
- * The "only one AEK.app instance" rule is GLOBAL (m02603/m03270): at most ONE
- * AEK desktop shell main of ANY kind (production / dev-variant / lane) at a
- * time. `--check` exits 1 when two or more shell mains are running.
+ * The instance rule (m02603/m03270/m03363, FINAL): the only shell app names
+ * that may run at all are the slots' dev app names (AEK + AEK Next), and at
+ * most ONE main per name. AEK (production) and AEK Next (dev) may coexist —
+ * that is the user's whitelist pair — but a second main of the SAME name
+ * (two production installs, production + a lane dev bundle, …) or any other
+ * AEK-family name is a violation. `--check` exits 1 on either.
  */
 import { execFileSync } from 'node:child_process'
 import { homedir } from 'node:os'
@@ -83,7 +86,38 @@ function mainNameOf(entry) {
 }
 
 /**
- * @returns {Array<{pid:number, exe:string, family:string, slot:string}>|null}
+ * The m03363 whitelist: the only shell app names that may run at all are the
+ * slots' dev app names (AEK + AEK Next). Derived from the slot manifest, so
+ * a slot rename/extension keeps the whitelist in lockstep with the product.
+ * @returns {Set<string>}
+ */
+function allowedAppNames() {
+  return new Set(Object.values(SLOTS).map((cfg) => cfg.devAppName))
+}
+
+/**
+ * App name carried by an unknown (external) AEK-family main executable. The
+ * name is the `.app` bundle base (darwin) or `.exe` base (win), e.g. "AEK"
+ * or "AEK Next"; anything else is a foreign AEK-family name.
+ * @param {string} exe0 the first token of the shell main's command line
+ * @returns {string}
+ */
+function externalNameOf(exe0) {
+  const darwin = exe0.match(/([A-Za-z0-9 ]+\.app)\//)
+  if (darwin) return darwin[1].replace(/\.app$/, '')
+  const base = exe0.split(/[\\/]/).pop() ?? exe0
+  const winRe = base.match(/AEK( [A-Za-z0-9]+)?\.exe$/i)
+  if (winRe) return `AEK${winRe[1] ?? ''}`
+  return base
+}
+
+/** Base app name of a bundle path (strips a .app / .exe extension). */
+function appNameOf(bundle) {
+  return bundle.split('/').slice(-1)[0].replace(/\.(app|exe)$/i, '')
+}
+
+/**
+ * @returns {Array<{pid:number, exe:string, app:string, family:string, slot:string}>|null}
  *  null when the platform cannot be scanned (Windows / no ps).
  */
 function scan() {
@@ -108,6 +142,7 @@ function scan() {
     // and carry --type= flags on Windows.
     if (process.platform === 'darwin') {
       if (command.includes('Helper')) continue
+      const exe0 = command.trimStart().split(/\s+/)[0]
       // The main executable path of a known bundle is deterministic; match
       // it whole so names with spaces ("AEK Next") stay intact.
       const known = map.find((entry) => {
@@ -119,12 +154,12 @@ function scan() {
         // when the FIRST token (the executable path) is a shell main. Wrapper
         // lines (bash -c '… AEK.app/Contents/MacOS/AEK …') contain the path
         // mid-command and must NOT count (m03363 false-positive fix).
-        const exe0 = command.trimStart().split(/\s+/)[0]
         if (!/AEK( [A-Za-z0-9]+)?\.app\/Contents\/MacOS\/AEK( [A-Za-z0-9]+)?$/.test(exe0)) continue
       }
       found.push({
         pid,
         exe: known ? `${known.bundle}/Contents/MacOS/${mainNameOf(known)}` : command.trim(),
+        app: known ? mainNameOf(known) : externalNameOf(exe0),
         family: known?.family ?? 'external',
         slot: known?.slot ?? 'unknown',
       })
@@ -138,6 +173,7 @@ function scan() {
       found.push({
         pid,
         exe: command.trim().split(' ')[0],
+        app: known ? appNameOf(known.bundle) : externalNameOf(exe0),
         family: known?.family ?? 'external',
         slot: known?.slot ?? 'unknown',
       })
@@ -159,31 +195,46 @@ function main() {
   const duplicates = [...bySlot.values()].filter((list) => list.length > 1)
 
   if (JSON_OUT) {
-    console.log(JSON.stringify({ instances, duplicates: duplicates.map((d) => d.map((i) => i.pid)) }, null, 2))
+    const byName = new Map()
+    for (const inst of instances) byName.set(inst.app, [...(byName.get(inst.app) ?? []), inst])
+    console.log(JSON.stringify({
+      instances,
+      duplicates: duplicates.map((d) => d.map((i) => i.pid)),
+      byName: Object.fromEntries([...byName].map(([name, list]) => [name, list.map((i) => i.pid)])),
+    }, null, 2))
   } else {
     console.log(`AEK shell instances: ${instances.length}`)
     for (const inst of instances) {
-      console.log(`  pid=${inst.pid} ${inst.family} (${inst.slot} slot) ${inst.exe}`)
+      console.log(`  pid=${inst.pid} ${inst.family} (${inst.slot} slot) "${inst.app}" ${inst.exe}`)
     }
     if (instances.length === 0) console.log('  (none running)')
   }
 
   if (CHECK) {
-    if (duplicates.length > 0) {
-      for (const dup of duplicates) {
+    // m03363 rule: at most ONE shell main per app name, and only the whitelist
+    // of slot dev app names (AEK + AEK Next) may run at all. Two DIFFERENT
+    // names (AEK + AEK Next) may coexist; a second main of the SAME name, or
+    // any other AEK-family name, is a violation.
+    const byName = new Map()
+    for (const inst of instances) byName.set(inst.app, [...(byName.get(inst.app) ?? []), inst])
+    const allowed = allowedAppNames()
+    let bad = false
+    for (const [name, list] of byName) {
+      if (list.length > 1) {
         console.error(
-          `  DUPLICATE: slot "${dup[0].slot}" has ${String(dup.length)} shell mains (${dup.map((i) => i.pid).join(', ')}) — kill all but one`,
+          `  DUPLICATE: "${name}" has ${String(list.length)} shell mains (${list.map((i) => i.pid).join(', ')}) — at most one per app name. Kill all but one.`,
         )
+        bad = true
       }
-      return 1
+      if (!allowed.has(name)) {
+        console.error(
+          `  FORBIDDEN NAME: "${name}" (${list.map((i) => i.pid).join(', ')}) is not on the AEK shell whitelist (${[...allowed].join(' / ')}) — only these app names may run (m03363).`,
+        )
+        bad = true
+      }
     }
-    if (instances.length > 1) {
-      console.error(
-        `  GLOBAL: ${String(instances.length)} AEK desktop shells running concurrently (${instances.map((i) => i.pid).join(', ')}) — at most one instance of any kind is allowed (production / dev-variant / lane). Kill all but one.`,
-      )
-      return 1
-    }
-    console.log('check: at most one AEK shell instance total — OK')
+    if (bad) return 1
+    console.log(`check: at most one shell main per app name; whitelist = ${[...allowed].join(' / ')} (m03363) — OK`)
   }
   return 0
 }
