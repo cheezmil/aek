@@ -140,12 +140,66 @@ const mix = (a: string, b: string, t: number): string => {
   return '#' + pa.map((x, i) => Math.round(x + (pb[i] - x) * t).toString(16).padStart(2, '0')).join('')
 }
 
+/** Relative luminance of an already-decoded [r,g,b] triple. */
+const lumRgb = (c: [number, number, number]): number => {
+  const p = c.map((v) => {
+    const x = v / 255
+    return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)
+  })
+  return 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
+}
+
+/**
+ * WCAG-style contrast ratio between two hex colors (0..21). Malformed input
+ * reports "fine" (99) so a bad value can never trigger the guard.
+ */
+export const contrastOf = (a: string, b: string): number => {
+  const pa = hexRgb(a)
+  const pb = hexRgb(b)
+  if (!pa || !pb) return 99
+  const la = lumRgb(pa)
+  const lb = lumRgb(pb)
+  const [hi, lo] = la > lb ? [la, lb] : [lb, la]
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+/**
+ * BH round (m03619): the contrast floor. A spec whose bg/text pair sits under
+ * 4.5:1 renders the WHOLE webui unreadable when applied (BP/BQ whole-webui
+ * skinning + ArtGalleryPanel's auto-apply on every spec change) — the user
+ * saw exactly that: 41 of the 348 "按 UI 样式" entries are sub-3.0 (several
+ * 1.00, e.g. logo:Calligraphic = #000 on #000, genre:modern minimal = #FFF on
+ * #FFF) and browsing to one repaints the entire console black-on-black. The
+ * palette derivation (paletteOf) and every hand-written skill palette are
+ * pushed through this guard: when bg and text are too close, text is clamped
+ * to near-white / near-black by bg luminance and surface / muted re-derived,
+ * so no spec can ever pin the console to an unreadable skin.
+ */
+const CONTRAST_FLOOR = 4.5
+
+export const ensureContrast = (p: string[]): string[] => {
+  if (p.length < 3) return p
+  const [bg, , text] = p
+  if (!bg || !text || contrastOf(bg, text) >= CONTRAST_FLOOR) return p
+  const rgb = hexRgb(bg)
+  const dark = !rgb || lumRgb(rgb) < 0.45
+  const fixedText = dark ? '#f4f4f5' : '#18181b'
+  return [
+    bg,
+    mix(bg, fixedText, dark ? 0.10 : 0.06),
+    fixedText,
+    mix(fixedText, bg, 0.45),
+    p[4],
+    p[5],
+  ]
+}
+
 /** Derive the 6-slot [bg,surface,text,muted,accent,accent2] palette. */
 export const paletteOf = (st: { mode: string; colors: string[] }): string[] => {
   const base: Record<string, string> = MODE_BASE[st.mode] ?? MODE_BASE.saas ?? {}
   const c = st.colors.filter(x => /^#[0-9A-Fa-f]{6}$/.test(x))
   if (!c.length) {
-    return [base.bg, base.surface, base.text, base.muted, base.accent, base.accent2]
+    return ensureContrast([base.bg, base.surface, base.text, base.muted, base.accent, base.accent2])
   }
   const byL = c.slice().sort((a, b) => lum(a) - lum(b))
   const dark = byL[0]
@@ -159,7 +213,9 @@ export const paletteOf = (st: { mode: string; colors: string[] }): string[] => {
   const accent2 = byS.length > 1 ? byS[1] : (byS.length ? byS[0] : base.accent2)
   const surface = isDark ? mix(bg, text, 0.10) : mix(bg, text, 0.06)
   const muted = mix(text, bg, 0.45)
-  return [bg, surface, text, muted, accent, accent2]
+  // BH round: guarantee a readable bg/text pair (surface / muted re-derived
+  // inside the guard from the clamped text).
+  return ensureContrast([bg, surface, text, muted, accent, accent2])
 }
 
 /** A scanned style entry → one comparable spec (palette derived, P16). */
@@ -250,7 +306,9 @@ export const skillSpecs = (): StageSpec[] =>
       radius: s.r || '12px',
       blur: parseInt(String(s.b ?? 0), 10) || 0,
       dark: s.d === 1,
-      p: s.p,
+      // BH round: hand-written palettes go through the same floor (several
+      // repos ship sub-4.5:1 pairs that would repaint the console unreadable).
+      p: ensureContrast(s.p),
       status: s.s,
     }
   })

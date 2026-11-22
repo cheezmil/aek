@@ -18,7 +18,7 @@
  *
  * @module @cheezmil/aek-web/src/webui-art-gallery/artGlobalTheme
  */
-import { allSpecs, normRadius, type StageSpec } from './spec.ts'
+import { allSpecs, ensureContrast, normRadius, type StageSpec } from './spec.ts'
 
 const GLOBAL_KEY = 'aek-art-global-theme'
 
@@ -73,7 +73,10 @@ const ALL_KEYS: ReadonlyArray<string> = [
 
 /** Derive the FULL aek source-token set from a spec's 5 core slots. */
 const deriveTokens = (spec: StageSpec): Record<string, string> => {
-  const [bg, surface, text, muted, accent] = spec.p
+  // BH round: the 5 core slots pass through the contrast floor so a stale or
+  // low-contrast persisted spec (boot path / external write) can never pin
+  // the whole console to an unreadable skin.
+  const [bg, surface, text, muted, accent] = ensureContrast(spec.p)
   const dark = spec.dark
   const aLum = lum(accent)
   const ok = spec.status?.[0] ?? (dark ? '#34d399' : '#16a34a')
