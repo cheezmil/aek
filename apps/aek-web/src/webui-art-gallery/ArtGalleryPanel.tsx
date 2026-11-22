@@ -190,13 +190,11 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   const toastTimer = useRef<number>(0)
 
   const items: GalleryItem[] = src === 'skill' ? skills : styles
-  // BL round (m05632 任务 B): the fav chip must count the CURRENT family only —
-  // the one shared favs set mixes skill + style ids, so favs.size showed the
-  // combined number on both tabs.
-  const familyFavCount = useMemo(
-    () => items.reduce((n, i) => (favs.has(i.id) ? n + 1 : n), 0),
-    [items, favs],
-  )
+  // BP-16 (m03167②): the fav chip counts ALL favorites, both families. The
+  // BL round scoped it to the current family — that is exactly why the user's
+  // skill-family favorite "disappeared" (the chip read 0 on the style tab and
+  // no list could reach the other family). Total wins.
+  const favCount = favs.size
   const counts: StageCounts = {
     styles: styles.length,
     skills: skills.length,
@@ -211,20 +209,27 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     toastTimer.current = window.setTimeout(() => { setToast(null) }, 1900)
   }
 
-  /** Reference App.filter: favOnly + repo/kind filter + all-space search words. */
+  /** Reference App.filter: favOnly + repo/kind filter + all-space search words.
+   *  BP-16 (m03167②): favOnly is CROSS-family — the star list reaches favorites
+   *  in BOTH families (the user's skill-family favorite had no way to be seen
+   *  on the style tab otherwise). The per-family repo/kind chips only apply to
+   *  the unfiltered list. */
   const visible = useMemo(() => {
     const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean)
-    return items.filter((i) => {
+    const base = favOnly ? [...styles, ...skills] : items
+    return base.filter((i) => {
       if (favOnly && !favs.has(i.id)) return false
-      if (src === 'skill' && repoFilter && i.repoId !== repoFilter) return false
-      if (src === 'style' && kindFilter && i.kindId !== kindFilter) return false
+      if (!favOnly) {
+        if (src === 'skill' && repoFilter && i.repoId !== repoFilter) return false
+        if (src === 'style' && kindFilter && i.kindId !== kindFilter) return false
+      }
       if (!words.length) return true
       const hay = [i.spec.name, i.desc, i.repoName ?? '', i.spec.mode, i.kindName ?? '', i.src ?? '']
         .join(' ')
         .toLowerCase()
       return words.every(w => hay.includes(w))
     })
-  }, [items, favOnly, favs, src, repoFilter, kindFilter, search])
+  }, [items, favOnly, favs, src, repoFilter, kindFilter, search, styles, skills])
 
   const defaultOf = (family: Family): string =>
     family === 'skill'
@@ -417,10 +422,13 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
           tab={tab}
           onTab={switchTab}
           styleCount={styles.length}
+          skillCount={skills.length}
           search={search}
           onSearch={setSearch}
           searchRef={searchRef}
-          stat={`${visible.length} / ${items.length}`}
+          stat={favOnly
+            ? `${visible.length} / ${styles.length + skills.length}`
+            : `${visible.length} / ${items.length}`}
         />
       ) : null}
 
@@ -435,7 +443,7 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
             onKindFilter={setKindFilter}
             kindGroups={kindGroups}
             favOnly={favOnly}
-            favCount={familyFavCount}
+            favCount={favCount}
             onFavOnly={setFavOnly}
             favs={favs}
             visible={visible}

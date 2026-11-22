@@ -19,6 +19,7 @@ export interface TopBarProps {
   tab: GalleryTab
   onTab: (tab: GalleryTab) => void
   styleCount: number
+  skillCount: number
   search: string
   onSearch: (value: string) => void
   searchRef: Ref<HTMLInputElement>
@@ -47,7 +48,7 @@ const TabPill = ({
 )
 
 export function TopBar({
-  tab, onTab, styleCount, search, onSearch, searchRef, stat,
+  tab, onTab, styleCount, skillCount, search, onSearch, searchRef, stat,
 }: TopBarProps): JSX.Element {
   const { t } = useI18n()
   return (
@@ -55,6 +56,11 @@ export function TopBar({
       {/* BP round ⑩: the gallery title span is retired — the tab pills lead. */}
       <div className="flex items-center gap-1.5">
         <TabPill active={tab === 'style'} label={t('art.tab.style')} count={styleCount} onClick={() => { onTab('style') }} />
+        {/* BP round (BP-16, m03167②): the skill pill comes back — the skill
+            family (57 entries incl. all 20 anthropics-skills) was left
+            unreachable after the BN round retired this pill, and the user's
+            skill-family favorites had vanished from every list. */}
+        <TabPill active={tab === 'skill'} label={t('art.tab.skill')} count={skillCount} onClick={() => { onTab('skill') }} />
         <TabPill active={tab === 'compare'} label={t('art.tab.compare')} onClick={() => { onTab('compare') }} />
       </div>
       <div className="relative">

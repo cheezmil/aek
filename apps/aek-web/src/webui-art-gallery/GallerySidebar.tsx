@@ -36,20 +36,16 @@ export interface GallerySidebarProps {
   onSelect: (id: string) => void
 }
 
-const groupOf = (item: GalleryItem, tab: 'skill' | 'style'): string =>
-  tab === 'skill' ? item.repoId ?? '' : item.kindId ?? ''
+// BP-16 (m03167②): group by the item's OWN family fields — skill items carry
+// repoId/repoName, style items carry kindId/kindName — so a cross-family
+// favorites list groups cleanly instead of collapsing under one empty group.
+const groupOf = (item: GalleryItem): string => item.repoId ?? item.kindId ?? ''
 
-const groupName = (item: GalleryItem, tab: 'skill' | 'style'): string =>
-  tab === 'skill' ? item.repoName ?? item.repoId ?? '' : item.kindName ?? ''
+const groupName = (item: GalleryItem): string => item.repoName ?? item.kindName ?? ''
 
-const groupColor = (
-  item: GalleryItem,
-  tab: 'skill' | 'style',
-  kindGroups: RepoGroup[],
-): string =>
-  tab === 'skill'
-    ? item.repoColor ?? '#6366F1'
-    : (kindGroups.find(k => k.id === item.kindId)?.color ?? item.srcColor ?? '#6366F1')
+const groupColor = (item: GalleryItem, kindGroups: RepoGroup[]): string =>
+  item.repoColor ??
+  (kindGroups.find(k => k.id === item.kindId)?.color ?? item.srcColor ?? '#6366F1')
 
 function FilterChip({
   active, color, label, count, onClick,
@@ -118,23 +114,23 @@ export function GallerySidebar(p: GallerySidebarProps): JSX.Element {
   const rows: JSX.Element[] = []
   let lastGroup: string | null = null
   for (const x of p.visible) {
-    const groupKey = groupOf(x, p.tab)
+    const groupKey = groupOf(x)
     if (groupKey !== lastGroup) {
       lastGroup = groupKey
-      const n = p.visible.filter(v => groupOf(v, p.tab) === groupKey).length
+      const n = p.visible.filter(v => groupOf(v) === groupKey).length
       rows.push(
         <div
           key={`g${groupKey}`}
           className="bg-background sticky top-0 z-10 flex items-center gap-1.5 px-2 pt-2.5 pb-1 text-2xxs font-extrabold text-muted-foreground uppercase"
         >
-          <span className="size-2 flex-none rounded-full" style={{ background: groupColor(x, p.tab, p.kindGroups) }} />
-          <b className="text-foreground">{groupName(x, p.tab)}</b>
+          <span className="size-2 flex-none rounded-full" style={{ background: groupColor(x, p.kindGroups) }} />
+          <b className="text-foreground">{groupName(x)}</b>
           <span className="ml-auto tabular-nums">{n}</span>
-          {p.tab === 'style' && (
+          {x.src ? (
             <span className="max-w-23 truncate text-2xxs font-semibold tracking-normal normal-case opacity-75">
               {x.src}
             </span>
-          )}
+          ) : null}
         </div>,
       )
     }
