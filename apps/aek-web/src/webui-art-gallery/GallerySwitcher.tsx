@@ -30,6 +30,8 @@ export interface GallerySwitcherProps {
   onRandom: () => void
   onSelect: (id: string) => void
   onExitImmersive: () => void
+  onToggleImmersive: () => void
+  onReset: () => void
 }
 
 export function GallerySwitcher(p: GallerySwitcherProps): JSX.Element {
@@ -121,6 +123,30 @@ export function GallerySwitcher(p: GallerySwitcherProps): JSX.Element {
               </Button>
             </TooltipTrigger>
             <TooltipContent>{open ? t('art.switcherListClose') : t('art.switcherList')}</TooltipContent>
+          </Tooltip>
+          {/* BL round (m05632 任务 A): 沉浸模式 + 重置筛选 moved from the TopBar
+              into this pill — the pill is the gallery's floating action cluster. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={p.onToggleImmersive}
+                aria-label={t('art.immersive')}
+                className={cn(p.immersive && 'bg-muted')}
+              >
+                <Icon name="maximize" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('art.immersive')}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={p.onReset} aria-label={t('art.reset')}>
+                <Icon name="refresh" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('art.reset')}</TooltipContent>
           </Tooltip>
           {p.immersive ? (
             <Button variant="destructive" size="sm" onClick={p.onExitImmersive}>

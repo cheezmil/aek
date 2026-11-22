@@ -283,6 +283,28 @@ export function galleryItems(): { styles: GalleryItem[]; skills: GalleryItem[] }
 
 export const FAV_KEY = 'aek-art-favorites'
 
+/** BL round (m05632 任务 C): the gallery's current selection, remembered
+ *  across restarts (independent of the applied global skin key). */
+const CUR_KEY = 'aek-art-cur'
+
+/** The persisted current selection (a spec id); broken storage → null. */
+export const readCurId = (): string | null => {
+  try {
+    return window.localStorage.getItem(CUR_KEY)
+  } catch {
+    return null
+  }
+}
+
+/** Persist the current selection; storage refusals degrade to in-memory. */
+export const writeCurId = (id: string): void => {
+  try {
+    window.localStorage.setItem(CUR_KEY, id)
+  } catch {
+    /* private-mode storage may refuse; the selection stays in-memory */
+  }
+}
+
 /** A radius token like `8` or `0.5rem` → the px-normalized form. */
 export const normRadius = (raw: string): string => (/px|rem|%$/.test(raw) ? raw : `${raw}px`)
 
@@ -351,6 +373,43 @@ export const cssSnippet = (spec: StageSpec): string =>
     ...(spec.status ? spec.status.map((c, i) => `  --${['ok', 'bad', 'warn'][i]}: ${c};`) : []),
     '}',
   ].join('\n')
+
+/**
+ * BL 轮 (m05632 任务 E) — the "使用方法" (how-to-use) document for one gallery
+ * item. This is the SINGLE SOURCE that both ① the Stage copy button puts on the
+ * clipboard and ② the on-disk record under
+ * `~/.aek/current/skill-manager/aek-system-skill/aek-webui-art-gallery/<id>.md`
+ * (written by scripts/aek/seed-art-gallery-usage.mjs) are generated from, so
+ * the copied text and the stored file can never drift apart. It documents how
+ * to USE this UI (its palette + the exact CSS to apply), not the raw snippet
+ * alone — that is what the user asked the copy button to hand over.
+ */
+export const usageDoc = (item: GalleryItem): string => {
+  const spec = item.spec
+  const roles = ['bg', 'surface', 'text', 'muted', 'accent', 'accent2']
+  const lines: string[] = []
+  lines.push(`# ${spec.name}`)
+  if (item.desc && item.desc !== spec.name) lines.push('', item.desc)
+  if (item.repoName) lines.push('', `> 来源：${item.repoName}`)
+  lines.push(
+    '',
+    '## 使用方法',
+    '',
+    '这是一套 AEK 风格画廊 UI 皮肤。应用方式：把下面「应用 CSS」整段复制到你的工程（或 AEK 壳的样式注入处），它会以 `.aek-stage` 作用域设置 6 个 `--p-*` 调色变量 + 圆角 / 毛玻璃，UI 即呈现该质感。',
+    '',
+    '## 配色（6 槽）',
+    '',
+    '| 角色 | 色值 |',
+    '| ---- | ---- |',
+  )
+  spec.p.forEach((c, i) => lines.push(`| ${roles[i] ?? `slot${i}`} | ${c} |`))
+  lines.push('', '## 关键参数', '', `- 质感类：${spec.mode}`, `- 字体：${spec.font}`, `- 圆角：${spec.radius}`, `- 毛玻璃：${spec.blur}px`, `- 深色底：${spec.dark ? '是' : '否'}`)
+  if (spec.status?.length) {
+    lines.push('', '## 语义色', '', '| ok | bad | warn |', '| -- | --- | ---- |', `| ${spec.status[0] ?? '-'} | ${spec.status[1] ?? '-'} | ${spec.status[2] ?? '-'} |`)
+  }
+  lines.push('', '## 应用 CSS', '', '```css', cssSnippet(spec), '```')
+  return lines.join('\n')
+}
 
 /** The persisted favorites (spec ids); broken storage degrades to none. */
 export const readFavorites = (): ReadonlySet<string> => {

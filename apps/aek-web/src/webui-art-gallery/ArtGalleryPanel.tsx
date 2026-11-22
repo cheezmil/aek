@@ -23,9 +23,11 @@ import { parseBoolean, usePref } from '../preferences.tsx'
 import { copyToClipboard } from '../clipboard.ts'
 import { REPO_FALLBACK } from './data/skill-styles.ts'
 import {
-  cssSnippet,
+  usageDoc,
   MODE_COUNT,
   readFavorites,
+  readCurId,
+  writeCurId,
   specStyle,
   writeFavorites,
   galleryItems,
@@ -85,14 +87,20 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   // hard default — otherwise the stage preview shows a different (light) spec
   // than the chrome's dark skin on load, reading as "some elements not
   // themed". Falls back to DEFAULT_SKILL when nothing valid is persisted.
+  // BL round (m05632 任务 C): first remember the gallery's own last-selected
+  // item (aek-art-cur), so a restart lands exactly where the user left off;
+  // the global-skin key stays the secondary fallback.
   const [curId, setCurId] = useState<string>(() => {
-    const persisted = globalThemeId()
-    if (persisted) {
-      const { styles, skills } = galleryItems()
-      if (styles.some(i => i.id === persisted) || skills.some(i => i.id === persisted)) return persisted
-    }
+    const { styles, skills } = galleryItems()
+    const valid = (id: string | null): boolean =>
+      !!id && (styles.some(i => i.id === id) || skills.some(i => i.id === id))
+    const remembered = readCurId()
+    if (valid(remembered)) return remembered
+    if (valid(globalThemeId())) return globalThemeId() as string
     return DEFAULT_SKILL
   })
+  // BL round: persist the selected item on every change so it survives restarts.
+  useEffect(() => { writeCurId(curId) }, [curId])
   // BR round (m11298 ①): gallery opens immersive by default (full-bleed stage; the
   // floating switcher bottom-right or Esc exits back to TopBar + Sidebar chrome).
   const [immersive, setImmersive] = useState(true)
@@ -103,6 +111,13 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   const toastTimer = useRef<number>(0)
 
   const items: GalleryItem[] = src === 'skill' ? skills : styles
+  // BL round (m05632 任务 B): the fav chip must count the CURRENT family only —
+  // the one shared favs set mixes skill + style ids, so favs.size showed the
+  // combined number on both tabs.
+  const familyFavCount = useMemo(
+    () => items.reduce((n, i) => (favs.has(i.id) ? n + 1 : n), 0),
+    [items, favs],
+  )
   const counts: StageCounts = {
     styles: styles.length,
     skills: skills.length,
@@ -245,7 +260,7 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
           searchRef.current?.focus()
           break
         case 'c':
-          if (curItem) void copyToClipboard(cssSnippet(curItem.spec)).then((ok) => { notify(ok ? t('art.copied') : 'copy failed') })
+          if (curItem) void copyToClipboard(usageDoc(curItem)).then((ok) => { notify(ok ? t('art.copied') : 'copy failed') })
           break
         case 'f':
           if (curItem) toggleFav(curItem.id)
@@ -290,9 +305,6 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
           onSearch={setSearch}
           searchRef={searchRef}
           stat={`${visible.length} / ${items.length}`}
-          immersive={immersive}
-          onToggleImmersive={() => { setImmersive(v => !v) }}
-          onReset={reset}
         />
       ) : null}
 
@@ -307,7 +319,7 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
             onKindFilter={setKindFilter}
             kindGroups={kindGroups}
             favOnly={favOnly}
-            favCount={favs.size}
+            favCount={familyFavCount}
             onFavOnly={setFavOnly}
             favs={favs}
             visible={visible}
@@ -359,6 +371,8 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
         onRandom={pickRandom}
         onSelect={(id) => { if (tab === 'compare') { pickFromCompare(id) } else { setCurId(id) } }}
         onExitImmersive={() => { setImmersive(false) }}
+        onToggleImmersive={() => { setImmersive(v => !v) }}
+        onReset={reset}
       />
     </div>
   )

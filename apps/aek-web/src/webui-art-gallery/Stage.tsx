@@ -12,7 +12,7 @@ import { useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 import { Icon } from '../Icons.tsx'
 import { useI18n } from '../i18n.tsx'
-import { cssSnippet, normRadius, type GalleryItem, type StageSpec, galleryItems, ALL_STYLE_KINDS } from './spec.ts'
+import { cssSnippet, normRadius, usageDoc, type GalleryItem, type StageSpec, galleryItems, ALL_STYLE_KINDS } from './spec.ts'
 import { copyToClipboard } from '../clipboard.ts'
 import { ComponentsPanel, MotionPanel } from './StagePanels.tsx'
 import { cn } from '@/lib/utils'
@@ -91,7 +91,10 @@ export function Stage({ item, counts, faved, onToggleFav, onNotify, globalActive
   const swatches = [spec.p[0], spec.p[1], spec.p[3], spec.p[4]]
 
   const doCopy = async (): Promise<void> => {
-    const ok = await copyToClipboard(cssSnippet(spec))
+    // BL 轮 (m05632 任务 E): copy the item's "使用方法" doc — the same single
+    // source (usageDoc) that scripts/aek/seed-art-gallery-usage.ts writes to
+    // aek-system-skill/aek-webui-art-gallery/<id>.md — not the bare CSS snippet.
+    const ok = await copyToClipboard(usageDoc(item))
     if (ok) {
       onNotify(t('art.copied'))
       setCopied(true)

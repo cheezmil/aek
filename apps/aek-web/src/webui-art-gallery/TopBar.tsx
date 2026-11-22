@@ -11,9 +11,6 @@ import type { JSX, Ref } from 'react'
 import { Icon } from '../Icons.tsx'
 import { useI18n } from '../i18n.tsx'
 import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 export type GalleryTab = 'skill' | 'style' | 'compare'
@@ -27,9 +24,6 @@ export interface TopBarProps {
   onSearch: (value: string) => void
   searchRef: Ref<HTMLInputElement>
   stat: string
-  immersive: boolean
-  onToggleImmersive: () => void
-  onReset: () => void
 }
 
 const TabPill = ({
@@ -55,7 +49,6 @@ const TabPill = ({
 
 export function TopBar({
   tab, onTab, skillCount, styleCount, search, onSearch, searchRef, stat,
-  onToggleImmersive, onReset,
 }: TopBarProps): JSX.Element {
   const { t } = useI18n()
   return (
@@ -78,28 +71,6 @@ export function TopBar({
         />
       </div>
       <span className="flex-none text-xs text-muted-foreground tabular-nums">{stat}</span>
-      <span className="flex-1" />
-      <TooltipProvider delayDuration={250}>
-        <Separator orientation="vertical" className="mx-0.5 h-5" />
-        <div className="ml-1.5 flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="icon-sm" onClick={onToggleImmersive} aria-label={t('art.immersive')}>
-                <Icon name="maximize" size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('art.immersive')}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="icon-sm" onClick={onReset} aria-label={t('art.reset')}>
-                <Icon name="refresh" size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('art.reset')}</TooltipContent>
-          </Tooltip>
-        </div>
-      </TooltipProvider>
     </header>
   )
 }
