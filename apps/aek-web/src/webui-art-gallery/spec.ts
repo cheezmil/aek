@@ -548,10 +548,14 @@ export type Tone = 'light' | 'dark'
 
 const TONE_OVERRIDES_KEY = 'aek-art-tone-overrides'
 
-/** WCAG relative luminance of a hex color; unparseable input counts as light. */
+/**
+ * WCAG relative luminance of a hex color. Returns -1 for unparseable input so
+ * callers can distinguish "the program cannot classify this background" from
+ * "a measured, confident luminance".
+ */
 const luminanceOf = (hex: string | undefined): number => {
   const m = /^#?([0-9a-f]{6})$/i.exec((hex ?? '').trim())
-  if (!m) return 1
+  if (!m) return -1
   const n = parseInt(m[1], 16)
   const chan = (v: number): number => {
     const c = v / 255
@@ -560,10 +564,24 @@ const luminanceOf = (hex: string | undefined): number => {
   return 0.2126 * chan((n >> 16) & 255) + 0.7152 * chan((n >> 8) & 255) + 0.0722 * chan(n & 255)
 }
 
+/**
+ * The gray band around the 0.45 light/dark threshold where the automatic
+ * classification is effectively a coin flip — these are the backgrounds the
+ * program genuinely cannot place with confidence. The settled tone still
+ * lands on one side (see autoToneOf), but the item also belongs to the
+ * 程序无法分类 review queue until the user marks it.
+ */
+const TONE_UNCERTAIN_LO = 0.35
+const TONE_UNCERTAIN_HI = 0.55
+
 /** The automatic tone: the background slot's luminance at a 0.45 threshold. */
 export const autoToneOf = (item: GalleryItem): Tone => {
   const bg = item.spec.p[0] ?? item.colors?.[0]
-  return luminanceOf(bg) >= 0.45 ? 'light' : 'dark'
+  const lum = luminanceOf(bg)
+  // Unparseable background: keep the legacy settled-tone default (light) —
+  // uncertainty is signalled separately by isUncertainOf.
+  if (lum < 0) return 'light'
+  return lum >= 0.45 ? 'light' : 'dark'
 }
 
 export const readToneOverrides = (): Record<string, Tone> => {
@@ -606,17 +624,39 @@ export const effectiveToneOf = (item: GalleryItem, overrides: Record<string, Ton
 /**
  * BQ4 round (m00001): the sidebar chip row is now a 4-way pool selector —
  * the user banned the 按-Skill top pill and asked the chip container to hold
- * ONLY 收藏 / 浅色 / 深色 / 程序无法分类. 程序无法分类 = items the automatic
- * luminance classification has NOT been confirmed by a user mark yet, i.e.
- * the ones still riding on the auto guess. The switcher prompts the user to
- * mark such an item 浅色/深色, and the mark (a tone override) is persisted,
- * so the item then leaves the 程序无法分类 pool.
+ * ONLY 收藏 / 浅色 / 深色 / 程序无法分类.
+ *
+ * BQ9 round (m04182): 程序无法分类 was originally "every item the user has
+ * not marked yet", which collapsed to the WHOLE set (浅色+深色 = 405) and read
+ * as a contradiction. It now means "the program could NOT confidently place
+ * this background" — an unparseable bg, or a luminance inside the gray band
+ * [TONE_UNCERTAIN_LO, TONE_UNCERTAIN_HI] around the 0.45 threshold. Those
+ * items still land in 浅色/深色 via their settled tone (autoToneOf / a user
+ * mark), but they ALSO sit in the 程序无法分类 review queue until the user
+ * marks one. The switcher prompts the user to mark the current one 浅色/深色,
+ * and the mark (a tone override) is persisted, so the item leaves the queue.
  */
 export type ViewSel = 'fav' | 'light' | 'dark' | 'unclass'
 
-/** True when the user has NOT yet marked this item's tone (auto guess only). */
-export const isUnmarked = (id: string, overrides: Record<string, Tone>): boolean =>
-  !(id in overrides)
+/**
+ * BQ9 round (m04182): the program could NOT confidently classify this item's
+ * background — the bg is unparseable, or its luminance falls in the gray band
+ * around the 0.45 light/dark threshold where the auto guess is a coin flip.
+ */
+export const isUncertainAutoOf = (item: GalleryItem): boolean => {
+  const lum = luminanceOf(item.spec.p[0] ?? item.colors?.[0])
+  if (lum < 0) return true
+  return lum >= TONE_UNCERTAIN_LO && lum <= TONE_UNCERTAIN_HI
+}
+
+/**
+ * BQ9 round (m04182): membership in the 程序无法分类 review queue = the
+ * automatic classification is uncertain AND the user has not yet marked it.
+ * (Replaces the old "every unmarked item" pool, which equaled the whole
+ * set and contradicted the 浅色/深色 counts.)
+ */
+export const inUnclassQueue = (item: GalleryItem, overrides: Record<string, Tone>): boolean =>
+  isUncertainAutoOf(item) && !(item.id in overrides)
 
 /**
  * BQ5 round: the active chip pool (收藏 / 浅色 / 深色 / 程序无法分类) is

@@ -38,7 +38,7 @@ import {
   readToneOverrides,
   writeToneOverride,
   effectiveToneOf,
-  isUnmarked,
+  inUnclassQueue,
   readViewSel,
   writeViewSel,
   type GalleryItem,
@@ -197,14 +197,16 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
 
   /** BQ4 round (m00001): filter one chip pool (cross-family) by its rule + the
       search words. fav = favorites; light/dark = the effective tone; unclass
-      = no user tone mark yet (still riding the automatic guess). */
+      = BQ9 (m04182): the program could not confidently place this background
+      (unparseable, or luminance in the gray band) AND the user has not yet
+      marked it — the 程序无法分类 review queue. */
   const filterPool = (view: ViewSel, ovr: Record<string, Tone>): GalleryItem[] => {
     const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean)
     return allItems.filter((i) => {
       if (view === 'fav' && !favs.has(i.id)) return false
       if (view === 'light' && effectiveToneOf(i, ovr) !== 'light') return false
       if (view === 'dark' && effectiveToneOf(i, ovr) !== 'dark') return false
-      if (view === 'unclass' && !isUnmarked(i.id, ovr)) return false
+      if (view === 'unclass' && !inUnclassQueue(i, ovr)) return false
       if (!words.length) return true
       const hay = [i.spec.name, i.desc, i.repoName ?? '', i.spec.mode, i.kindName ?? '', i.src ?? '']
         .join(' ')
@@ -226,7 +228,9 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
       const tn = effectiveToneOf(i, toneOverrides)
       if (tn === 'light') light += 1
       else dark += 1
-      if (isUnmarked(i.id, toneOverrides)) unclass += 1
+      // BQ9 (m04182): the 程序无法分类 queue = uncertain auto-guess AND no
+      // user mark yet — a small review set, NOT the whole (浅色+深色) universe.
+      if (inUnclassQueue(i, toneOverrides)) unclass += 1
     }
     return { fav: favs.size, light, dark, unclass }
   }, [allItems, favs, toneOverrides])
