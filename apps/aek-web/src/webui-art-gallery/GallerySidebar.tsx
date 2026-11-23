@@ -9,7 +9,7 @@
 import type { JSX } from 'react'
 import { Icon } from '../Icons.tsx'
 import { useI18n } from '../i18n.tsx'
-import type { GalleryItem } from './spec.ts'
+import type { GalleryItem, ViewSel } from './spec.ts'
 import { cn } from '@/lib/utils'
 
 export interface RepoGroup {
@@ -20,16 +20,13 @@ export interface RepoGroup {
 }
 
 export interface GallerySidebarProps {
-  tab: 'skill' | 'style'
-  repos: RepoGroup[]
-  repoFilter: string | null
-  onRepoFilter: (id: string | null) => void
-  kindFilter: string | null
-  onKindFilter: (id: string | null) => void
+  /** BQ4 round (m00001): the chip row is the 4-way pool selector. */
+  viewSel: ViewSel
+  onViewSel: (view: ViewSel) => void
+  /** Per-pool counts shown on each chip. */
+  counts: { fav: number; light: number; dark: number; unclass: number }
+  /** Kind groups still feed the row group-header colors. */
   kindGroups: RepoGroup[]
-  favOnly: boolean
-  favCount: number
-  onFavOnly: (value: boolean) => void
   favs: ReadonlySet<string>
   visible: GalleryItem[]
   curId: string
@@ -69,47 +66,39 @@ function FilterChip({
 
 export function GallerySidebar(p: GallerySidebarProps): JSX.Element {
   const { t } = useI18n()
-  const chips: JSX.Element[] = []
-  chips.push(
+  // BQ4 round (m00001): the chip row holds ONLY the 4-way pool selector —
+  // 收藏 / 浅色 / 深色 / 程序无法分类. The repo/kind filter chips and the
+  // 全部 chip are retired; each pool's count rides on its chip.
+  const chips: JSX.Element[] = [
     <FilterChip
-      key="all"
-      active={p.tab === 'skill' ? p.repoFilter === null : p.kindFilter === null}
-      label={t('art.all')}
-      onClick={() => {
-        p.onRepoFilter(null)
-        p.onKindFilter(null)
-      }}
+      key="fav"
+      active={p.viewSel === 'fav'}
+      label={t('art.fav')}
+      count={p.counts.fav}
+      onClick={() => { p.onViewSel('fav') }}
     />,
-  )
-  if (p.tab === 'skill') {
-    for (const r of p.repos) {
-      const on = p.repoFilter === r.id
-      chips.push(
-        <FilterChip
-          key={r.id}
-          active={on}
-          color={r.color}
-          label={r.name}
-          count={r.count}
-          onClick={() => { p.onRepoFilter(on ? null : r.id) }}
-        />,
-      )
-    }
-  } else {
-    for (const k of p.kindGroups) {
-      const on = p.kindFilter === k.id
-      chips.push(
-        <FilterChip
-          key={k.id}
-          active={on}
-          color={k.color}
-          label={k.name}
-          count={k.count}
-          onClick={() => { p.onKindFilter(on ? null : k.id) }}
-        />,
-      )
-    }
-  }
+    <FilterChip
+      key="light"
+      active={p.viewSel === 'light'}
+      label={t('art.chipLight')}
+      count={p.counts.light}
+      onClick={() => { p.onViewSel('light') }}
+    />,
+    <FilterChip
+      key="dark"
+      active={p.viewSel === 'dark'}
+      label={t('art.chipDark')}
+      count={p.counts.dark}
+      onClick={() => { p.onViewSel('dark') }}
+    />,
+    <FilterChip
+      key="unclass"
+      active={p.viewSel === 'unclass'}
+      label={t('art.chipUnclass')}
+      count={p.counts.unclass}
+      onClick={() => { p.onViewSel('unclass') }}
+    />,
+  ]
 
   // BQ3-1 (m00576): visible follows the catalog's KIND order, so one repo's
   // items can be split across distant sections (anthropics = 10 palette rows
@@ -183,28 +172,19 @@ export function GallerySidebar(p: GallerySidebarProps): JSX.Element {
 
   return (
     <aside className="bg-background flex w-75 flex-none flex-col border-r">
+      {/* BQ4 round (m00001): the chip container holds ONLY the 4 pool tabs. */}
       <div className="flex flex-none items-center gap-2 overflow-x-auto border-b px-3 py-2.5">
-        <button
-          type="button"
-          onClick={() => { p.onFavOnly(!p.favOnly) }}
-          className={cn(
-            'flex h-7 flex-none items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold transition-colors',
-            p.favOnly
-              ? 'border-primary/40 bg-primary/10 text-primary'
-              : 'border-border text-muted-foreground hover:bg-muted',
-          )}
-        >
-          <Icon name="star" size={14} className={cn(p.favOnly && 'fill-current')} />
-          {t('art.fav')} {p.favCount}
-        </button>
-        <span className="bg-border h-5 w-px flex-none" />
         {chips}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="px-2 pt-1.5 pb-6">
           {rows.length ? rows : (
             <div className="text-muted-foreground px-5 py-11 text-center text-xs">
-              {p.favOnly ? t('art.favHint') : t('art.empty')}
+              {p.viewSel === 'fav'
+                ? t('art.favHint')
+                : p.viewSel === 'unclass'
+                  ? t('art.chipUnclassEmpty')
+                  : t('art.empty')}
             </div>
           )}
         </div>

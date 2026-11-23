@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import type { GalleryItem, FavGroup, Tone } from './spec.ts'
+import type { GalleryItem, FavGroup, Tone, ViewSel } from './spec.ts'
 
 export interface GallerySwitcherProps {
   items: GalleryItem[]
@@ -37,9 +37,11 @@ export interface GallerySwitcherProps {
   onExitImmersive: () => void
   onToggleImmersive: () => void
   onReset: () => void
-  /** BP round ⑦: the active tone pool + its switcher. */
-  tone: Tone
-  onSelectTone: (tone: Tone) => void
+  /** BQ4 round (m00001): the active chip pool + its sun/moon switcher. */
+  viewSel: ViewSel
+  onSelectView: (view: ViewSel) => void
+  /** BQ4 round: the explicit 浅/深色 mark from the unclass prompt (persisted). */
+  onMarkTone: (id: string, tone: Tone) => void
   /** The effective tone of one item (user mark beats auto-classification). */
   toneOf: (id: string) => Tone
   onToggleToneMark: (id: string) => void
@@ -271,6 +273,25 @@ export function GallerySwitcher(p: GallerySwitcherProps): JSX.Element {
       {/* BU round (m12968 ⑤): the bare icon buttons read as "dead
           elements" — every one now carries a hover tooltip naming its
           action. */}
+      {/* BQ4 round (m00001): the 程序无法分类 view prompts the user to mark
+      {/* the current item's style as 浅色 or 深色; the mark is persisted via
+      {/* the panel's onMarkTone (writeToneOverride), so it is remembered. */}
+      {p.viewSel === 'unclass' && p.items.length ? (
+        <div className="border-border bg-background text-foreground flex w-78 flex-col gap-1.5 rounded-lg border p-2.5 shadow-xl">
+          <div className="text-xs leading-snug">
+            <b>{cur ? cur.spec.name : ''}</b>
+            <div className="text-muted-foreground text-2xxs">{t('art.tonePrompt')}</div>
+          </div>
+          <div className="flex gap-1.5">
+            <Button size="sm" className="h-6 flex-1 gap-1 text-2xxs" onClick={() => { p.onMarkTone(p.curId, 'light') }}>
+              <Icon name="sun" size={12} />{t('art.toneLight')}
+            </Button>
+            <Button size="sm" variant="outline" className="h-6 flex-1 gap-1 text-2xxs" onClick={() => { p.onMarkTone(p.curId, 'dark') }}>
+              <Icon name="moon" size={12} />{t('art.toneDark')}
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <TooltipProvider delayDuration={250}>
         <div className="border-border bg-background flex items-center gap-1 rounded-full border px-2 py-1.5 shadow-xl">
           <Tooltip>
@@ -289,9 +310,9 @@ export function GallerySwitcher(p: GallerySwitcherProps): JSX.Element {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => { p.onSelectTone('light') }}
+                onClick={() => { p.onSelectView('light') }}
                 aria-label={t('art.toneLight')}
-                className={cn(p.tone === 'light' && 'bg-muted text-foreground')}
+                className={cn(p.viewSel === 'light' && 'bg-muted text-foreground')}
               >
                 <Icon name="sun" />
               </Button>
@@ -303,9 +324,9 @@ export function GallerySwitcher(p: GallerySwitcherProps): JSX.Element {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => { p.onSelectTone('dark') }}
+                onClick={() => { p.onSelectView('dark') }}
                 aria-label={t('art.toneDark')}
-                className={cn(p.tone === 'dark' && 'bg-muted text-foreground')}
+                className={cn(p.viewSel === 'dark' && 'bg-muted text-foreground')}
               >
                 <Icon name="moon" />
               </Button>

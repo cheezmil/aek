@@ -2,15 +2,15 @@
  * The aek-webui-art-gallery panel — aek-web's own port of the style-gallery
  * reference frontend IA (P16: same layout/interaction/info density; aek's
  * own widgets + stage.css skin table, no reference source copied):
- *
- *   TopBar (3 tab pills + search + visible/total + immersive/reset)
+ *   TopBar (style/compare pills + search + visible/total)
+ *   + Sidebar (4 chip pools 收藏/浅色/深色/程序无法分类 + grouped rows)
  *   + Sidebar (fav chip + repo/kind chips + grouped rows with color bars)
  *   + CompareGrid (one-screen re-skinned mini cards) / Stage (header +
  *     spec strip + 4 live tabs) driven by the current item's spec.
  *
- * State machine mirrors the reference App: tab (skill/style/compare) +
- * src (which family compare shows) + repoFilter/kindFilter + search +
- * favOnly + curId + immersive; keyboard ←/→ step, "/" focus, c copy,
+ * BQ4 round: state = tab (style/compare) + viewSel (the 4-way chip pool
+ * fav/light/dark/unclass, cross-family) + search + curId + immersive;
+ * left/right step within the active chip pool, "/" focus, c copy,
  * f favorite, Esc exit immersive. Favorites persist in localStorage as
  * named groups (BO round: groupable favorites, group CRUD).
  *
@@ -38,9 +38,11 @@ import {
   readToneOverrides,
   writeToneOverride,
   effectiveToneOf,
+  isUnmarked,
   type GalleryItem,
   type FavGroup,
   type Tone,
+  type ViewSel,
 } from './spec.ts'
 import { TopBar, type GalleryTab } from './TopBar.tsx'
 import { GallerySidebar, type RepoGroup } from './GallerySidebar.tsx'
@@ -53,8 +55,6 @@ import {
 } from './artGlobalTheme.ts'
 import { GallerySwitcher } from './GallerySwitcher.tsx'
 import { Stage, type StageCounts } from './Stage.tsx'
-
-type Family = 'skill' | 'style'
 
 /** The reference's "detail" stage id for skills when no favorite is set. */
 const DEFAULT_SKILL = 'skill-impeccable::impeccable'
@@ -69,16 +69,8 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   const [skinAnim] = usePref('aek-home.skinAnim', false, parseBoolean)
   useEffect(() => { setSkinAnimEnabled(skinAnim) }, [skinAnim])
   const { styles, skills } = useMemo(() => galleryItems(), [])
-  const repos = useMemo<RepoGroup[]>(() => {
-    const groups = new Map<string, RepoGroup>()
-    for (const s of skills) {
-      const id = s.repoId ?? ''
-      const cur = groups.get(id) ?? { id, name: s.repoName ?? id, color: s.repoColor ?? '#6366F1', count: 0 }
-      cur.count += 1
-      groups.set(id, cur)
-    }
-    return [...groups.values()]
-  }, [skills])
+  // BQ4 round: the repo filter chips are retired — only kind groups remain,
+  // feeding the sidebar row group-header colors.
   const kindGroups = useMemo<RepoGroup[]>(
     () => ALL_STYLE_KINDS.map(k => ({
       id: k.id,
@@ -92,11 +84,11 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   )
 
   const [tab, setTab] = useState<GalleryTab>('style')
-  const [src, setSrc] = useState<Family>('style')
-  const [repoFilter, setRepoFilter] = useState<string | null>(null)
-  const [kindFilter, setKindFilter] = useState<string | null>(null)
+  // BQ4 round (m00001): the chip-row 4-way pool selector replaces the retired
+  // src-family / repoFilter / kindFilter / favOnly / tone states. Default is
+  // 浅色; 程序无法分类 is where the user confirms auto-guessed tones.
+  const [viewSel, setViewSel] = useState<ViewSel>('light')
   const [search, setSearch] = useState('')
-  const [favOnly, setFavOnly] = useState(false)
   // BO round (m00001 ⑪): favorites are groupable. The single shared
   // `favs` set is now derived (union of every group), so all existing
   // consumers (sidebar stars, compare grid, fav chip, favOnly filter) keep
@@ -172,14 +164,6 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   })
   // BL round: persist the selected item on every change so it survives restarts.
   useEffect(() => { writeCurId(curId) }, [curId])
-  // BP round (m02138 ⑦): the pill's active pool starts on the current item's
-  // own (effective) tone — the user then switches pools with the 浅色/深色
-  // buttons; prev/next and the list stay inside the active pool.
-  const [tone, setTone] = useState<Tone>(() => {
-    const { styles, skills } = galleryItems()
-    const cur = styles.find(i => i.id === curId) ?? skills.find(i => i.id === curId)
-    return cur ? effectiveToneOf(cur, toneOverrides) : 'light'
-  })
   // BR round (m11298 ①): gallery opens immersive by default (full-bleed stage; the
   // floating switcher bottom-right or Esc exits back to TopBar + Sidebar chrome).
   const [immersive, setImmersive] = useState(true)
@@ -189,12 +173,10 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   const searchRef = useRef<HTMLInputElement>(null)
   const toastTimer = useRef<number>(0)
 
-  const items: GalleryItem[] = src === 'skill' ? skills : styles
-  // BP-16 (m03167②): the fav chip counts ALL favorites, both families. The
-  // BL round scoped it to the current family — that is exactly why the user's
-  // skill-family favorite "disappeared" (the chip read 0 on the style tab and
-  // no list could reach the other family). Total wins.
-  const favCount = favs.size
+  // BQ4 round (m00001): the gallery is now cross-family — every pool (收藏 /
+  // 浅色 / 深色 / 程序无法分类) spans BOTH the style and the skill families,
+  // since the 按-Skill top pill is banned. `allItems` is the shared universe.
+  const allItems = useMemo<GalleryItem[]>(() => [...styles, ...skills], [styles, skills])
   const counts: StageCounts = {
     styles: styles.length,
     skills: skills.length,
@@ -209,62 +191,69 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     toastTimer.current = window.setTimeout(() => { setToast(null) }, 1900)
   }
 
-  /** Reference App.filter: favOnly + repo/kind filter + all-space search words.
-   *  BP-16 (m03167②): favOnly is CROSS-family — the star list reaches favorites
-   *  in BOTH families (the user's skill-family favorite had no way to be seen
-   *  on the style tab otherwise). The per-family repo/kind chips only apply to
-   *  the unfiltered list. */
-  const visible = useMemo(() => {
+  /** BQ4 round (m00001): filter one chip pool (cross-family) by its rule + the
+      search words. fav = favorites; light/dark = the effective tone; unclass
+      = no user tone mark yet (still riding the automatic guess). */
+  const filterPool = (view: ViewSel, ovr: Record<string, Tone>): GalleryItem[] => {
     const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean)
-    const base = favOnly ? [...styles, ...skills] : items
-    return base.filter((i) => {
-      if (favOnly && !favs.has(i.id)) return false
-      if (!favOnly) {
-        if (src === 'skill' && repoFilter && i.repoId !== repoFilter) return false
-        if (src === 'style' && kindFilter && i.kindId !== kindFilter) return false
-      }
+    return allItems.filter((i) => {
+      if (view === 'fav' && !favs.has(i.id)) return false
+      if (view === 'light' && effectiveToneOf(i, ovr) !== 'light') return false
+      if (view === 'dark' && effectiveToneOf(i, ovr) !== 'dark') return false
+      if (view === 'unclass' && !isUnmarked(i.id, ovr)) return false
       if (!words.length) return true
       const hay = [i.spec.name, i.desc, i.repoName ?? '', i.spec.mode, i.kindName ?? '', i.src ?? '']
         .join(' ')
         .toLowerCase()
       return words.every(w => hay.includes(w))
     })
-  }, [items, favOnly, favs, src, repoFilter, kindFilter, search, styles, skills])
-
-  const defaultOf = (family: Family): string =>
-    family === 'skill'
-      ? (skills.some(s => s.id === DEFAULT_SKILL) ? DEFAULT_SKILL : (skills[0]?.id ?? ''))
-      : (styles[0]?.id ?? '')
-
-  /** Reference switchTab: reset the family filters, honor a pending compare pick. */
-  const switchTab = (next: GalleryTab): void => {
-    const family: Family = next === 'compare' ? src : next
-    setTab(next)
-    if (next !== 'compare') setSrc(next)
-    setRepoFilter(null)
-    setKindFilter(null)
-    const pending = pendingId.current
-    pendingId.current = null
-    const target: Family = pending ? (skills.some(s => s.id === pending) ? 'skill' : 'style') : family
-    setSrc(target)
-    setCurId(pending ?? defaultOf(target))
   }
 
-  const allItems = (): GalleryItem[] => [...styles, ...skills]
+  /** BQ4 round: the active chip pool = the sidebar list AND the keyboard/switcher
+      pool; left/right step ONLY inside it (the user's tab-driven stepping). */
+  const pool = useMemo(() => filterPool(viewSel, toneOverrides), [viewSel, toneOverrides, search, allItems, favs])
 
-  /** Reference App: picking a compare card leaves the grid for that family's stage. */
+  /** Per-chip pool counts (search-insensitive) shown on the sidebar chips. */
+  const chipCounts = useMemo(() => {
+    let light = 0
+    let dark = 0
+    let unclass = 0
+    for (const i of allItems) {
+      const tn = effectiveToneOf(i, toneOverrides)
+      if (tn === 'light') light += 1
+      else dark += 1
+      if (isUnmarked(i.id, toneOverrides)) unclass += 1
+    }
+    return { fav: favs.size, light, dark, unclass }
+  }, [allItems, favs, toneOverrides])
+
+  const defaultItem = (): GalleryItem =>
+    styles.find(i => i.id === DEFAULT_SKILL) ?? styles[0]
+
+
+  /** BQ4 round: the top tab is chrome only (stage vs the compare grid) — the
+  /** pool selector moved to the sidebar chips, so no family reset happens.
+  /** A pending compare pick (pickFromCompare) lands on that item's stage. */
+  const switchTab = (next: GalleryTab): void => {
+    setTab(next)
+    if (next === 'style') {
+      const pending = pendingId.current
+      if (pending) {
+        pendingId.current = null
+        setCurId(pending)
+      }
+    }
+  }
+
+
+  /** BQ4 round: picking a compare card leaves the grid for that item's stage. */
   const pickFromCompare = (id: string): void => {
     pendingId.current = id
-    switchTab(src)
+    switchTab('style')
   }
 
-  /** BP round ⑦: the visible family items of the active tone = the pool prev/next/list move in. */
-  const pool = useMemo(
-    () => visible.filter(i => effectiveToneOf(i, toneOverrides) === tone),
-    [visible, tone, toneOverrides],
-  )
 
-  /** Reference App keyboard step — now bounded to the tone pool (BP round ⑦). */
+  /** BQ4 round: left/right step within the active chip pool (the user's tab-driven stepping). */
   const stepCur = (delta: number): void => {
     if (!pool.length) return
     const idx = pool.findIndex(i => i.id === curId)
@@ -273,23 +262,33 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     setCurId(next.id)
   }
 
-  /** BP round ⑦: switch the active pool; keep the stage inside it. */
-  const selectTone = (next: Tone): void => {
-    if (next === tone) return
-    setTone(next)
-    const p = visible.filter(i => effectiveToneOf(i, toneOverrides) === next)
+  /** BQ4 round: switch the active chip pool; keep the stage inside it. */
+  const selectViewSel = (next: ViewSel): void => {
+    if (next === viewSel) return
+    setViewSel(next)
+    const p = filterPool(next, toneOverrides)
     if (p.length && !p.some(i => i.id === curId)) setCurId(p[0].id)
   }
 
-  /** BP round ⑦: the user's click-mark — flip this item's tone, persisted. */
-  const toggleToneMark = (id: string): void => {
-    const all = allItems()
-    const item = all.find(i => i.id === id)
-    if (!item) return
-    const next: Tone = effectiveToneOf(item, toneOverrides) === 'light' ? 'dark' : 'light'
+  /** BQ4 round: the user's 浅/深色 mark on an auto-guessed item — set an
+  /** explicit tone (persisted via writeToneOverride, the user's 记忆要求).
+  /** In the 程序无法分类 view the item leaves the pool, so step on to the
+  /** next unmarked one; in a tone view it simply moves to its new pool. */
+  const markTone = (id: string, next: Tone): void => {
     const nextOverrides = { ...toneOverrides, [id]: next }
     setToneOverrides(nextOverrides)
     writeToneOverride(id, next)
+    if (viewSel === 'unclass') {
+      const rest = filterPool('unclass', nextOverrides)
+      if (rest.length) setCurId(rest[0].id)
+    }
+  }
+
+  /** BP round ⑦: the list-row click-mark — flip this item's tone, persisted. */
+  const toggleToneMark = (id: string): void => {
+    const item = allItems.find(i => i.id === id)
+    if (!item) return
+    markTone(id, effectiveToneOf(item, toneOverrides) === 'light' ? 'dark' : 'light')
   }
 
   /** BP round: apply this spec to the whole webui, or reset when active. */
@@ -306,16 +305,9 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     }
   }
 
-  // BN round (m06297 ①⑤): the list follows the selected family, but the
-  // remembered / global current item may belong to the OTHER family (a skill
-  // skin persisted while the gallery now defaults to styles). Resolve it
-  // across both so the stage still previews the current skin with its
-  // provenance card instead of dropping to the empty state.
-  const curItem =
-    items.find(i => i.id === curId) ??
-    skills.find(i => i.id === curId) ??
-    styles.find(i => i.id === curId) ??
-    null
+  // BQ4 round: pools are cross-family, so the current item resolves across
+  // the whole universe (a remembered / global-skin id may be a skill).
+  const curItem = allItems.find(i => i.id === curId) ?? null
 
   /**
    * BQ round (m10857 item 3): switching to any style applies it to the
@@ -342,7 +334,7 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
           ? favGroups.map(g => (g.id === '' ? { ...g, items: [...g.items, id] } : g))
           : [...favGroups, { id: '', name: '', items: [id] }],
     )
-    const item = allItems().find(i => i.id === id)
+    const item = allItems.find(i => i.id === id)
     notify(`${item ? `${item.spec.name} — ` : ''}${has ? t('art.favRemove') : t('art.favAdd')}`)
   }
 
@@ -394,16 +386,11 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     return () => { window.removeEventListener('keydown', onKey) }
   })
 
+  /** BQ4 round: reset clears the search and lands on 浅色 + the default item. */
   const reset = (): void => {
     setSearch('')
-    setFavOnly(false)
-    setRepoFilter(null)
-    setKindFilter(null)
-    const target = defaultOf(src)
-    setCurId(target)
-    // BP round ⑦: reset also lands the pool on the default item's own tone.
-    const def = allItems().find(i => i.id === target)
-    if (def) setTone(effectiveToneOf(def, toneOverrides))
+    setViewSel('light')
+    setCurId(defaultItem().id)
   }
 
   return (
@@ -422,31 +409,22 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
           tab={tab}
           onTab={switchTab}
           styleCount={styles.length}
-          skillCount={skills.length}
           search={search}
           onSearch={setSearch}
           searchRef={searchRef}
-          stat={favOnly
-            ? `${visible.length} / ${styles.length + skills.length}`
-            : `${visible.length} / ${items.length}`}
+          stat={`${pool.length} / ${allItems.length}`}
         />
       ) : null}
 
       <div className="flex min-h-0 flex-1">
         {!immersive && tab !== 'compare' ? (
           <GallerySidebar
-            tab={src}
-            repos={repos}
-            repoFilter={repoFilter}
-            onRepoFilter={setRepoFilter}
-            kindFilter={kindFilter}
-            onKindFilter={setKindFilter}
+            viewSel={viewSel}
+            onViewSel={selectViewSel}
+            counts={chipCounts}
             kindGroups={kindGroups}
-            favOnly={favOnly}
-            favCount={favCount}
-            onFavOnly={setFavOnly}
             favs={favs}
-            visible={visible}
+            visible={pool}
             curId={curId}
             onSelect={setCurId}
           />
@@ -469,7 +447,7 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
           {tab === 'compare' ? (
             <div className="pb-24">
               <CompareGrid
-                visible={visible}
+                visible={pool}
                 curId={curId}
                 counts={{ styles: styles.length, skills: skills.length, modes: MODE_COUNT }}
                 favs={favs}
@@ -505,7 +483,7 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
 
       <GallerySwitcher
         items={pool}
-        allItems={allItems()}
+        allItems={allItems}
         curId={curId}
         curIdx={pool.findIndex(i => i.id === curId)}
         immersive={immersive}
@@ -517,12 +495,13 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
         onReset={reset}
         onGlobal={onGlobal}
         globalActive={globalId === curId}
-        tone={tone}
-        onSelectTone={selectTone}
+        viewSel={viewSel}
+        onSelectView={selectViewSel}
         toneOf={(id) => {
-          const it = allItems().find(i => i.id === id)
+          const it = allItems.find(i => i.id === id)
           return it ? effectiveToneOf(it, toneOverrides) : 'light'
         }}
+        onMarkTone={markTone}
         onToggleToneMark={toggleToneMark}
         groups={favGroups}
         onAddGroup={addGroup}

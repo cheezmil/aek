@@ -13,13 +13,12 @@ import { useI18n } from '../i18n.tsx'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-export type GalleryTab = 'skill' | 'style' | 'compare'
+export type GalleryTab = 'style' | 'compare'
 
 export interface TopBarProps {
   tab: GalleryTab
   onTab: (tab: GalleryTab) => void
   styleCount: number
-  skillCount: number
   search: string
   onSearch: (value: string) => void
   searchRef: Ref<HTMLInputElement>
@@ -48,19 +47,18 @@ const TabPill = ({
 )
 
 export function TopBar({
-  tab, onTab, styleCount, skillCount, search, onSearch, searchRef, stat,
+  tab, onTab, styleCount, search, onSearch, searchRef, stat,
 }: TopBarProps): JSX.Element {
   const { t } = useI18n()
   return (
     <header className="flex flex-none items-center gap-3 border-b bg-background px-5 py-2.5">
-      {/* BP round ⑩: the gallery title span is retired — the tab pills lead. */}
+      {/* BP round ⑩: the gallery title span is retired — the tab pills lead.
+          BQ4 round (m00001): the skill pill is BANNED — the user ruled
+          「按 Skill 是错误的，禁止再有这个元素可以选择」, so the top bar is
+          now 2 pills (style + compare) only; the skill family stays
+          reachable via the sidebar's 收藏 chip and the compare grid. */}
       <div className="flex items-center gap-1.5">
         <TabPill active={tab === 'style'} label={t('art.tab.style')} count={styleCount} onClick={() => { onTab('style') }} />
-        {/* BP round (BP-16, m03167②): the skill pill comes back — the skill
-            family (57 entries incl. all 20 anthropics-skills) was left
-            unreachable after the BN round retired this pill, and the user's
-            skill-family favorites had vanished from every list. */}
-        <TabPill active={tab === 'skill'} label={t('art.tab.skill')} count={skillCount} onClick={() => { onTab('skill') }} />
         <TabPill active={tab === 'compare'} label={t('art.tab.compare')} onClick={() => { onTab('compare') }} />
       </div>
       <div className="relative">

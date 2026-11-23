@@ -602,3 +602,18 @@ export const writeToneOverride = (id: string, tone: Tone | null): void => {
 /** The effective tone: a user mark beats the automatic classification. */
 export const effectiveToneOf = (item: GalleryItem, overrides: Record<string, Tone>): Tone =>
   overrides[item.id] ?? autoToneOf(item)
+
+/**
+ * BQ4 round (m00001): the sidebar chip row is now a 4-way pool selector —
+ * the user banned the 按-Skill top pill and asked the chip container to hold
+ * ONLY 收藏 / 浅色 / 深色 / 程序无法分类. 程序无法分类 = items the automatic
+ * luminance classification has NOT been confirmed by a user mark yet, i.e.
+ * the ones still riding on the auto guess. The switcher prompts the user to
+ * mark such an item 浅色/深色, and the mark (a tone override) is persisted,
+ * so the item then leaves the 程序无法分类 pool.
+ */
+export type ViewSel = 'fav' | 'light' | 'dark' | 'unclass'
+
+/** True when the user has NOT yet marked this item's tone (auto guess only). */
+export const isUnmarked = (id: string, overrides: Record<string, Tone>): boolean =>
+  !(id in overrides)
