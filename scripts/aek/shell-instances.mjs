@@ -11,10 +11,21 @@
  * check half of the "only one AEK.app instance" rule: run it BEFORE any
  * shell launch, and it is wired into `dev-cycle verify`.
  *
- * Usage (no flags = read-only report, zero side effects, always exit 0):
- *   node scripts/aek/shell-instances.mjs            # report
- *   node scripts/aek/shell-instances.mjs --check   # exit 1 on a whitelist / duplicate violation
- *   node scripts/aek/shell-instances.mjs --json    # machine-readable
+ * Usage:
+ *   node scripts/aek/shell-instances.mjs            # read-only report, always exit 0
+ *   node scripts/aek/shell-instances.mjs --check    # exit 1 on a whitelist / duplicate violation
+ *   node scripts/aek/shell-instances.mjs --json     # machine-readable report
+ *   node scripts/aek/shell-instances.mjs --stop [--slot aek] [--slot next]
+ *                                                    # KILL the shell mains (SIGTERM→SIGKILL)
+ *                                                    # and clear the affected slots' pid locks.
+ *                                                    # No --slot = every AEK-family shell main.
+ *
+ * `--stop` is the mechanical half of the "launching a new instance must
+ * terminate the old one" rule: it is what the launch scripts call BEFORE
+ * spawning a fresh shell, so a leaked / duplicated shell can never survive a
+ * launch. It kills by process table (ps), NOT by the slot lock — the lock only
+ * names the LAST writer, so a clobbered duplicate would be invisible to a
+ * lock-based stop.
  *
  * Safety conventions:
  *   - Read-only; it never signals or kills anything.
@@ -38,10 +49,18 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { SLOTS, slotConfig, slotHome } from '../../packages/aek/base/coraek/slots.mjs'
 import { listLanes, laneConfig, laneHome } from '../../packages/aek/base/coraek/lanes.mjs'
+import { clearSlotLock, isPidAlive } from '../../packages/aek/base/coraek/slot-lock.mjs'
 
 const argv = process.argv.slice(2)
 const CHECK = argv.includes('--check')
 const JSON_OUT = argv.includes('--json')
+const STOP = argv.includes('--stop')
+// Per-slot kill filter: `--slot aek --slot next` (repeatable). Omit to sweep every
+// detected AEK-family shell main.
+const slotFilter = new Set()
+for (let i = 0; i < argv.length; i += 1) {
+  if (argv[i] === '--slot' && argv[i + 1]) slotFilter.add(argv[i + 1])
+}
 const INSTALL_DIR = join(homedir(), 'Applications')
 
 /**
@@ -182,12 +201,77 @@ function scan() {
   return found
 }
 
+/**
+ * Kill shell mains (all, or those of the given slot filter) and release their
+ * slot pid locks. This is the "terminate the old instance before launching a
+ * new one" primitive the launch scripts rely on.
+ *
+ *   - SIGTERM every target pid, bounded wait, escalate survivors to SIGKILL.
+ *   - After the process table is clean, clear each affected slot's lock so a
+ *     dead shellPid can never read as "the slot is held".
+ *
+ * Targets are the instances already scanned (ps-based) — a pid the slot lock
+ * no longer names (a clobbered duplicate) is still killed here. The lock-based
+ * stop in `shared-logic.mjs` would miss exactly those.
+ * @param {Array<{pid:number, slot:string, app:string, family:string}>} instances
+ * @returns {number} exit code (0 clean, 1 when a pid refused to die).
+ */
+function stopInstances(instances) {
+  const targets = slotFilter.size > 0
+    ? instances.filter(i => slotFilter.has(i.slot))
+    : instances
+  if (targets.length === 0) {
+    console.log(`[stop] no ${slotFilter.size > 0 ? [...slotFilter].join('/') : 'AEK'} shell instance(s) to stop`)
+    return 0
+  }
+  const pids = [...new Set(targets.map(i => i.pid))]
+  const slotsTouched = [...new Set(targets.map(i => i.slot).filter(s => s !== 'unknown'))]
+  console.log(`[stop] SIGTERM ${pids.join(' ')} (${targets.length} instance(s): ` +
+    targets.map(i => `${i.app}#${i.slot}=${i.pid}`).join(', ') + ')')
+  for (const pid of pids) {
+    try { process.kill(pid, 'SIGTERM') } catch { /* already gone */ }
+  }
+  // Bounded wait for graceful exit, then escalate the survivors.
+  const deadline = Date.now() + 3000
+  const alive = () => pids.filter(isPidAlive)
+  while (Date.now() < deadline && alive().length > 0) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
+  }
+  const stuck = alive()
+  if (stuck.length > 0) {
+    console.log(`[stop] ${stuck.join(' ')} survived SIGTERM → SIGKILL`)
+    for (const pid of stuck) {
+      try { process.kill(pid, 'SIGKILL') } catch { /* already gone */ }
+    }
+    const deadline2 = Date.now() + 2000
+    while (Date.now() < deadline2 && stuck.some(isPidAlive)) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
+    }
+  }
+  const still = pids.filter(isPidAlive)
+  // Release the locks of the slots we actually touched.
+  for (const slot of slotsTouched) {
+    try { clearSlotLock(slot) } catch { /* slot lock may not exist yet */ }
+  }
+  if (still.length > 0) {
+    console.error(`[stop] PIDS REFUSED TO DIE: ${still.join(' ')}`)
+    return 1
+  }
+  console.log(`[stop] all targeted shell instances terminated; locks cleared for ${slotsTouched.length > 0 ? slotsTouched.join(', ') : '(none)'}`)
+  return 0
+}
+
 function main() {
   const instances = scan()
   if (instances === null) {
     console.log('shell-instances: this platform cannot be scanned (ps-based, POSIX); skipped.')
     return 0
   }
+
+  if (STOP) {
+    return stopInstances(instances)
+  }
+
   const bySlot = new Map()
   for (const inst of instances) {
     bySlot.set(inst.slot, [...(bySlot.get(inst.slot) ?? []), inst])

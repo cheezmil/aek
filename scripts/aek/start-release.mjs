@@ -11,9 +11,10 @@
  *
  * Usage: node scripts/aek/start-release.mjs [aek|next]
  */
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   killSlot,
   spawnWebServerForSlot,
@@ -26,10 +27,33 @@ import {
   prodAppDirForSlot,
   isBuildFresh,
   attachCleanup,
-  APP_ROOT,
+  electronBin,
+  bundleExecutable,
+  electronEnv,
+  slotHome,
   SLOTS,
   slotConfig,
 } from './shared-logic.mjs'
+
+/**
+ * BQ11 round: terminate EVERY shell main that belongs to this slot BEFORE we
+ * launch a new one — the "launching a new instance must terminate the old one"
+ * rule, enforced mechanically. This is ps-based (process table), not lock-
+ * based: a clobbered duplicate that the slot lock no longer names is still
+ * found and killed, and the affected slots' pid locks are cleared. A shell
+ * that refuses to die aborts the launch instead of leaving two instances.
+ * @param {string} slot
+ */
+function stopSlotShells(slot) {
+  const here = dirname(fileURLToPath(import.meta.url))
+  const r = spawnSync(process.execPath, [join(here, 'shell-instances.mjs'), '--stop', '--slot', slot], {
+    encoding: 'utf8', stdio: ['ignore', 'inherit', 'inherit'],
+  })
+  if (r.status !== 0) {
+    console.error(`[start] previous shell instance(s) for slot ${slot} could not be terminated — aborting (single-instance rule)`)
+    process.exit(3)
+  }
+}
 
 const slot = process.argv[2] ?? 'aek'
 // BF-4 lane round: accept built-in slots AND registered lanes (coraek/slots).
@@ -59,6 +83,13 @@ if (cleared.stuck.length > 0) {
   console.error(`[start] previous instance did not exit: ${cleared.stuck.join(' ')}`)
   process.exit(3)
 }
+
+// Single-instance rule (BQ11 round): killSlot only reaches pids named in the
+// slot lock or holding our ports. A clobbered duplicate shell that the lock
+// no longer names would still be alive and would coexist with the new shell.
+// Sweep the whole process table for this slot's shell mains and clear the
+// locks before we build/launch, so exactly one instance ever runs.
+stopSlotShells(slot)
 
 if (isBuildFresh(slot)) {
   console.log('[start] build is up to date, skipping packaging')
@@ -93,8 +124,24 @@ attachCleanup(web)
   else console.log('[start] web app ready')
 
   const appPath = prodAppDirForSlot(slot)
-  console.log(`[start] launching prod ${cfg.productName} from ${appPath}`)
-  const app = spawn('open', ['-a', appPath], { stdio: 'inherit' })
+  // Launch the bundle's main executable DIRECTLY with a sanitized env, not via
+  // `open -a` (LaunchServices). On this host the DSH harness exports
+  // ELECTRON_RUN_AS_NODE=1 + NODE_OPTIONS into the launchd session, and a
+  // LaunchServices-launched AEK.app inherits both: the Electron binary then
+  // boots headless as a node CLI and silently exits (rc 0) — the "prod shell
+  // dies in 1s" symptom. electronEnv() strips both vars; the app's slot/port
+  // identity is passed explicitly so it locks the right slot's pid file.
+  const exe = bundleExecutable(appPath) ?? cfg.productName
+  const bin = electronBin(appPath, exe)
+  const env = electronEnv({
+    DSH_HOME: slotHome(slot),
+    AEK_HOME: slotHome(slot),
+    AEK_SLOT: slot,
+    AEK_WEB_PORT: String(cfg.webPort),
+    AEK_CDP_PORT: String(cfg.cdpPort),
+  })
+  console.log(`[start] launching prod ${cfg.productName} from ${bin} (direct spawn, sanitized env)`)
+  const app = spawn(bin, [], { env, stdio: 'inherit' })
 
   app.on('close', code => { web.kill(); process.exit(code ?? 0) })
 })()

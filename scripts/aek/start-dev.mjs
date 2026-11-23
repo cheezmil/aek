@@ -8,7 +8,7 @@
  *
  * Usage: node scripts/aek/start-dev.mjs [aek|next]
  */
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { openSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -48,6 +48,25 @@ if (!cfg) {
 // with log-file stdio, so the launcher exits while the shell keeps running.
 const shellOnly = process.argv.includes('--shell-only')
 const detach = shellOnly && process.argv.includes('--detach')
+
+/**
+ * BQ11 round: terminate EVERY dev shell main that belongs to this slot BEFORE
+ * we spawn a new one — the single-instance rule enforced mechanically. ps-
+ * based (process table), not lock-based, so a clobbered duplicate that the
+ * lock no longer names is still killed and the slot's pid lock is cleared.
+ * Refuses to continue if a shell survives SIGTERM→SIGKILL.
+ * @param {string} slot
+ */
+function stopSlotShells(slot) {
+  const here = dirname(fileURLToPath(import.meta.url))
+  const r = spawnSync(process.execPath, [join(here, 'shell-instances.mjs'), '--stop', '--slot', slot], {
+    encoding: 'utf8', stdio: ['ignore', 'inherit', 'inherit'],
+  })
+  if (r.status !== 0) {
+    console.error(`[start] previous dev shell instance(s) for slot ${slot} could not be terminated — aborting (single-instance rule)`)
+    process.exit(3)
+  }
+}
 
 /**
  * Y round (B-round lesson, machine half): the dev shell boots
@@ -105,6 +124,14 @@ if (!shellOnly) {
     process.exit(3)
   }
 }
+
+// Single-instance rule (BQ11 round): killSlot only reaches pids named in the
+// slot lock or holding our ports. A clobbered duplicate dev shell the lock no
+// longer names would coexist with the new one. Sweep the process table for
+// this slot's shell mains and clear the lock before spawning — on both the
+// normal and the shell-only path. Safe here: it never touches the web server
+// or the slot's LaunchAgent, only Electron shell mains.
+stopSlotShells(slot)
 
 if (!brandDevBundle(slot)) {
   console.error('[start] branding failed, aborting')
