@@ -9,7 +9,7 @@
  * - The logo (visibility / shape / the text beside it) and all rail metrics
  *   come from the schema-driven settings; CSS custom properties carry the
  *   numbers, so no dimension is hardcoded in JSX.
- * - EVERY list is an unordered `<ul>/<li>` (user rule). No `<ol>` anywhere.
+ * - EVERY list is an unordered `<ul>/<li>`. No `<ol>` anywhere.
  * - The top search box filters the rail; panel-level search boxes live in the
  *   panels themselves.
  *

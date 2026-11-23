@@ -50,7 +50,7 @@ const MAX_ARGS = 12
 const MAX_ARG_LEN = 128
 const TIMEOUT_MS = 30_000
 /**
- * Captured-stdio cap per invocation (user rule 2026-11-12: the output must
+ * Captured-stdio cap per invocation (the output must
  * NOT be truncated — the viewer virtualizes it instead). 256 MiB is the OOM
  * guardrail for a runaway command; realistic `aeksm` / `aekpm` output is far
  * below it. When the cap is exceeded `execFile` itself fails, and the handler

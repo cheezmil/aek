@@ -1,7 +1,7 @@
 /**
  * Host-persisted UI settings for the AEK console (C11).
  *
- * PRINCIPLE (user rule, 2026-11-08): no UI setting may ever live in the
+ * PRINCIPLE (2026-11-08): no UI setting may ever live in the
  * browser's localStorage. localStorage is scoped to ONE browser, so the same
  * user would see different settings in the Electron shell, in Safari, on
  * another machine — and nothing would follow the AEK data root. Every

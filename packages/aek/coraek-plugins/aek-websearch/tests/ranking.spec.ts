@@ -2,7 +2,7 @@
  * Remote Web Search ranking: schema validation, filtering, degradation and
  * cache behaviour.
  *
- * NOTE (user rule): NO test below hardcodes which provider sits in which tier
+ * NOTE: NO test below hardcodes which provider sits in which tier
  * or at which rank. Those facts live in `data/provider-ranking.json` and are
  * read dynamically. These specs pin the SCHEMA and the BEHAVIOUR, so editing
  * the data file can change the board without touching any product code.

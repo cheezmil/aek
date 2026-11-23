@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@cheezmil/aek-skill-manager": "workspace:*",
+    "@cheezmil/aek-ui-gallery": "workspace:*",
     "@cheezmil/aek-web": "workspace:*",
     "@cheezmil/aek-websearch": "workspace:*",
     "@cheezmil/coraek": "workspace:*"

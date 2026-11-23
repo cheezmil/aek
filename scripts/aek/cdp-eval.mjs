@@ -53,7 +53,8 @@ const send = (method, params) => {
 let evalId = 0
 ws.onopen = async () => {
   if (route) {
-    send('Page.navigate', { url: `http://${host}:1687${route}` })
+    const url = /^https?:\/\//.test(route) ? route : `http://${host}:1687${route}`
+    send('Page.navigate', { url })
     await new Promise(resolve => setTimeout(resolve, 4000))
   }
   // The evaluate id depends on whether a navigation was sent first

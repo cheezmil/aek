@@ -15,7 +15,7 @@
  *   (the console UI is the static aek-web app), so every switch is toggleable
  *   today.
  * - About marks `apps/web`, `apps/cli`, `apps/aek-desktop` as ENTRY POINTS.
- * - Every collection is an unordered `<ul>/<li>` (user rule). Refresh
+ * - Every collection is an unordered `<ul>/<li>`. Refresh
  *   states use `Spinner`; long-running ACTIONS carry the X2 operation
  *   pipelines (step chips + a percentage bar, `useOps` / `OpsPipeline`) —
  *   the old "spinners only, no progress bars" note is superseded.

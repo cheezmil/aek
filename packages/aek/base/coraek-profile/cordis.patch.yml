@@ -37,7 +37,7 @@
 # node_modules for no benefit.
 - id: hmr
   config:
-    root: !!js "process.env.AEK_MODE === 'dev' ? ['node_modules/@cheezmil/coraek/lib', 'node_modules/@cheezmil/aek-web/dist', 'node_modules/@cheezmil/aek-websearch/lib', 'node_modules/@cheezmil/aek-skill-manager/lib'] : []"
+    root: !!js "process.env.AEK_MODE === 'dev' ? ['node_modules/@cheezmil/coraek/lib', 'node_modules/@cheezmil/aek-web/dist', 'node_modules/@cheezmil/aek-websearch/lib', 'node_modules/@cheezmil/aek-skill-manager/lib', 'node_modules/@cheezmil/aek-ui-gallery/dist'] : []"
     debounce: 100
     ignored: ['**/*.map']
 
@@ -78,3 +78,11 @@
     # web-server dependency is declared exactly where a web server exists.
     - id: aek-skill-manager-admin
       name: '@cheezmil/aek-skill-manager/admin'
+
+    # aek-ui-gallery: the shadcn/ui component gallery. A host-side PREFIX
+    # route on the `webServer` seam that serves the package-local built SPA
+    # (`/ui/ui-gallery/`); the aek-web console embeds it through an
+    # `<iframe>`. It injects only `webServer`, so it mounts wherever a web
+    # server exists and is a no-op in headless compositions.
+    - id: aek-ui-gallery
+      name: '@cheezmil/aek-ui-gallery'

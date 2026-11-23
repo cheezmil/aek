@@ -1,0 +1,20 @@
+# NOTICE — @cheezmil/aek-ui-gallery
+
+This package ships a standalone Vite SPA (built to `dist/`) that shows every
+shadcn/ui component category in the AEK art gallery. The demo component tree
+(`src/web/ported/`) is ported wholesale from the open-source project
+**shadcnspace** (https://github.com/WrapPixel/shadcnspace, "Shadcn Space"),
+Copyright (c) 2026 Shadcn Space, licensed under the MIT License
+(see `licenses/shadcnspace-MIT.txt`).
+
+- Ported scope: `src/components/ui/*` (shadcn/radix primitives),
+  `src/components/shadcn-space/*` component demo variants (the 371 full-page
+  `blocks/` are NOT ported), `src/config/registry/components/*` (categories +
+  sidebar data), `src/app/globals.css`, `src/lib/utils.ts`,
+  `src/app/(site)/docs/component-info/*` → `src/web/ported/docs/component-info/`.
+- Next.js-specific code was removed during the port (`next/image` → plain
+  `<img>` in card-14, styled-jsx `<style jsx>` → plain `<style>` in
+  progress-04, `@/config`/`absoluteUrl` dead imports stripped from utils).
+- The host face (`src/index.ts`, the `@cheezmil/aek-ui-gallery` package
+  metadata, `tsdown`/`tsconfig` files) is original AEK code, not part of the
+  shadcnspace port.

@@ -12,7 +12,7 @@
  *     `GET /api/aek/icons/sets` / `GET /api/aek/icons/set/<set>` stay as the
  *     agent/CLI face over the same vendored files.
  *
- * Interaction (user rule, V6): single click = toggle selection, double
+ * Interaction (V6): single click = toggle selection, double
  * click = copy that icon's usage line. The batch toolbar (select all / clear /
  * copy selected) spans both faces. Large sets paginate (a visible slice per
  * section) so a 5.5k-icon catalog never renders 5.5k DOM tiles at once.

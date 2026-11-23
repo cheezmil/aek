@@ -2,14 +2,15 @@
  * C11+ unified storage (BI round): `window.localStorage` is transparently
  * redirected to the host data root.
  *
- * The red line (verify-aek-storage.mjs, user rule 2026-11-14) is that no
- * setting may live in the browser's localStorage — it is scoped to ONE
- * browser, so the Electron shell, a plain browser and other machines each
- * saw different values. Instead of forcing every plugin author to rewrite
- * `localStorage.getItem(...)` into a host API call, the architecture makes
- * the old spelling land in the right place automatically (user rule,
- * 2026-11-22: "直接让插件现有的 localstorage 存储方式自动变成存储到本地为
- * yml，这样别的开发者开发 coraek 插件就不用揪心了"):
+ * The red line (verify-aek-storage.mjs) is that no setting may live in
+ * the browser's localStorage — it is scoped to ONE browser, so the
+ * Electron shell, a plain browser and other machines each saw different
+ * values. Instead of forcing every plugin author to rewrite
+ * `localStorage.getItem(...)` into a host API call, the architecture
+ * makes the old spelling land in the right place automatically: plugin
+ * localStorage reads are transparently redirected to yml files under the
+ * host data root, so coraek plugin authors keep their existing storage
+ * code:
  *
  *   1. At module evaluation (this file is main.tsx's FIRST import, so it
  *      runs before any plugin module touches storage), `window.localStorage`

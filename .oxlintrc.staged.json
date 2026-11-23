@@ -13,6 +13,7 @@
     "**/.node-next-types-*/**",
     "vendor/**",
     "native/**",
+    "packages/aek/coraek-plugins/aek-ui-gallery/src/web/ported/**",
     "**/*.js",
     "**/*.mjs",
     "**/*.config.ts",

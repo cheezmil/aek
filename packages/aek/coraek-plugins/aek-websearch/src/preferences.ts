@@ -112,7 +112,7 @@ export function writePrefs(values: Record<string, PrefValue>): string {
 
 /**
  * The snapshot the "restore defaults" flow keeps next to the live file, so
- * the user can undo the reset (user rule 2026-11-12: backup BEFORE reset,
+ * the user can undo the reset (backup BEFORE reset,
  * and the reset must be undoable).
  * @returns the backup file path.
  */
