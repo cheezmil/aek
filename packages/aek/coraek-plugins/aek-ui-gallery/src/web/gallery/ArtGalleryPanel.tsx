@@ -1,5 +1,5 @@
 /**
- * The aek-webui-art-gallery panel — aek-web's own port of the style-gallery
+ * The aek-ui-gallery panel — aek-web's own port of the style-gallery
  * reference frontend IA (P16: same layout/interaction/info density; aek's
  * own widgets + stage.css skin table, no reference source copied):
  *   TopBar (style/compare pills + search + visible/total)

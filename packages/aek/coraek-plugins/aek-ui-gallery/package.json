@@ -17,7 +17,8 @@
     "lib/index.d.mts",
     "dist",
     "NOTICE",
-    "licenses/"
+    "licenses/",
+    "skills/aek-ui-gallery/"
   ],
   "license": "Apache-2.0",
   "scripts": {

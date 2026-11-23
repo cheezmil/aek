@@ -125,8 +125,12 @@ function parseAnimHoverGrace(raw: unknown): number | undefined {
   return Math.min(1000, Math.max(0, value))
 }
 
-/** The project's public repository (verified with `gh repo view`). */
-const GITHUB_REPO_URL = 'https://github.com/cheezmil/agent-enhance-kit'
+/**
+ * The project's public repository (verified with `gh repo view`; the repo was
+ * renamed agent-enhance-kit → aek, BQ11 round 2026-11-24 — the old URL was
+ * stale and the 关于 page now reuses this constant).
+ */
+export const GITHUB_REPO_URL = 'https://github.com/cheezmil/aek'
 
 /** Host preference holding comma-separated pinned panel ids. */
 const PINNED_KEY = 'aek-home.pinned'
@@ -670,54 +674,79 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
           name={compact || labelTrunc.has(entry.id) ? t(entry.labelKey) : undefined}
         >
           {/* Q round: the refresh icon refreshes the page THIS row opens —
-              even when that page is not active yet. */}
-          <button
-            type="button"
-            className={cn(ROW_ICON_BUTTON, 'hover:rotate-90')}
-            onClick={() =>{  onRefresh(entry.id) }}
-            title={t('nav.refresh')}
-            aria-label={t('nav.refresh')}
-          >
-            <Icon name="refresh" size={13} />
-          </button>
-          <button
-            type="button"
-            className={cn(ROW_ICON_BUTTON, pinnedNow && 'text-primary')}
-            onClick={() =>{  togglePin(entry.id) }}
-            title={pinnedNow ? t('nav.unpin') : t('nav.pin')}
-            aria-label={pinnedNow ? t('nav.unpin') : t('nav.pin')}
-          >
-            <Icon name="pin" size={13} />
-          </button>
+              even when that page is not active yet. BQ11 round: every
+              floating action now carries the shared shadcn tooltip (the
+              native `title` was only present on one button). */}
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(ROW_ICON_BUTTON, 'hover:rotate-90')}
+                  onClick={() =>{  onRefresh(entry.id) }}
+                  aria-label={t('nav.refresh')}
+                >
+                  <Icon name="refresh" size={13} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{t('nav.refresh')}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(ROW_ICON_BUTTON, pinnedNow && 'text-primary')}
+                  onClick={() =>{  togglePin(entry.id) }}
+                  aria-label={pinnedNow ? t('nav.unpin') : t('nav.pin')}
+                >
+                  <Icon name="pin" size={13} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{pinnedNow ? t('nav.unpin') : t('nav.pin')}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           {/* BI round: a dedicated icon replaces the retired double-click —
               collapse / restore this family's plugin-rail labels. Family
               rows only (plain rows own no plugin routes). */}
-          {subIds.length > 0 && (
-            <button
-              type="button"
-              className={cn(ROW_ICON_BUTTON, !railLabelsHidden.split(',').includes(entry.id) && 'text-primary')}
-              onClick={() =>{  setRailLabelsHidden(current => toggleInCommaList(current, entry.id)) }}
-              title={t('nav.labelsToggle')}
-              aria-label={t('nav.labelsToggle')}
-            >
-              <Icon name="type" size={13} />
-            </button>
-          )}
-          {/* BQ6 round: the columns icon is ALWAYS present on family rows.
-              Plain ROW_ICON_BUTTON styling (no accent): it expands the stowed
-              sub-rail or collapses the visible one (same toggle as a click on
-              the lit row); the tooltip names the action. */}
           {subIds.length > 0 && (
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className={ROW_ICON_BUTTON}
+                    className={cn(ROW_ICON_BUTTON, !railLabelsHidden.split(',').includes(entry.id) && 'text-primary')}
+                    onClick={() =>{  setRailLabelsHidden(current => toggleInCommaList(current, entry.id)) }}
+                    aria-label={t('nav.labelsToggle')}
+                  >
+                    <Icon name="type" size={13} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{t('nav.labelsToggle')}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {/* BQ6 round: the columns icon is ALWAYS present on family rows.
+              Plain ROW_ICON_BUTTON styling (no accent): it expands the stowed
+              sub-rail or collapses the visible one (same toggle as a click on
+              the lit row); the tooltip names the action. BQ11 round: while
+              this row's sub-rail is stowed (railNowHidden) a small red dot
+              marks the button's top-right corner — the rail awaits. */}
+          {subIds.length > 0 && (
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(ROW_ICON_BUTTON, 'relative')}
                     onClick={() =>{  setRailHidden(current => toggleInCommaList(current, entry.id)) }}
                     aria-label={railNowHidden ? t('nav.railExpand') : t('nav.railCollapse')}
                   >
                     <Icon name="columns" size={13} />
+                    {railNowHidden && (
+                      <span aria-hidden className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-destructive" />
+                    )}
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>{railNowHidden ? t('nav.railExpand') : t('nav.railCollapse')}</TooltipContent>

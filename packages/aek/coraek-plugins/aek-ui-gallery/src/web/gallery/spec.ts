@@ -10,7 +10,7 @@
  * values; the live `--sg-*` values derive from them and the data-mode skins
  * may override. Writing `--sg-*` / `--radius` inline would freeze every skin.
  *
- * @module @cheezmil/aek-web/src/webui-art-gallery/spec
+ * @module @cheezmil/aek-ui-gallery/src/web/gallery/spec
  */
 import type { CSSProperties } from 'react'
 import { SKILL_STYLES, REPO_FALLBACK } from './data/skill-styles.ts'
@@ -433,8 +433,9 @@ export const cssSnippet = (spec: StageSpec): string =>
  * BL 轮 (m05632 任务 E) — the "使用方法" (how-to-use) document for one gallery
  * item. This is the SINGLE SOURCE that both ① the Stage copy button puts on the
  * clipboard and ② the on-disk record under
- * `~/.aek/current/skill-manager/aek-system-skill/aek-webui-art-gallery/<id>.md`
- * (written by scripts/aek/seed-art-gallery-usage.mjs) are generated from, so
+ * `~/.aek/current/skill-manager/aek-system-skill/aek-ui-gallery/<id>.md`
+ * (generated into the plugin's skills/ by scripts/aek/seed-art-gallery-usage.mjs,
+ * then seeded into the hub by aeksm) are the single source, so
  * the copied text and the stored file can never drift apart. It documents how
  * to USE this UI (its palette + the exact CSS to apply), not the raw snippet
  * alone — that is what the user asked the copy button to hand over.

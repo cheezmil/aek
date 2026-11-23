@@ -36,6 +36,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Icon } from './Icons.tsx'
 import type { IconName } from './Icons.tsx'
+import { GITHUB_REPO_URL } from './Sidebar.tsx'
 import { BUCKET_ICONS, ENTRY_ICONS, ENTRIES_SECTION_ICON, APP_BUNDLE_ICON } from './icon-registry.ts'
 import { useI18n } from './i18n.tsx'
 import { PREF_KEYS, useAccessDraft, useDraftSettings, usePref, useSettings } from './preferences.tsx'
@@ -64,7 +65,6 @@ import { Label } from '@/components/ui/label'
    @theme tokens + .aek-* component helpers). */
 const ACCESS_ACTIONS = 'flex items-center gap-3 mt-4'
 const ACCESS_TEXTAREA = 'block box-border w-full min-h-22 p-2 px-2.5 border border-input rounded-xs bg-card text-text font-inherit text-xs leading-170 resize-y focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-1'
-const COUNT_CHIP = 'inline-flex items-center p-0.5 px-2.25 rounded-full text-xs font-semibold tabular-nums border border-border bg-surface-subtle text-text-secondary'
 const DIRTY_BACKDROP = 'fixed inset-0 z-15'
 /** BO round (m00001 ④): the changed-settings badge is a danger PILL CARRYING
     ITS COUNT — a lone red dot was "孤零零" and the user asked for the number
@@ -165,10 +165,22 @@ const NOTE_ICON = 'shrink-0 grow-0 text-primary'
 // strictly descending (page 32 > section 24 > card body 16 > row 12 >
 // rows 8 > micro 4) — borrowed Windmill 4px-grid + Vercel card-16
 // references 2026-11-17; the card was reading "floaty" at 24.
+/**
+ * BQ11 round (2026-11-24): how the RUNNING HOST was installed — every roster
+ * row (plugins + entries) carries this chip so the user sees at a glance
+ * whether they are on the dev tree, a local build, or a pnpm global install.
+ * The hover carries the explanation (the label is deliberately short).
+ */
+function OriginChip({ origin, t }: { origin: PluginOrigin; t: (key: string) => string }): ReactNode {
+  const labelKey = origin === 'dev' ? 'plugins.origin.dev' : origin === 'built' ? 'plugins.origin.built' : 'plugins.origin.global'
+  const tipKey = origin === 'dev' ? 'plugins.origin.dev.tip' : origin === 'built' ? 'plugins.origin.built.tip' : 'plugins.origin.global.tip'
+  return <Badge variant="outline" title={t(tipKey)}>{t(labelKey)}</Badge>
+}
+
 const CARD_BODY = 'p-8'
 import { CapabilityTags, CopyButton, PanelCard, PanelSearch, Spinner, ToggleSwitch } from './ui-kit.tsx'
 import { useConsoleFacts } from './useConsoleFacts.ts'
-import type { AppEntry, PluginBucket, PluginEntry } from './useConsoleFacts.ts'
+import type { AppEntry, PluginBucket, PluginEntry, PluginOrigin } from './useConsoleFacts.ts'
 import { useRuntimes } from './useRuntimes.ts'
 import { useOps } from './useOps.ts'
 import type { OpEntry } from './useOps.ts'
@@ -179,6 +191,7 @@ import { RuntimesBlock, fmtBytes } from './RuntimesPanel.tsx'
 /** Panels handled here. */
 export type InfoPanelId = 'plugins' | 'settings' | 'websearchSettings' | 'about'
   | 'skillsSettings' | 'promptsSettings' | 'iconsSettings' | 'artSettings'
+  | 'community'
 
 /** Host routes. */
 const PLUGIN_ACTION_API = '/api/aek/plugins/action'
@@ -1056,7 +1069,9 @@ const PLUGIN_ACTIONS: readonly PluginAction[] = [
  * The user's disk-layout bucket order (2026-11-15 T round): the swappable
  * coraek plugin set first, then the read-only roster facts.
  */
-const BUCKET_ORDER: readonly PluginBucket[] = ['plugins', 'public', 'base', 'extensions']
+// BQ11 round (2026-11-24): the 社区插件 bucket — third-party coraek plugins
+// (packages/aek/community-coraek-plugins, currently empty).
+const BUCKET_ORDER: readonly PluginBucket[] = ['plugins', 'public', 'base', 'extensions', 'community']
 
 /**
  * The bucket-group header key (a literal switch, so the i18n dead-key
@@ -1074,6 +1089,8 @@ function bucketTitleOf(bucket: PluginBucket, t: (key: string) => string): string
       return t('plugins.bucket.base')
     case 'extensions':
       return t('plugins.bucket.extensions')
+    case 'community':
+      return t('plugins.bucket.community')
     default:
       return t('plugins.bucket.plugins')
   }
@@ -1526,6 +1543,7 @@ function EntryRows({ entries, t, tf }: {
                             ? <Badge variant="secondary" className="tabular-nums">{entry.version}</Badge>
                             : null}
                           <ClassChip distribution={entry.distribution ?? ''} t={t} />
+                          {entry.origin !== undefined ? <OriginChip origin={entry.origin} t={t} /> : null}
                           {languages.length > 0
                             ? <span className={STACK_TEXT} title={languages.join(' · ')}>{languages.join(' · ')}</span>
                             : null}
@@ -1835,7 +1853,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
         {(facts.facts?.entries ?? []).length > 0
           ? (
             <div>
-              <h3 className="mb-2 mt-3 flex items-center gap-1.5 text-2xs font-bold uppercase tracking-aek-group text-text-muted">
+              <h3 className="mb-2 mt-3 flex items-center gap-1.5 text-2xs font-bold tracking-aek-group text-text-muted">
                 <Icon name={ENTRIES_SECTION_ICON} size={14} />
                 <span>{t('about.entries')}</span>
               </h3>
@@ -1874,7 +1892,7 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
           : null}
         {grouped.map(group => (
           <div key={group.bucket}>
-            <h3 className="mb-2 mt-3 flex items-center gap-1.5 text-2xs font-bold uppercase tracking-aek-group text-text-muted">
+            <h3 className="mb-2 mt-3 flex items-center gap-1.5 text-2xs font-bold tracking-aek-group text-text-muted">
               <Icon name={bucketIconOf(group.bucket)} size={14} />
               <span>{bucketTitleOf(group.bucket, t)}</span>
             </h3>
@@ -1912,7 +1930,12 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
                             <div className={FEATURE_TEXT}>
                               <Badge variant="secondary" className="tabular-nums">{plugin.version}</Badge>
                               <ClassChip distribution={plugin.distribution} t={t} />
-                              {switchable ? null : <Badge variant="outline">{t('plugins.switch.readonly')}</Badge>}
+                              {/* BQ11 round: the install-origin chip replaced the
+                                  "只读组件" badge — the origin of the RUNNING HOST
+                                  is what the user actually wants to see; the
+                                  switch itself already shows the read-only rows
+                                  (its column collapses to an empty track). */}
+                              {plugin.origin !== undefined ? <OriginChip origin={plugin.origin} t={t} /> : null}
                               {plugin.languages.length > 0
                                 ? <span className={STACK_TEXT} title={plugin.languages.join(' · ')}>{plugin.languages.join(' · ')}</span>
                                 : null}
@@ -1995,35 +2018,138 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
 }
 
 /**
- * The About page (R2 round, 2026-11-18): by user ruling the page carries
- * ONLY the desktop version number — no 版本与安装 rows, no 组件结构 card, no
- * 插件 roster, no 外部能力 section (those blocks were noise). The version
- * comes from the host inventory (the aek-desktop entry), never hardcoded.
- *
- * This component is shared by two surfaces: the 关于 page itself and the
- * 系统信息 section of the composed 插件与程序管理 page (both show the same
- * one row).
+ * The About page (BQ11 round, 2026-11-24): by user ruling the page carries
+ * ONLY the GitHub link and a thank-you line — the desktop version row (and
+ * everything before it) was removed. The 系统信息 section of the composed
+ * 插件与程序管理 page was deleted the same round, so the 关于 page is now
+/**
+ * BQ11 round (2026-11-24): the 社区插件管理 page — the community bucket's own
+ * surface (nav entry under 其他). Third-party coraek plugins install into
+ * `packages/aek/community-coraek-plugins` and are managed here: the roster is
+ * the console-facts plugin list filtered to that bucket, each row carrying the
+ * same version / class / origin chips and a power switch wired to the very
+ * same `/api/aek/plugins/action` protocol as the 插件与程序管理 roster (a
+ * community plugin is an ordinary coraek plugin once installed — no second
+ * wire format). Empty for now, so the honest empty state is the main view.
  */
-export function AboutPanel({ refreshSignal }: { refreshSignal: number }) {
-  const facts = useConsoleFacts()
-  // Sidebar-row refresh (Q round): re-read the facts so the version row is
-  // current after a host restart.
+export function CommunityPluginsPanel({ refreshSignal }: { refreshSignal: number }) {
+  const { t } = useI18n()
+  const facts = useConsoleFacts(60_000)
   useEffect(() => {
     if (refreshSignal > 0) facts.refresh()
   }, [refreshSignal, facts.refresh])
-  const entries = facts.facts?.entries ?? []
-  const desktop = entries.find(entry => entry.id === 'aek-desktop')
+  const [notice, setNotice] = useState<{ message: string; tone: 'success' | 'error' } | undefined>(undefined)
+  const items = (facts.facts?.plugins ?? []).filter(plugin => plugin.bucket === 'community')
+
+  /** @param id - plugin directory name. @param enabled - requested state. */
+  const toggle = (id: string, enabled: boolean): void => {
+    setNotice(undefined)
+    void fetch(PLUGIN_ACTION_API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, action: enabled ? 'enable' : 'disable' }),
+    })
+      .then(async response => await response.json() as { status?: string; message?: string; reason?: string })
+      .then((data) => {
+        setNotice({ message: `${displayName(id)} · ${data.status ?? data.message ?? data.reason ?? 'ok'}`, tone: 'success' })
+      })
+      .catch((cause: unknown) => {
+        setNotice({ message: cause instanceof Error ? cause.message : String(cause), tone: 'error' })
+      })
+      .finally(() => {
+        facts.refresh()
+      })
+  }
 
   return (
     <PanelCard>
       <div className={CARD_BODY}>
-        <div className={INFO_ROW}>
-          <span className={INFO_LABEL}>AEK Desktop</span>
-          <span className={INFO_VALUE}>
-            {desktop?.version !== undefined
-              ? <code className={COUNT_CHIP}>{desktop.version}</code>
-              : '—'}
-          </span>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <Icon name="globe" size={18} />
+            <span className="text-sm font-semibold">{t('panel.community')}</span>
+          </div>
+          {items.length === 0
+            ? (
+              <div className={EMPTY_STATE}>
+                <p className="m-0 max-w-120 text-center text-xs-plus leading-5">
+                  {t('plugins.community.empty')}
+                  <br />
+                  {t('plugins.community.hint')}
+                </p>
+              </div>
+            )
+            : (
+              <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
+                {items.map(plugin => (
+                  <li key={plugin.id}>
+                    <Card size="lg" className="shadow-none">
+                      <CardContent className="flex flex-col gap-2">
+                        <div className="mb-0 flex items-start gap-3">
+                          <span className={FEATURE_ICON}><Icon name={bucketIconOf('community')} size={18} /></span>
+                          <div className="flex flex-auto min-w-0 flex-col gap-1.5 pr-2">
+                            <div className={FEATURE_TITLE}>
+                              <span className={FEATURE_TITLE_NAME}>{displayName(plugin.packageName)}</span>
+                              <CopyButton value={plugin.packageName} size={12} label={t('common.copy')} className={FEATURE_COPY} />
+                            </div>
+                            <div className={FEATURE_TEXT}>
+                              <Badge variant="secondary" className="tabular-nums">{plugin.version}</Badge>
+                              <ClassChip distribution={plugin.distribution} t={t} />
+                              {plugin.origin !== undefined ? <OriginChip origin={plugin.origin} t={t} /> : null}
+                            </div>
+                            {plugin.description !== ''
+                              ? <div className={FEATURE_DESC}>{plugin.description}</div>
+                              : null}
+                          </div>
+                          <div className={PLUGIN_ACTIONS_GRID}>
+                            <ToggleSwitch
+                              checked={plugin.enabled}
+                              onChange={(next) =>{  toggle(plugin.id, next) }}
+                              label={plugin.enabled ? t('plugins.switch.on') : t('plugins.switch.off')}
+                            />
+                          </div>
+                        </div>
+                        <CapabilityTags caps={plugin.capabilities} />
+                      </CardContent>
+                    </Card>
+                  </li>
+                ))}
+              </ul>
+            )}
+          {notice !== undefined
+            ? (
+              <p className={cn(NOTICE_LINE, notice.tone === 'success' ? NOTICE_SUCCESS : NOTICE_ERROR)} role="status">
+                <Icon name={notice.tone === 'success' ? 'check' : 'alert'} size={14} />
+                <span>{notice.message}</span>
+              </p>
+            )
+            : null}
+        </div>
+      </div>
+    </PanelCard>
+  )
+}
+
+/**
+ * the AboutPanel's only surface.
+ */
+export function AboutPanel() {
+  const { t } = useI18n()
+
+  return (
+    <PanelCard>
+      <div className={CARD_BODY}>
+        <div className="flex flex-col gap-4">
+          <a
+            className="inline-flex items-center gap-2 text-sm font-medium text-primary break-all underline-offset-4 hover:underline"
+            href={GITHUB_REPO_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            <Icon name="star" size={16} />
+            {GITHUB_REPO_URL}
+          </a>
+          <p className="text-sm text-text-muted">{t('panel.about.thanks')}</p>
         </div>
       </div>
     </PanelCard>
@@ -2050,8 +2176,11 @@ export function InfoPanels({ panel, refreshSignal }: InfoPanelsProps) {
   if (panel === 'promptsSettings') return <PromptsSettingsPanel refreshSignal={refreshSignal} />
   if (panel === 'iconsSettings') return <IconsSettingsPanel refreshSignal={refreshSignal} />
   if (panel === 'artSettings') return <ArtSettingsPanel refreshSignal={refreshSignal} />
+  // BQ11 round: the 社区插件管理 page (the community bucket's own surface).
+  if (panel === 'community') return <CommunityPluginsPanel refreshSignal={refreshSignal} />
   // M round: the 关于 page was a stub (its content moved to 插件与程序管理).
-  // R2 round (2026-11-18): by user ruling the page now carries ONLY the
-  // desktop version number.
-  return <AboutPanel refreshSignal={refreshSignal} />
+  // R2 round (2026-11-18): only the desktop version number; BQ11 round
+  // (2026-11-24): the version row is gone too — the page carries ONLY the
+  // GitHub link and a thank-you line.
+  return <AboutPanel />
 }

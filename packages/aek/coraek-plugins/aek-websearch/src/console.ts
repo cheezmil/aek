@@ -18,7 +18,7 @@
  * @module aek-websearch/console
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
 import { execFileSync, spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -67,6 +67,8 @@ export interface AppEntry {
   languages: string[]
   /** Main implementation language. */
   primaryLanguage: string
+  /** How the running host was installed (BQ11 round) — a host-level fact. */
+  origin: PluginOrigin
   /**
    * Runtime memory fact for this entry (CC round 2026-11-17, basis +
    * attribution fixed in the DD round). The console NEVER invents numbers:
@@ -88,9 +90,21 @@ export interface AppEntry {
  * The source buckets of the user's disk layout (2026-11-15 T round):
  * `plugins` = the swappable coraek plugin set, `public` = publicly
  * distributed libraries, `base` = the coraek host identity layer,
- * `extensions` = the on-hold target-extension bundles.
+ * `extensions` = the on-hold target-extension bundles. BQ11 round
+ * (2026-11-24): `community` = third-party coraek plugins in `packages/aek/
+ * community-coraek-plugins` (the community plugin ecosystem, empty for now).
  */
-export type PluginBucket = 'plugins' | 'public' | 'base' | 'extensions'
+export type PluginBucket = 'plugins' | 'public' | 'base' | 'extensions' | 'community'
+
+/**
+ * How the RUNNING AEK host was put on this machine (BQ11 round, 2026-11-24):
+ * `dev` = the main git worktree (local dev tree, next slot), `built` = the
+ * detached linked worktree pinned to a release tag (local build, current
+ * slot), `global` = a pnpm global install (no repository checkout at all —
+ * the flat install layout). A host-level fact: every roster row of one host
+ * carries the same value.
+ */
+export type PluginOrigin = 'dev' | 'built' | 'global'
 
 /** One scanned AEK package and its capability tags. */
 export interface PluginEntry {
@@ -134,6 +148,8 @@ export interface PluginEntry {
   languages: string[]
   /** Main implementation language. */
   primaryLanguage: string
+  /** How the running host was installed (BQ11 round) — a host-level fact. */
+  origin: PluginOrigin
 }
 
 /** One slot's reachable endpoints. */
@@ -203,6 +219,38 @@ function repoRoot(start: string): string {
 }
 
 const ROOT = repoRoot(dirname(fileURLToPath(import.meta.url)))
+
+/**
+ * Detect how the running host was put on this machine (BQ11 round):
+ * - no repository checkout (`packages/aek` absent) → the flat install
+ *   layout, i.e. a pnpm global install → `global`
+ * - a checkout whose `.git` is a real directory → the main worktree =
+ *   the local DEV tree → `dev`
+ * - a checkout whose `.git` is a file (gitdir: …) → a linked worktree =
+ *   the release-pinned STABLE tree → `built`
+ *
+ * A host-level fact: the layout cannot change under a running process, so
+ * the answer is computed once and cached. No path is hardcoded — everything
+ * is derived from ROOT (walked up from this module) and its .git shape.
+ * @returns the origin of the running host.
+ */
+let originCache: PluginOrigin | undefined
+function installOrigin(): PluginOrigin {
+  if (originCache !== undefined) return originCache
+  const devRoot = join(ROOT, 'packages', 'aek')
+  if (!existsSync(devRoot)) {
+    originCache = 'global' // install layout: the flat @cheezmil scope dir
+  } else {
+    let gitIsDir = false
+    try {
+      gitIsDir = statSync(join(ROOT, '.git')).isDirectory()
+    } catch {
+      gitIsDir = true // no .git at all → plain source checkout → treat as dev
+    }
+    originCache = gitIsDir ? 'dev' : 'built'
+  }
+  return originCache
+}
 
 /**
  * Read one package.json defensively.
@@ -376,6 +424,45 @@ function topFootprintMb(matchedPids: ReadonlySet<string>): Promise<number | unde
   })
 }
 
+/** The shell-memory reading a facts entry carries (state + optional MB). */
+type ShellMemoryReading = { state: 'running' | 'stopped' | 'unavailable'; footprintMb?: number }
+
+/**
+ * BQ11-2 fix: a facts request must not trigger a FRESH `top` run while a
+ * recent sample exists. `top -l 1` takes ~1 s (plus the `ps` pass), so every
+ * `GET /api/aek/console/facts` — the page boot fetch and the client's
+ * memory-poll timer — used to block its caller ~2.7–3 s: the panel header's
+ * 「每次重载顿几秒」. The sample is now cached and refreshed in the
+ * background: a read inside the TTL serves the last sample in ms, a sampler
+ * (registered in `registerConsole`) keeps it fresh between requests, and the
+ * deduped in-flight promise makes racing callers share one `top` run.
+ */
+const SHELL_MEMORY_TTL_MS = 30_000
+const SHELL_MEMORY_REFRESH_MS = 20_000
+let shellMemoryCache: { value: ShellMemoryReading; at: number } | undefined
+let shellMemoryInFlight: Promise<ShellMemoryReading> | undefined
+
+/** Kick (or reuse) one sample; concurrent callers share the in-flight run. */
+export function sampleShellMemory(): Promise<ShellMemoryReading> {
+  if (shellMemoryInFlight === undefined) {
+    shellMemoryInFlight = shellMemoryOf(resolveSlot()).then((value) => {
+      shellMemoryCache = { value, at: Date.now() }
+      shellMemoryInFlight = undefined
+      return value
+    })
+  }
+  return shellMemoryInFlight
+}
+
+/** Serve the cached reading while it is inside the TTL, else a fresh sample. */
+function shellMemoryServing(): Promise<ShellMemoryReading> {
+  const cache = shellMemoryCache
+  if (cache !== undefined && Date.now() - cache.at < SHELL_MEMORY_TTL_MS) {
+    return Promise.resolve(cache.value)
+  }
+  return sampleShellMemory()
+}
+
 /** Parse one `top` memory column (`9249K` / `229M` / `1G` / bare MB). */
 function parseTopMemory(raw: string): number | undefined {
   const match = /^(\d+(?:\.\d+)?)([KMG]?)$/u.exec(raw)
@@ -426,7 +513,7 @@ async function scanEntries(): Promise<AppEntry[]> {
     // transient. Nothing here is ever invented: no process read → the
     // reason ships instead of a zero.
     const memory = id === 'aek-desktop'
-      ? { kind: 'shell' as const, ...(await shellMemoryOf(resolveSlot())) }
+      ? { kind: 'shell' as const, ...(await shellMemoryServing()) }
       : id === 'aek-web'
         ? { kind: 'in-host' as const }
         : { kind: 'transient' as const }
@@ -439,6 +526,7 @@ async function scanEntries(): Promise<AppEntry[]> {
       distribution: cls.ok ? (cls.value === 'A2' ? 'A2' : 'A1') : '',
       languages: languages.languages,
       primaryLanguage: languages.primary,
+      origin: installOrigin(),
       memory,
     })
   }
@@ -537,12 +625,14 @@ function bucketForComponent(name: string): PluginBucket {
       return 'base'
     case 'target-extensions':
       return 'extensions'
+    case 'community-coraek-plugins':
+      return 'community'
     default:
       return 'plugins'
   }
 }
 
-const PLUGIN_BUCKETS: readonly PluginBucket[] = ['plugins', 'public', 'base', 'extensions']
+const PLUGIN_BUCKETS: readonly PluginBucket[] = ['plugins', 'public', 'base', 'extensions', 'community']
 
 /**
  * The manifest-declared bucket, when present and valid (it always wins over
@@ -684,6 +774,7 @@ function scanPlugins(): PluginEntry[] {
       distribution: meta?.distribution.ok ? (meta.distribution.value === 'A2' ? 'A2' : 'A1') : '',
       languages: meta?.languages.languages ?? [],
       primaryLanguage: meta?.languages.primary ?? 'unknown',
+      origin: installOrigin(),
     }
   })
 }
@@ -859,6 +950,18 @@ export function registerConsole(ctx: Context): void {
     path: CONSOLE_FACTS_API_PATH,
     handler: async (_req, res) => { sendJson(res, 200, await readConsoleFacts()) },
   }), 'aek-websearch: console facts')
+
+  // BQ11-2: the background shell-memory sampler. The first kick fills the
+  // cache at boot; the (unref'd) timer keeps it fresh so a facts read —
+  // including the page-boot fetch that gates the panel header — never waits
+  // on a new ~1 s `top` sample. Disposable like every registry contribution.
+  ctx.effect(() => {
+    const kick = (): void => { void sampleShellMemory() }
+    kick()
+    const timer = setInterval(kick, SHELL_MEMORY_REFRESH_MS)
+    timer.unref?.()
+    return () => clearInterval(timer)
+  }, 'aek-websearch: shell-memory sampler')
 
   ctx.effect(() => server.register({
     kind: 'exact',

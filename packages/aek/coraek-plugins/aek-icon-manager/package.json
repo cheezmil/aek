@@ -24,7 +24,6 @@
     "localOnly": true,
     "cordis": false,
     "dsh": false,
-    "bucket": "extensions",
     "description": "aekim — the icon manager: list / inspect / bulk-copy the AEK frontend icon registry (data/icons.json, generated from apps/aek-web/src/Icons.tsx) so a user can point the exact icons at an agent. A2 local-only; never published."
   }
 }

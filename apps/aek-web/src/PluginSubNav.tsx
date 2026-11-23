@@ -42,6 +42,7 @@ import { RAIL_SEARCH_ICON, RAIL_SEARCH_INPUT, RAIL_SEARCH_WRAP } from './rail-se
 import type { IconName } from './Icons.tsx'
 import { FAMILY_HOME_ICON } from './icon-registry.ts'
 import { useI18n } from './i18n.tsx'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useRailExtras } from './rail-extras.ts'
 import type { RailExtraRow } from './rail-extras.ts'
 import {
@@ -148,8 +149,12 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
   if (family === undefined) return null
   const parent = NAV.find(entry => entry.id === family)
   if (parent === undefined) return null
+  // BQ11 round: the R2 home-row contract applies to coraek plugins only —
+  // a family flagged `noHome` (the icon manager, a plain CLI package) starts
+  // the rail at its first sub-route instead of a synthetic "{name}首页".
+  const homeRow: RouteRow | undefined = parent.noHome === true ? undefined : { id: family, icon: FAMILY_HOME_ICON, label: tf('nav.home', { name: t(parent.labelKey) }) }
   const routes: RouteRow[] = [
-    { id: family, icon: FAMILY_HOME_ICON, label: tf('nav.home', { name: t(parent.labelKey) }) },
+    ...(homeRow !== undefined ? [homeRow] : []),
     ...subEntriesOf(family).map(sub => ({ id: sub.id, icon: sub.icon, label: t(sub.labelKey) })),
   ]
 
@@ -392,15 +397,23 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                     rowId={family + '/' + route.id}
                     name={labelsHidden || labelTrunc.has(route.id) ? route.label : undefined}
                   >
-                    <button
-                      type="button"
-                      className={RAIL_ROW_ICON_BUTTON}
-                      title={t('nav.refresh')}
-                      aria-label={t('nav.refresh')}
-                      onClick={() => { onRefresh(route.id) }}
-                    >
-                      <Icon name="refresh" size={13} />
-                    </button>
+                    {/* BQ11 round: the float card's action shares the rail's
+                        shadcn tooltip (the native `title` was the last holdout). */}
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className={RAIL_ROW_ICON_BUTTON}
+                            aria-label={t('nav.refresh')}
+                            onClick={() => { onRefresh(route.id) }}
+                          >
+                            <Icon name="refresh" size={13} />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>{t('nav.refresh')}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </RowActionsFloat>
                 ) : null}
               </li>
@@ -457,15 +470,23 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
                               rowId={family + '/' + row.id}
                               name={labelsHidden || labelTrunc.has(row.id) ? row.label : undefined}
                             >
-                              <button
-                                type="button"
-                                className={RAIL_ROW_ICON_BUTTON}
-                                title={t('nav.refresh')}
-                                aria-label={t('nav.refresh')}
-                                onClick={() => { onRefresh(family) }}
-                              >
-                                <Icon name="refresh" size={13} />
-                              </button>
+                              {/* BQ11 round: the float card's action shares the
+                                  rail's shadcn tooltip. */}
+                              <TooltipProvider delayDuration={300}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className={RAIL_ROW_ICON_BUTTON}
+                                      aria-label={t('nav.refresh')}
+                                      onClick={() => { onRefresh(family) }}
+                                    >
+                                      <Icon name="refresh" size={13} />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{t('nav.refresh')}</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             </RowActionsFloat>
                           ) : null}
                         </li>

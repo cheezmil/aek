@@ -73,6 +73,9 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
   iconsSettings: 'settings',
   art: 'sparkles',
   artSettings: 'settings',
+  // BQ11 round: 社区插件管理 — the globe (the community-coraek-plugins
+  // bucket and its own page share the mark: "the wider developer world").
+  community: 'globe',
   /**
    * R2 round: the three ANCHOR tabs of 插件与程序管理 — each tab re-uses the
    * mark of the SECTION it positions to (heartbeat / stack / info), so the
@@ -126,6 +129,10 @@ export const BUCKET_ICONS: Record<PluginBucket, IconName> = {
   base: 'shield',
   /** Extensions: the jigsaw = "a pluggable capability block". */
   extensions: 'puzzle',
+  /** BQ11 round: third-party coraek plugins (community-coraek-plugins).
+      The globe = "the wider developer community" (the project is made for
+      global users). */
+  community: 'globe',
 }
 
 /**

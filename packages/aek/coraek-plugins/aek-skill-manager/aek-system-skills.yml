@@ -37,12 +37,12 @@ packages:
       - aek-usage
     seed: false
 
-  # aek-webui-art-gallery 是风格画廊（webui-art-gallery）「使用方法」记录货架：
+  # aek-ui-gallery 是风格画廊（aek-ui-gallery coraek 插件）「使用方法」记录 skill：
   # 一个条目一个 .md（57 skill + 348 样式 + 2 基础），由仓库脚本
-  # scripts/aek/seed-art-gallery-usage.ts 生成并同步，与 Stage 复制按钮同源。
-  # 声明在这里让 aeksm doctor / bootstrap 的 quarantine 不把它当未声明项
-  # 移进 .backups/。seed: false —— 它不是可 seed 的包 skill，内容由 seeder 独占。
-  - name: aek-webui-art-gallery
+  # scripts/aek/seed-art-gallery-usage.mjs 生成进插件包内
+  # skills/aek-ui-gallery/，随 @cheezmil/aek-ui-gallery 发行。
+  # 可 seed：aeksm bootstrap / self-check 从包内 bundle seed 进 hub 的
+  # aek-system-skill/aek-ui-gallery/（包内 SKILL.md 手写，seeder 不生成）。
+  - name: aek-ui-gallery
     skills:
-      - aek-webui-art-gallery
-    seed: false
+      - aek-ui-gallery

@@ -1,0 +1,44 @@
+# ui-styling
+
+shadcn/ui · 玻璃卡片
+
+> 来源：UI/UX Pro Max
+
+## 使用方法
+
+这是一套 AEK 风格画廊 UI 皮肤。应用方式：把下面「应用 CSS」整段复制到你的工程（或 AEK 壳的样式注入处），它会以 `.aek-stage` 作用域设置 6 个 `--p-*` 调色变量 + 圆角 / 毛玻璃，UI 即呈现该质感。
+
+## 配色（6 槽）
+
+| 角色 | 色值 |
+| ---- | ---- |
+| bg | #FFFFFF |
+| surface | #F7F8FC |
+| text | #0F1117 |
+| muted | #7C8290 |
+| accent | #6366F1 |
+| accent2 | #14B8A6 |
+
+## 关键参数
+
+- 质感类：glass
+- 字体：sans
+- 圆角：18px
+- 毛玻璃：16px
+- 深色底：否
+
+## 应用 CSS
+
+```css
+/* ui-styling — glass */
+.aek-stage {
+  --p-bg: #FFFFFF;
+  --p-surface: #F7F8FC;
+  --p-text: #0F1117;
+  --p-muted: #7C8290;
+  --p-accent: #6366F1;
+  --p-accent2: #14B8A6;
+  --sg-radius: 18px;
+  --sg-blur: 16px;
+}
+```

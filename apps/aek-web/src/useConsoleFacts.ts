@@ -26,6 +26,8 @@ export interface AppEntry {
   languages?: string[]
   /** Main implementation language (AA round). */
   primaryLanguage?: string
+  /** How the running host was installed (BQ11 round); absent on older hosts. */
+  origin?: PluginOrigin
   /**
    * Runtime memory fact (CC round, basis/attribution fixed DD round;
    * absent on older hosts, where the entry row renders no memory chip at
@@ -42,7 +44,14 @@ export interface AppEntry {
 }
 
 /** The source buckets of the user's disk layout (T round). */
-export type PluginBucket = 'plugins' | 'public' | 'base' | 'extensions'
+export type PluginBucket = 'plugins' | 'public' | 'base' | 'extensions' | 'community'
+
+/**
+ * How the running host was installed (BQ11 round): `dev` = the main git
+ * worktree (local dev tree), `built` = the release-pinned stable tree
+ * (local build), `global` = a pnpm global install. Absent on older hosts.
+ */
+export type PluginOrigin = 'dev' | 'built' | 'global'
 
 /** One scanned AEK package. */
 export interface PluginEntry {
@@ -75,6 +84,8 @@ export interface PluginEntry {
   languages: string[]
   /** Main implementation language. */
   primaryLanguage: string
+  /** How the running host was installed (BQ11 round); absent on older hosts. */
+  origin?: PluginOrigin
 }
 
 /** One slot's endpoints. */

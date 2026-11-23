@@ -359,22 +359,35 @@ async function backendAlive(): Promise<boolean> {
  * W round: a real status card (who, which port, what happens next, the manual
  * fallback) instead of a near-white "Reconnecting…" note — after a reboot the
  * backend lags the shell by about a minute, and the window must say so.
+ * BQ11 round: the copy now follows the app locale (a zh user must not read an
+ * English status card) and the manual fallback names the platform shortcut
+ * (⌘R on macOS, Ctrl+R elsewhere).
  * @returns a data: URL carrying the waiting notice.
  */
 function reconnectingPage(appNotMounting = false): string {
+  const reloadKey = process.platform === 'darwin' ? '⌘R' : 'Ctrl+R'
+  const zh = app.getLocale().toLowerCase().startsWith('zh')
+  const title = appNotMounting
+    ? (zh ? '后端已就绪，应用尚未完成加载' : 'backend up, app not mounting')
+    : (zh ? '正在等待后端' : 'waiting for the backend')
   const detail = appNotMounting
-    ? `<p style="color:#666;margin:0 0 1rem">The web backend on port ${WEB_PORT} is answering, but the app has not finished loading. A cold host can take a minute or two — this window retries automatically. If it is still blank, press ⌘R or quit and reopen the app.</p>`
-    : `<p style="color:#666;margin:0 0 1rem">The web backend on port ${WEB_PORT} is not answering. On this machine it starts automatically — this window reloads itself as soon as it is back. If it is still blank after a couple of minutes, press ⌘R or quit and reopen the app.</p>`
+    ? (zh
+      ? `<p style="color:#666;margin:0 0 1rem">端口 ${WEB_PORT} 上的 web 后端已经响应，但应用还没有完成加载。冷启动的宿主机可能需要一两分钟——此窗口会自动重试。若仍为空白，按 ${reloadKey} 或退出后重新打开应用。</p>`
+      : `<p style="color:#666;margin:0 0 1rem">The web backend on port ${WEB_PORT} is answering, but the app has not finished loading. A cold host can take a minute or two — this window retries automatically. If it is still blank, press ${reloadKey} or quit and reopen the app.</p>`)
+    : (zh
+      ? `<p style="color:#666;margin:0 0 1rem">端口 ${WEB_PORT} 上的 web 后端没有响应。它在本机会自动启动——恢复后此窗口会自动切回应用。若几分钟内仍为空白，按 ${reloadKey} 或退出后重新打开应用。</p>`
+      : `<p style="color:#666;margin:0 0 1rem">The web backend on port ${WEB_PORT} is not answering. On this machine it starts automatically — this window switches back to the app as soon as it is up. If it is still blank after a couple of minutes, press ${reloadKey} or quit and reopen the app.</p>`)
+  const retrying = zh ? '正在重试…' : 'Retrying…'
   const html = [
     '<!doctype html><meta charset="utf-8"><title>AEK</title>',
     '<body style="margin:0;min-height:100vh;display:grid;place-items:center;',
     'background:#fafafa;font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#222">',
     '<div style="max-width:26rem;padding:2rem">',
-    `<h1 style="font-size:1.05rem;margin:0 0 .5rem">${SLOT_CFG.productName} — ${appNotMounting ? 'backend up, app not mounting' : 'waiting for the backend'}</h1>`,
+    `<h1 style="font-size:1.05rem;margin:0 0 .5rem">${SLOT_CFG.productName} — ${title}</h1>`,
     detail,
     '<div style="display:flex;gap:.4rem;align-items:center;color:#888;font-size:.85rem">',
     '<div style="width:10px;height:10px;border-radius:50%;background:#888;animation:p 1s infinite"></div>',
-    'Retrying…',
+    retrying,
     '</div>',
     '<style>@keyframes p{0%,100%{opacity:.25}50%{opacity:1}}</style>',
     '</div></body>',
@@ -428,6 +441,17 @@ const RECOVERY_COOLDOWN_MS = 5_000
 const MAX_STALLED_RECOVERY_LOADS = 3
 /** II round: shell-load retry period while parked (backend answers, app not mounting). */
 const PARKED_RETRY_MS = 30_000
+/**
+ * BQ11 round: how many CONSECUTIVE probe ticks the backend must stay
+ * unresponsive before the window swaps to the status page. A single missed
+ * tick (the server's event loop busy for a moment — the pre-BQ11-2 `top`
+ * sample blocked it for ~1s per facts request) used to yank the user's live
+ * session into "waiting for the backend" and reload it a second later
+ * (user report: the card appears out of nowhere, "自动刷新？？？？？？？
+ * 体验极差"). A genuinely down backend is still caught after N ticks
+ * (~N seconds), while a transient hiccup is now invisible.
+ */
+const MIN_CONSECUTIVE_DOWN_TICKS = 3
 
 function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void } {
   let showingReconnect = false
@@ -463,6 +487,8 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
   let recoveryLoadInFlight = false
   /** II round: liveness of the last probe (a down→up edge gives a fresh budget). */
   let lastAlive = false
+  /** BQ11 round: consecutive down ticks seen so far (resets on any up tick). */
+  let downTicks = 0
 
   const disarmBootWatch = (): void => {
     if (bootTimer !== undefined) clearTimeout(bootTimer)
@@ -652,9 +678,17 @@ function watchBackend(win: BrowserWindow): { stop: () => void; arm: () => void }
     }
     lastAlive = alive
     if (alive) {
+      downTicks = 0
       showApp()
       return
     }
+    // BQ11 round: debounce the down path. A single missed tick (the web
+    // server's event loop briefly busy — before the BQ11-2 cache the `top`
+    // sample blocked it ~1s per request) must not evict a HEALTHY, running
+    // app into the status page and then reload it a second later. Park only
+    // after the backend has stayed unresponsive for the whole debounce.
+    downTicks += 1
+    if (downTicks < MIN_CONSECUTIVE_DOWN_TICKS) return
     showReconnect()
   }
 

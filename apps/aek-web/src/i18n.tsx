@@ -42,7 +42,8 @@ const ZH: Record<string, string | undefined> = {
   'panel.runtime': '插件与程序管理',
   'panel.runtimeSection': '运行实例',
   'panel.pluginsSection': '插件与程序',
-  'panel.infoSection': '系统信息',
+  // BQ11 round (2026-11-24): 'panel.infoSection' was deleted with the 系统信息
+  // section of the composed runtime page — it is now a dead key.
   'runtimes.hint.posix': '运行时按 0、1、2 编号：runtime0 = 宿主共享运行时（本 webui 所在进程）；其余为独立容器（一个容器进程可驻多个插件）。宿主内存为进程实测值（RSS / 堆）；容器内插件读数为所在容器的整进程实测值；宿主内插件与宿主共用同一个进程（单一 V8 堆），Node.js 没有模块级内存账本，测不出每个宿主内插件各占多少——我们不编造数字，所以宿主内插件的读数是宿主进程的实测值；想看某个插件的精确占用，把它移到专属运行时（独立容器 = 它整进程的实测值）。RSS（Resident Set Size，常驻集大小）= 进程当前实际驻留的物理内存页，不含交换区。',
   'runtimes.hint.win32': '运行时按 0、1、2 编号：runtime0 = 宿主共享运行时（本控制台所在进程）；其余为独立容器（一个容器进程可驻多个插件）。宿主内存为进程实测值（工作集 / 堆）；容器内插件读数为所在容器的整进程实测值；宿主内插件与宿主共用同一个进程（单一 V8 堆），Node.js 没有模块级内存账本，测不出每个宿主内插件各占多少——我们不编造数字，所以宿主内插件的读数是宿主进程的实测值；想看某个插件的精确占用，把它移到专属运行时（独立容器 = 它整进程的实测值）。工作集（Working Set）= 进程当前驻留的物理内存页总量，不含页面文件。',
   'runtimes.state.running': '运行中',
@@ -59,10 +60,24 @@ const ZH: Record<string, string | undefined> = {
   'runtimes.confirmCancel': '取消',
   'runtimes.rename': '重命名',
   'runtimes.empty': '暂无独立容器——在下方输入名称（留空 = 自动编号）新建一个',
-  'plugins.bucket.plugins': 'coraek 插件',
+  // BQ11 round (2026-11-24): the 插件 bucket is the OFFICIAL set; a new
+  // 社区插件 bucket holds third-party coraek plugins (packages/aek/
+  // community-coraek-plugins, currently empty); 给其他软件的插件 → 给其他
+  // 软件的入口 (aek-icon-manager was wrongly filed here, it is a coraek
+  // plugin, not an entry point for other software).
+  'plugins.bucket.plugins': '官方插件',
   'plugins.bucket.public': '公开库',
   'plugins.bucket.base': '宿主身份',
-  'plugins.bucket.extensions': '给其他软件的插件',
+  'plugins.bucket.extensions': '给其他软件的入口',
+  'plugins.bucket.community': '社区插件',
+  // BQ11 round: how the RUNNING host itself was installed (auto-detected on
+  // the host, shown as a chip on every roster row).
+  'plugins.origin.dev': '本地 dev',
+  'plugins.origin.built': '本地 build',
+  'plugins.origin.global': 'pnpm 全局',
+  'plugins.origin.dev.tip': '运行自主 git 工作树（dev 树，next 槽开发中）',
+  'plugins.origin.built.tip': '运行自 release 钉住的 stable 树（本地构建，current 槽收口）',
+  'plugins.origin.global.tip': '通过 pnpm 全局安装（无仓库 checkout）',
   'plugins.runtime.lineHost': '宿主共享（runtime0）· 读数为宿主进程实测值',
   'plugins.runtime.lineIsolated': '独立容器 · runtime{n}',
   'plugins.runtime.picker': '选择运行时',
@@ -96,7 +111,9 @@ const ZH: Record<string, string | undefined> = {
   'panel.iconsHeroicons': 'Heroicons',
   'panel.iconsBootstrap': 'Bootstrap',
   // R2 round: the settings page of the three remaining webui plugins
-  // (the rail's contract: every webui plugin owns 首页 + 设置页).
+  // (the rail's contract: every webui plugin owns 首页 + 设置页 — BQ11
+  // round: coraek plugins only, a `noHome` family such as the icon
+  // manager (a plain CLI package) skips the synthetic 首页 row).
   'panel.skillsSettings': 'Skill Manager 设置',
   /* BH round Plan C: the Skill Manager's flat rail rows (the reference's
      sidebar nav: 技能库 / 安装 Skills / 备份; the dashboard is the family
@@ -116,6 +133,14 @@ const ZH: Record<string, string | undefined> = {
   // BO round ⑪: the favorites-group CRUD surface (groups are add / rename /
   // delete / read; items are assignable to, and removable from, any group).
   'panel.about': '关于',
+  // BQ11 round (2026-11-24): the 社区插件管理 entry (the community bucket's
+  // own page under 其他 — third-party coraek plugins, empty for now).
+  'panel.community': '社区插件管理',
+  'plugins.community.empty': '还没有社区插件——这个区域为第三方 coraek 插件预留（packages/aek/community-coraek-plugins）',
+  'plugins.community.hint': '社区插件由第三方开发者贡献，安装后在此处统一管理',
+  // BQ11 round (2026-11-24): the About page carries ONLY the GitHub link and
+  // this thank-you line (the version row and everything before it is gone).
+  'panel.about.thanks': '感谢使用',
 
   'common.loading': '读取中…',
   'common.enabled': '已启用',
@@ -482,7 +507,6 @@ const ZH: Record<string, string | undefined> = {
   'plugins.action.restart': '重启',
   'plugins.switch.on': '已启用，点击停用',
   'plugins.switch.off': '已停用，点击启用',
-  'plugins.switch.readonly': '只读组件（不可切换）',
   'plugins.switch.locked.root': 'aek-home 是 webui 本体，停用后整个界面都会消失，因此不可停用',
   'plugins.confirm.text': '停用 {name}？停用后它提供的接口会立刻不可用，重新启用即可恢复。',
   'plugins.confirm.ok': '停用',
@@ -666,7 +690,8 @@ const EN: Record<string, string> = {
   'panel.runtime': 'Plugins & Programs',
   'panel.runtimeSection': 'Runtime instances',
   'panel.pluginsSection': 'Plugins & programs',
-  'panel.infoSection': 'System info',
+  // BQ11 round (2026-11-24): 'panel.infoSection' deleted with the 系统信息
+  // section (dead key).
   'runtimes.hint.posix': 'Runtimes are numbered 0, 1, 2…: runtime0 = the shared host runtime (this webui\'s own process); the rest are isolated containers (ONE container process may hold several plugins). Host memory is a live process reading (RSS / heap); a container plugin\'s reading is that container\'s whole-process measured value; in-host plugins share the host\'s single process (one V8 heap) — Node.js has no per-module memory ledger, so no in-host per-plugin reading can be measured, and we never invent one: the reading shown for an in-host plugin is the host process\'s measured value; to see one plugin\'s exact usage, move it to a dedicated runtime (its own container = its whole-process measured value). RSS (Resident Set Size) = the physical pages the process currently occupies, not including swap.',
   'runtimes.hint.win32': 'Runtimes are numbered 0, 1, 2…: runtime0 = the shared host runtime (this console\'s own process); the rest are isolated containers (ONE container process may hold several plugins). Host memory is a live process reading (working set / heap); a container plugin\'s reading is that container\'s whole-process measured value; in-host plugins share the host\'s single process (one V8 heap) — Node.js has no per-module memory ledger, so no in-host per-plugin reading can be measured, and we never invent one: the reading shown for an in-host plugin is the host process\'s measured value; to see one plugin\'s exact usage, move it to a dedicated runtime (its own container = its whole-process measured value). Working Set = the physical pages the process is currently resident in, not including the page file.',
   'runtimes.state.running': 'Running',
@@ -683,10 +708,17 @@ const EN: Record<string, string> = {
   'runtimes.confirmCancel': 'Cancel',
   'runtimes.rename': 'Rename',
   'runtimes.empty': 'No isolated containers yet — type a name below (blank = the auto number) to create one',
-  'plugins.bucket.plugins': 'coraek plugins',
+  'plugins.bucket.plugins': 'Official plugins',
   'plugins.bucket.public': 'Public libraries',
   'plugins.bucket.base': 'Host identity',
-  'plugins.bucket.extensions': 'Plugins for other apps',
+  'plugins.bucket.extensions': 'Entries for other apps',
+  'plugins.bucket.community': 'Community plugins',
+  'plugins.origin.dev': 'local dev',
+  'plugins.origin.built': 'local build',
+  'plugins.origin.global': 'pnpm global',
+  'plugins.origin.dev.tip': 'Running from the main git worktree (the dev tree, next slot)',
+  'plugins.origin.built.tip': 'Running from the release-pinned stable tree (a local build, current slot)',
+  'plugins.origin.global.tip': 'Installed via pnpm global (no repository checkout)',
   'plugins.runtime.lineHost': 'shared host (runtime0) · reading is the host process measured value',
   'plugins.runtime.lineIsolated': 'isolated container · runtime{n}',
   'plugins.runtime.picker': 'Pick a runtime',
@@ -720,7 +752,9 @@ const EN: Record<string, string> = {
   'panel.iconsHeroicons': 'Heroicons',
   'panel.iconsBootstrap': 'Bootstrap',
   // R2 round: the settings page of the three remaining webui plugins
-  // (the rail's contract: every webui plugin owns 首页 + 设置页).
+  // (the rail's contract: every webui plugin owns 首页 + 设置页 — BQ11
+  // round: coraek plugins only, a `noHome` family such as the icon
+  // manager (a plain CLI package) skips the synthetic 首页 row).
   'panel.skillsSettings': 'Skill Manager Settings',
   /* BH round Plan C: the Skill Manager's flat rail rows (the reference's
      sidebar nav: Library / Install Skills / Backup; the dashboard is the
@@ -738,6 +772,12 @@ const EN: Record<string, string> = {
   // (charts / forms / tables), self-drawn on plain theme tokens (P16).
   // BO round ⑪: the favorites-group CRUD surface (mirrors the zh block).
   'panel.about': 'About',
+  'panel.community': 'Community plugins',
+  'plugins.community.empty': 'No community plugins yet — this area is reserved for third-party coraek plugins (packages/aek/community-coraek-plugins)',
+  'plugins.community.hint': 'Community plugins are contributed by third-party developers; once installed they are managed here',
+  // BQ11 round (2026-11-24): the About page carries ONLY the GitHub link and
+  // this thank-you line.
+  'panel.about.thanks': 'Thank you for using AEK',
 
   'common.loading': 'Loading…',
   'common.enabled': 'Enabled',
@@ -1105,7 +1145,6 @@ const EN: Record<string, string> = {
   'plugins.action.restart': 'Restart',
   'plugins.switch.on': 'Enabled — click to disable',
   'plugins.switch.off': 'Disabled — click to enable',
-  'plugins.switch.readonly': 'Read-only part (not switchable)',
   'plugins.switch.locked.root': 'aek-home IS the webui: disabling it would remove the whole UI, so it stays on',
   'plugins.confirm.text': 'Disable {name}? The routes it provides stop working right away; enabling it again restores them.',
   'plugins.confirm.ok': 'Disable',

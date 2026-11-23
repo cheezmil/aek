@@ -50,15 +50,14 @@ describe('aek-system-skills.yml (the only allowlist)', () => {
     const manifest = loadSystemSkillManifest(here)
     expect(manifest.version).toBe(1)
     expect(manifest.packages.map(entry => entry.name)).toEqual([
-      'aek-websearch', 'aek-prompt-manager', 'aek-skill-manager', 'aek-webui-art-gallery',
+      'aek-websearch', 'aek-prompt-manager', 'aek-skill-manager', 'aek-ui-gallery',
     ])
     expect([...allowedSystemSkillNames(manifest)].sort()).toEqual([
-      'aek-prompt-manager', 'aek-skill-manager', 'aek-usage', 'aek-websearch',
-      'aek-webui-art-gallery',
+      'aek-prompt-manager', 'aek-skill-manager', 'aek-ui-gallery', 'aek-usage', 'aek-websearch',
     ])
     // manager skill is seeded by ManagerSkillService, not SystemSkillService
     expect(seedablePackages(manifest).map(entry => entry.name)).toEqual([
-      'aek-websearch', 'aek-prompt-manager',
+      'aek-websearch', 'aek-prompt-manager', 'aek-ui-gallery',
     ])
   })
 

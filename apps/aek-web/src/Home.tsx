@@ -41,7 +41,7 @@ import {
 } from './nav-model.ts'
 import { PluginSubNav } from './PluginSubNav.tsx'
 import { RuntimeModePanel } from './RuntimeModePanel.tsx'
-import { AboutPanel, PluginsPanel } from './InfoPanels.tsx'
+import { PluginsPanel } from './InfoPanels.tsx'
 import { SetupWizard } from './Setup.tsx'
 import { ShellTitleBar } from './ShellTitleBar.tsx'
 import { sidebarCssVars } from './settings-schema.ts'
@@ -360,10 +360,10 @@ function Console() {
             <h2 className={sectionTitleClass}>{t('panel.pluginsSection')}</h2>
             <PluginsPanel refreshSignal={signalFor('plugins')} />
           </section>
-          <section className="mt-8 first:mt-0" data-nav-anchor="info">
-            <h2 className={sectionTitleClass}>{t('panel.infoSection')}</h2>
-            <AboutPanel refreshSignal={signalFor('about')} />
-          </section>
+          {/* BQ11 round (2026-11-24): the 系统信息 third section was deleted
+              on user demand ("剔除掉啊，没有任何意义") — its only content was
+              the AboutPanel's one version row; the About surface now lives on
+              the 关于 page alone (GitHub link + thank-you line). */}
         </div>
       )
     }
@@ -412,7 +412,8 @@ function Console() {
       || renderId === 'promptsSettings'
       || renderId === 'iconsSettings'
       || renderId === 'artSettings'
-      || renderId === 'about') {
+      || renderId === 'about'
+      || renderId === 'community') {
       // R2: `renderId` is narrowed to the InfoPanelId union by the if-chain,
       // so no cast is needed (and an unnecessary one is a lint error).
       return <InfoPanels panel={renderId} refreshSignal={signalFor(renderId)} />
