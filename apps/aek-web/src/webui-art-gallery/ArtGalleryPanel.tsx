@@ -454,20 +454,32 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
 
         {/* BO round (m00001 ⑩): the floating switcher pill sits bottom-right
             over this scroll container — the extra bottom padding lets the
-            content scroll PAST the pill so it never hides the last row. */}
-        <main className="min-w-0 flex-1 overflow-auto pb-24">
+            content scroll PAST the pill so it never hides the last row.
+            BG-fix (BQ round ①): that padding now lives on each CHILD, not on
+            `main` itself. With it on `main`, `.aek-stage`'s `min-h-full`
+            (=100% of main's content box, which excludes the 96px padding)
+            stopped 96px short of the bottom and the cyber grid texture —
+            painted on `.aek-stage::before` inset:0 — never covered that
+            strip, so it showed `main`'s white background (the "网格下面留白"
+            bug). Moving pb-24 into the children puts the scroll-past-pill
+            space INSIDE the textured `.aek-stage`, so the grid now fills the
+            whole viewport. The empty/compare views keep an equivalent
+            pb-24 wrapper so the pill still never hides their last row. */}
+        <main className="min-w-0 flex-1 overflow-auto">
           {tab === 'compare' ? (
-            <CompareGrid
-              visible={visible}
-              curId={curId}
-              counts={{ styles: styles.length, skills: skills.length, modes: MODE_COUNT }}
-              favs={favs}
-              onPick={pickFromCompare}
-              onToggleFav={toggleFav}
-            />
+            <div className="pb-24">
+              <CompareGrid
+                visible={visible}
+                curId={curId}
+                counts={{ styles: styles.length, skills: skills.length, modes: MODE_COUNT }}
+                favs={favs}
+                onPick={pickFromCompare}
+                onToggleFav={toggleFav}
+              />
+            </div>
           ) : curItem ? (
             <div
-              className="aek-stage min-h-full"
+              className="aek-stage min-h-full pb-24"
               style={specStyle(curItem.spec)}
               data-mode={curItem.spec.mode}
               data-font={curItem.spec.font}
@@ -484,7 +496,9 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
               />
             </div>
           ) : (
-            <div className="text-muted-foreground p-10 text-center text-xs">{t('art.empty')}</div>
+            <div className="pb-24">
+              <div className="text-muted-foreground p-10 text-center text-xs">{t('art.empty')}</div>
+            </div>
           )}
         </main>
       </div>
