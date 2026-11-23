@@ -28,9 +28,9 @@
  * lit-row click toggles immediately — the BK-round 400 ms rolling window
  * that kept fast clicks from re-toggling is retired (BO round 2026-11-23,
  * m00001 ②). Collapsing a rail's LABELS (icon-only rows) is the dedicated
- * `type` icon in the row's hover action box (BI round); while a family's
- * rail is stowed the hover box also carries an accent-colored `columns`
- * icon that reopens it (BO round, m00001 ①).
+  * `type` icon in the row's hover action box (BI round); family rows always
+  * carry a plain-styled `columns` icon that toggles the sub-rail (expand when
+  * stowed, collapse when visible) with a state-dependent tooltip (BQ6 round, m03240).
  * Both states persist on the host (`aek-home.pluginRailHidden` /
  * `aek-home.pluginRailLabelsHidden`, comma lists in `nav-model.ts`).
  *
@@ -46,7 +46,7 @@ import { NAV, NAV_TOP, RAIL_HIDDEN_KEY, RAIL_LABELS_HIDDEN_KEY, parseCommaList, 
 import type { NavEntry, PanelId } from './nav-model.ts'
 import { parseBoolean, PREF_KEYS, usePrefLanded, usePref, useSettings } from './preferences.tsx'
 import { ROW_ACTIONS_HIDE_GRACE_MS, RowActionsFloat } from './RowActionsFloat.tsx'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { parseBaseTheme } from './base-theme.ts'
 import type { BaseTheme } from './base-theme.ts'
 import { cn } from '@/lib/utils'
@@ -621,6 +621,7 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
     // routes), while plain rows keep the usual self-highlight.
     const subIds = subEntriesOf(entry.id).map(item => item.id)
     const rowActive = active === entry.id || subIds.includes(active)
+    const railNowHidden = railHidden.split(',').includes(entry.id)
     return (
       <li
         key={entry.id}
@@ -702,22 +703,26 @@ export function Sidebar({ active, onSelect, currentSlot, onRefresh }: SidebarPro
               <Icon name="type" size={13} />
             </button>
           )}
-          {/* BO round 2026-11-23 (m00001 ①): while this family's plugin
-              rail is stowed, the hover box carries an ACCENT-COLORED panel
-              icon — the row itself is just an icon when compact, so the
-              hover card is the only place a "you can expand the sub-rail"
-              hint can live. Clicking it reopens the rail (same toggle as a
-              click on the lit row). */}
-          {subIds.length > 0 && railHidden.split(',').includes(entry.id) && (
-            <button
-              type="button"
-              className={cn(ROW_ICON_BUTTON, 'text-accent-ink bg-accent-soft hover:text-accent-ink hover:bg-accent-soft/70')}
-              onClick={() =>{  setRailHidden(current => toggleInCommaList(current, entry.id)) }}
-              title={t('nav.railExpand')}
-              aria-label={t('nav.railExpand')}
-            >
-              <Icon name="columns" size={13} />
-            </button>
+          {/* BQ6 round: the columns icon is ALWAYS present on family rows.
+              Plain ROW_ICON_BUTTON styling (no accent): it expands the stowed
+              sub-rail or collapses the visible one (same toggle as a click on
+              the lit row); the tooltip names the action. */}
+          {subIds.length > 0 && (
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className={ROW_ICON_BUTTON}
+                    onClick={() =>{  setRailHidden(current => toggleInCommaList(current, entry.id)) }}
+                    aria-label={railNowHidden ? t('nav.railExpand') : t('nav.railCollapse')}
+                  >
+                    <Icon name="columns" size={13} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{railNowHidden ? t('nav.railExpand') : t('nav.railCollapse')}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </RowActionsFloat>
       </li>
