@@ -8,6 +8,9 @@ lib/
 # The web console's source-side lib/ (shadcn `cn` utility) is source code,
 # not tsc output — the blanket `lib/` above must not swallow it.
 !apps/aek-web/src/lib/
+# Same rule for the ui-gallery plugin's ported source-side lib/ (shadcn
+# `cn` utility) — the blanket `lib/` above must not swallow it either.
+!packages/aek/coraek-plugins/aek-ui-gallery/src/web/ported/lib/
 *.tsbuildinfo
 pnpm-debug.log
 .pnpm-store/
