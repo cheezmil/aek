@@ -521,6 +521,7 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
           globalActive={globalId === curId}
           viewSel={viewSel}
           onSelectView={selectViewSel}
+          onOpenShadcn={() => { switchTab('shadcn') }}
           toneOf={(id) => {
             const it = allItems.find(i => i.id === id)
             return it ? effectiveToneOf(it, toneOverrides) : 'light'

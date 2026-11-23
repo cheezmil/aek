@@ -45,6 +45,9 @@ export interface GallerySwitcherProps {
   /** The effective tone of one item (user mark beats auto-classification). */
   toneOf: (id: string) => Tone
   onToggleToneMark: (id: string) => void
+  /** BQ7 round: the top bar's shadcn pill is hidden in immersive mode —
+   * this button is the always-reachable entry into the component gallery. */
+  onOpenShadcn: () => void
   /** BO round ⑦: apply the current spec to the whole webui, or reset. */
   onGlobal: () => void
   globalActive: boolean
@@ -332,6 +335,16 @@ export function GallerySwitcher(p: GallerySwitcherProps): JSX.Element {
               </Button>
             </TooltipTrigger>
             <TooltipContent>{t('art.toneDark')}</TooltipContent>
+          </Tooltip>
+          {/* BQ7 round: the top bar's shadcn pill is hidden in immersive mode —
+              this button is the always-reachable entry into the component gallery. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={p.onOpenShadcn} aria-label={t('art.shadcnEntry')}>
+                <Icon name="layout" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('art.shadcnEntry')}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
