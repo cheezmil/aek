@@ -39,6 +39,11 @@ allowBuilds:
   koffi: false
   lefthook: false
   node-pty: false
+  # msw (via @vitest/browser, test-only): postinstall is a no-op
+  # (`import('./config/scripts/postinstall.js').catch(()=>void 0)`); pnpm 12
+  # hard-errors (ERR_PNPM_IGNORED_BUILDS) on any build script not declared
+  # here — explicit `false`.
+  msw: false
   # protobufjs: postinstall only warns about a `versionScheme` scheme no
   # dependent sets; skipping it loses nothing — explicit `false`.
   protobufjs: false
