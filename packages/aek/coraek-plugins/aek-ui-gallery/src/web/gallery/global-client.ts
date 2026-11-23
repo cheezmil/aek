@@ -16,7 +16,7 @@
  *
  * @module @cheezmil/aek-ui-gallery/src/web/gallery/global-client
  */
-import { type StageSpec } from './spec.ts'
+import { allSpecs, type StageSpec } from './spec.ts'
 
 /** MUST stay byte-identical to the host art-global-theme.ts key. */
 const GLOBAL_KEY = 'aek-art-global-theme'
@@ -48,16 +48,47 @@ export const resetGlobalTheme = (): void => {
   postHost(null)
 }
 
-/** The persisted spec id (null when the default look is active). */
+/**
+ * The persisted spec id (null when the default look is active).
+ *
+ * Legacy note (pre-BQ10): the host engine persisted a BARE spec id string under
+ * this key (e.g. "style-aec-base"). The SPA moved to persisting the full spec
+ * VALUE (JSON — the spec data no longer exists host-side), so on first read a
+ * bare-id value is resolved against allSpecs() and migrated to its JSON form
+ * (which is what the host's bootGlobalTheme can parse on its next boot).
+ * Unknown bare ids are dropped as stale.
+ */
 export const globalThemeId = (): string | null => {
+  let raw: string | null
   try {
-    const raw = window.localStorage.getItem(GLOBAL_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as { id?: unknown } | null
-    return parsed !== null && typeof parsed === 'object' && typeof parsed.id === 'string'
-      ? parsed.id
-      : null
+    raw = window.localStorage.getItem(GLOBAL_KEY)
   } catch {
+    return null
+  }
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as { id?: unknown } | null
+    if (parsed !== null && typeof parsed === 'object' && typeof parsed.id === 'string') {
+      return parsed.id
+    }
+    return null
+  } catch {
+    // Not JSON: the legacy bare-id form. Migrate it once, in place.
+    const id = raw
+    const spec = allSpecs().find(s => s.id === id)
+    if (spec) {
+      try {
+        window.localStorage.setItem(GLOBAL_KEY, JSON.stringify(spec))
+      } catch {
+        // migration is best-effort; the live post still carries the spec.
+      }
+      return id
+    }
+    try {
+      window.localStorage.removeItem(GLOBAL_KEY)
+    } catch {
+      // already unreadable — nothing to clean up.
+    }
     return null
   }
 }

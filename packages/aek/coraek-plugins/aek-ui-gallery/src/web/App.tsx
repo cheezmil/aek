@@ -6,6 +6,7 @@ import { demosByCategory, type DemoEntry } from './ported/generated/demos'
 import { ArtGalleryPanel } from './gallery/ArtGalleryPanel'
 import { useI18n } from './i18n.tsx'
 import { applyAekTheme, type AekThemeSpec } from './theme-bridge'
+import { hostStorageReady } from './host-storage.ts'
 
 // Lazy demo module map — keys match DemoEntry.key ('./ported/components/...').
 const demoModules = import.meta.glob('./ported/components/shadcn-space/**/*.tsx')
@@ -263,6 +264,21 @@ export default function App() {
   const { t } = useI18n()
   const [topTab, setTopTab] = useState<'style' | 'shadcn'>('style')
   const [spec, setSpec] = useState<AekThemeSpec | null>(null)
+  // BQ10 fix (CDP probe 3/4): the panel's storage-backed state (fav groups,
+  // viewSel, tone marks, curId) must NOT initialize from the host-storage
+  // Proxy before its async hydration from /api/aek/web-storage finishes —
+  // unlike the old host panel, this panel mounts at SPA boot, so the race
+  // actually lands (收藏0 despite 6 stored favs). Gate it on hostStorageReady.
+  const [storageReady, setStorageReady] = useState(false)
+  useEffect(() => {
+    let live = true
+    void hostStorageReady.then(() => {
+      if (live) setStorageReady(true)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
 
   // Re-skin the whole SPA (including the demo grid) on every style selection.
   useEffect(() => {
@@ -289,11 +305,17 @@ export default function App() {
         </div>
         <div className="min-h-0 flex-1">
           {topTab === 'style' ? (
-            <ArtGalleryPanel
-              active
-              onShowShadcn={() => { setTopTab('shadcn') }}
-              onSpecChange={(s) => { setSpec(s) }}
-            />
+            storageReady ? (
+              <ArtGalleryPanel
+                active
+                onShowShadcn={() => { setTopTab('shadcn') }}
+                onSpecChange={(s) => { setSpec(s) }}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-muted-foreground">
+                <Loader2 size={18} className="animate-spin" />
+              </div>
+            )
           ) : (
             <ShadcnGrid />
           )}
