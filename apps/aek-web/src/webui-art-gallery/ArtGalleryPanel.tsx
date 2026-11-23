@@ -16,7 +16,7 @@
  *
  * @module @cheezmil/aek-web/src/webui-art-gallery/ArtGalleryPanel
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import './stage.css'
 import { useI18n } from '../i18n.tsx'
@@ -175,6 +175,7 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   const pendingId = useRef<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const toastTimer = useRef<number>(0)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
 
   // BQ4 round (m00001): the gallery is now cross-family — every pool (收藏 /
   // 浅色 / 深色 / 程序无法分类) spans BOTH the style and the skill families,
@@ -331,6 +332,35 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     setGlobalId(curItem.id)
   }, [curItem])
 
+  /** BQ8 round: push the selected UI style into the embedded shadcn SPA (same-origin
+   *  iframe) so its components re-skin live. The spec follows the latest curItem
+   *  via a ref so the (stable) post fn never holds a stale closure. */
+  const shadcnSpecRef = useRef<{ p: string[]; radius: string; dark: boolean } | null>(null)
+  shadcnSpecRef.current = curItem
+    ? { p: curItem.spec.p, radius: curItem.spec.radius, dark: curItem.spec.dark }
+    : null
+  const postShadcnTheme = useCallback((): void => {
+    const win = iframeRef.current?.contentWindow
+    const spec = shadcnSpecRef.current
+    if (!win || !spec) return
+    win.postMessage({ type: 'aek-theme', spec }, '*')
+  }, [])
+
+  // Re-skin the SPA on every style change while the shadcn tab is open.
+  useEffect(() => {
+    if (tab === 'shadcn') postShadcnTheme()
+  }, [tab, curItem, postShadcnTheme])
+
+  // Answer the SPA's mount-time request (it fires as soon as it boots).
+  useEffect(() => {
+    const onMsg = (e: MessageEvent): void => {
+      if (e.origin !== window.origin) return
+      if ((e.data as { type?: string } | null)?.type === 'aek-art-theme-request') postShadcnTheme()
+    }
+    window.addEventListener('message', onMsg)
+    return () => { window.removeEventListener('message', onMsg) }
+  }, [postShadcnTheme])
+
   const toggleFav = (id: string): void => {
     const has = favs.has(id)
     // Star = membership in the default group (id ''); un-star removes the
@@ -460,9 +490,11 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
              (aek-ui-gallery host face, prefix route /ui/ui-gallery), embedded
              full-bleed; the heavy component tree stays in the coraek plugin. */
           <iframe
+            ref={iframeRef}
             className="h-full w-full border-0 bg-background"
             src="/ui/ui-gallery/"
             title={t('art.tab.shadcn')}
+            onLoad={() => { postShadcnTheme() }}
           />
         ) : (
           <main className="min-w-0 flex-1 overflow-auto">
