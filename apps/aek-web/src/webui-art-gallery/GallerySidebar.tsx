@@ -111,9 +111,24 @@ export function GallerySidebar(p: GallerySidebarProps): JSX.Element {
     }
   }
 
+  // BQ3-1 (m00576): visible follows the catalog's KIND order, so one repo's
+  // items can be split across distant sections (anthropics = 10 palette rows
+  // up front + 11 iskill rows far later) while each group header still shows
+  // the group TOTAL — the first "ANTHROPIC 官方 21" block then lists only 10.
+  // Render rows contiguously per group (stable: first-seen group order,
+  // original order inside each group); keyboard prev/next still walks `pool`.
+  const groupOrder = new Map<string, number>()
+  for (let i = 0; i < p.visible.length; i++) {
+    const k = groupOf(p.visible[i])
+    if (!groupOrder.has(k)) groupOrder.set(k, i)
+  }
+  const ordered = [...p.visible].sort(
+    (a, b) => (groupOrder.get(groupOf(a)) ?? 0) - (groupOrder.get(groupOf(b)) ?? 0),
+  )
+
   const rows: JSX.Element[] = []
   let lastGroup: string | null = null
-  for (const x of p.visible) {
+  for (const x of ordered) {
     const groupKey = groupOf(x)
     if (groupKey !== lastGroup) {
       lastGroup = groupKey
