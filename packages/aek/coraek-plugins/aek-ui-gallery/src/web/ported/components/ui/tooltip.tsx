@@ -1,17 +1,28 @@
 'use client'
 
+import * as React from 'react'
 import { Tooltip as TooltipPrimitive } from '@base-ui/react/tooltip'
 
 import { cn } from '@/lib/utils'
 
+/**
+ * BQ10: radix-compatible shims. The moved art-gallery panel (from aek-web)
+ * uses the radix API — `<TooltipProvider delayDuration={…}>` +
+ * `<TooltipTrigger asChild><button …/></TooltipTrigger>` — while the BaseUI
+ * primitives below use `delay` and `render` (asChild's equivalent). This
+ * wrapper bridges the two so the moved files compile unchanged; the native
+ * BaseUI API (delay / render / children) keeps working too.
+ */
 function TooltipProvider({
   delay = 0,
+  delayDuration,
   ...props
-}: TooltipPrimitive.Provider.Props) {
+}: TooltipPrimitive.Provider.Props & { delayDuration?: number }) {
+  // radix `delayDuration` (ms until the tooltip shows) maps to BaseUI's `delay`.
   return (
     <TooltipPrimitive.Provider
       data-slot="tooltip-provider"
-      delay={delay}
+      delay={delayDuration ?? delay}
       {...props}
     />
   )
@@ -21,8 +32,21 @@ function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
   return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
 }
 
-function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+function TooltipTrigger({
+  asChild,
+  children,
+  ...props
+}: TooltipPrimitive.Trigger.Props & { asChild?: boolean }) {
+  if (asChild && React.isValidElement(children)) {
+    // BaseUI's asChild equivalent: `render` swaps the default <button> for the
+    // caller's element and merges the trigger behavior onto it.
+    return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" render={children} {...props} />
+  }
+  return (
+    <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props}>
+      {children}
+    </TooltipPrimitive.Trigger>
+  )
 }
 
 function TooltipContent({

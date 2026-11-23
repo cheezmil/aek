@@ -1,5 +1,5 @@
-import { setSkinAnimMs } from './webui-art-gallery/artGlobalTheme.ts'
-import type { PrefValue } from './preferences.tsx'
+import { setSkinAnimEnabled, setSkinAnimMs } from './art-global-theme.ts'
+import { parseBoolean, type PrefValue } from './preferences.tsx'
 
 /**
  * BJ round (m04565 + m04792): the PERIODIC writer for the web UI's
@@ -11,8 +11,12 @@ import type { PrefValue } from './preferences.tsx'
  * - `aek-home.skinAnimMs` → `--aek-skin-anim-ms` on `<html>` (the
  *   `.aek-skin-anim` one-shot glide class lives on `<html>`, so a
  *   layout-root variable from `sidebarCssVars` can not reach it; the
- *   writer also feeds the artGlobalTheme module timer via
+ *   writer also feeds the art-global-theme module timer via
  *   {@link setSkinAnimMs});
+ * - `aek-home.skinAnim` → {@link setSkinAnimEnabled} (BQ10: the gallery
+ *   panel no longer lives in aek-web, so the host engine's glide flag is
+ *   synced from here — the same periodic cadence keeps it live without
+ *   any panel remount coupling);
  * - `aek-home.animHoverFade` → `--aek-row-actions-fade` on `<html>`
  *   (the row hover-action card fade; writing it on the document root
  *   keeps every rail consistent, even where the sidebar div-level
@@ -25,7 +29,8 @@ import type { PrefValue } from './preferences.tsx'
  * @module @cheezmil/aek-web/src/anim-vars
  */
 
-/** The 基础设置 → 动画 group's two CSS-variable-driven fields (schema `animation` group). */
+/** The 基础设置 → 动画 group's CSS-variable-driven fields (schema `animation`/`motion` groups). */
+const SKIN_ANIM_KEY = 'aek-home.skinAnim'
 const SKIN_ANIM_MS_KEY = 'aek-home.skinAnimMs'
 const ANIM_HOVER_FADE_KEY = 'aek-home.animHoverFade'
 
@@ -50,16 +55,24 @@ const clampMs = (raw: unknown, min: number, max: number, fallback: number): numb
  */
 export function startAnimVarsSync(readPrefs: () => Record<string, PrefValue> | undefined): () => void {
   const el = document.documentElement
+  let lastSkinAnim: boolean | undefined
   let lastSkinMs = -1
   let lastFadeMs = -1
   const tick = (): void => {
     const prefs = readPrefs() ?? {}
+    // BQ10: the gallery panel (SPA) no longer syncs the glide flag — the host
+    // engine's setSkinAnimEnabled rides this same periodic writer instead.
+    const skinAnim = parseBoolean(prefs[SKIN_ANIM_KEY]) ?? false
+    if (skinAnim !== lastSkinAnim) {
+      lastSkinAnim = skinAnim
+      setSkinAnimEnabled(skinAnim)
+    }
     const skinMs = clampMs(prefs[SKIN_ANIM_MS_KEY], 0, 1000, SKIN_ANIM_MS_DEFAULT)
     const fadeMs = clampMs(prefs[ANIM_HOVER_FADE_KEY], 0, 500, ANIM_HOVER_FADE_DEFAULT)
     if (skinMs !== lastSkinMs) {
       lastSkinMs = skinMs
       // Writes `--aek-skin-anim-ms` on <html> AND carries the number into
-      // the artGlobalTheme module timer (the one-shot glide class removal).
+      // the art-global-theme module timer (the one-shot glide class removal).
       setSkinAnimMs(skinMs)
     }
     if (fadeMs !== lastFadeMs) {

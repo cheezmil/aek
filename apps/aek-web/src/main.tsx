@@ -14,7 +14,7 @@ import { hostStorageReady } from './host-storage.ts'
 import { createRoot } from 'react-dom/client'
 import { AekHome } from './Home.tsx'
 import { TooltipProvider } from './components/ui/tooltip'
-import { bootGlobalTheme } from './webui-art-gallery/artGlobalTheme.ts'
+import { bootGlobalTheme } from './art-global-theme.ts'
 import './index.css'
 
 // BP round (m02138 BP-13): the null check must narrow before any closure can

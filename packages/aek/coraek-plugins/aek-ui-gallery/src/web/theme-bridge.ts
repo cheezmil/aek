@@ -1,10 +1,11 @@
 /**
- * BQ8 round: the embedding aek-web console posts the currently selected art
- * spec (the "UI 风格设置" panel) so the component gallery renders in the
- * user's chosen style. The parent sends `{ type: 'aek-theme', spec }`
- * whenever the selection changes; we override the globals.css token block
- * inline on <html> so it wins over both the :root and .dark defaults, and
- * toggle the dark class to match the spec.
+ * BQ8 → BQ10: apply the selected art spec ("UI 风格设置" panel, same document
+ * since BQ10) so the shadcn/ui component grid renders in the user's chosen
+ * style. We override the globals.css token block inline on <html> so it wins
+ * over both the :root and .dark defaults, and toggle the dark class to match
+ * the spec. The App shell calls {@link applyAekTheme} directly on spec change
+ * (BQ8's parent-postMessage bridge is dead — the panel and the grid are
+ * sibling tabs in one document).
  */
 
 export interface AekThemeSpec {

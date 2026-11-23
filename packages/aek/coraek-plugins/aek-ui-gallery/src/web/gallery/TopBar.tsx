@@ -13,7 +13,9 @@ import { useI18n } from '../i18n.tsx'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-export type GalleryTab = 'style' | 'shadcn' | 'compare'
+// BQ10: 'shadcn' was hoisted to the SPA top-level tab (App.tsx); the panel
+// chrome only switches between the style stage and the compare grid.
+export type GalleryTab = 'style' | 'compare'
 
 export interface TopBarProps {
   tab: GalleryTab
@@ -53,30 +55,25 @@ export function TopBar({
   return (
     <header className="flex flex-none items-center gap-3 border-b bg-background px-5 py-2.5">
       {/* BP round: the gallery title span is retired — the tab pills lead.
-          BQ4 round: the top bar shows 3 pills (style + shadcn + compare);
-          the skill family stays reachable via the sidebar's 收藏 chip
-          and the compare grid. */}
+          BQ4 round: style + compare pills; BQ10: the shadcn pill was hoisted
+          to the SPA top-level tab (App.tsx), so the skill family stays
+          reachable via the sidebar's 收藏 chip and the compare grid. */}
       <div className="flex items-center gap-1.5">
         <TabPill active={tab === 'style'} label={t('art.tab.style')} count={styleCount} onClick={() => { onTab('style') }} />
-        <TabPill active={tab === 'shadcn'} label={t('art.tab.shadcn')} onClick={() => { onTab('shadcn') }} />
         <TabPill active={tab === 'compare'} label={t('art.tab.compare')} onClick={() => { onTab('compare') }} />
       </div>
-      {tab !== 'shadcn' ? (
-        <>
-          <div className="relative">
-            <Icon name="search" size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={searchRef}
-              type="text"
-              value={search}
-              onChange={(e) => { onSearch(e.target.value) }}
-              placeholder={t('art.search')}
-              className="w-60 pl-9"
-            />
-          </div>
-          <span className="flex-none text-xs text-muted-foreground tabular-nums">{stat}</span>
-        </>
-      ) : null}
+      <div className="relative">
+        <Icon name="search" size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          ref={searchRef}
+          type="text"
+          value={search}
+          onChange={(e) => { onSearch(e.target.value) }}
+          placeholder={t('art.search')}
+          className="w-60 pl-9"
+        />
+      </div>
+      <span className="flex-none text-xs text-muted-foreground tabular-nums">{stat}</span>
     </header>
   )
 }

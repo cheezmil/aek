@@ -1,9 +1,11 @@
 import { Component as ReactComponent, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Code, Component, Eye, Loader2, Moon, Search, Sun } from 'lucide-react'
-import { useTheme } from 'next-themes'
+import { Code, Component, Eye, Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { components as sideItems } from './ported/config/registry/components/sidebar-data'
 import { demosByCategory, type DemoEntry } from './ported/generated/demos'
+import { ArtGalleryPanel } from './gallery/ArtGalleryPanel'
+import { useI18n } from './i18n.tsx'
+import { applyAekTheme, type AekThemeSpec } from './theme-bridge'
 
 // Lazy demo module map — keys match DemoEntry.key ('./ported/components/...').
 const demoModules = import.meta.glob('./ported/components/shadcn-space/**/*.tsx')
@@ -53,19 +55,6 @@ class AppBoundary extends ReactComponent<{ children: ReactNode }> {
     }
     return this.props.children
   }
-}
-
-function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme()
-  return (
-    <button
-      className="rounded-full border p-2 text-muted-foreground transition-colors hover:bg-muted"
-      title="切换浅色 / 深色"
-      onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-    >
-      {resolvedTheme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-    </button>
-  )
 }
 
 function DemoCard({ d }: { d: DemoEntry }) {
@@ -152,7 +141,8 @@ function DemoCard({ d }: { d: DemoEntry }) {
   )
 }
 
-export default function App() {
+/** BQ4-4: the ported shadcnspace demo grid (530 components, 64 categories). */
+function ShadcnGrid() {
   const [active, setActive] = useState<string>(sideItems[0]?.blockName ?? '')
   const [query, setQuery] = useState('')
   const side: SideItem[] = sideItems
@@ -184,81 +174,130 @@ export default function App() {
   const cols = q ? 2 : (activeItem?.columns ?? 2)
 
   return (
-    <AppBoundary>
-      <div className="flex h-screen bg-background text-foreground">
-        <aside className="flex w-60 flex-none flex-col border-r">
-          <div className="flex flex-none items-center gap-2 px-4 py-4">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Component size={15} />
-            </div>
-            <div>
-              <div className="text-sm font-bold leading-tight">shadcn/ui 组件画廊</div>
-              <div className="text-[11px] text-muted-foreground">
-                shadcnspace · {withDemos.length} 类 / {demoTotal} 组件
-              </div>
+    <div className="flex h-full bg-background text-foreground">
+      <aside className="flex w-60 flex-none flex-col border-r">
+        <div className="flex flex-none items-center gap-2 px-4 py-4">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Component size={15} />
+          </div>
+          <div>
+            <div className="text-sm font-bold leading-tight">shadcn/ui 组件画廊</div>
+            <div className="text-[11px] text-muted-foreground">
+              shadcnspace · {withDemos.length} 类 / {demoTotal} 组件
             </div>
           </div>
-          <div className="flex-none px-3 pb-2">
-            <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="搜索 530 个组件…"
-                className="w-full rounded-lg border bg-background py-1.5 pl-8 pr-2 text-xs outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
+        </div>
+        <div className="flex-none px-3 pb-2">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="搜索 530 个组件…"
+              className="w-full rounded-lg border bg-background py-1.5 pl-8 pr-2 text-xs outline-none focus:ring-1 focus:ring-primary"
+            />
           </div>
-          <nav className="flex-1 overflow-y-auto px-2 pb-4">
-            {side.map((s) => {
-              const count = (demosByCategory[s.blockName ?? ''] ?? []).length
-              const enabled = count > 0
-              const Icon = s.icon ?? Component
-              return (
-                <button
-                  key={s.blockName}
-                  disabled={!enabled}
-                  onClick={() => {
-                    setActive(s.blockName ?? '')
-                    setQuery('')
-                  }}
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors',
-                    active === s.blockName && !q ? 'bg-primary/10 font-semibold text-primary' : 'text-foreground/80 hover:bg-muted',
-                    !enabled && 'cursor-not-allowed opacity-40',
-                  )}
-                >
-                  <Icon size={14} className="shrink-0" />
-                  <span className="min-w-0 flex-1 truncate">{s.title}</span>
-                  <span className="text-[11px] tabular-nums text-muted-foreground">{enabled ? count : '—'}</span>
-                </button>
-              )
-            })}
-          </nav>
-        </aside>
-        <main className="relative min-w-0 flex-1 overflow-y-auto">
-          <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-background/90 px-5 py-3 backdrop-blur">
-            <div className="min-w-0">
-              <h1 className="truncate text-base font-bold">
-                {q ? `搜索 “${query.trim()}” — ${results.length} 个结果` : activeItem?.title ?? active}
-              </h1>
-              {!q && activeItem?.description ? (
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">{activeItem.description}</p>
-              ) : null}
-            </div>
-            <ThemeToggle />
-          </div>
-          <div className="grid gap-4 p-5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-            {results.map(d => (
-              <CardBoundary key={d.key} label={d.key}>
-                <DemoCard d={d} />
-              </CardBoundary>
-            ))}
-            {results.length === 0 ? (
-              <div className="col-span-full py-16 text-center text-sm text-muted-foreground">没有匹配的组件</div>
+        </div>
+        <nav className="flex-1 overflow-y-auto px-2 pb-4">
+          {side.map((s) => {
+            const count = (demosByCategory[s.blockName ?? ''] ?? []).length
+            const enabled = count > 0
+            const Icon = s.icon ?? Component
+            return (
+              <button
+                key={s.blockName}
+                disabled={!enabled}
+                onClick={() => {
+                  setActive(s.blockName ?? '')
+                  setQuery('')
+                }}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors',
+                  active === s.blockName && !q ? 'bg-primary/10 font-semibold text-primary' : 'text-foreground/80 hover:bg-muted',
+                  !enabled && 'cursor-not-allowed opacity-40',
+                )}
+              >
+                <Icon size={14} className="shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{s.title}</span>
+                <span className="text-[11px] tabular-nums text-muted-foreground">{enabled ? count : '—'}</span>
+              </button>
+            )
+          })}
+        </nav>
+      </aside>
+      <main className="relative min-w-0 flex-1 overflow-y-auto">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-background/90 px-5 py-3 backdrop-blur">
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-bold">
+              {q ? `搜索 “${query.trim()}” — ${results.length} 个结果` : activeItem?.title ?? active}
+            </h1>
+            {!q && activeItem?.description ? (
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">{activeItem.description}</p>
             ) : null}
           </div>
-        </main>
+        </div>
+        <div className="grid gap-4 p-5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+          {results.map(d => (
+            <CardBoundary key={d.key} label={d.key}>
+              <DemoCard d={d} />
+            </CardBoundary>
+          ))}
+          {results.length === 0 ? (
+            <div className="col-span-full py-16 text-center text-sm text-muted-foreground">没有匹配的组件</div>
+          ) : null}
+        </div>
+      </main>
+    </div>
+  )
+}
+
+/**
+ * BQ10: the SPA top-level shell — 「UI 风格设置」(the moved art-gallery panel)
+ * and 「shadcn/ui 组件」(the ported demo grid) as sibling tabs. The panel
+ * reports its selected spec up via `onSpecChange`; the shell applies it to the
+ * document root so the demo grid re-skins live, same document (no iframe, no
+ * postMessage between the tabs). The host console receives the same spec via
+ * global-client.ts postMessage and repaints itself (art-global-theme.ts).
+ */
+export default function App() {
+  const { t } = useI18n()
+  const [topTab, setTopTab] = useState<'style' | 'shadcn'>('style')
+  const [spec, setSpec] = useState<AekThemeSpec | null>(null)
+
+  // Re-skin the whole SPA (including the demo grid) on every style selection.
+  useEffect(() => {
+    if (spec) applyAekTheme(spec)
+  }, [spec])
+
+  const tabPill = (on: boolean): string =>
+    cn(
+      'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+      on ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted',
+    )
+
+  return (
+    <AppBoundary>
+      <div className="flex h-screen flex-col bg-background text-foreground">
+        <div className="flex flex-none items-center gap-2 border-b bg-card px-4 py-2">
+          <button type="button" className={tabPill(topTab === 'style')} onClick={() => { setTopTab('style') }}>
+            {t('art.tab.style')}
+          </button>
+          <button type="button" className={tabPill(topTab === 'shadcn')} onClick={() => { setTopTab('shadcn') }}>
+            {t('art.tab.shadcn')}
+          </button>
+          <div className="min-w-0 flex-1" />
+        </div>
+        <div className="min-h-0 flex-1">
+          {topTab === 'style' ? (
+            <ArtGalleryPanel
+              active
+              onShowShadcn={() => { setTopTab('shadcn') }}
+              onSpecChange={(s) => { setSpec(s) }}
+            />
+          ) : (
+            <ShadcnGrid />
+          )}
+        </div>
       </div>
     </AppBoundary>
   )

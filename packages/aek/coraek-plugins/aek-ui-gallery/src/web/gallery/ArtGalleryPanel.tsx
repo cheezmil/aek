@@ -16,11 +16,10 @@
  *
  * @module @cheezmil/aek-web/src/webui-art-gallery/ArtGalleryPanel
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import './stage.css'
 import { useI18n } from '../i18n.tsx'
-import { parseBoolean, usePref } from '../preferences.tsx'
 import { copyToClipboard } from '../clipboard.ts'
 import { REPO_FALLBACK } from './data/skill-styles.ts'
 import {
@@ -45,6 +44,7 @@ import {
   type FavGroup,
   type Tone,
   type ViewSel,
+  type StageSpec,
 } from './spec.ts'
 import { TopBar, type GalleryTab } from './TopBar.tsx'
 import { GallerySidebar, type RepoGroup } from './GallerySidebar.tsx'
@@ -53,23 +53,30 @@ import {
   globalThemeId,
   resetGlobalTheme,
   saveGlobalTheme,
-  setSkinAnimEnabled,
-} from './artGlobalTheme.ts'
+} from './global-client.ts'
 import { GallerySwitcher } from './GallerySwitcher.tsx'
 import { Stage, type StageCounts } from './Stage.tsx'
 
 /** The reference's "detail" stage id for skills when no favorite is set. */
 const DEFAULT_SKILL = 'skill-impeccable::impeccable'
 
-export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
+export function ArtGalleryPanel({
+  active,
+  onShowShadcn,
+  onSpecChange,
+}: {
+  active?: boolean
+  /** BQ10: open the SPA's top-level shadcn/ui 组件 tab (the panel no longer
+      iframes its own SPA; the switcher's shadcn entry routes here). */
+  onShowShadcn?: () => void
+  /** BQ10: report the selected spec up to the SPA shell so the sibling
+      shadcn demo grid re-skins live (same document, no postMessage). */
+  onSpecChange?: (spec: { p: string[]; radius: string; dark: boolean } | null) => void
+}): JSX.Element {
   const { t } = useI18n()
-  // BT round (m12567 ①): the skin-switch glide (BS-4) is OFF by default —
-  // the user felt it janky. The persisted `aek-home.skinAnim` setting gates
-  // the one-shot `.aek-skin-anim` class; sync it into the artGlobalTheme
-  // module flag so every palette write (auto-apply on spec change, manual
-  // global toggle, reset) honors it.
-  const [skinAnim] = usePref('aek-home.skinAnim', false, parseBoolean)
-  useEffect(() => { setSkinAnimEnabled(skinAnim) }, [skinAnim])
+  // BQ10: the skin-switch glide (`aek-home.skinAnim`) is now gated host-side —
+  // the host's slim art-global-theme engine reads that pref itself; the panel
+  // no longer syncs it (it can't reach the host DOM from the SPA).
   const { styles, skills } = useMemo(() => galleryItems(), [])
   // BQ4 round: the repo filter chips are retired — only kind groups remain,
   // feeding the sidebar row group-header colors.
@@ -175,7 +182,6 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   const pendingId = useRef<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const toastTimer = useRef<number>(0)
-  const iframeRef = useRef<HTMLIFrameElement>(null)
 
   // BQ4 round (m00001): the gallery is now cross-family — every pool (收藏 /
   // 浅色 / 深色 / 程序无法分类) spans BOTH the style and the skill families,
@@ -242,12 +248,11 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   /** BQ4 round: the top tab is chrome only (stage vs the compare grid) — the
   /** pool selector moved to the sidebar chips, so no family reset happens.
   /** A pending compare pick (pickFromCompare) lands on that item's stage.
-  /** BQ4-4: the shadcn tab embeds the plugin-served SPA — exit immersive so
-  /** the TopBar chrome stays visible (the iframe needs the pill row).
+  /** BQ10: 'shadcn' is no longer a panel tab — it is the SPA's top-level
+  /** sibling tab, opened via the switcher's onShowShadcn.
   */
   const switchTab = (next: GalleryTab): void => {
     setTab(next)
-    if (next === 'shadcn') setImmersive(false)
     if (next === 'style') {
       const pending = pendingId.current
       if (pending) {
@@ -336,34 +341,14 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
     setGlobalId(curItem.id)
   }, [curItem])
 
-  /** BQ8 round: push the selected UI style into the embedded shadcn SPA (same-origin
-   *  iframe) so its components re-skin live. The spec follows the latest curItem
-   *  via a ref so the (stable) post fn never holds a stale closure. */
-  const shadcnSpecRef = useRef<{ p: string[]; radius: string; dark: boolean } | null>(null)
-  shadcnSpecRef.current = curItem
-    ? { p: curItem.spec.p, radius: curItem.spec.radius, dark: curItem.spec.dark }
-    : null
-  const postShadcnTheme = useCallback((): void => {
-    const win = iframeRef.current?.contentWindow
-    const spec = shadcnSpecRef.current
-    if (!win || !spec) return
-    win.postMessage({ type: 'aek-theme', spec }, '*')
-  }, [])
-
-  // Re-skin the SPA on every style change while the shadcn tab is open.
+  /** BQ10: report the selected spec up to the SPA shell. The shadcn demo grid
+   *  is now a SIBLING top-level tab in the SAME document (no iframe), so the
+   *  shell applies it directly via theme-bridge; this effect is the channel. */
   useEffect(() => {
-    if (tab === 'shadcn') postShadcnTheme()
-  }, [tab, curItem, postShadcnTheme])
-
-  // Answer the SPA's mount-time request (it fires as soon as it boots).
-  useEffect(() => {
-    const onMsg = (e: MessageEvent): void => {
-      if (e.origin !== window.origin) return
-      if ((e.data as { type?: string } | null)?.type === 'aek-art-theme-request') postShadcnTheme()
-    }
-    window.addEventListener('message', onMsg)
-    return () => { window.removeEventListener('message', onMsg) }
-  }, [postShadcnTheme])
+    onSpecChange?.(curItem
+      ? { p: curItem.spec.p, radius: curItem.spec.radius, dark: curItem.spec.dark }
+      : null)
+  }, [curItem, onSpecChange])
 
   const toggleFav = (id: string): void => {
     const has = favs.has(id)
@@ -398,9 +383,8 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
         if (e.key === 'Escape') (el as HTMLInputElement).blur()
         return
       }
-      // BQ4-4: the shadcn tab embeds the plugin SPA (iframe) — the style-pool
-      // keyboard shortcuts do not apply there.
-      if (tab === 'shadcn') return
+      // BQ10: 'shadcn' is the SPA top-level sibling tab, not a panel tab, so
+      // the style-pool keyboard shortcuts always apply to this panel.
       switch (e.key) {
         case 'ArrowLeft':
         case 'ArrowRight': {
@@ -463,7 +447,7 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
       ) : null}
 
       <div className="flex min-h-0 flex-1">
-        {!immersive && tab !== 'compare' && tab !== 'shadcn' ? (
+        {!immersive && tab !== 'compare' ? (
           <GallerySidebar
             viewSel={viewSel}
             onViewSel={selectViewSel}
@@ -489,89 +473,74 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
             space INSIDE the textured `.aek-stage`, so the grid now fills the
             whole viewport. The empty/compare views keep an equivalent
             pb-24 wrapper so the pill still never hides their last row. */}
-        {tab === 'shadcn' ? (
-          /* BQ4-4: the shadcn/ui component gallery — the plugin-served SPA
-             (aek-ui-gallery host face, prefix route /ui/ui-gallery), embedded
-             full-bleed; the heavy component tree stays in the coraek plugin. */
-          <iframe
-            ref={iframeRef}
-            className="h-full w-full border-0 bg-background"
-            src="/ui/ui-gallery/"
-            title={t('art.tab.shadcn')}
-            onLoad={() => { postShadcnTheme() }}
-          />
-        ) : (
-          <main className="min-w-0 flex-1 overflow-auto">
-            {tab === 'compare' ? (
-              <div className="pb-24">
-                <CompareGrid
-                  visible={pool}
-                  curId={curId}
-                  counts={{ styles: styles.length, skills: skills.length, modes: MODE_COUNT }}
-                  favs={favs}
-                  onPick={pickFromCompare}
-                  onToggleFav={toggleFav}
-                />
-              </div>
-            ) : curItem ? (
-              <div
-                className="aek-stage min-h-full pb-24"
-                style={specStyle(curItem.spec)}
-                data-mode={curItem.spec.mode}
-                data-font={curItem.spec.font}
-              >
-                {/* BP round (BP-13): Stage no longer owns the global apply/reset
+        <main className="min-w-0 flex-1 overflow-auto">
+          {tab === 'compare' ? (
+            <div className="pb-24">
+              <CompareGrid
+                visible={pool}
+                curId={curId}
+                counts={{ styles: styles.length, skills: skills.length, modes: MODE_COUNT }}
+                favs={favs}
+                onPick={pickFromCompare}
+                onToggleFav={toggleFav}
+              />
+            </div>
+          ) : curItem ? (
+            <div
+              className="aek-stage min-h-full pb-24"
+              style={specStyle(curItem.spec)}
+              data-mode={curItem.spec.mode}
+              data-font={curItem.spec.font}
+            >
+              {/* BP round (BP-13): Stage no longer owns the global apply/reset
                     button — it moved into the floating pill (BO round ⑦), so the
                     panel passes no global props to Stage. */}
-                <Stage
-                  item={curItem}
-                  counts={counts}
-                  faved={favs.has(curItem.id)}
-                  onToggleFav={() => { toggleFav(curItem.id) }}
-                  onNotify={notify}
-                />
-              </div>
-            ) : (
-              <div className="pb-24">
-                <div className="text-muted-foreground p-10 text-center text-xs">{t('art.empty')}</div>
-              </div>
-            )}
-          </main>
-        )}
+              <Stage
+                item={curItem}
+                counts={counts}
+                faved={favs.has(curItem.id)}
+                onToggleFav={() => { toggleFav(curItem.id) }}
+                onNotify={notify}
+              />
+            </div>
+          ) : (
+            <div className="pb-24">
+              <div className="text-muted-foreground p-10 text-center text-xs">{t('art.empty')}</div>
+            </div>
+          )}
+        </main>
       </div>
 
-      {tab !== 'shadcn' ? (
-        <GallerySwitcher
-          items={pool}
-          allItems={allItems}
-          curId={curId}
-          curIdx={pool.findIndex(i => i.id === curId)}
-          immersive={immersive}
-          onPrev={() => { stepCur(-1) }}
-          onNext={() => { stepCur(1) }}
-          onSelect={(id) => { if (tab === 'compare') { pickFromCompare(id) } else { setCurId(id) } }}
-          onExitImmersive={() => { setImmersive(false) }}
-          onToggleImmersive={() => { setImmersive(v => !v) }}
-          onReset={reset}
-          onGlobal={onGlobal}
-          globalActive={globalId === curId}
-          viewSel={viewSel}
-          onSelectView={selectViewSel}
-          onOpenShadcn={() => { switchTab('shadcn') }}
-          toneOf={(id) => {
-            const it = allItems.find(i => i.id === id)
-            return it ? effectiveToneOf(it, toneOverrides) : 'light'
-          }}
-          onMarkTone={markTone}
-          onToggleToneMark={toggleToneMark}
-          groups={favGroups}
-          onAddGroup={addGroup}
-          onRenameGroup={renameGroup}
-          onRemoveGroup={removeGroup}
-          onAssignGroup={assignGroup}
-          onUnassignGroup={unassignGroup}
-        />
-      ) : null}
+      <GallerySwitcher
+        items={pool}
+        allItems={allItems}
+        curId={curId}
+        curIdx={pool.findIndex(i => i.id === curId)}
+        immersive={immersive}
+        onPrev={() => { stepCur(-1) }}
+        onNext={() => { stepCur(1) }}
+        onSelect={(id) => { if (tab === 'compare') { pickFromCompare(id) } else { setCurId(id) } }}
+        onExitImmersive={() => { setImmersive(false) }}
+        onToggleImmersive={() => { setImmersive(v => !v) }}
+        onReset={reset}
+        onGlobal={onGlobal}
+        globalActive={globalId === curId}
+        viewSel={viewSel}
+        onSelectView={selectViewSel}
+        onOpenShadcn={() => { onShowShadcn?.() }}
+        toneOf={(id) => {
+          const it = allItems.find(i => i.id === id)
+          return it ? effectiveToneOf(it, toneOverrides) : 'light'
+        }}
+        onMarkTone={markTone}
+        onToggleToneMark={toggleToneMark}
+        groups={favGroups}
+        onAddGroup={addGroup}
+        onRenameGroup={renameGroup}
+        onRemoveGroup={removeGroup}
+        onAssignGroup={assignGroup}
+        onUnassignGroup={unassignGroup}
+      />
     </div>
   )
 }
