@@ -130,11 +130,12 @@ export const NAV: readonly NavEntry[] = [
   { id: 'skillsBackup', labelKey: 'panel.skillsBackup', icon: NAV_ICONS.skillsBackup, group: 'plugins', subOf: 'skills', anchor: 'backup', keywords: ['skill', 'backup', '备份', 'git'] },
   { id: 'promptsSettings', labelKey: 'panel.promptsSettings', icon: NAV_ICONS.promptsSettings, group: 'plugins', subOf: 'prompts', keywords: ['prompt', 'settings', '设置'] },
   { id: 'iconsSettings', labelKey: 'panel.iconsSettings', icon: NAV_ICONS.iconsSettings, group: 'plugins', subOf: 'icons', keywords: ['icon', 'settings', '设置'] },
-  // BU round: the style gallery is a built-in webui panel, not an
-  // AEK plugin (it ships in apps/aek-web, its "engine" is static spec data)
-  // — it belongs under 其他, not 插件.
-  { id: 'art', labelKey: 'panel.art', icon: NAV_ICONS.art, group: 'other', keywords: ['style', 'theme', 'skin', 'gallery', 'art', '质感', '皮肤', '主题'] },
-  { id: 'artSettings', labelKey: 'panel.artSettings', icon: NAV_ICONS.artSettings, group: 'other', subOf: 'art', keywords: ['style', 'settings', '设置'] },
+  // BQ5 round: the style gallery now SHOWS the full shadcn/ui component set
+  // served by the @cheezmil/aek-ui-gallery coraek plugin (the shadcn tab), so
+  // the user ruled it belongs in the 插件 drawer, not 其他. It owns an
+  // artSettings rail route, satisfying the plugins-group rail contract.
+  { id: 'art', labelKey: 'panel.art', icon: NAV_ICONS.art, group: 'plugins', keywords: ['style', 'theme', 'skin', 'gallery', 'art', 'shadcn', 'shadcn/ui', '质感', '皮肤', '主题'] },
+  { id: 'artSettings', labelKey: 'panel.artSettings', icon: NAV_ICONS.artSettings, group: 'plugins', subOf: 'art', keywords: ['style', 'settings', '设置'] },
   // R2 round: the built-in pages get the second-level rail too.
   // (The 关于 page was later reduced to a single version row,
   // so it owns no tabs — see below.)

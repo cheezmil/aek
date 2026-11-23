@@ -39,6 +39,8 @@ import {
   writeToneOverride,
   effectiveToneOf,
   isUnmarked,
+  readViewSel,
+  writeViewSel,
   type GalleryItem,
   type FavGroup,
   type Tone,
@@ -87,7 +89,8 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   // BQ4 round (m00001): the chip-row 4-way pool selector replaces the retired
   // src-family / repoFilter / kindFilter / favOnly / tone states. Default is
   // 浅色; 程序无法分类 is where the user confirms auto-guessed tones.
-  const [viewSel, setViewSel] = useState<ViewSel>('light')
+  // BQ5 round: the active chip pool is remembered across restarts (host yml).
+  const [viewSel, setViewSel] = useState<ViewSel>(() => readViewSel() ?? 'light')
   const [search, setSearch] = useState('')
   // BO round (m00001 ⑪): favorites are groupable. The single shared
   // `favs` set is now derived (union of every group), so all existing
@@ -270,6 +273,7 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   const selectViewSel = (next: ViewSel): void => {
     if (next === viewSel) return
     setViewSel(next)
+    writeViewSel(next)
     const p = filterPool(next, toneOverrides)
     if (p.length && !p.some(i => i.id === curId)) setCurId(p[0].id)
   }
@@ -397,6 +401,7 @@ export function ArtGalleryPanel({ active }: { active?: boolean }): JSX.Element {
   const reset = (): void => {
     setSearch('')
     setViewSel('light')
+    writeViewSel('light')
     setCurId(defaultItem().id)
   }
 

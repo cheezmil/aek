@@ -617,3 +617,30 @@ export type ViewSel = 'fav' | 'light' | 'dark' | 'unclass'
 /** True when the user has NOT yet marked this item's tone (auto guess only). */
 export const isUnmarked = (id: string, overrides: Record<string, Tone>): boolean =>
   !(id in overrides)
+
+/**
+ * BQ5 round: the active chip pool (收藏 / 浅色 / 深色 / 程序无法分类) is
+ * remembered across restarts — one-line string key, transparently redirected
+ * to the host yml by the host-storage shim (never a browser profile).
+ */
+const VIEWSEL_KEY = 'aek-art-viewsel'
+
+/** The persisted active chip pool; broken storage → null. */
+export const readViewSel = (): ViewSel | null => {
+  try {
+    const raw = window.localStorage.getItem(VIEWSEL_KEY)
+    if (raw === 'fav' || raw === 'light' || raw === 'dark' || raw === 'unclass') return raw
+    return null
+  } catch {
+    return null
+  }
+}
+
+/** Persist the active chip pool; storage refusals degrade to in-memory. */
+export const writeViewSel = (v: ViewSel): void => {
+  try {
+    window.localStorage.setItem(VIEWSEL_KEY, v)
+  } catch {
+    /* private-mode storage may refuse; the selection stays in-memory */
+  }
+}
