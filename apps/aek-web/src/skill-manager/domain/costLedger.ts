@@ -47,10 +47,11 @@ export function showCostLine(ledger: CostLedger | null): boolean {
 }
 
 /**
- * The display caliber of the total (BM round: the user read the portfolio
- * total as "this hub costs 42.4k" — the strip must say it is summed across
- * N agent runtime directories): the total, the directory count, the mean
- * and the per-directory maximum, all for the `≈`-style display form.
+ * The display caliber of the resident cost (BM + BQ12 rounds): an agent
+ * session only ever carries ONE directory's catalog, so the strip's
+ * headline is `max` (what the heaviest session actually pays); `avg` and
+ * `total` (the portfolio inventory across all agent runtime dirs) are the
+ * reference figures the caliber line must keep visible.
  */
 export function costCaliber(ledger: CostLedger): { total: number; dirs: number; avg: number; max: number } {
   let max = 0

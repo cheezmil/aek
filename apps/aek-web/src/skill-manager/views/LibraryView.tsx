@@ -406,12 +406,17 @@ export function LibraryView() {
             <CardContent className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">
                 {t('skills.cost')}{' '}
-                <span className="text-sm font-bold tabular-nums text-text">{formatApproxTokens(cost.totalTokens)}</span>{' '}
-                {t('skills.costUnit')}
+                <span className="text-sm font-bold tabular-nums text-text">{formatApproxTokens(caliber.max)}</span>{' '}
+                {t('skills.costUnit')} · {t('skills.costPerAgent')}
               </span>
               {caliber.dirs > 0 && (
                 <span className="text-2xxs text-muted-foreground">
-                  {tf('skills.costCaliber', { n: caliber.dirs, avg: formatApproxTokens(caliber.avg), max: formatApproxTokens(caliber.max) })}
+                  {tf('skills.costCaliber', {
+                    n: caliber.dirs,
+                    avg: formatApproxTokens(caliber.avg),
+                    max: formatApproxTokens(caliber.max),
+                    total: formatApproxTokens(cost.totalTokens),
+                  })}
                 </span>
               )}
             </CardContent>
