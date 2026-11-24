@@ -415,7 +415,6 @@ export function LibraryView() {
                     n: caliber.dirs,
                     avg: formatApproxTokens(caliber.avg),
                     max: formatApproxTokens(caliber.max),
-                    total: formatApproxTokens(cost.totalTokens),
                   })}
                 </span>
               )}

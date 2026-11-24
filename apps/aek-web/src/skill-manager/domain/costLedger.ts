@@ -49,9 +49,11 @@ export function showCostLine(ledger: CostLedger | null): boolean {
 /**
  * The display caliber of the resident cost (BM + BQ12 rounds): an agent
  * session only ever carries ONE directory's catalog, so the strip's
- * headline is `max` (what the heaviest session actually pays); `avg` and
- * `total` (the portfolio inventory across all agent runtime dirs) are the
- * reference figures the caliber line must keep visible.
+ * headline is `max` (what the heaviest session actually pays); `avg` is the
+ * reference figure the caliber line keeps visible. `total` (the portfolio
+ * inventory across all agent runtime dirs) stays in the wire data for the
+ * host CLI/doctor but is deliberately NOT shown in the library strip —
+ * m01704: a portfolio total read as a per-session charge misled users.
  */
 export function costCaliber(ledger: CostLedger): { total: number; dirs: number; avg: number; max: number } {
   let max = 0
