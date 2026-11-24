@@ -76,6 +76,22 @@ export function formatApproxTokens(tokens: number): string {
   return `≈${Math.round(thousands)}k`
 }
 
+/** This skill's resident tokens in one agent context (the N round: each
+ *  library row shows what the skill itself occupies): the ledger counts the
+ *  session-catalog line — `name` + the normalized, 500-char-capped
+ *  description — per physical directory, so every line for a skill agrees
+ *  and one first line is the number. Null when the skill is not in the
+ *  ledger (undistributed, ledger not loaded yet, or a 0-count error entry). */
+export function skillResidentTokens(ledger: CostLedger | null, skill: string): number | null {
+  if (ledger === null) return null
+  for (const group of ledger.paths) {
+    for (const line of group.skills) {
+      if (line.skill === skill) return line.tokens
+    }
+  }
+  return null
+}
+
 /** This skill's resident tokens on this physical runtime path (US23): the
  *  preview's 接入 rows carry runtime paths, the ledger groups by their
  *  directory — null when the entry was not counted (ledger not loaded yet,

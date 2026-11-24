@@ -24,11 +24,13 @@
  *   node scripts/aek/capture-ui.mjs --yes --scroll-bottom
  *   node scripts/aek/capture-ui.mjs --yes --out <dir>
  *   node scripts/aek/capture-ui.mjs --yes --eval "<expr>"  # print a value, no PNG
+ *   node scripts/aek/capture-ui.mjs --yes --reload          # hard-reload the page first
  *
- * There is deliberately NO `--reload`: `Page.reload` never answers once the
- * renderer is torn down, and reconnecting a socket to the old target hangs as
- * well. In dev the slot's host serves the freshly built aek-web console; for a
- * full page refresh restart the shell (`start-dev.mjs`).
+ * `--reload` sends `Page.reload` with `ignoreCache` BEFORE the ready wait, so a
+ * just-rebuilt aek-web console is actually picked up instead of the bundle the
+ * renderer booted with. It only works while the renderer is alive — once it is
+ * torn down `Page.reload` never answers and the call times out; in that case
+ * restart the shell (`start-dev.mjs`) instead.
  *
  * @module scripts/aek/capture-ui
  */
@@ -90,6 +92,10 @@ const outIndex = argv.indexOf('--out')
 const OUT = outIndex >= 0 && argv[outIndex + 1] !== undefined
   ? argv[outIndex + 1]
   : join(slotHome(slotCfg.slot), 'shots')
+// `--reload` hard-reloads the console page (cache-busted) before the ready
+// wait, so the shot shows the freshly built bundle, not the one the renderer
+// booted with. It mutates nothing in the preferences: only the page state.
+const reload = argv.includes('--reload')
 // `--clip <x,y,w,h[,scale]>` captures ONE zoomed viewport region and exits:
 // the layout-eyeballing zoom shot (a full-frame PNG of a dense 2560px console
 // loses the spacing detail). Implemented as `Page.captureScreenshot` with a
@@ -244,6 +250,14 @@ globalWatchdog.unref?.()
 let cdp = new Cdp(page.webSocketDebuggerUrl)
 await cdp.open()
 await cdp.send('Page.enable')
+
+if (reload) {
+  // `ignoreCache` so the freshly built bundle wins over the one the renderer
+  // loaded at boot. A dead renderer never answers this (documented above),
+  // and the send-timeout surfaces that instead of hanging the whole loop.
+  await cdp.send('Page.reload', { ignoreCache: true }, { timeoutMs: 20000 })
+  process.stdout.write('[shot] page reloaded (ignoreCache)\n')
+}
 
 if (forceMotion) {
   await cdp.send('Emulation.setEmulatedMedia', {

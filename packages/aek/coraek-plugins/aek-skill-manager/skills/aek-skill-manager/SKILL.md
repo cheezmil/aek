@@ -14,7 +14,7 @@ Key vocabulary you will need when reading output:
 - **`imported: true`**: how the skill *entered* the hub (via `init`), orthogonal to whether it has a source.
 - **Detected agents**: the agent set `npx skills` would target on this machine, resolved locally from the bundled catalog snapshot.
 - **Domain category / category set**: a skill's free-form `categories: []` (前端 / 金融 / backend — the user's own vocabulary, orthogonal to the frozen legacy `category`); a **category set** is the per-runtime-path applied filter state that `categories status` reports.
-- **Resident cost / Cost ledger**: the per-message token cost of a distributed skill's frontmatter `name + description` (an undistributed skill costs nothing). `cost` accounts it per physical runtime path — approximately, always shown `≈` (`method: "char-approx"`).
+- **Resident cost / Cost ledger**: the per-message token cost of a distributed skill's session-catalog line (`name` + the whitespace-normalized, 500-char-capped `description` — what the tool-skill catalog actually puts in every message; the SKILL.md body loads on demand and is not charged). An undistributed skill costs nothing. `cost` accounts it per physical runtime path — approximately, always shown `≈` (`method: "char-approx"`).
 
 The CLI is non-interactive (bootstrap's agent picker is the one exception); every choice is a flag. Commands print JSON — except `status` (a human-readable summary), `get` (the skill file itself), `cost` (a human ledger view; `--json` prints the machine form), and `--help`. Parse stdout; don't guess the shape.
 
@@ -287,7 +287,7 @@ Present findings with path + line + rule; do not refuse install on the user's be
 
 ## Workflow: audit resident context cost
 
-Every distributed skill charges every message the tokens of its frontmatter `name + description` — its **resident cost**. That is the account `aeksm cost` keeps: totals grouped by physical runtime path (a shared path counted once, its agent family noted), per-skill lines under each path, and report-only recall suggestions. Consult it unprompted when the user wonders what their agents pay per message (常驻成本 / context cost) — and when it shows expensive or zero-controversy distributions, propose the recall yourself instead of waiting to be asked.
+Every distributed skill charges every message the tokens of its session-catalog line (`name` + the whitespace-normalized, 500-char-capped `description` — the text the tool-skill catalog actually puts in the message; the SKILL.md body loads on demand and is not charged) — its **resident cost**. That is the account `aeksm cost` keeps: totals grouped by physical runtime path (a shared path counted once, its agent family noted), per-skill lines under each path, and report-only recall suggestions. Consult it unprompted when the user wonders what their agents pay per message (常驻成本 / context cost) — and when it shows expensive or zero-controversy distributions, propose the recall yourself instead of waiting to be asked.
 
 ```bash
 aeksm cost --json                 # the full three-layer ledger — parse this in conversation

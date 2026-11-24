@@ -10,6 +10,9 @@ import type { DistributeService } from './distribute-service.js'
  * read-only resident-cost account over the hub distribution index, grouped by
  * physical runtime path (user and project both, a shared path once). The index
  * drives enumeration; the runtime SKILL.md actually present drives counting.
+ * Counted in the session-catalog form — `name` plus the whitespace-normalized,
+ * 500-char-capped description, the exact line the tool-skill catalog puts in
+ * every message; the SKILL.md body loads on demand and is never resident.
  * This service never writes and never suggests execution — report-only is the
  * ledger's contract.
  */
@@ -31,6 +34,22 @@ export function charApproxTokens(text: string): number {
     else others += 1
   }
   return cjk + Math.floor(others / 4)
+}
+
+/** The catalog-form description cap — mirrors tool-skill's
+ *  `DEFAULT_CATALOG_DESCRIPTION_MAX_LENGTH` (the 500-char cap its
+ *  per-message skill catalog applies). */
+const CATALOG_DESCRIPTION_MAX_LENGTH = 500
+
+/** The session-catalog description form — mirrors tool-skill's
+ *  `catalogDescription`: whitespace-normalized, capped with a `...` tail when
+ *  it runs long. The ledger counts what the model actually receives per
+ *  message, not the SKILL.md's full frontmatter. */
+function catalogDescription(value: string): string {
+  const normalized = value.replaceAll(/\s+/g, ' ').trim()
+  return normalized.length <= CATALOG_DESCRIPTION_MAX_LENGTH
+    ? normalized
+    : `${normalized.slice(0, CATALOG_DESCRIPTION_MAX_LENGTH - 3)}...`
 }
 
 /** The ledger's data types live in the model (one-way layering, like every
@@ -123,9 +142,13 @@ export class CostLedgerService {
   }
 
   /** One entry's cost from the runtime SKILL.md actually present — index says
-   *  where, the file says how much. Defects count 0 and surface as errors;
-   *  archived-but-distributed entries fall back to their archived hub copy
-   *  (same frontmatter the distribution laid down) so they stay counted (US11). */
+   *  where, the file says how much. Counted in the session-catalog form:
+   *  `name` plus the whitespace-normalized, 500-char-capped description
+   *  (tool-skill's per-message catalog line) — that is the text that rides
+   *  every message; the body loads on demand and is not resident. Defects
+   *  count 0 and surface as errors; archived-but-distributed entries fall
+   *  back to their archived hub copy (same frontmatter the distribution laid
+   *  down) so they stay counted (US11). */
   private countEntry(
     skill: string,
     runtimePath: string,
@@ -144,8 +167,11 @@ export class CostLedgerService {
     const { data } = parseSkillFrontmatter(text)
     const name = readableString(data.name) ?? skill
     const description = readableString(data.description)
+    // Count the session-catalog form (what the model receives per message),
+    // not the full frontmatter: description normalized + capped at 500.
+    const catalog = description === null ? null : catalogDescription(description)
     const nameTokens = charApproxTokens(name)
-    const descriptionTokens = description === null ? 0 : charApproxTokens(description)
+    const descriptionTokens = catalog === null ? 0 : charApproxTokens(catalog)
     return {
       line: {
         skill,

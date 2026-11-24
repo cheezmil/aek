@@ -50,6 +50,9 @@ export type IconName =
   | 'bell'
   | 'compass'
   | 'frame'
+  | 'ellipsis'
+  | 'grid'
+  | 'users'
 
 /** Stroke-mode SVG fragments, drawn on a 24×24 viewBox. */
 export const ICONS: Record<IconName, ReactNode> = {
@@ -452,6 +455,33 @@ export const ICONS: Record<IconName, ReactNode> = {
       <path d="M3 12h18" />
     </>
   ),
+  /** Lucide `ellipsis` (three dots; the upstream `more-horizontal` was
+      renamed): the row/card overflow affordance on the skill library. */
+  ellipsis: (
+    <>
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+      <circle cx="5" cy="12" r="1" />
+    </>
+  ),
+  /** Lucide `layout-grid`: the list/grid view toggle's grid side. */
+  grid: (
+    <>
+      <rect width="7" height="7" x="3" y="3" rx="1" />
+      <rect width="7" height="7" x="14" y="3" rx="1" />
+      <rect width="7" height="7" x="14" y="14" rx="1" />
+      <rect width="7" height="7" x="3" y="14" rx="1" />
+    </>
+  ),
+  /** Lucide `users`: the per-row agent-linkage affordance. */
+  users: (
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <path d="M16 3.128a4 4 0 0 1 0 7.744" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <circle cx="9" cy="7" r="4" />
+    </>
+  ),
 }
 
 /** Props for {@link Icon}. */
@@ -491,6 +521,7 @@ export const ICON_NAMES: readonly IconName[] = [
   'bell',
   'compass',
   'frame',
+  'ellipsis', 'grid', 'users',
 ]
 
 export interface IconProps {

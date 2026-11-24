@@ -89,12 +89,16 @@ anchor to a section of the same page. Machine-checked by
 
 ## Model / token experience
 
-Distributing a skill makes its frontmatter (`name` + `description`) charge
-**every** message in that agent's context — that is its *resident cost*.
-`aeksm cost` accounts for it per physical runtime path (approximate, `≈`,
-`method: "char-approx"`). An undistributed or `get`-only skill costs nothing
-per message. Keep resident descriptions short; `aeksm cost --budget <n>`
-is a CI gate that exits 1 when the total exceeds a token budget.
+Distributing a skill puts its session-catalog line (`name` + the
+whitespace-normalized, 500-char-capped `description` — the exact text the
+tool-skill catalog puts in **every** message) into that agent's context; that
+is its *resident cost*. The SKILL.md body loads on demand and is not charged
+per message. `aeksm cost` accounts for it per physical runtime path
+(approximate, `≈`, `method: "char-approx"`). An undistributed or `get`-only
+skill costs nothing per message. Keep resident descriptions short — anything
+past the 500-char catalog cap does not ride every message;
+`aeksm cost --budget <n>` is a CI gate that exits 1 when the total exceeds a
+token budget.
 
 ## Known Limitations and Deferred Work
 

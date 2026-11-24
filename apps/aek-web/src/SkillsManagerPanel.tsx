@@ -246,7 +246,11 @@ function SkillsPanelBody({ skills, railNavSignal }: { skills: ReturnType<typeof 
           called 「叠叠乐」. The faces now sit directly on the page
           background: one page, one ground; a PanelCard inside a face
           is the only card. */}
-      <div>
+      {/* h-full flex column: the skill faces (esp. the library's virtual
+          list) pin to the window bottom — main's bottom padding is the only
+          space left below the content. Content-sized views simply don't
+          stretch. */}
+      <div className="flex h-full min-h-0 flex-col">
         {/* The shared notice line (every write's result, single slot, 4s TTL) */}
         {noticeSlot.notice !== null && (
           <div className={cn(
@@ -263,7 +267,7 @@ function SkillsPanelBody({ skills, railNavSignal }: { skills: ReturnType<typeof 
         {nav.view === 'dashboard'
           ? <DashboardView />
           : nav.view === 'library'
-            ? <div data-nav-anchor="library"><LibraryView /></div>
+            ? <div data-nav-anchor="library" className="flex min-h-0 flex-1 flex-col"><LibraryView /></div>
             : nav.view === 'add'
               ? <AddView />
               : nav.view === 'backup'

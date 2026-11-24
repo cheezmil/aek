@@ -1,16 +1,17 @@
 /**
- * The library face (本地技能中心) — BN round: the full body re-voiced in the
- * app's own house style (no external webui reference, per m06945/m07564):
- * one hub-state card (counts + update + resident cost merged), a single
- * search + pill-filter toolbar, and spacious card rows / grid tiles.
- * Every widget is the app's own (shadcn/radix + console primitives +
- * virtual lists); the data flow (useSkills, the domain modules, the
- * overlay sheets) is untouched — only the rendering layer changed.
+ * The library face (本地技能中心) — re-voiced in shadcn/ui (the user's ruling,
+ * 2026-11-24: "那些 shadcn ui 用起来"): the hub-state card, the search +
+ * pill-filter toolbar, and every row / tile control now render through the
+ * app's own shadcn component set (Card, Input, Badge, Button, Checkbox,
+ * DropdownMenu, Separator) instead of hand-rolled boxes. The data flow
+ * (useSkills, the domain modules, the overlay sheets) is untouched — only the
+ * rendering layer changed. The overflow menu is a real radix DropdownMenu,
+ * controlled per-row from the view (one open menu at a time, Esc priority
+ * preserved: menu → sheet → selection).
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../i18n.tsx'
 import { Icon } from '../../Icons.tsx'
-import { PanelCard, PanelSearch } from '../../ui-kit.tsx'
 import { formatDisplayPath, parsePathStyle } from '../../paths.ts'
 import { PREF_KEYS, usePref } from '../../preferences.tsx'
 import { useConsoleFacts } from '../../useConsoleFacts.ts'
@@ -22,7 +23,7 @@ import { buildCategoryPills, buildSourcePills, filterByPills } from '../domain/c
 import { deriveRowStatus, type RowStatus } from '../domain/rowStatus.ts'
 import { distCountsText } from '../domain/distribution.ts'
 import { showUpdateStrip, updatableNames } from '../domain/updateStrip.ts'
-import { showCostLine, costCaliber, formatApproxTokens } from '../domain/costLedger.ts'
+import { showCostLine, costCaliber, formatApproxTokens, skillResidentTokens } from '../domain/costLedger.ts'
 import {
   exitSelection,
   idleSelection,
@@ -46,10 +47,21 @@ import { AgentPickerSheet, ArchiveSheet, AgentDotRow, CategorizeSheet, DetailShe
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 /** One virtual row slot: the 80px card + its 8px gap (the virtual pitch). */
 const ROW_PITCH = 88
-const VIEW_HEIGHT = 420
 
 /** The derived rows (the registry skill + the four status domains). */
 function buildRows(overview: SkillsOverview, updatePlan: ReadonlyArray<{ skills: Array<{ skill: string }> }> | undefined): RowState[] {
@@ -78,7 +90,7 @@ function buildRows(overview: SkillsOverview, updatePlan: ReadonlyArray<{ skills:
   })
 }
 
-/** The card / row overflow menu's actions. */
+/** The row / tile overflow menu's actions. */
 type CardAction = 'detail' | 'update' | 'distribute' | 'undistribute' | 'archive' | 'categorize'
 
 /** The per-row badges (only the exceptional states earn one). */
@@ -122,6 +134,66 @@ function SourceChip({ row }: { row: RowState }) {
   return <span className="max-w-44 shrink-0 truncate text-2xxs text-muted-foreground">{link.label}</span>
 }
 
+/** One row / tile's overflow menu (radix DropdownMenu, view-controlled). */
+function RowMenu({ row, open, onOpenChange, onAction }: {
+  row: RowState
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onAction: (action: CardAction) => void
+}) {
+  const { t } = useI18n()
+  const linked = row.distributedAgents.length > 0 || row.distribution.length > 0
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          className="shrink-0"
+          aria-label={t('skills.menu.more')}
+        >
+          <Icon name="ellipsis" size={16} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => { onAction('detail') }}>{t('skills.menu.detail')}</DropdownMenuItem>
+        {row.hasUpdate && (
+          <DropdownMenuItem onSelect={() => { onAction('update') }}>{t('skills.menu.update')}</DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => { onAction('distribute') }}>{t('skills.menu.distribute')}</DropdownMenuItem>
+        {linked && (
+          <DropdownMenuItem onSelect={() => { onAction('undistribute') }}>{t('skills.menu.undistribute')}</DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => { onAction('archive') }}>{t('skills.menu.archive')}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => { onAction('categorize') }}>{t('skills.menu.categorize')}</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/** One filter pill (a shadcn Button wearing the house pill shape). */
+function FilterPill({ label, count, active, onToggle }: {
+  label: string
+  count: number
+  active: boolean
+  onToggle: () => void
+}) {
+  return (
+    <Button
+      size="xs"
+      variant={active ? 'secondary' : 'outline'}
+      aria-pressed={active}
+      onClick={onToggle}
+      className={cn('h-6 rounded-full px-2.5 gap-1.5 text-2xxs font-normal', !active && 'text-muted-foreground')}
+    >
+      {label}
+      <span className={cn('tabular-nums', !active && 'text-muted-foreground')}>{count}</span>
+    </Button>
+  )
+}
+
 export function LibraryView() {
   const { t, tf } = useI18n()
   const { skills, goNav, notify } = useSkillView()
@@ -161,7 +233,8 @@ export function LibraryView() {
   const updatableCount = updatableNames(rows).length
   const selectedRows = useMemo(() => rows.filter(row => isSelected(selection, row.name)), [rows, selection])
 
-  // Esc: the card menu, then the topmost sheet, else the selection mode.
+  // Esc: the row menu (radix closes it itself; this keeps the view-level
+  // priority), then the topmost sheet, else the selection mode.
   useEffect(() => {
     const onKeydown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
@@ -236,18 +309,16 @@ export function LibraryView() {
     })
   }
 
-  const viewButton = (mode: 'list' | 'grid'): React.JSX.Element => (
-    <button
-      type="button"
+  const viewToggle = (mode: 'list' | 'grid'): React.JSX.Element => (
+    <Button
+      size="icon-sm"
+      variant={view === mode ? 'secondary' : 'ghost'}
+      aria-label={mode === 'list' ? t('skills.view.list') : t('skills.view.grid')}
       aria-pressed={view === mode}
       onClick={() => { setView(mode) }}
-      className={cn(
-        'px-2.5 py-1 text-2xxs',
-        view === mode ? 'bg-secondary font-bold text-text' : 'text-muted-foreground hover:text-text',
-      )}
     >
-      {mode === 'list' ? t('skills.view.list') : t('skills.view.grid')}
-    </button>
+      <Icon name={mode === 'list' ? 'list' : 'grid'} size={14} />
+    </Button>
   )
 
   const rowProps = (row: RowState, status: RowStatus) => ({
@@ -255,23 +326,28 @@ export function LibraryView() {
     status,
     overview,
     checked: isSelected(selection, row.name),
+    tokens: skillResidentTokens(cost ?? null, row.name),
     menuOpen: menuFor === row.name,
-    onMenuToggle: () => { setMenuFor(current => (current === row.name ? null : row.name)) },
+    onMenuChange: (open: boolean): void => { setMenuFor(open ? row.name : null) },
     onAction: (action: CardAction): void => { openAction(action, [row.name]) },
     onSelectToggle: () => { setSelection(prev => toggleSelection(prev, row.name)) },
     onOpen: () => { setDetailSkill(row.name) },
   })
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* The house header (BM round) + the face's actions (add + view
-          toggle) moved up here — the body carries no more of them. */}
+    /* The view fills the keep-alive face: the virtual box (list / grid) runs
+       in document flow (`height="document"`) — the page scrolls, no inner
+       overflow box can trap the wheel — while the toolbar card stays pinned
+       below the title bar (the house `aek-sticky-panel-search` frosted
+       strip, the settings face's pattern). */
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      {/* The house header + the face's actions (add + the shadcn view toggle). */}
       <ViewHeader
         icon="bookOpenText"
         title={t('panel.skillsLibrary')}
         subtitle={(
           <span className="flex min-w-0 items-center gap-1.5">
-            <span className="min-w-0 truncate" title={skillsPath}>{t('skills.home')}: {formatDisplayPath(skillsPath, facts?.home, facts?.platform, pathStyle)}</span>
+            <span className="min-w-0 truncate" title={skillsPath}>{formatDisplayPath(skillsPath, facts?.home, facts?.platform, pathStyle)}</span>
             <button
               type="button"
               onClick={copyPath}
@@ -284,54 +360,64 @@ export function LibraryView() {
           </span>
         )}
       >
-        <Button size="sm" variant="secondary" onClick={() => { goNav({ view: 'add' }) }}>
-          <Icon name="plus" size={14} /><span className="ml-1">{t('skills.add')}</span>
+        <Button size="sm" onClick={() => { goNav({ view: 'add' }) }}>
+          <Icon name="plus" size={14} />
+          {t('skills.add')}
         </Button>
-        <div className="flex rounded-md border border-border">
-          {viewButton('list')}
-          {viewButton('grid')}
+        <div className="flex items-center gap-0.5 rounded-lg border border-border bg-secondary/40 p-0.5">
+          {viewToggle('list')}
+          {viewToggle('grid')}
         </div>
       </ViewHeader>
 
-      {/* Hub state: the three old scattered strips, merged into one card. */}
-      <PanelCard className="px-4 py-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
-          <span className="text-sm font-bold tabular-nums text-text">{tf('skills.stat.skills', { n: rows.length })}</span>
-          <span>{tf('status.agents', { n: overview.agents.length })}</span>
-          <span>{tf('skills.stat.updatable', { n: updatableCount })}</span>
-          {doctor.warnings.length === 0
-            ? <Badge variant="secondary" className="ml-auto text-2xxs">{t('skills.stat.healthy')}</Badge>
-            : <Badge variant="destructive" className="ml-auto text-2xxs">{tf('skills.stat.degraded', { n: doctor.warnings.length })}</Badge>}
-        </div>
+      {/* Hub state: counts + the update strip + the resident cost, one card. */}
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle className="font-bold tabular-nums text-text">{tf('skills.stat.skills', { n: rows.length })}</CardTitle>
+          <CardDescription className="text-xs">
+            {tf('status.agents', { n: overview.agents.length })} · {tf('skills.stat.updatable', { n: updatableCount })}
+          </CardDescription>
+          <CardAction>
+            {doctor.warnings.length === 0
+              ? <Badge variant="secondary" className="text-2xxs">{t('skills.stat.healthy')}</Badge>
+              : <Badge variant="destructive" className="text-2xxs">{tf('skills.stat.degraded', { n: doctor.warnings.length })}</Badge>}
+          </CardAction>
+        </CardHeader>
         {showUpdateStrip(updatableCount) && (
-          <div className="mt-2.5 flex items-center gap-3 border-t border-border pt-2.5">
-            <span className="text-xs font-bold text-accent-ink">{tf('skills.stat.updatable', { n: updatableCount })}</span>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="ml-auto"
-              disabled={skills.busy}
-              onClick={() => { void runWrite(t('skills.updateAll'), () => skills.update({ skills: updatableNames(rows) })) }}
-            >
-              {t('skills.updateAll')}
-            </Button>
-          </div>
+          <>
+            <Separator />
+            <CardContent className="flex items-center gap-3">
+              <span className="text-xs font-bold text-accent-ink">{tf('skills.stat.updatable', { n: updatableCount })}</span>
+              <Button
+                size="sm"
+                className="ml-auto"
+                disabled={skills.busy}
+                onClick={() => { void runWrite(t('skills.updateAll'), () => skills.update({ skills: updatableNames(rows) })) }}
+              >
+                <Icon name="refresh" size={14} />
+                {t('skills.updateAll')}
+              </Button>
+            </CardContent>
+          </>
         )}
         {showCostLine(cost ?? null) && cost !== undefined && caliber !== null && (
-          <div className={cn('flex flex-wrap items-center justify-between gap-2', showUpdateStrip(updatableCount) ? 'mt-2.5 border-t border-border pt-2.5' : '')}>
-            <span className="text-xs text-muted-foreground">
-              {t('skills.cost')}{' '}
-              <span className="text-base font-bold tabular-nums text-text">{formatApproxTokens(cost.totalTokens)}</span>{' '}
-              {t('skills.costUnit')}
-            </span>
-            {caliber.dirs > 0 && (
-              <span className="text-2xxs text-muted-foreground">
-                {tf('skills.costCaliber', { n: caliber.dirs, avg: formatApproxTokens(caliber.avg), max: formatApproxTokens(caliber.max) })}
+          <>
+            <Separator />
+            <CardContent className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">
+                {t('skills.cost')}{' '}
+                <span className="text-sm font-bold tabular-nums text-text">{formatApproxTokens(cost.totalTokens)}</span>{' '}
+                {t('skills.costUnit')}
               </span>
-            )}
-          </div>
+              {caliber.dirs > 0 && (
+                <span className="text-2xxs text-muted-foreground">
+                  {tf('skills.costCaliber', { n: caliber.dirs, avg: formatApproxTokens(caliber.avg), max: formatApproxTokens(caliber.max) })}
+                </span>
+              )}
+            </CardContent>
+          </>
         )}
-      </PanelCard>
+      </Card>
 
       {/* Not bootstrapped: the doctor hint, never a silent empty page */}
       {(!overview.bootstrapped || overview.distribution.status.outdated > 0) && (
@@ -352,76 +438,81 @@ export function LibraryView() {
         </div>
       )}
 
-      {/* The search + filter toolbar (one quiet card, pills inside) */}
-      <PanelCard className="flex flex-col gap-2 p-2.5">
-        <PanelSearch value={query} onChange={setQuery} placeholder={t('skills.search')} badge={String(filtered.length)} plain />
-        {(catPills.length > 0 || srcPills.length > 0) && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-2xxs font-bold text-muted-foreground">{t('skills.filter.category')}</span>
-            {catPills.map(pill => (
-              <button
-                key={pill.key}
-                type="button"
-                onClick={() => { togglePill(activeCats, pill.key, setActiveCats) }}
-                className={cn(
-                  'rounded-full border px-2 py-0.5 text-2xxs',
-                  activeCats.has(pill.key) ? 'border-primary bg-primary/10 font-bold text-text' : 'border-border text-muted-foreground hover:border-accent/40 hover:text-text',
-                )}
-              >
-                {pill.label} <span className="tabular-nums">{pill.count}</span>
-              </button>
-            ))}
-            {catPills.length > 0 && srcPills.length > 0 && <span className="h-3.5 w-px bg-border" />}
-            <span className="text-2xxs font-bold text-muted-foreground">{t('skills.filter.source')}</span>
-            {srcPills.map(pill => (
-              <button
-                key={pill.type}
-                type="button"
-                onClick={() => { togglePill(activeSrcs, pill.type, setActiveSrcs) }}
-                className={cn(
-                  'rounded-full border px-2 py-0.5 text-2xxs',
-                  activeSrcs.has(pill.type) ? 'border-primary bg-primary/10 font-bold text-text' : 'border-border text-muted-foreground hover:border-accent/40 hover:text-text',
-                )}
-              >
-                {pill.type} <span className="tabular-nums">{pill.count}</span>
-              </button>
-            ))}
-            {filtersActive && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="ml-auto h-6 px-2 text-2xxs"
-                onClick={() => { setActiveCats(new Set()); setActiveSrcs(new Set()) }}
-              >
-                {t('skills.filter.clear')}
-              </Button>
-            )}
+      {/* The search + filter toolbar — pinned below the title bar while the
+          page scrolls, the settings face's frosted `aek-sticky-panel-search`
+          strip (one quiet card, shadcn input + pills). */}
+      <Card size="sm" className="aek-sticky-panel-search">
+        <CardContent className="flex flex-col gap-2.5">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
+              <Icon name="search" size={14} />
+            </span>
+            <Input
+              value={query}
+              onChange={(e) => { setQuery(e.target.value) }}
+              onKeyDown={(e) => { if (e.key === 'Escape') setQuery('') }}
+              placeholder={t('skills.search')}
+              className="h-9 pl-8 pr-12 text-sm"
+            />
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2">
+              <Badge variant="secondary" className="tabular-nums text-2xxs">{filtered.length}</Badge>
+            </span>
           </div>
-        )}
-      </PanelCard>
+          {(catPills.length > 0 || srcPills.length > 0) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-2xxs font-bold text-muted-foreground">{t('skills.filter.category')}</span>
+              {catPills.map(pill => (
+                <FilterPill
+                  key={pill.key}
+                  label={pill.label}
+                  count={pill.count}
+                  active={activeCats.has(pill.key)}
+                  onToggle={() => { togglePill(activeCats, pill.key, setActiveCats) }}
+                />
+              ))}
+              {catPills.length > 0 && srcPills.length > 0 && <Separator orientation="vertical" className="h-4 w-px self-center" />}
+              <span className="text-2xxs font-bold text-muted-foreground">{t('skills.filter.source')}</span>
+              {srcPills.map(pill => (
+                <FilterPill
+                  key={pill.type}
+                  label={pill.type}
+                  count={pill.count}
+                  active={activeSrcs.has(pill.type)}
+                  onToggle={() => { togglePill(activeSrcs, pill.type, setActiveSrcs) }}
+                />
+              ))}
+              {filtersActive && (
+                <Button size="xs" variant="ghost" className="ml-auto" onClick={() => { setActiveCats(new Set()); setActiveSrcs(new Set()) }}>
+                  {t('skills.filter.clear')}
+                </Button>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* The selection bar */}
       {selection.active && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/40 bg-secondary/40 px-3.5 py-2.5">
-          <Badge variant="secondary">{selectionCount(selection)} {t('skills.selected')}</Badge>
-          <Button size="sm" variant="secondary" onClick={() => { openAction('distribute', [...selection.names]) }}>{t('skills.distribute')}</Button>
+          <Badge variant="secondary" className="tabular-nums text-2xxs">{selectionCount(selection)} {t('skills.selected')}</Badge>
+          <Button size="sm" variant="secondary" onClick={() => { openAction('distribute', [...selection.names]) }}><Icon name="users" size={14} />{t('skills.distribute')}</Button>
           <Button size="sm" variant="secondary" onClick={() => { openAction('undistribute', [...selection.names]) }}>{t('skills.undistribute')}</Button>
-          <Button size="sm" variant="secondary" onClick={() => { runSelectionWrite(t('skills.updateSelected'), () => skills.update({ skills: updatableNames(selectedRows) })) }}>{t('skills.updateSelected')}</Button>
+          <Button size="sm" variant="secondary" onClick={() => { runSelectionWrite(t('skills.updateSelected'), () => skills.update({ skills: updatableNames(selectedRows) })) }}><Icon name="refresh" size={14} />{t('skills.updateSelected')}</Button>
           <Button size="sm" variant="secondary" onClick={() => { openAction('archive', [...selection.names]) }}>{t('skills.batch.archive')}</Button>
           <Button size="sm" variant="secondary" onClick={() => { openAction('categorize', [...selection.names]) }}>{t('skills.batch.categorize')}</Button>
-          <Button size="sm" variant="ghost" onClick={() => { setSelection(exitSelection(selection)) }}>{t('skills.clearSelection')}</Button>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => { setSelection(exitSelection(selection)) }}>{t('skills.clearSelection')}</Button>
         </div>
       )}
 
       {/* The library body: virtual card rows (list) or virtual tiles */}
       {filtered.length === 0
-        ? <div className="flex flex-col items-center gap-2 py-10 text-center text-sm text-muted-foreground">{t('skills.empty')}</div>
+        ? <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center text-sm text-muted-foreground">{t('skills.empty')}</div>
         : view === 'list'
           ? (
             <VirtualList
               items={filtered}
               rowHeight={ROW_PITCH}
-              height={VIEW_HEIGHT}
+              height="document"
               renderRow={(index) => {
                 const row = filtered[index]
                 return (
@@ -437,7 +528,7 @@ export function LibraryView() {
             <VirtualGrid
               cols={3}
               items={filtered.map(row => row.name)}
-              height={VIEW_HEIGHT}
+              height="document"
               renderTile={(index) => {
                 const row = filtered[index]
                 return (
@@ -526,16 +617,35 @@ interface RowSlotProps {
   status: RowStatus
   overview: SkillsOverview
   checked: boolean
+  /** The skill's resident tokens in one agent context, or null when it is
+   *  not in the ledger (undistributed / ledger not loaded yet). */
+  tokens: number | null
   menuOpen: boolean
-  onMenuToggle: () => void
+  onMenuChange: (open: boolean) => void
   onAction: (action: CardAction) => void
   onSelectToggle: () => void
   onOpen: () => void
 }
 
-/** One virtual slot's 80px card row (the 8px pitch gap stays below it). */
-function SkillRowView({ row, status, overview, checked, menuOpen, onMenuToggle, onAction, onSelectToggle, onOpen }: RowSlotProps) {
+/** The per-skill resident footprint badge: what the skill's session-catalog
+ *  line (name + capped description) occupies in one agent context, with the
+ *  counting caliber on hover. */
+function SkillCostBadge({ tokens }: { tokens: number }) {
   const { t } = useI18n()
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <Badge variant="ghost" className="shrink-0 tabular-nums text-2xxs">
+          {formatApproxTokens(tokens)} {t('skills.costUnit')}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent>{t('skills.skillCost')}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+/** One virtual slot's 80px card row (the 8px pitch gap stays below it). */
+function SkillRowView({ row, status, overview, checked, tokens, menuOpen, onMenuChange, onAction, onSelectToggle, onOpen }: RowSlotProps) {
   const dots = agentDots(overview.agents, row.distributedAgents)
   return (
     <div className={cn(
@@ -543,44 +653,32 @@ function SkillRowView({ row, status, overview, checked, menuOpen, onMenuToggle, 
       checked && 'border-primary/50 bg-secondary/30',
     )}>
       <div className="flex items-center gap-2.5">
-        <input
-          type="checkbox"
-          className="h-4 w-4 shrink-0 accent-primary"
+        <Checkbox
           checked={checked}
-          onChange={onSelectToggle}
-          onClick={(e) => { e.stopPropagation() }}
+          onCheckedChange={onSelectToggle}
           aria-label={row.name}
         />
         <span className={cn('h-2 w-2 shrink-0 rounded-full', statusDotClass(status))} />
-        <button type="button" onClick={onOpen} className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-text">
+        <button type="button" onClick={onOpen} className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-text hover:underline">
           {row.title || row.name}
         </button>
         <RowBadges row={row} status={status} />
-        <button
-          type="button"
-          aria-label={t('skills.menu.more')}
-          aria-expanded={menuOpen}
-          onClick={(e) => { e.stopPropagation(); onMenuToggle() }}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sm text-muted-foreground hover:bg-secondary hover:text-text"
-        >
-          ⋯
-        </button>
+        <RowMenu row={row} open={menuOpen} onOpenChange={onMenuChange} onAction={onAction} />
       </div>
       <div className="flex items-center gap-2 pl-11 pr-11">
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
           {row.description !== '' ? row.description : row.name}
         </span>
+        {tokens !== null && <SkillCostBadge tokens={tokens} />}
         <AgentDotRow dots={dots} />
         <SourceChip row={row} />
       </div>
-      {menuOpen && <CardMenu row={row} onAction={onAction} onClose={onMenuToggle} />}
     </div>
   )
 }
 
 /** One virtual grid tile (VirtualGrid's fixed h-24 contract). */
-function SkillTileView({ row, status, overview, checked, menuOpen, onMenuToggle, onAction, onSelectToggle, onOpen }: RowSlotProps) {
-  const { t } = useI18n()
+function SkillTileView({ row, status, overview, checked, tokens, menuOpen, onMenuChange, onAction, onSelectToggle, onOpen }: RowSlotProps) {
   const dots = agentDots(overview.agents, row.distributedAgents)
   return (
     <div className={cn(
@@ -588,71 +686,26 @@ function SkillTileView({ row, status, overview, checked, menuOpen, onMenuToggle,
       checked && 'border-primary/50 bg-secondary/30',
     )}>
       <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          className="h-3.5 w-3.5 shrink-0 accent-primary"
+        <Checkbox
           checked={checked}
-          onChange={onSelectToggle}
+          onCheckedChange={onSelectToggle}
           aria-label={row.name}
         />
         <span className={cn('h-2 w-2 shrink-0 rounded-full', statusDotClass(status))} />
         <button type="button" onClick={onOpen} className="min-w-0 flex-1 truncate text-left text-xs font-bold text-text hover:underline">
           {row.title || row.name}
         </button>
-        <button
-          type="button"
-          aria-label={t('skills.menu.more')}
-          aria-expanded={menuOpen}
-          onClick={(e) => { e.stopPropagation(); onMenuToggle() }}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sm text-muted-foreground hover:bg-secondary hover:text-text"
-        >
-          ⋯
-        </button>
+        <RowMenu row={row} open={menuOpen} onOpenChange={onMenuChange} onAction={onAction} />
       </div>
       <div className="line-clamp-2 text-xs text-muted-foreground">
         {row.description !== '' ? row.description : row.name}
       </div>
       <div className="mt-auto flex items-center gap-2">
         <RowBadges row={row} status={status} />
+        {tokens !== null && <SkillCostBadge tokens={tokens} />}
         <AgentDotRow dots={dots} />
         <span className="ml-auto"><SourceChip row={row} /></span>
       </div>
-      {menuOpen && <CardMenu row={row} onAction={onAction} onClose={onMenuToggle} />}
     </div>
-  )
-}
-
-/** One card / row's overflow menu (the reference's CardActionMenu, our own). */
-function CardMenu({ row, onAction, onClose }: {
-  row: RowState
-  onAction: (action: CardAction) => void
-  onClose: () => void
-}) {
-  const { t } = useI18n()
-  const linked = row.distributedAgents.length > 0 || row.distribution.length > 0
-  const items: Array<{ action: CardAction; label: string; show: boolean }> = [
-    { action: 'detail', label: t('skills.menu.detail'), show: true },
-    { action: 'update', label: t('skills.menu.update'), show: row.hasUpdate },
-    { action: 'distribute', label: t('skills.menu.distribute'), show: true },
-    { action: 'undistribute', label: t('skills.menu.undistribute'), show: linked },
-    { action: 'archive', label: t('skills.menu.archive'), show: true },
-    { action: 'categorize', label: t('skills.menu.categorize'), show: true },
-  ]
-  return (
-    <>
-      <div className="fixed inset-0 z-30" onClick={onClose} />
-      <div className="absolute right-0 top-full z-40 mt-1 flex min-w-32 flex-col rounded-md border border-border bg-background py-1 shadow-md">
-        {items.filter(item => item.show).map(item => (
-          <button
-            key={item.action}
-            type="button"
-            onClick={() => { onAction(item.action) }}
-            className="flex items-center gap-2 px-3 py-1.5 text-left text-xs text-text hover:bg-secondary"
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-    </>
   )
 }

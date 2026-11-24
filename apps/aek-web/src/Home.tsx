@@ -482,7 +482,11 @@ function Console() {
               // gate uses it.
               const active = renderId === panelRenderIdOf(panel)
               return (
-                <div key={renderId} className={renderId === 'art' ? 'h-full' : undefined} style={{ display: active ? 'block' : 'none' }}>
+                /* The art gallery AND the skills faces pin to the full content
+                 height: their virtual list / grid stretches to the window
+                 bottom instead of a fixed 420px, so main's bottom padding is
+                 the only space left below the content (no dead band). */
+                <div key={renderId} className={renderId === 'art' || renderId === 'skills' ? 'h-full' : undefined} style={{ display: active ? 'block' : 'none' }}>
                   {renderPanelContent(renderId as PanelId)}
                 </div>
               )

@@ -202,7 +202,10 @@ export type DistributionHealth = {
   leftoverViews: boolean
 }
 
-/** One managed skill's resident cost on one physical runtime path (ADR-0018). */
+/** One managed skill's resident cost on one physical runtime path (ADR-0018).
+ *  Counted in the session-catalog form — the line tool-skill puts in every
+ *  message: `name` plus the whitespace-normalized, 500-char-capped
+ *  `description` (the SKILL.md body loads on demand and is not counted). */
 export type CostSkillLine = {
   skill: string
   tokens: number
