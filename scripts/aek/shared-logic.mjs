@@ -78,6 +78,16 @@ export function dualTreeLayout(root) {
   return { dev: root, stable, operating: 'dev' }
 }
 
+/**
+ * The two-tree layout rooted at THIS script's tree (the tree the caller runs
+ * from), in both directions: `dualTreeLayout` from a stable tree yields its
+ * main worktree, and from the dev tree yields the linked stable worktree.
+ * @returns {{dev: string, stable: string|null, operating: 'dev'|'stable'}}
+ */
+export function repoTreeRoots() {
+  return dualTreeLayout(PROJECT_ROOT)
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 // Ports are injected per slot by scripts/aek/launch.mjs (AEK 1685/1686, Next
 // 1687/1688). When the env is unset (direct invocation / packaged app opened
@@ -1336,6 +1346,42 @@ export function distAppPath(slot = 'aek') {
 }
 
 /**
+ * EVERY packaged `.app` electron-builder left under `dist/<slot>/`, across
+ * ALL arch output dirs. The builder config's `arch: ['x64','arm64']` writes
+ * the x64 half to `dist/<slot>/mac/` and the arm64 half to
+ * `dist/<slot>/mac-arm64/`, so the single canonical path of `distAppPath`
+ * misses the other half — and a leftover `<product>.app` in ANY visible
+ * path is a duplicate app that Spotlight lists next to the installed one
+ * (the 复盘 §200 duplicate; user principle m02053: one app per slot,
+ * never a second entry in Spotlight/Finder).
+ *
+ * @param {string} slot - 'aek' | 'next' (or a registered lane).
+ * @param {string} [root] - repo root to scan (defaults to this script's tree;
+ *   pass the stable tree's root to audit IT, which this tree's own prune
+ *   never reaches).
+ * @returns {string[]} existing `.app` bundles under `dist/<slot>/`
+ *   (depth 3: `dist/<slot>/<arch-dir>/<name>.app`).
+ */
+export function distAppBundles(slot = 'aek', root = PROJECT_ROOT) {
+  // dist lives under the desktop app, not the repo root:
+  // <tree>/apps/aek-desktop/v0/dist/<slot>/<arch-dir>/*.app
+  const slotDir = join(root, 'apps', 'aek-desktop', 'v0', 'dist', slot)
+  const found = []
+  let archDirs
+  try { archDirs = readdirSync(slotDir, { withFileTypes: true }) } catch { return found }
+  for (const arch of archDirs) {
+    if (!arch.isDirectory() || arch.name.startsWith('.')) continue
+    let names
+    try { names = readdirSync(join(slotDir, arch.name)) } catch { continue }
+    for (const name of names) {
+      const p = join(slotDir, arch.name, name)
+      if (name.endsWith('.app') && existsSync(p)) found.push(p)
+    }
+  }
+  return found
+}
+
+/**
  * Is the packaged app for this slot up to date?
  *
  * "Up to date" needs a WITNESS bundle that really exists: either the freshly
@@ -1369,14 +1415,24 @@ export function isBuildFresh(slot = 'aek') {
  * So the only reliable fix is: the dist bundle is a transient artifact and is
  * removed right after a verified install.
  *
+ * The prune is ARCH-AGNOSTIC: it removes every `.app` under
+ * `dist/<slot>/` (see `distAppBundles`), not just the canonical
+ * `mac-arm64` one — a single-dir prune left the x64 half behind and that
+ * half was exactly the Spotlight duplicate (复盘 §200 坑 131).
+ *
  * @param {string} slot - 'aek' | 'next'.
- * @returns {boolean} true when a bundle was removed.
+ * @param {string} [root] - repo root to prune (defaults to this script's
+ *   tree; the STABLE tree's dist is pruned with `pruneDistApp(slot, STABLE_DIR)`
+ *   because this tree's scripts never reach it otherwise).
+ * @returns {boolean} true when at least one bundle was removed.
  */
-export function pruneDistApp(slot = 'aek') {
-  const app = distAppPath(slot)
-  if (!existsSync(app)) return false
-  rmSync(app, { recursive: true, force: true })
-  return true
+export function pruneDistApp(slot = 'aek', root = PROJECT_ROOT) {
+  let removed = false
+  for (const app of distAppBundles(slot, root)) {
+    rmSync(app, { recursive: true, force: true })
+    removed = true
+  }
+  return removed
 }
 
 /**

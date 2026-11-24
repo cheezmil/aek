@@ -63,7 +63,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { get as httpGet } from 'node:http'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { listenPids, SLOTS, slotHome, dualTreeLayout, isBuildFresh, slotWebUp } from './shared-logic.mjs'
+import { listenPids, SLOTS, slotHome, dualTreeLayout, isBuildFresh, slotWebUp, pruneDistApp } from './shared-logic.mjs'
 import { buildFlagsEnv } from './build-flags.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -525,6 +525,17 @@ git(['checkout', TARGET], STABLE_DIR)
 console.log(`[release] stable 树已钉 ${TARGET}`)
 
 bootstrap(STABLE_DIR)
+
+// Prune EVERY dist .app left in the STABLE tree (all arch halves — the x64
+// half `dist/<slot>/mac/` was the one the old single-path prune missed,
+// 复盘 §200 坑 131/132). The stable tree is where release builds happen, and
+// its dist copies had no cleanup flow, so an 8-day-old 0.1.0 .app survived
+// in a Spotlight-indexed path (user principle m02053: one app per slot).
+for (const s of Object.keys(SLOTS)) {
+  if (pruneDistApp(s, STABLE_DIR)) {
+    console.log(`[release] stable 树 dist 里的 ${s} .app 副本已清理（全 arch）`)
+  }
+}
 
 if (SKIP_SMOKE) {
   console.warn(`[release] 冒烟被 --skip-smoke 跳过（门禁已削弱，请知悉）`)

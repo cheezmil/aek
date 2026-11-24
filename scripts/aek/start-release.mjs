@@ -99,19 +99,25 @@ if (isBuildFresh(slot)) {
   packageApp(slot)
 }
 
-// Install only when we actually produced a bundle in this run. A fresh build
-// may also mean "already installed" (the dist copy is pruned after install, see
-// pruneDistApp), in which case re-installing has no source and would abort.
+// Install only when we actually have a bundle to install. A fresh build may
+// also mean "already installed" (the dist copy is pruned after install, see
+// pruneDistApp below), in which case re-installing has no source and would
+// abort.
 if (existsSync(distAppPath(slot))) {
   if (!installApp(slot)) {
     console.error('[start] install failed, aborting')
     process.exit(1)
   }
-  if (pruneDistApp(slot)) {
-    console.log('[start] dist 里的 .app 副本已清理 — Spotlight 只保留 ~/Applications 里的一个')
-  }
 } else {
   console.log('[start] 没有新的打包产物，沿用 ~/Applications 里已安装的版本')
+}
+
+// Remove EVERY dist .app copy (all arch halves), not just the canonical one:
+// a leftover x64 half in `dist/<slot>/mac/` was the duplicate app Spotlight
+// listed next to the installed one (复盘 §200 坑 131 — the old prune only
+// removed `mac-arm64`, so `mac/` survived every build; user principle m02053).
+if (pruneDistApp(slot)) {
+  console.log('[start] dist 里的 .app 副本已清理（全 arch）— Spotlight 只保留 ~/Applications 里的一个')
 }
 
 const web = spawnWebServerForSlot(slot)

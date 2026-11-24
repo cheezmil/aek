@@ -3,7 +3,9 @@
  * Spotlight audit for the AEK desktop apps.
  *
  * Spotlight (and Finder) list EVERY `<product>.app` on the volume, so a
- * leftover build artifact under `apps/aek-desktop/v0/dist/` shows up as a
+ * leftover build artifact under EITHER tree's `apps/aek-desktop/v0/dist/`
+ * (the dev tree AND the stable/release tree, where release builds run and
+ * whose leftovers had no cleanup flow — 复盘 §200 坑 132) shows up as a
  * second "AEK" / "AEK Next" next to the installed one. This script answers
  * "what does the system currently see, and which of those is a duplicate?"
  * in one command instead of hand-running `mdfind` / `PlistBuddy` / `mv`.
@@ -27,16 +29,22 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { basename, dirname, join, sep } from 'node:path'
 import {
-  APP_ROOT,
   SLOTS,
   slotConfig,
   prodAppDirForSlot,
   pruneDistApp,
-  distAppPath,
+  repoTreeRoots,
 } from './shared-logic.mjs'
 
 const AEK_BUNDLE_PREFIX = 'com.aek.'
-const DIST_ROOT = join(APP_ROOT, 'dist')
+// EVERY tree's build output counts as a "repo build copy": the dev tree's dist
+// AND the stable tree's dist (复盘 §200 坑 132 — release builds run in the
+// stable tree and its leftovers had no cleanup flow, so a stale 0.1.0 .app
+// sat in a Spotlight-indexed path for 8 days).
+const { dev: DEV_TREE, stable: STABLE_TREE } = repoTreeRoots()
+const DIST_ROOTS = [DEV_TREE, STABLE_TREE]
+  .filter(Boolean)
+  .map(tree => join(tree, 'apps', 'aek-desktop', 'v0', 'dist'))
 
 const rest = process.argv.slice(2)
 const asJson = rest.includes('--json')
@@ -114,18 +122,21 @@ function candidateBundles() {
   } catch {
     // mdfind missing or indexing disabled — the direct scans below still work.
   }
-  for (const app of scanForApps(DIST_ROOT, 3)) found.add(app)
+  // depth 3 reaches `dist/<slot>/<arch-dir>/<App>.app` in BOTH trees.
+  for (const root of DIST_ROOTS) {
+    for (const app of scanForApps(root, 3)) found.add(app)
+  }
   for (const app of scanForApps(dirname(prodAppDirForSlot('aek')), 0)) found.add(app)
   return [...found]
 }
 
 /**
- * Is this path inside the repo's build output directory?
+ * Is this path inside either tree's build output directory?
  * @param p - absolute path.
- * @returns {boolean} true when the path lives under `<repo>/dist`.
+ * @returns {boolean} true when the path lives under some tree's `dist/`.
  */
 function isBuildArtifactPath(p) {
-  return p === DIST_ROOT || p.startsWith(DIST_ROOT + sep)
+  return DIST_ROOTS.some(r => p === r || p.startsWith(r + sep))
 }
 
 /**
@@ -214,13 +225,16 @@ if (!asJson) {
 
 if (confirmed && plan.length > 0) {
   for (const item of plan) {
-    // pruneDistApp owns the canonical path (and documents why the copy must
-    // go); a stale slot layout is removed the same way so it cannot survive.
-    const canonical = item.path === distAppPath(item.slot)
+    // The copy lives in WHATEVER tree's dist/ it was found in — prune that
+    // tree (pruneDistApp(slot, root) is arch-agnostic: it removes every
+    // arch half of the slot in that tree, so the x64 half cannot survive an
+    // arm64 prune, 复盘 §200 坑 131/132). A dist artifact the tree's
+    // distAppBundles does not describe is removed on its own.
+    const tree = DIST_ROOTS.find(r => item.path === r || item.path.startsWith(r + sep))
     let done = false
     try {
-      if (canonical) done = pruneDistApp(item.slot)
-      else if (existsSync(item.path)) { rmSync(item.path, { recursive: true, force: true }); done = true }
+      if (tree) done = pruneDistApp(item.slot, tree)
+      if (!done && existsSync(item.path)) { rmSync(item.path, { recursive: true, force: true }); done = true }
     } catch (err) {
       console.error(`[spotlight] delete failed for ${item.path}: ${String(err.message).split('\n')[0]}`)
     }

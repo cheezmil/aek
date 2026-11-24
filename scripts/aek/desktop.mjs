@@ -34,6 +34,7 @@ import {
   installDevBundle,
   pruneDistApp,
   distAppPath,
+  distAppBundles,
   killSlot,
   slotShellPids,
   slotShellKind,
@@ -221,7 +222,10 @@ if (command === 'prune') {
       process.exit(2)
     }
   }
-  const leftover = names.map(name => ({ name, path: distAppPath(name) })).filter(e => existsSync(e.path))
+  // EVERY arch dir, not just the canonical mac-arm64 one (复盘 §200 坑 131):
+  // the x64 half `dist/<slot>/mac/<App>.app` was the leftover that survived
+  // single-path prunes and surfaced in Spotlight as a duplicate.
+  const leftover = names.flatMap(name => distAppBundles(name).map(path => ({ name, path })))
   if (leftover.length === 0) {
     console.log('[prune] no leftover dist .app copies — nothing to do')
     process.exit(0)
@@ -231,8 +235,11 @@ if (command === 'prune') {
     console.error('[prune] pass --yes to delete these build artifacts')
     process.exit(2)
   }
+  const pruned = new Set()
   for (const entry of leftover) {
-    if (pruneDistApp(entry.name)) console.log(`[prune] deleted ${entry.name}: ${entry.path}`)
+    if (pruned.has(entry.name)) continue
+    pruned.add(entry.name)
+    if (pruneDistApp(entry.name)) console.log(`[prune] deleted ${entry.name}: ${leftover.filter(e => e.name === entry.name).map(e => e.path).join(', ')}`)
   }
   process.exit(0)
 }
