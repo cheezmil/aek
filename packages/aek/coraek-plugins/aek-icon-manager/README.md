@@ -1,8 +1,7 @@
 # @cheezmil/aek-icon-manager (`aekim`)
 
-The icon manager of the AEK frontend — IV round. A2 local-only dev
-capability, never published (`private: true` + `aek.distribution: A2`,
-excluded from every npm / release publish path).
+The icon manager of the AEK frontend — IV round. Public dev capability
+(`aek.distribution: A1`, part of the npm / release publish set).
 
 ## Why it exists
 

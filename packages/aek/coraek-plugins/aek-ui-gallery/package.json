@@ -1,6 +1,6 @@
 {
   "name": "@cheezmil/aek-ui-gallery",
-  "description": "shadcn/ui 全组件风格画廊：在线预览整套 shadcn/ui 组件，挑选并套用一套整站 UI 风格",
+  "description": "组件风格画廊：在线预览整套组件与整站 UI 主题风格，挑选一套并套用到控制台界面",
   "version": "0.1.0",
   "type": "module",
   "main": "lib/index.mjs",
@@ -30,7 +30,7 @@
     "type": "dsh-plugin",
     "cordis": true,
     "dsh": false,
-    "description": "shadcn/ui component gallery: preview the full shadcn/ui component set and apply one UI style across the whole console",
+    "description": "Component style gallery: preview the full component set and whole-app UI theme styles, and apply one style across the console",
     "distribution": "A1",
     "bucket": "plugins"
   },

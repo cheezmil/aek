@@ -1,9 +1,8 @@
 {
   "name": "@cheezmil/aek-icon-manager",
-  "description": "aekim — list / inspect / copy the AEK frontend icon registry for agent handoff (A2 local-only dev capability).",
+  "description": "aekim — list / inspect / copy the AEK frontend icon registry for agent handoff.",
   "version": "0.1.0",
   "type": "module",
-  "private": true,
   "bin": {
     "aekim": "bin/aekim.mjs",
     "aek-icon-manager": "bin/aekim.mjs"
@@ -13,17 +12,16 @@
     "data/",
     "README.md"
   ],
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "aek": {
     "type": "cli",
     "cli": {
       "name": "aekim",
       "bin": "bin/aekim.mjs"
     },
-    "distribution": "A2",
-    "localOnly": true,
+    "distribution": "A1",
     "cordis": false,
     "dsh": false,
-    "description": "aekim — the icon manager: list / inspect / bulk-copy the AEK frontend icon registry (data/icons.json, generated from apps/aek-web/src/Icons.tsx) so a user can point the exact icons at an agent. A2 local-only; never published."
+    "description": "aekim — the icon manager: list / inspect / bulk-copy the AEK frontend icon registry (data/icons.json, generated from apps/aek-web/src/Icons.tsx) so a user can point the exact icons at an agent."
   }
 }
