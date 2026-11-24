@@ -102,9 +102,30 @@ describe('nav-model R2 round: the second-level rail contract', () => {
   })
 
   it('plain panels render themselves', () => {
-    for (const id of ['runtime', 'websearch', 'settings', 'about', 'skillsSettings'] as const) {
+    // BQ13 round: 'runtime' left this list — the family root now owns NO
+    // page of its own (`rendersAs`); 'runtimeRuntimes' / 'runtimePlugins'
+    // joined it (their anchor tabs were promoted to different pages).
+    for (const id of ['websearch', 'settings', 'about', 'skillsSettings', 'runtimeRuntimes', 'runtimePlugins'] as const) {
       expect(panelRenderIdOf(id)).toBe(id)
       expect(panelAnchorOf(id)).toBeUndefined()
     }
+  })
+
+  it('BQ13 round: the 插件与程序管理 root renders its 插件与程序 page', () => {
+    // The synthetic "{name}首页" row was deleted (noHome) and the former
+    // composed page was split into one page per second-level row: landing on
+    // the root shows the 插件与程序 roster instead — one content tree, not a
+    // twin (keep-alive dedupes on the render id).
+    expect(panelRenderIdOf('runtime')).toBe('runtimePlugins')
+    expect(panelAnchorOf('runtime')).toBeUndefined()
+    const runtime = NAV.find(entry => entry.id === 'runtime')
+    expect(runtime?.noHome).toBe(true)
+    expect(subEntriesOf('runtime').map(entry => entry.id)).toEqual(['runtimeRuntimes', 'runtimePlugins'])
+    for (const entry of subEntriesOf('runtime')) expect(entry.anchor).toBeUndefined()
+  })
+
+  it('BQ13 round: the 社区插件管理 page is gone (its bucket stays in the roster)', () => {
+    expect(NAV.map(entry => entry.id)).not.toContain('community')
+    expect(NAV.map(entry => entry.id)).not.toContain('runtimeInfo')
   })
 })

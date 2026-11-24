@@ -191,7 +191,6 @@ import { RuntimesBlock, fmtBytes } from './RuntimesPanel.tsx'
 /** Panels handled here. */
 export type InfoPanelId = 'plugins' | 'settings' | 'websearchSettings' | 'about'
   | 'skillsSettings' | 'promptsSettings' | 'iconsSettings' | 'artSettings'
-  | 'community'
 
 /** Host routes. */
 const PLUGIN_ACTION_API = '/api/aek/plugins/action'
@@ -2022,116 +2021,12 @@ export function PluginsPanel({ refreshSignal }: { refreshSignal: number }) {
  * ONLY the GitHub link and a thank-you line — the desktop version row (and
  * everything before it) was removed. The 系统信息 section of the composed
  * 插件与程序管理 page was deleted the same round, so the 关于 page is now
-/**
- * BQ11 round (2026-11-24): the 社区插件管理 page — the community bucket's own
- * surface (nav entry under 其他). Third-party coraek plugins install into
- * `packages/aek/community-coraek-plugins` and are managed here: the roster is
- * the console-facts plugin list filtered to that bucket, each row carrying the
- * same version / class / origin chips and a power switch wired to the very
- * same `/api/aek/plugins/action` protocol as the 插件与程序管理 roster (a
- * community plugin is an ordinary coraek plugin once installed — no second
- * wire format). Empty for now, so the honest empty state is the main view.
- */
-export function CommunityPluginsPanel({ refreshSignal }: { refreshSignal: number }) {
-  const { t } = useI18n()
-  const facts = useConsoleFacts(60_000)
-  useEffect(() => {
-    if (refreshSignal > 0) facts.refresh()
-  }, [refreshSignal, facts.refresh])
-  const [notice, setNotice] = useState<{ message: string; tone: 'success' | 'error' } | undefined>(undefined)
-  const items = (facts.facts?.plugins ?? []).filter(plugin => plugin.bucket === 'community')
-
-  /** @param id - plugin directory name. @param enabled - requested state. */
-  const toggle = (id: string, enabled: boolean): void => {
-    setNotice(undefined)
-    void fetch(PLUGIN_ACTION_API, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id, action: enabled ? 'enable' : 'disable' }),
-    })
-      .then(async response => await response.json() as { status?: string; message?: string; reason?: string })
-      .then((data) => {
-        setNotice({ message: `${displayName(id)} · ${data.status ?? data.message ?? data.reason ?? 'ok'}`, tone: 'success' })
-      })
-      .catch((cause: unknown) => {
-        setNotice({ message: cause instanceof Error ? cause.message : String(cause), tone: 'error' })
-      })
-      .finally(() => {
-        facts.refresh()
-      })
-  }
-
-  return (
-    <PanelCard>
-      <div className={CARD_BODY}>
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-2">
-            <Icon name="globe" size={18} />
-            <span className="text-sm font-semibold">{t('panel.community')}</span>
-          </div>
-          {items.length === 0
-            ? (
-              <div className={EMPTY_STATE}>
-                <p className="m-0 max-w-120 text-center text-xs-plus leading-5">
-                  {t('plugins.community.empty')}
-                  <br />
-                  {t('plugins.community.hint')}
-                </p>
-              </div>
-            )
-            : (
-              <ul className="m-0 flex flex-col gap-1.5 list-none p-0">
-                {items.map(plugin => (
-                  <li key={plugin.id}>
-                    <Card size="lg" className="shadow-none">
-                      <CardContent className="flex flex-col gap-2">
-                        <div className="mb-0 flex items-start gap-3">
-                          <span className={FEATURE_ICON}><Icon name={bucketIconOf('community')} size={18} /></span>
-                          <div className="flex flex-auto min-w-0 flex-col gap-1.5 pr-2">
-                            <div className={FEATURE_TITLE}>
-                              <span className={FEATURE_TITLE_NAME}>{displayName(plugin.packageName)}</span>
-                              <CopyButton value={plugin.packageName} size={12} label={t('common.copy')} className={FEATURE_COPY} />
-                            </div>
-                            <div className={FEATURE_TEXT}>
-                              <Badge variant="secondary" className="tabular-nums">{plugin.version}</Badge>
-                              <ClassChip distribution={plugin.distribution} t={t} />
-                              {plugin.origin !== undefined ? <OriginChip origin={plugin.origin} t={t} /> : null}
-                            </div>
-                            {plugin.description !== ''
-                              ? <div className={FEATURE_DESC}>{plugin.description}</div>
-                              : null}
-                          </div>
-                          <div className={PLUGIN_ACTIONS_GRID}>
-                            <ToggleSwitch
-                              checked={plugin.enabled}
-                              onChange={(next) =>{  toggle(plugin.id, next) }}
-                              label={plugin.enabled ? t('plugins.switch.on') : t('plugins.switch.off')}
-                            />
-                          </div>
-                        </div>
-                        <CapabilityTags caps={plugin.capabilities} />
-                      </CardContent>
-                    </Card>
-                  </li>
-                ))}
-              </ul>
-            )}
-          {notice !== undefined
-            ? (
-              <p className={cn(NOTICE_LINE, notice.tone === 'success' ? NOTICE_SUCCESS : NOTICE_ERROR)} role="status">
-                <Icon name={notice.tone === 'success' ? 'check' : 'alert'} size={14} />
-                <span>{notice.message}</span>
-              </p>
-            )
-            : null}
-        </div>
-      </div>
-    </PanelCard>
-  )
-}
-
-/**
  * the AboutPanel's only surface.
+ *
+ * BQ13 round (2026-11-24): the former 社区插件管理 page was deleted on user
+ * demand — the community BUCKET renders inside the 插件与程序 page's roster
+ * instead (BUCKET_ORDER below), so this panel type lost its 'community'
+ * member and the standalone CommunityPluginsPanel.
  */
 export function AboutPanel() {
   const { t } = useI18n()
@@ -2176,8 +2071,8 @@ export function InfoPanels({ panel, refreshSignal }: InfoPanelsProps) {
   if (panel === 'promptsSettings') return <PromptsSettingsPanel refreshSignal={refreshSignal} />
   if (panel === 'iconsSettings') return <IconsSettingsPanel refreshSignal={refreshSignal} />
   if (panel === 'artSettings') return <ArtSettingsPanel refreshSignal={refreshSignal} />
-  // BQ11 round: the 社区插件管理 page (the community bucket's own surface).
-  if (panel === 'community') return <CommunityPluginsPanel refreshSignal={refreshSignal} />
+  // BQ13 round: the 社区插件管理 dispatch was deleted with its page — the
+  // community bucket now renders inside the 插件与程序 roster (PluginsPanel).
   // M round: the 关于 page was a stub (its content moved to 插件与程序管理).
   // R2 round (2026-11-18): only the desktop version number; BQ11 round
   // (2026-11-24): the version row is gone too — the page carries ONLY the

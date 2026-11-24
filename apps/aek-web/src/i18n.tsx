@@ -133,11 +133,9 @@ const ZH: Record<string, string | undefined> = {
   // BO round ⑪: the favorites-group CRUD surface (groups are add / rename /
   // delete / read; items are assignable to, and removable from, any group).
   'panel.about': '关于',
-  // BQ11 round (2026-11-24): the 社区插件管理 entry (the community bucket's
-  // own page under 其他 — third-party coraek plugins, empty for now).
-  'panel.community': '社区插件管理',
-  'plugins.community.empty': '还没有社区插件——这个区域为第三方 coraek 插件预留（packages/aek/community-coraek-plugins）',
-  'plugins.community.hint': '社区插件由第三方开发者贡献，安装后在此处统一管理',
+  // BQ13 round (2026-11-24): the 社区插件管理 page and its 3 keys were
+  // deleted with it — the community BUCKET (plugins.bucket.community, kept)
+  // now renders inside the 插件与程序 roster instead.
   // BQ11 round (2026-11-24): the About page carries ONLY the GitHub link and
   // this thank-you line (the version row and everything before it is gone).
   'panel.about.thanks': '感谢使用',
@@ -774,9 +772,8 @@ const EN: Record<string, string> = {
   // (charts / forms / tables), self-drawn on plain theme tokens (P16).
   // BO round ⑪: the favorites-group CRUD surface (mirrors the zh block).
   'panel.about': 'About',
-  'panel.community': 'Community plugins',
-  'plugins.community.empty': 'No community plugins yet — this area is reserved for third-party coraek plugins (packages/aek/community-coraek-plugins)',
-  'plugins.community.hint': 'Community plugins are contributed by third-party developers; once installed they are managed here',
+  // BQ13 round (2026-11-24): the 3 社区插件管理 keys were deleted with the
+  // page (the community bucket renders inside the 插件与程序 roster now).
   // BQ11 round (2026-11-24): the About page carries ONLY the GitHub link and
   // this thank-you line.
   'panel.about.thanks': 'Thank you for using AEK',

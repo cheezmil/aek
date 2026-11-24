@@ -45,17 +45,15 @@ export type PanelId = 'runtime' | 'websearch' | 'plugins' | 'skills' | 'prompts'
   // the family home row. The preset + 全局工作区 sections are rail extras
   // filled by the panel (rail-extras.ts), not flat rows.
   | 'skillsLibrary' | 'skillsBackup'
-  // R2 round: the second-level rail of the 插件与程序管理 page — one tab
-  // per section of the composed page (an in-page POSITION, not a new page).
-  | 'runtimeRuntimes' | 'runtimePlugins' | 'runtimeInfo'
+  // BQ13 round (2026-11-24): the 插件与程序管理 family's second-level rows
+  // are now one page each (the former composed page was split) — '运行实例'
+  // and '插件与程序' are DIFFERENT-PAGE routes (no in-page position).
+  | 'runtimeRuntimes' | 'runtimePlugins'
   // R2 round: the second-level rail of the 基础设置 page — one tab per
   // settings section (in-page position).
   | 'settingsSidebarFirst' | 'settingsSidebarSecond' | 'settingsNavigation'
   | 'settingsGeneral' | 'settingsAccess' | 'settingsPermissions' | 'settingsDefaults' | 'settingsMotion'
   | 'settings' | 'about'
-  // BQ11 round (2026-11-24): the 社区插件管理 page — the community bucket's
-  // own surface under 其他 (third-party coraek plugins, empty for now).
-  | 'community'
 
 /** The two drawer groups the user asked for (plus the pinned bucket). */
 export type NavGroup = 'plugins' | 'other'
@@ -82,6 +80,9 @@ export interface NavEntry {
    * applies to CORAEK plugins only. A family whose owning plugin is not a
    * coraek dsh-plugin (today: the icon manager, a plain CLI package) skips
    * the synthetic "{name}首页" row — its first sub-route IS its home.
+   * BQ13 round: also used by the built-in 插件与程序管理 family, whose
+   * second-level rows are the pages themselves — the root has no page to
+   * point the home row at.
    */
   noHome?: boolean
   /**
@@ -95,6 +96,14 @@ export interface NavEntry {
    * rail may mix both kinds.
    */
   anchor?: string
+  /**
+   * BQ13 round: the content page a family ROOT renders instead of itself —
+   * the root owns no page of its own (its second-level rows are the pages).
+   * Landing on the root (a deep link, a stale pref, the first visit) shows
+   * the named page instead, so the keep-alive set never mounts a second,
+   * twin tree of it.
+   */
+  rendersAs?: string
   /** Extra aliases for the search box. */
   keywords: readonly string[]
 }
@@ -106,7 +115,12 @@ export const NAV: readonly NavEntry[] = [
   // the three sections into one page). The 'plugins' entry is GONE from the
   // nav — its old stored-order id is filtered out by the Sidebar's
   // orderIds memo (stored ids not in NAV simply don't render).
-  { id: 'runtime', labelKey: 'panel.runtime', icon: NAV_ICONS.runtime, group: 'other', keywords: ['plugin', 'program', 'runtime', 'instance', 'slot', 'port', '运行实例', '实例', '插件与程序', '程序'] },
+  // BQ13 round (2026-11-24): the family root owns no page of its own — the
+  // second-level rows ARE the pages (BQ13-3 用户裁定「二级侧边栏每个项对应
+  // 一个页面即可」), so the synthetic "{name}首页" row is dropped
+  // (`noHome`) and landing on the root shows the 插件与程序 page instead
+  // (`rendersAs`, the main roster + the community bucket live there).
+  { id: 'runtime', labelKey: 'panel.runtime', icon: NAV_ICONS.runtime, group: 'other', noHome: true, rendersAs: 'runtimePlugins', keywords: ['plugin', 'program', 'runtime', 'instance', 'slot', 'port', '运行实例', '实例', '插件与程序', '程序', '社区', '社区插件', '第三方'] },
   // Web Search is a real AEK plugin, so it belongs in the 插件 drawer, not 其他.
   { id: 'websearch', labelKey: 'panel.websearch', icon: NAV_ICONS.websearch, group: 'plugins', keywords: ['search', 'keys', 'api key', 'provider', '密钥'] },
   // Icon semantics live in `icon-registry.ts` (BB round): skills → the
@@ -149,14 +163,15 @@ export const NAV: readonly NavEntry[] = [
   // artSettings rail route, satisfying the plugins-group rail contract.
   { id: 'art', labelKey: 'panel.art', icon: NAV_ICONS.art, group: 'plugins', keywords: ['style', 'theme', 'skin', 'gallery', 'art', 'shadcn', 'shadcn/ui', '质感', '皮肤', '主题'] },
   { id: 'artSettings', labelKey: 'panel.artSettings', icon: NAV_ICONS.artSettings, group: 'plugins', subOf: 'art', keywords: ['style', 'settings', '设置'] },
-  // R2 round: the built-in pages get the second-level rail too.
+  // BQ13 round (2026-11-24): 插件与程序管理 — one DIFFERENT-PAGE row per
+  // second-level item (用户裁定「每个项对应一个页面即可」): 运行实例 and
+  // 插件与程序 are each their own page (the former composed page + ANCHOR
+  // tabs were split; the R2 anchor mechanism stays for 基础设置 / skills).
   // (The 关于 page owns no tabs: BQ11 round reduced it to the GitHub link +
-  // a thank-you line, and deleted the 系统信息 section of the composed page
-  // along with its 'runtimeInfo' anchor tab.)
-  // 插件与程序管理: one ANCHOR tab per section of the composed page — the
-  // tabs position the page, they do not switch to a new page.
-  { id: 'runtimeRuntimes', labelKey: 'panel.runtimeSection', icon: NAV_ICONS.runtime, group: 'other', subOf: 'runtime', anchor: 'runtimes', keywords: ['runtime', 'instance', '运行实例'] },
-  { id: 'runtimePlugins', labelKey: 'panel.pluginsSection', icon: NAV_ICONS.plugins, group: 'other', subOf: 'runtime', anchor: 'plugins', keywords: ['plugin', 'program', '插件与程序'] },
+  // a thank-you line, and deleted the 系统信息 section along with its
+  // 'runtimeInfo' tab.)
+  { id: 'runtimeRuntimes', labelKey: 'panel.runtimeSection', icon: NAV_ICONS.runtime, group: 'other', subOf: 'runtime', keywords: ['runtime', 'instance', '运行实例'] },
+  { id: 'runtimePlugins', labelKey: 'panel.pluginsSection', icon: NAV_ICONS.plugins, group: 'other', subOf: 'runtime', keywords: ['plugin', 'program', '插件与程序', '社区', '社区插件'] },
   // 基础设置: one ANCHOR tab per settings section (in-page position).
   { id: 'settingsSidebarFirst', labelKey: 'settings.group.sidebarFirst', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'sidebarFirst', keywords: ['sidebar', '侧栏'] },
   { id: 'settingsSidebarSecond', labelKey: 'settings.group.sidebarSecond', icon: NAV_ICONS.settings, group: 'other', subOf: 'settings', anchor: 'sidebarSecond', keywords: ['plugin rail', '二级侧栏'] },
@@ -176,9 +191,6 @@ export const NAV: readonly NavEntry[] = [
   // about family owns no anchor tabs and renders no rail.
   { id: 'settings', labelKey: 'panel.settings', icon: NAV_ICONS.settings, group: 'other', keywords: ['preferences', 'options', 'sidebar', '基础设置', '设置'] },
   { id: 'about', labelKey: 'panel.about', icon: NAV_ICONS.about, group: 'other', keywords: ['version', 'info', 'entry', '关于'] },
-  // BQ11 round (2026-11-24): 社区插件管理 — the community bucket's own page
-  // (group 其他, its own content tree, no rail of its own).
-  { id: 'community', labelKey: 'panel.community', icon: NAV_ICONS.community, group: 'other', keywords: ['community', 'community plugin', 'third party', 'contribution', '社区', '社区插件', '第三方'] },
 ]
 
 /** Top-level rail rows only: `subOf` entries are family routes, never rail rows. */
@@ -218,6 +230,9 @@ export function panelFamilyOf(id: PanelId): string | undefined {
 export function panelRenderIdOf(id: string): string {
   const entry = NAV.find(item => item.id === id)
   if (entry !== undefined && entry.anchor !== undefined && entry.subOf !== undefined) return entry.subOf
+  // BQ13 round: a root that owns no page of its own (`rendersAs`) renders
+  // the named page instead (one content tree, not a twin of it).
+  if (entry !== undefined && entry.rendersAs !== undefined) return entry.rendersAs
   return id
 }
 

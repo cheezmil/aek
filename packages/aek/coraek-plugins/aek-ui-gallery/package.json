@@ -1,6 +1,6 @@
 {
   "name": "@cheezmil/aek-ui-gallery",
-  "description": "shadcn/ui 全组件风格画廊 coraek 插件：宿主前缀路由托管的独立 Vite React SPA（移植自 shadcnspace/shadcnspace，MIT）",
+  "description": "shadcn/ui 全组件风格画廊：在线预览整套 shadcn/ui 组件，挑选并套用一套整站 UI 风格",
   "version": "0.1.0",
   "type": "module",
   "main": "lib/index.mjs",
@@ -30,7 +30,7 @@
     "type": "dsh-plugin",
     "cordis": true,
     "dsh": false,
-    "description": "shadcn/ui component gallery: a standalone Vite SPA served by a host webserver prefix route (ported from shadcnspace, MIT)",
+    "description": "shadcn/ui component gallery: preview the full shadcn/ui component set and apply one UI style across the whole console",
     "distribution": "A1",
     "bucket": "plugins"
   },

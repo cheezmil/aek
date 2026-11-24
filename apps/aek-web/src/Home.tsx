@@ -327,44 +327,31 @@ function Console() {
     // M round: 运行实例管理 was renamed 插件与程序管理 and now hosts the
     // former 插件管理 page AND the former 关于 content — one combined page.
     // The 插件管理 entry is gone from the nav; 关于 stays but is empty.
-    if (renderId === 'runtime') {
-      // N round: the three stacked cards read as "排版混乱，分类混乱" — no
-      // section titles, and the plugin list duplicated across two cards.
-      // T round: the 运行时与内存 section was folded INTO the 插件与程序 card
-      // (RuntimesBlock inside PluginsPanel) — the numbered rows live next to
-      // the roster they meter, so the page scans as two titled sections.
+    // BQ13 round (2026-11-24): the former 插件与程序管理 COMPOSED page (two
+    // sections, one tree, positioned by the R2 anchor tabs) was SPLIT into
+    // one page per second-level row, on user demand ("二级侧边栏每个项对应
+    // 一个页面即可", "插件与程序管理首页 这个选项剔除掉"):
+    //  - 'runtimeRuntimes' → its own 运行实例 page (its own content tree)
+    //  - 'runtimePlugins'  → its own 插件与程序 page; the family ROOT
+    //    ('runtime', noHome) renders this page via `rendersAs`, so the two
+    //    trees never mount twice (keep-alive dedupes on the render id).
+    // The community roster is no longer a standalone page (BQ13-2): the
+    // community BUCKET renders inside this page's roster via BUCKET_ORDER,
+    // so "这部分在插件与程序里显示" holds by construction.
+    if (renderId === 'runtimeRuntimes' || renderId === 'runtimePlugins') {
       const { t } = useI18n()
-      // accent bar (top 3px, radius 2px) maps to top-0.75 / rounded-xs pending 0.25-step decimals.
-      // .programsSectionHint had margin: -2px 0 var(--aek-space-4) → -mt-0.5 mb-4.
-      // III round: pl-3 (12) → pl-4 (16) — the title text now aligns exactly
-      // with the card body inset (p-4 = 16px, the single-card-scale step);
-      // the accent bar (before:left-0) stays on the card edge.
+      // III round: the section title — pl-3 (12) → pl-4 (16) aligns the text
+      // with the card body inset; the accent bar stays on the card edge.
       const sectionTitleClass = 'relative mb-4 pl-3 text-base font-bold tracking-normal text-text before:absolute before:content-[""] before:left-0 before:top-0.75 before:h-4 before:w-1 before:rounded-3xs before:bg-primary'
       return (
-        <div>
-          {/* III round: section gap 32 (mt-8) → 24 (mt-6). The spacing ladder
-              is now strictly descending: page 32 > section 24 > card body
-              16 > row box 12 > rows 8 > micro 4 (Windmill 4px-grid +
-              Vercel content-24/card-16 references, borrowed 2026-11-17). */}
-          {/* R2 round: the 插件与程序管理 rail's ANCHOR tabs position this
-              composed page to its three sections (the scroll effect reads
-              `data-nav-anchor`). */}
-          <section className="mt-8 first:mt-0" data-nav-anchor="runtimes">
-            <h2 className={sectionTitleClass}>{t('panel.runtimeSection')}</h2>
-            <RuntimeModePanel refreshSignal={signalFor('runtime')} />
-          </section>
-          {/* 2026-11-17: the 基础语言 / A1A2 stackHint line was removed on
-              user demand ("去掉这个文字" — the title + roster speak for
-              themselves; the hint duplicated the chip legend). */}
-          <section className="mt-8 first:mt-0" data-nav-anchor="plugins">
-            <h2 className={sectionTitleClass}>{t('panel.pluginsSection')}</h2>
-            <PluginsPanel refreshSignal={signalFor('plugins')} />
-          </section>
-          {/* BQ11 round (2026-11-24): the 系统信息 third section was deleted
-              on user demand ("剔除掉啊，没有任何意义") — its only content was
-              the AboutPanel's one version row; the About surface now lives on
-              the 关于 page alone (GitHub link + thank-you line). */}
-        </div>
+        <section className="mt-8 first:mt-0">
+          <h2 className={sectionTitleClass}>
+            {renderId === 'runtimeRuntimes' ? t('panel.runtimeSection') : t('panel.pluginsSection')}
+          </h2>
+          {renderId === 'runtimeRuntimes'
+            ? <RuntimeModePanel refreshSignal={signalFor('runtimeRuntimes')} />
+            : <PluginsPanel refreshSignal={signalFor('runtimePlugins')} />}
+        </section>
       )
     }
     if (renderId === 'websearch') return <WebSearchPanel state={state} refreshSignal={signalFor('websearch')} facts={facts} />
@@ -405,6 +392,8 @@ function Console() {
     }
     // R2 round: the three plugin SETTINGS pages (skills / prompts / icons)
     // and 基础设置 / Web Search 设置 / 关于 all live in InfoPanels.
+    // (The BQ11 社区插件管理 page was deleted in BQ13: its roster now
+    // renders inside the 插件与程序 page's community bucket instead.)
     if (renderId === 'plugins'
       || renderId === 'settings'
       || renderId === 'websearchSettings'
@@ -412,8 +401,7 @@ function Console() {
       || renderId === 'promptsSettings'
       || renderId === 'iconsSettings'
       || renderId === 'artSettings'
-      || renderId === 'about'
-      || renderId === 'community') {
+      || renderId === 'about') {
       // R2: `renderId` is narrowed to the InfoPanelId union by the if-chain,
       // so no cast is needed (and an unnecessary one is a lint error).
       return <InfoPanels panel={renderId} refreshSignal={signalFor(renderId)} />

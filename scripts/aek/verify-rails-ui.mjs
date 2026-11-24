@@ -51,7 +51,10 @@ const VISITS = [
   { family: 'prompts', routes: ['prompts', 'promptsSettings'] },
   { family: 'icons', routes: ['icons', 'iconsSettings'] },
   { family: 'websearch', routes: ['websearch', 'websearchSettings'] },
-  { family: 'runtime', routes: ['runtime', 'runtimeRuntimes', 'runtimePlugins', 'runtimeInfo'] },
+  // BQ13 round: the 插件与程序管理 family's rows are DIFFERENT PAGES now
+  // (no home row, no anchor tabs) — 'runtime' is the noHome root (it renders
+  // the 插件与程序 page), 'runtimeInfo' is gone with the BQ11 系统信息 cut.
+  { family: 'runtime', routes: ['runtime', 'runtimeRuntimes', 'runtimePlugins'] },
   { family: 'settings', routes: ['settings', 'settingsSidebarFirst', 'settingsSidebarSecond', 'settingsNavigation', 'settingsGeneral', 'settingsAccess', 'settingsPermissions', 'settingsDefaults'] },
   // 2026-11-18 user ruling: the 关于 page carries ONLY the desktop version
   // number — no sections, so no anchor tabs and no rail (route 'about' is the
@@ -90,7 +93,7 @@ function visitExpression(panel) {
         .map(el => el.getAttribute('data-nav-anchor')))],
       emptySettings: /暂无用户可调整的设置项|has no user-adjustable settings/i.test(text),
       settingsTitle: /Skill 设置|Skill Settings|Prompt 设置|Prompt Settings|图标设置|Icon Settings|Web Search/.test(text),
-      versionRow: ${ABOUT_VERSION_MARK.toString()}.test(text),
+      githubLink: ${ABOUT_GITHUB_MARK.toString()}.test(text),
     });
   })()`
 }
@@ -115,11 +118,12 @@ function anchorExpression(panel, anchor) {
   })()`
 }
 
-/** The anchor value each built-in anchor route positions to. */
+/**
+ * The anchor value each built-in ANCHOR route positions to.
+ * BQ13 round: the 插件与程序管理 family lost its anchor tabs (its rows are
+ * different pages now) — only the 基础设置 family still owns in-page tabs.
+ */
 const ANCHOR_TARGETS = {
-  runtimeRuntimes: 'runtimes',
-  runtimePlugins: 'plugins',
-  runtimeInfo: 'info',
   settingsSidebarFirst: 'sidebarFirst',
   settingsSidebarSecond: 'sidebarSecond',
   settingsNavigation: 'navigation',
@@ -129,8 +133,11 @@ const ANCHOR_TARGETS = {
   settingsDefaults: 'defaults',
 }
 
-/** The 关于 page must show its single version row (2026-11-18 user ruling). */
-const ABOUT_VERSION_MARK = /AEK Desktop/
+/**
+ * The 关于 page must show its GitHub link (BQ11 user ruling: the page carries
+ * ONLY the link + a thank-you line — the version row is gone).
+ */
+const ABOUT_GITHUB_MARK = /github\.com\//i
 
 async function getJson(path) {
   const url = `http://127.0.0.1:${String(CDP_PORT)}${path}`
@@ -226,19 +233,29 @@ async function main() {
           if (row.settingsPage !== 'title present') failures += 1
         }
       } else if (visit.family === 'about') {
-        // The 关于 family root: the whole page is ONE version row (user
-        // ruling 2026-11-18) — the version mark must show and the family
-        // must own no sub-routes (rail-less by design).
-        row.versionRow = facts.versionRow ? 'present' : 'MISSING'
-        if (!facts.versionRow) failures += 1
+        // The 关于 family root: the whole page is the GitHub link + a
+        // thank-you line (BQ11 user ruling deleted the version row) — the
+        // link mark must show and the family must own no sub-routes
+        // (rail-less by design).
+        row.githubLink = facts.githubLink ? 'present' : 'MISSING'
+        if (!facts.githubLink) failures += 1
       }
       report.push(row)
     }
   }
 
-  // One scroll-position sample after an anchor click, to prove the effect runs.
-  const sample = await evalJson(anchorExpression('runtimePlugins', 'plugins'))
-  report.push({ route: '(sample) runtimePlugins scroll settle', ...sample, url: 'checked' })
+  // One scroll-position sample after an anchor click, to prove the effect
+  // runs. BQ13 round: the 插件与程序管理 family's rows are different pages
+  // (no anchor targets left there) — the sample moves to 基础设置's
+  // `general` tab instead.
+  await evalJson(`(async () => {
+    window.history.pushState(null, '', '/settingsGeneral');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await new Promise(resolve => setTimeout(resolve, 800));
+    return JSON.stringify({ settled: true });
+  })()`)
+  const sample = await evalJson(anchorExpression('settingsGeneral', 'general'))
+  report.push({ route: '(sample) settingsGeneral scroll settle', ...sample, url: 'checked' })
 
   if (asJson) {
     process.stdout.write(JSON.stringify({ slot: slotName, target: page.url, report }, null, 2) + '\n')
@@ -252,7 +269,7 @@ async function main() {
         row.anchor !== undefined ? `anchor target: ${row.anchor}` : null,
         row.scroll !== undefined ? `scroll: ${row.scroll}` : null,
         row.settingsPage !== undefined ? `settings: ${row.settingsPage}${row.emptyState ? ' (empty-state)' : ''}` : null,
-        row.versionRow !== undefined ? `version-row: ${row.versionRow}` : null,
+        row.githubLink !== undefined ? `github-link: ${row.githubLink}` : null,
       ].filter(Boolean)
       process.stdout.write(bits.join('  ') + '\n')
     }

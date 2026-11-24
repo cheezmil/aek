@@ -152,6 +152,9 @@ export function PluginSubNav({ active, onSelect, labelsHidden = false, hidden = 
   // BQ11 round: the R2 home-row contract applies to coraek plugins only —
   // a family flagged `noHome` (the icon manager, a plain CLI package) starts
   // the rail at its first sub-route instead of a synthetic "{name}首页".
+  // BQ13 round: the built-in 插件与程序管理 family is noHome too — its
+  // second-level rows are the pages themselves, so there is no composed
+  // "home" page to point a home row at.
   const homeRow: RouteRow | undefined = parent.noHome === true ? undefined : { id: family, icon: FAMILY_HOME_ICON, label: tf('nav.home', { name: t(parent.labelKey) }) }
   const routes: RouteRow[] = [
     ...(homeRow !== undefined ? [homeRow] : []),

@@ -10,6 +10,20 @@
 @theme inline {
   --font-sans--font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 
+  /* Host design-system type scale. The self-drawn stage panels (charts/
+     forms/motion/tables/overlays, TopBar, switcher, sidebar) are written
+     against the console's aek-* / 2xs / 2xxs tokens, which this standalone
+     SPA cannot import from apps/aek-web — so mirror the host values here
+     (see apps/aek-web/src/index.css, keep in lockstep when the host
+     scale changes) and the utility classes generate as intended. */
+  --text-aek-11: 11px;
+  --text-aek-115: 11.5px;
+  --text-aek-125: 12.5px;
+  --text-aek-13: 13px;
+  --text-aek-135: 13.5px;
+  --text-2xs: 11px;
+  --text-2xxs: 10px;
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

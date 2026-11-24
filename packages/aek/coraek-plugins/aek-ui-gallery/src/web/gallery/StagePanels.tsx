@@ -613,7 +613,9 @@ export function ChartsPanel() {
                       className={donut[i].color}
                     />
                   ))}
-                  <text x="24" y="27" textAnchor="middle" className="fill-foreground text-2xxs font-bold">{total}</text>
+                  {/* Leading share (the biggest arc) — the center must
+                    describe this donut, not the unrelated bar total. */}
+                  <text x="24" y="27" textAnchor="middle" className="fill-foreground text-2xxs font-bold">{donut[0].share}%</text>
                 </svg>
                 <ul className="space-y-1.5">
                   {donut.map(d => (

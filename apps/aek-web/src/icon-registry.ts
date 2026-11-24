@@ -73,17 +73,13 @@ export const NAV_ICONS: Record<PanelId, IconName> = {
   iconsSettings: 'settings',
   art: 'sparkles',
   artSettings: 'settings',
-  // BQ11 round: 社区插件管理 — the globe (the community-coraek-plugins
-  // bucket and its own page share the mark: "the wider developer world").
-  community: 'globe',
   /**
-   * R2 round: the three ANCHOR tabs of 插件与程序管理 — each tab re-uses the
-   * mark of the SECTION it positions to (heartbeat / stack / info), so the
-   * rail row and the section header agree on the glyph.
+   * BQ13 round: the 插件与程序管理 family's DIFFERENT-PAGE rows — each re-
+   * uses the mark of its own page's header (heartbeat / stack), so the
+   * rail row and the page title agree on the glyph.
    */
   runtimeRuntimes: 'activity',
   runtimePlugins: 'layers',
-  runtimeInfo: 'about',
   /**
    * R2 round: the ANCHOR tabs of 基础设置 — the sliders glyph again; the
    * labels (一级侧栏 / 二级侧栏 / 导航 / …) carry the distinction.
