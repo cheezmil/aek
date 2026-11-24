@@ -15,8 +15,8 @@
  *   clis       the PATH-installed binaries (aek, aeksm, aekpm, aekws):
  *              resolvable, executable, and their version compared with the
  *              source tree this script lives in (a stale global install is
- *              flagged). aekim (A2 local-only, no PATH binary) is run from
- *              the workspace checkout directly.
+ *              flagged). aekim (A1, no PATH binary — kept local-only) is
+ *              run from the workspace checkout directly.
  *   profiles   every checked slot's web profile: the `link:` targets of its
  *              package.json dependencies must exist, and every materialized
  *              node_modules/@cheezmil/* symlink must resolve.
@@ -176,7 +176,7 @@ function checkClis() {
       record('clis', true, bin, (r.stdout.split('\n')[0] || 'ok').slice(0, 80))
     }
   }
-  // icon-manager ships no PATH binary (A2 local-only); invoke its bin directly.
+  // icon-manager ships no PATH binary (A1, kept local-only); invoke its bin directly.
   const iconPkg = readPkg(join(PLUGIN_DIR, 'aek-icon-manager'))
   if (iconPkg?.aek?.cli?.bin) {
     const script = join(PLUGIN_DIR, 'aek-icon-manager', iconPkg.aek.cli.bin)

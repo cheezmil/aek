@@ -21,7 +21,12 @@ import { cn } from '@/lib/utils'
 
 /** 96px tile + 8px gap (matches the `gap-2` grid + `h-24` tiles). */
 export const VIRTUAL_ROW_UNIT = 104
-const OVERSCAN_ROWS = 2
+/** BQ18: the list's 2-row overscan was outrun by a fast trackpad flick
+ * (the rAF→React-commit pipeline lags the wheel a frame or two, so the empty
+ * spacer showed through — the skill-center "滑动快就白"). 4 rows keeps the
+ * lead/lag filled; the tiles are heavier than list rows, so headroom matters
+ * more here. */
+const OVERSCAN_ROWS = 4
 
 /**
  * @param cols - user-adjustable column count (drives the row math).
@@ -114,9 +119,20 @@ export function VirtualGrid({
       refreshAnchor()
       read()
     }, 500)
+    // BQ18: content above the grid (the selection bar) shifts the wrapper's
+    // document top; a 500ms heartbeat alone left up to half a second of stale
+    // row math. Watch the wrapper's parent — the face's flex column — so any
+    // size change in the content above re-anchors on the next frame.
+    let resizeOb: ResizeObserver | null = null
+    const parent = box.parentElement
+    if (typeof ResizeObserver !== 'undefined' && parent !== null) {
+      resizeOb = new ResizeObserver(onResize)
+      resizeOb.observe(parent)
+    }
     window.addEventListener('scroll', onFrame, { passive: true })
     window.addEventListener('resize', onResize, { passive: true })
     return () => {
+      resizeOb?.disconnect()
       window.clearInterval(heartbeat)
       window.removeEventListener('scroll', onFrame)
       window.removeEventListener('resize', onResize)

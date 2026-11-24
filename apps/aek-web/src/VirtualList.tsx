@@ -3,13 +3,20 @@
  * hundreds-of-rows display face).
  *
  * Two container modes:
- * - a NUMBER (the icon-manager art faces): a fixed-height, overflow-auto
- *   scroll box; only the visible rows + overscan exist in the DOM; native
- *   passive scroll listener, rAF-coalesced.
+ * - a NUMBER: a fixed-height, overflow-auto scroll box; only the visible rows
+ *   + overscan exist in the DOM; native passive scroll listener, rAF-coalesced
+ *   (the icon-manager art faces use the equivalent box-mode VirtualGrid).
  * - `'document'` (the skill-manager library faces): NO inner scroll box. The
  *   wrapper is a plain document-flow flex-1 item; the PAGE scrolls and the
  *   visible-row math tracks the window, so a wheel over the list can never be
  *   trapped by an overflow context.
+ *
+ * Pitch contract (BQ18): `rowHeight` is one virtual SLOT's pitch, and the
+ * primitive owns the geometry — every rendered row sits in its exact slot
+ * (`top = index * rowHeight`, content top-aligned, the trailing gap is the
+ * slot's headroom). The BQ18 bug: rows used to stack with no per-slot
+ * placement, so an 80px card in an 88px slot drifted 8px/row and every
+ * row-boundary re-render visibly snapped the band (the skill-center jitter).
  *
  * @module @cheezmil/aek-web/src/VirtualList
  */
@@ -17,7 +24,12 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
-const OVERSCAN_ROWS = 2
+/** Overscan in ROWS on each side of the viewport. 2 rows (~176px at the
+ * 88px pitch) was too little headroom for a fast trackpad flick: the
+ * rAF→setState→React-commit pipeline lags the wheel by a frame or two, so
+ * the viewport outran the band and the empty spacer showed through (the
+ * BQ18 "滑动快就白"). 4 rows keeps the lead/lag filled through a flick. */
+const OVERSCAN_ROWS = 4
 
 /**
  * @param items - the full (already filtered) item list.
@@ -115,9 +127,21 @@ export function VirtualList({
       refreshAnchor()
       read()
     }, 500)
+    // BQ18: content above the list (the selection bar) shifts the wrapper's
+    // document top; a 500ms heartbeat alone left up to half a second of stale
+    // row math (the skill-center jitter when selecting rows). Watch the
+    // wrapper's parent — the face's flex column — so any size change in the
+    // content above the list re-anchors on the next frame instead.
+    let resizeOb: ResizeObserver | null = null
+    const parent = box.parentElement
+    if (typeof ResizeObserver !== 'undefined' && parent !== null) {
+      resizeOb = new ResizeObserver(onResize)
+      resizeOb.observe(parent)
+    }
     window.addEventListener('scroll', onFrame, { passive: true })
     window.addEventListener('resize', onResize, { passive: true })
     return () => {
+      resizeOb?.disconnect()
       window.clearInterval(heartbeat)
       window.removeEventListener('scroll', onFrame)
       window.removeEventListener('resize', onResize)
@@ -143,7 +167,22 @@ export function VirtualList({
           height, so the page grows and the document scrolls. */}
       <div style={{ height: totalRows * rowHeight, position: 'relative' }}>
         <div style={{ position: 'absolute', top: firstRow * rowHeight, left: 0, right: 0 }}>
-          {Array.from({ length: lastRow - firstRow }, (_, i) => renderRow(firstRow + i))}
+          {Array.from({ length: lastRow - firstRow }, (_, i) => {
+            const index = firstRow + i
+            // BQ18: the primitive owns the pitch — each row renders inside a
+            // fixed `rowHeight` slot that stacks in flow, so the row pitch is
+            // exact no matter how short the renderer's content is (content is
+            // top-aligned; the slot's headroom is the trailing gap). Without
+            // this an 80px card in an 88px slot stacked at 80px and drifted
+            // 8px/row off the virtual math — every boundary re-render snapped
+            // the band (the skill-center jitter). key = the absolute item
+            // index keeps rows that stay in the band reconciled, not remounted.
+            return (
+              <div key={index} style={{ height: rowHeight }}>
+                {renderRow(index)}
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

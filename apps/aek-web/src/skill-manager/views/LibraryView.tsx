@@ -648,7 +648,10 @@ function SkillCostBadge({ tokens }: { tokens: number }) {
   )
 }
 
-/** One virtual slot's 80px card row (the 8px pitch gap stays below it). */
+/** One virtual slot's 80px card row. BQ18: the card fills the TOP of its
+ *  88px slot (VirtualList wraps every row in a fixed-pitch slot); the slot's
+ *  trailing 8px headroom is the inter-row gap — the card stays top-aligned so
+ *  the row pitch is exact and the band never drifts off its virtual slots. */
 function SkillRowView({ row, status, overview, checked, tokens, menuOpen, onMenuChange, onAction, onSelectToggle, onOpen }: RowSlotProps) {
   const dots = agentDots(overview.agents, row.distributedAgents)
   return (
